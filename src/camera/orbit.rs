@@ -13,6 +13,7 @@ const MINIMUM_ALTITUDE: f64 = 100.0;
 const MAXIMUM_DISTANCE: f64 = 1e13;
 const FRAMING_DISTANCE_IN_RADII: f64 = 4.0;
 const TRANSITION_SECONDS: f64 = 0.75;
+const ARC_DISTANCE_PER_TRAVELED_DISTANCE: f64 = 0.75;
 
 pub struct OrbitTarget {
     pub position: DVec3,
@@ -27,6 +28,7 @@ struct Transition {
 
 pub struct OrbitCamera {
     pub smooth_transitions: bool,
+    pub arc_transitions: bool,
     target: usize,
     distance: f64,
     yaw: f64,
@@ -41,6 +43,7 @@ impl OrbitCamera {
         let distance = target_radius * FRAMING_DISTANCE_IN_RADII;
         Self {
             smooth_transitions: true,
+            arc_transitions: true,
             target,
             distance,
             yaw: 0.0,
@@ -87,7 +90,15 @@ impl OrbitCamera {
                 transition.elapsed += delta_seconds;
                 let progress = ease_in_out((transition.elapsed / TRANSITION_SECONDS).min(1.0));
                 let focus = transition.start_focus.lerp(target.position, progress);
-                let log_distance = transition.start_distance.ln() + (self.distance.ln() - transition.start_distance.ln()) * progress;
+                let start = transition.start_distance.ln();
+                let end = self.distance.ln();
+                let mut log_distance = start + (end - start) * progress;
+                if self.arc_transitions {
+                    let traveled = transition.start_focus.distance(target.position);
+                    let context = (traveled * ARC_DISTANCE_PER_TRAVELED_DISTANCE).max(f64::MIN_POSITIVE).ln();
+                    let rise = (context - (start + end) / 2.0).max(0.0);
+                    log_distance += rise * 4.0 * progress * (1.0 - progress);
+                }
                 (focus, log_distance.exp())
             }
             None => (target.position, self.distance),

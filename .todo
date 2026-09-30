@@ -35,9 +35,6 @@
     scroll changes speed, mouse captured.
   - Game: locked on a target — hold right click to capture the cursor and
     orbit, scroll zooms in and out.
-- Target transition arc (undecided — depends on how the plain transition
-  feels): pull the orbit camera further out mid-transition in proportion to
-  the distance traveled, so long hops show both bodies in context.
 - Time control: pause and warp rates limited by situation (in atmosphere, in
   orbit, eventually interstellar). Rewind is out of scope for performance
   reasons; if ever added, debug mode only.
