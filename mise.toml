@@ -1,13 +1,10 @@
 [tools]
 "github:shader-slang/slang" = "latest"
-7zip = "latest"
 rust = "latest"
 xh = "latest"
 
 [vars]
-sol_core_url = "https://github.com/RSS-Reborn/Sol-Core/releases/download/V0.9.5-0/Sol_Core-V0.9.5.zip"
 star_map_url = "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/starmap_2020_16k.exr"
-license_url = "https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.txt"
 
 [tasks.build]
 description = "Build the game and the asset tools"
@@ -27,16 +24,7 @@ run = """
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p assets/sol assets/deep-star-maps
-
-if [ ! -f assets/sol/GalaxyTex_PositiveX.dds ]; then
-    xh --ignore-stdin --follow --download --output assets/sol/Sol-Core.zip '{{vars.sol_core_url}}' 'Accept:*/*'
-    7zz e -y -oassets/sol assets/sol/Sol-Core.zip 'GameData/Sol-Textures/Skybox/TextureReplacer/Default/*.dds'
-    rm assets/sol/Sol-Core.zip
-fi
-if [ ! -f assets/sol/LICENSE.txt ]; then
-    xh --ignore-stdin --follow --download --output assets/sol/LICENSE.txt '{{vars.license_url}}' 'Accept:*/*'
-fi
+mkdir -p assets/deep-star-maps
 
 if [ ! -f assets/deep-star-maps/starmap_2020_16k.exr ]; then
     xh --ignore-stdin --follow --download --output assets/deep-star-maps/starmap_2020_16k.exr '{{vars.star_map_url}}' 'Accept:*/*'

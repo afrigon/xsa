@@ -24,14 +24,6 @@ const EARTH_COLOR: Vec3 = Vec3::new(0.1, 0.25, 0.6);
 const MOON_COLOR: Vec3 = Vec3::new(0.5, 0.5, 0.5);
 const DEFAULT_COLOR: Vec3 = Vec3::new(0.6, 0.6, 0.6);
 const EARTH_OBLIQUITY_DEGREES: f32 = 23.439_281;
-const SOL_SKYBOX_FACES: [&str; 6] = [
-    "assets/sol/GalaxyTex_PositiveX.dds",
-    "assets/sol/GalaxyTex_NegativeX.dds",
-    "assets/sol/GalaxyTex_PositiveY.dds",
-    "assets/sol/GalaxyTex_NegativeY.dds",
-    "assets/sol/GalaxyTex_PositiveZ.dds",
-    "assets/sol/GalaxyTex_NegativeZ.dds",
-];
 const DEEP_STAR_MAPS_SKYBOX: &str = "assets/deep-star-maps/skybox.dds";
 
 pub struct App {
@@ -307,12 +299,10 @@ fn appearance(body: &Body) -> Material {
 }
 
 fn load_skyboxes(renderer: &mut Renderer) -> Vec<MaterialHandle> {
-    let sol = CubeMapSource::Faces(SOL_SKYBOX_FACES.map(Path::new));
-    let sol_orientation = Mat3::from_cols(Vec3::X, Vec3::Z, Vec3::Y);
     let deep_star_maps = CubeMapSource::Single(Path::new(DEEP_STAR_MAPS_SKYBOX));
     let equatorial_from_ecliptic = Mat3::from_rotation_x(EARTH_OBLIQUITY_DEGREES.to_radians());
 
-    [("Sol skybox", sol, sol_orientation), ("Deep Star Maps skybox", deep_star_maps, equatorial_from_ecliptic)]
+    [("Deep Star Maps skybox", deep_star_maps, equatorial_from_ecliptic)]
         .into_iter()
         .filter_map(|(name, source, orientation)| match renderer.load_cube_map(name, source) {
             Ok(cube_map) => Some(renderer.scene_mut().add_material(Material::Skybox { cube_map, orientation })),
