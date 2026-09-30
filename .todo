@@ -1,0 +1,11 @@
+# Deferred work
+
+- Partial setup failure leaks Vulkan objects: if `Renderer::new` fails after
+  the swapchain exists (e.g. a `Frame::new` call fails), the swapchain and any
+  already-created frames are never destroyed, and neither are the pieces of a
+  half-built `Frame` or `Swapchain`. Fix with the deletion queue, so every
+  created object is registered for destruction as soon as it exists.
+- The triangle pipeline is built for the swapchain's color format. If a
+  swapchain recreation ever picks a different format (e.g. the window moves to
+  a monitor with other surface formats), the pipeline no longer matches. Goes
+  away once scene rendering targets its own fixed-format HDR image.

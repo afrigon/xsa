@@ -1,0 +1,3 @@
+[tools]
+"github:shader-slang/slang" = "latest"
+rust = "latest"
