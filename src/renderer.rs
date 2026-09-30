@@ -3,6 +3,7 @@ mod scene;
 mod texture;
 
 use std::mem::offset_of;
+use std::path::Path;
 
 use ash::vk;
 use glam::{Mat4, Vec2, Vec3, Vec4};
@@ -12,7 +13,7 @@ use winit::window::Window;
 
 pub use material::{Material, Shader};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
-pub use texture::{CubeMapHandle, CubeMapSource};
+pub use texture::CubeMapHandle;
 
 use material::MaterialData;
 
@@ -172,8 +173,8 @@ impl Renderer {
         self.shader_override = shader;
     }
 
-    pub fn load_cube_map(&mut self, name: &str, source: CubeMapSource) -> anyhow::Result<CubeMapHandle> {
-        let image = texture::upload_cube_map(&self.device, &mut self.allocator, name, source)?;
+    pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
+        let image = texture::upload_cube_map(&self.device, &mut self.allocator, name, path)?;
         let index = self.bindless.add_cube(&self.device, image.view());
         match index {
             Ok(index) => {

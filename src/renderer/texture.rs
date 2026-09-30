@@ -26,11 +26,6 @@ impl CubeMapHandle {
     }
 }
 
-pub enum CubeMapSource<'a> {
-    Single(&'a Path),
-    Faces([&'a Path; 6]),
-}
-
 struct DdsImage {
     format: vk::Format,
     size: u32,
@@ -42,12 +37,9 @@ pub fn upload_cube_map(
     device: &Device,
     allocator: &mut Allocator,
     name: &str,
-    source: CubeMapSource,
+    path: &Path,
 ) -> anyhow::Result<Image> {
-    let cube_map = match source {
-        CubeMapSource::Single(path) => read_dds(path)?,
-        CubeMapSource::Faces(paths) => read_face_set(paths)?,
-    };
+    let cube_map = read_dds(path)?;
     ensure!(cube_map.faces.len() == 6, "{name}: a cube map needs 6 faces");
 
     let image = Image::new(
@@ -71,26 +63,6 @@ pub fn upload_cube_map(
             .with_context(|| format!("{name}: uploading face {face}"))?;
     }
     Ok(image)
-}
-
-fn read_face_set(paths: [&Path; 6]) -> anyhow::Result<DdsImage> {
-    let mut faces = Vec::with_capacity(6);
-    let mut first: Option<DdsImage> = None;
-    for path in paths {
-        let mut face = read_dds(path)?;
-        ensure!(face.faces.len() == 1, "{}: expected a single face", path.display());
-        if let Some(first) = &first {
-            ensure!(
-                face.format == first.format && face.size == first.size && face.mip_levels == first.mip_levels,
-                "{}: faces differ in format, size or mip count",
-                path.display()
-            );
-        }
-        faces.push(face.faces.remove(0));
-        first.get_or_insert(face);
-    }
-    let first = first.context("no faces")?;
-    Ok(DdsImage { faces, ..first })
 }
 
 fn read_dds(path: &Path) -> anyhow::Result<DdsImage> {

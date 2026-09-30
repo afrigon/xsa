@@ -12,7 +12,7 @@ use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
 use crate::camera::{Camera, CameraMode};
 use crate::input::Input;
-use crate::renderer::{CubeMapSource, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader};
+use crate::renderer::{Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader};
 use crate::simulation::{Body, Simulation};
 
 const APP_ID: &str = "xsa";
@@ -299,12 +299,12 @@ fn appearance(body: &Body) -> Material {
 }
 
 fn load_skyboxes(renderer: &mut Renderer) -> Vec<MaterialHandle> {
-    let deep_star_maps = CubeMapSource::Single(Path::new(DEEP_STAR_MAPS_SKYBOX));
+    let deep_star_maps = Path::new(DEEP_STAR_MAPS_SKYBOX);
     let equatorial_from_ecliptic = Mat3::from_rotation_x(EARTH_OBLIQUITY_DEGREES.to_radians());
 
     [("Deep Star Maps skybox", deep_star_maps, equatorial_from_ecliptic)]
         .into_iter()
-        .filter_map(|(name, source, orientation)| match renderer.load_cube_map(name, source) {
+        .filter_map(|(name, path, orientation)| match renderer.load_cube_map(name, path) {
             Ok(cube_map) => Some(renderer.scene_mut().add_material(Material::Skybox { cube_map, orientation })),
             Err(err) => {
                 eprintln!("skipping the {name}: {err:#}");
