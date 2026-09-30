@@ -5,15 +5,16 @@ use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{CursorGrabMode, Window, WindowId};
+use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
 
-use crate::camera::Camera;
 use crate::camera::debug::DebugCamera;
+use crate::camera::orbit::{OrbitCamera, OrbitTarget};
+use crate::camera::{Camera, CameraMode};
 use crate::input::Input;
 use crate::renderer::{Material, ObjectHandle, Renderer, SceneObject};
 use crate::simulation::{Body, Simulation};
 
-const START_DISTANCE: f64 = 20_000_000.0;
+const APP_ID: &str = "xsa";
 const START_SPEED: f64 = 2_000_000.0;
 const NEAR_PLANE_ALTITUDE_FRACTION: f64 = 0.1;
 const MINIMUM_NEAR_PLANE: f64 = 0.1;
@@ -31,6 +32,8 @@ pub struct App {
     sun_body: Option<usize>,
     input: Input,
     camera: Camera,
+    camera_mode: CameraMode,
+    orbit_camera: OrbitCamera,
     debug_camera: DebugCamera,
     mouse_captured: bool,
     last_frame: Option<Instant>,
@@ -39,11 +42,8 @@ pub struct App {
 impl Default for App {
     fn default() -> Self {
         let simulation = Simulation::solar_system();
-        let earth_position = simulation
-            .bodies
-            .iter()
-            .find(|body| body.name == "Earth")
-            .map_or(DVec3::ZERO, |earth| earth.position);
+        let earth_body = simulation.bodies.iter().position(|body| body.name == "Earth").unwrap_or(0);
+        let orbit_camera = OrbitCamera::new(earth_body, simulation.bodies[earth_body].radius);
         let sun_body = simulation.bodies.iter().position(|body| body.name == "Sun");
         Self {
             renderer: None,
@@ -54,11 +54,13 @@ impl Default for App {
             sun_body,
             input: Input::default(),
             camera: Camera {
-                position: earth_position + DVec3::new(0.0, -START_DISTANCE, 0.0),
+                position: DVec3::ZERO,
                 orientation: DQuat::IDENTITY,
                 horizontal_fov: 100_f32.to_radians(),
                 near: MINIMUM_NEAR_PLANE as f32,
             },
+            camera_mode: CameraMode::Orbit,
+            orbit_camera,
             debug_camera: DebugCamera::new(START_SPEED),
             mouse_captured: false,
             last_frame: None,
@@ -72,7 +74,7 @@ impl App {
     }
 
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> anyhow::Result<()> {
-        let window = event_loop.create_window(Window::default_attributes().with_title("xsa"))?;
+        let window = event_loop.create_window(window_attributes())?;
         let mut renderer = Renderer::new(&window)?;
         self.body_objects = self
             .simulation
@@ -124,6 +126,14 @@ impl App {
             self.set_mouse_captured(false);
             return;
         }
+        match key {
+            KeyCode::F1 => return self.toggle_camera_mode(),
+            KeyCode::Tab if self.camera_mode == CameraMode::Orbit => {
+                let shifted = self.input.is_held(KeyCode::ShiftLeft) || self.input.is_held(KeyCode::ShiftRight);
+                return self.cycle_target(if shifted { -1 } else { 1 });
+            }
+            _ => {}
+        }
         let Some(renderer) = &mut self.renderer else {
             return;
         };
@@ -138,12 +148,50 @@ impl App {
         }
     }
 
+    fn handle_mouse_capture(&mut self, button: MouseButton, state: ElementState) {
+        match (self.camera_mode, button) {
+            (CameraMode::Debug, MouseButton::Left) if state.is_pressed() => self.set_mouse_captured(true),
+            (CameraMode::Orbit, MouseButton::Right) => self.set_mouse_captured(state.is_pressed()),
+            _ => {}
+        }
+    }
+
+    fn toggle_camera_mode(&mut self) {
+        self.set_mouse_captured(false);
+        self.camera_mode = match self.camera_mode {
+            CameraMode::Orbit => {
+                self.debug_camera
+                    .look_along(self.orbit_camera.yaw(), self.orbit_camera.pitch());
+                CameraMode::Debug
+            }
+            CameraMode::Debug => CameraMode::Orbit,
+        };
+    }
+
+    fn cycle_target(&mut self, step: isize) {
+        let body_count = self.simulation.bodies.len() as isize;
+        let target = (self.orbit_camera.target() as isize + step).rem_euclid(body_count) as usize;
+        self.orbit_camera
+            .set_target(target, self.simulation.bodies[target].radius);
+    }
+
     fn redraw(&mut self) -> anyhow::Result<()> {
         let now = Instant::now();
         let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
         self.last_frame = Some(now);
 
-        self.debug_camera.update(&mut self.camera, &self.input, delta_seconds);
+        match self.camera_mode {
+            CameraMode::Orbit => {
+                let target = &self.simulation.bodies[self.orbit_camera.target()];
+                let target = OrbitTarget {
+                    position: target.position,
+                    radius: target.radius,
+                };
+                self.orbit_camera
+                    .update(&mut self.camera, &self.input, target, delta_seconds);
+            }
+            CameraMode::Debug => self.debug_camera.update(&mut self.camera, &self.input, delta_seconds),
+        }
         let nearest_altitude = self
             .simulation
             .bodies
@@ -197,11 +245,10 @@ impl ApplicationHandler for App {
                 self.handle_hotkey(&event);
                 self.input.handle_key(&event);
             }
-            WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: MouseButton::Left,
-                ..
-            } if !self.mouse_captured => self.set_mouse_captured(true),
+            WindowEvent::MouseInput { state, button, .. } => {
+                self.input.handle_mouse_button(button, state);
+                self.handle_mouse_capture(button, state);
+            }
             WindowEvent::MouseWheel { delta, .. } => self.input.handle_scroll(delta),
             WindowEvent::RedrawRequested => {
                 if let Err(err) = self.redraw() {
@@ -220,6 +267,13 @@ impl ApplicationHandler for App {
             self.input.handle_mouse_motion(delta);
         }
     }
+}
+
+fn window_attributes() -> WindowAttributes {
+    let attributes = Window::default_attributes().with_title(APP_ID);
+    #[cfg(all(unix, not(target_vendor = "apple")))]
+    let attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, APP_ID, APP_ID);
+    attributes
 }
 
 fn appearance(body: &Body) -> (Material, Vec3) {

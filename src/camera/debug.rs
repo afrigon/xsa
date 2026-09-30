@@ -25,6 +25,11 @@ impl DebugCamera {
         }
     }
 
+    pub fn look_along(&mut self, yaw: f64, pitch: f64) {
+        self.yaw = yaw;
+        self.pitch = pitch.clamp(-PITCH_LIMIT, PITCH_LIMIT);
+    }
+
     pub fn update(&mut self, camera: &mut Camera, input: &Input, delta_seconds: f64) {
         let mouse_delta = input.mouse_delta();
         self.yaw -= mouse_delta.x * MOUSE_SENSITIVITY;

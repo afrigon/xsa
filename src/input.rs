@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use glam::DVec2;
-use winit::event::{ElementState, KeyEvent, MouseScrollDelta};
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 const PIXELS_PER_SCROLL_STEP: f64 = 50.0;
@@ -9,6 +9,7 @@ const PIXELS_PER_SCROLL_STEP: f64 = 50.0;
 #[derive(Default)]
 pub struct Input {
     held_keys: HashSet<KeyCode>,
+    held_buttons: HashSet<MouseButton>,
     mouse_delta: DVec2,
     scroll_steps: f64,
 }
@@ -21,6 +22,13 @@ impl Input {
         match event.state {
             ElementState::Pressed => self.held_keys.insert(key),
             ElementState::Released => self.held_keys.remove(&key),
+        };
+    }
+
+    pub fn handle_mouse_button(&mut self, button: MouseButton, state: ElementState) {
+        match state {
+            ElementState::Pressed => self.held_buttons.insert(button),
+            ElementState::Released => self.held_buttons.remove(&button),
         };
     }
 
@@ -39,6 +47,10 @@ impl Input {
         self.held_keys.contains(&key)
     }
 
+    pub fn is_button_held(&self, button: MouseButton) -> bool {
+        self.held_buttons.contains(&button)
+    }
+
     pub fn mouse_delta(&self) -> DVec2 {
         self.mouse_delta
     }
@@ -54,6 +66,7 @@ impl Input {
 
     pub fn clear(&mut self) {
         self.held_keys.clear();
+        self.held_buttons.clear();
         self.end_frame();
     }
 }

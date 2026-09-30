@@ -1,4 +1,5 @@
 pub mod debug;
+pub mod orbit;
 
 use glam::camera::rh::proj::vulkan;
 use glam::{DQuat, DVec3, Mat4, Vec4};
@@ -9,6 +10,12 @@ const VIEW_FROM_CAMERA: Mat4 = Mat4::from_cols(
     Vec4::new(0.0, 1.0, 0.0, 0.0),
     Vec4::W,
 );
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CameraMode {
+    Orbit,
+    Debug,
+}
 
 pub struct Camera {
     pub position: DVec3,
