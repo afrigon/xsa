@@ -1,15 +1,51 @@
+use std::time::Instant;
+
+use glam::{DQuat, DVec3};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{Window, WindowId};
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::{CursorGrabMode, Window, WindowId};
 
-use crate::renderer::Renderer;
+use crate::camera::Camera;
+use crate::camera::debug::DebugCamera;
+use crate::input::Input;
+use crate::renderer::{PLANET_RADIUS, Renderer};
 
-#[derive(Default)]
+const START_DISTANCE: f64 = 20_000_000.0;
+const START_SPEED: f64 = 100_000.0;
+const NEAR_PLANE_ALTITUDE_FRACTION: f64 = 0.1;
+const MINIMUM_NEAR_PLANE: f64 = 0.1;
+
 pub struct App {
     renderer: Option<Renderer>,
     window: Option<Window>,
     error: Option<anyhow::Error>,
+    input: Input,
+    camera: Camera,
+    debug_camera: DebugCamera,
+    mouse_captured: bool,
+    last_frame: Option<Instant>,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            renderer: None,
+            window: None,
+            error: None,
+            input: Input::default(),
+            camera: Camera {
+                position: DVec3::new(0.0, -START_DISTANCE, 0.0),
+                orientation: DQuat::IDENTITY,
+                vertical_fov: 60_f32.to_radians(),
+                near: MINIMUM_NEAR_PLANE as f32,
+            },
+            debug_camera: DebugCamera::new(START_SPEED),
+            mouse_captured: false,
+            last_frame: None,
+        }
+    }
 }
 
 impl App {
@@ -22,6 +58,44 @@ impl App {
         self.renderer = Some(Renderer::new(&window)?);
         window.request_redraw();
         self.window = Some(window);
+        self.set_mouse_captured(true);
+        Ok(())
+    }
+
+    fn set_mouse_captured(&mut self, captured: bool) {
+        let Some(window) = &self.window else {
+            return;
+        };
+        if captured {
+            let grabbed = window
+                .set_cursor_grab(CursorGrabMode::Locked)
+                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined));
+            if grabbed.is_err() {
+                return;
+            }
+        } else {
+            let _ = window.set_cursor_grab(CursorGrabMode::None);
+        }
+        window.set_cursor_visible(!captured);
+        self.mouse_captured = captured;
+    }
+
+    fn redraw(&mut self) -> anyhow::Result<()> {
+        let now = Instant::now();
+        let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
+        self.last_frame = Some(now);
+
+        self.debug_camera.update(&mut self.camera, &self.input, delta_seconds);
+        let altitude = self.camera.position.length() - PLANET_RADIUS;
+        self.camera.near = (altitude * NEAR_PLANE_ALTITUDE_FRACTION).max(MINIMUM_NEAR_PLANE) as f32;
+        self.input.end_frame();
+
+        if let Some(renderer) = &mut self.renderer {
+            renderer.draw(&self.camera)?;
+        }
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
         Ok(())
     }
 }
@@ -38,21 +112,41 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-        let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) else {
-            return;
-        };
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => renderer.resize(size),
+            WindowEvent::Resized(size) => {
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.resize(size);
+                }
+            }
+            WindowEvent::Focused(false) => self.input.clear(),
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.physical_key == PhysicalKey::Code(KeyCode::Escape) && event.state.is_pressed() {
+                    self.set_mouse_captured(false);
+                }
+                self.input.handle_key(&event);
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } if !self.mouse_captured => self.set_mouse_captured(true),
+            WindowEvent::MouseWheel { delta, .. } => self.input.handle_scroll(delta),
             WindowEvent::RedrawRequested => {
-                if let Err(err) = renderer.draw() {
+                if let Err(err) = self.redraw() {
                     self.error = Some(err);
                     event_loop.exit();
-                    return;
                 }
-                window.request_redraw();
             }
             _ => {}
+        }
+    }
+
+    fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: DeviceId, event: DeviceEvent) {
+        if let DeviceEvent::MouseMotion { delta } = event
+            && self.mouse_captured
+        {
+            self.input.handle_mouse_motion(delta);
         }
     }
 }

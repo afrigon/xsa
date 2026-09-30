@@ -23,7 +23,6 @@ adding one, justify it. Deliberately avoided:
 
 - `ash-window` — surfaces are created by hand in `src/vulkan/surface.rs`.
 - `shaderc` / runtime shader compilers — shaders are compiled offline.
-- Math crates — simulation math needs `f64` and full control over precision.
 
 ## Graphics
 
@@ -48,7 +47,15 @@ Written in Slang, compiled offline to SPIR-V with `slangc` (pinned in
 ## Precision
 
 The simulation runs in `f64`. Rendering is `f32`, relative to the camera, so
-solar-system distances never reach the GPU.
+solar-system distances never reach the GPU. Math uses `glam`: `DVec3`/`DQuat`
+for simulation, `Vec3`/`Mat4` for GPU data.
+
+## Architecture
+
+- **Simulation state is plain data, separate from rendering, advanced at a
+  fixed timestep.** Saves, debug-mode editing and time warp all depend on it.
+- **One scene at every scale.** Rendering must handle 1 m to interplanetary
+  distances in a single frame; there is no separate map scene.
 
 ## Vulkan object lifetime
 

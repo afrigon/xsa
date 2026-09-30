@@ -1,22 +1,46 @@
+use std::mem::offset_of;
+
 use ash::vk;
+use glam::{DVec3, Mat4, Vec3, Vec4};
 use winit::dpi::PhysicalSize;
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
 
-use crate::vulkan::{Device, GraphicsPipeline, Instance, Surface, Swapchain};
+use crate::camera::Camera;
+use crate::mesh::{self, Vertex};
+use crate::vulkan::{
+    Allocator, Buffer, Device, GraphicsPipeline, GraphicsPipelineDescription, Image, Instance, MemoryLocation, Surface,
+    Swapchain,
+};
 
 const FRAMES_IN_FLIGHT: usize = 2;
-const CLEAR_COLOR: [f32; 4] = [0.02, 0.05, 0.12, 1.0];
-const TRIANGLE_SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/triangle.spv"));
+const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
+const SPHERE_SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/sphere.spv"));
+pub const PLANET_RADIUS: f64 = 6_371_000.0;
+const PLANET_SUBDIVISIONS: u32 = 64;
+const SUN_DIRECTION: Vec3 = Vec3::new(-1.0, -1.0, 0.5);
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct PushConstants {
+    clip_from_model: Mat4,
+    sun_direction: Vec4,
+}
 
 pub struct Renderer {
-    triangle: GraphicsPipeline,
+    sphere: GraphicsPipeline,
+    vertex_buffer: Buffer,
+    index_buffer: Buffer,
+    index_count: u32,
+    depth: Image,
     frames: Vec<Frame>,
     frame_index: usize,
     swapchain: Swapchain,
     swapchain_outdated: bool,
     window_extent: vk::Extent2D,
-    // Declaration order is drop order: the device must go before the surface, the surface before the instance.
+    // Declaration order is drop order: allocator before device, device before surface, surface before instance.
+    allocator: Allocator,
     device: Device,
     surface: Surface,
     instance: Instance,
@@ -27,20 +51,58 @@ impl Renderer {
         let instance = Instance::new(window.display_handle()?.as_raw())?;
         let surface = Surface::new(&instance, window)?;
         let device = Device::new(&instance, &surface)?;
+        let mut allocator = Allocator::new(&instance, &device)?;
         let window_extent = extent(window.inner_size());
         let swapchain = Swapchain::new(&instance, &surface, &device, window_extent, vk::SwapchainKHR::null())?;
-        let triangle = GraphicsPipeline::new(&device, TRIANGLE_SHADER, swapchain.format())?;
+        let depth = create_depth_image(&device, &mut allocator, swapchain.extent())?;
         let frames = (0..FRAMES_IN_FLIGHT)
             .map(|_| Frame::new(&device))
             .collect::<anyhow::Result<_>>()?;
 
+        let planet = mesh::cube_sphere(PLANET_RADIUS as f32, PLANET_SUBDIVISIONS);
+        let vertex_buffer = upload(&device, &mut allocator, "planet vertices", vk::BufferUsageFlags::VERTEX_BUFFER, &planet.vertices)?;
+        let index_buffer = upload(&device, &mut allocator, "planet indices", vk::BufferUsageFlags::INDEX_BUFFER, &planet.indices)?;
+
+        let vertex_bindings = [vk::VertexInputBindingDescription::default()
+            .binding(0)
+            .stride(size_of::<Vertex>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX)];
+        let vertex_attributes = [
+            vk::VertexInputAttributeDescription::default()
+                .location(0)
+                .binding(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(offset_of!(Vertex, position) as u32),
+            vk::VertexInputAttributeDescription::default()
+                .location(1)
+                .binding(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(offset_of!(Vertex, normal) as u32),
+        ];
+        let sphere = GraphicsPipeline::new(
+            &device,
+            &GraphicsPipelineDescription {
+                spirv: SPHERE_SHADER,
+                color_format: swapchain.format(),
+                depth_format: Some(DEPTH_FORMAT),
+                vertex_bindings: &vertex_bindings,
+                vertex_attributes: &vertex_attributes,
+                push_constant_size: size_of::<PushConstants>() as u32,
+            },
+        )?;
+
         Ok(Self {
-            triangle,
+            sphere,
+            vertex_buffer,
+            index_buffer,
+            index_count: planet.indices.len() as u32,
+            depth,
             frames,
             frame_index: 0,
             swapchain,
             swapchain_outdated: false,
             window_extent,
+            allocator,
             device,
             surface,
             instance,
@@ -52,7 +114,7 @@ impl Renderer {
         self.swapchain_outdated = true;
     }
 
-    pub fn draw(&mut self) -> anyhow::Result<()> {
+    pub fn draw(&mut self, camera: &Camera) -> anyhow::Result<()> {
         if self.window_extent.width == 0 || self.window_extent.height == 0 {
             return Ok(());
         }
@@ -85,14 +147,16 @@ impl Renderer {
         };
         unsafe { device.reset_fences(&[frame.in_flight]) }?;
 
-        record_frame(
-            device,
-            frame,
-            self.triangle.handle(),
-            self.swapchain.image(image_index),
-            self.swapchain.image_view(image_index),
-            self.swapchain.extent(),
-        )?;
+        let extent = self.swapchain.extent();
+        let aspect_ratio = extent.width as f32 / extent.height as f32;
+        let planet_from_camera = (DVec3::ZERO - camera.position).as_vec3();
+        let push_constants = PushConstants {
+            clip_from_model: camera.clip_from_view(aspect_ratio)
+                * camera.view_rotation()
+                * Mat4::from_translation(planet_from_camera),
+            sun_direction: SUN_DIRECTION.normalize().extend(0.0),
+        };
+        self.record_frame(frame, image_index, &push_constants)?;
 
         let render_finished = self.swapchain.render_finished(image_index);
         let wait_semaphores = [vk::SemaphoreSubmitInfo::default()
@@ -125,6 +189,108 @@ impl Renderer {
         Ok(())
     }
 
+    fn record_frame(&self, frame: &Frame, image_index: u32, push_constants: &PushConstants) -> anyhow::Result<()> {
+        let device = self.device.handle();
+        let command_buffer = frame.command_buffer;
+        let extent = self.swapchain.extent();
+        let image = self.swapchain.image(image_index);
+        unsafe {
+            device.reset_command_pool(frame.command_pool, vk::CommandPoolResetFlags::empty())?;
+            let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+            device.begin_command_buffer(command_buffer, &begin_info)?;
+
+            transition_image(
+                device,
+                command_buffer,
+                image,
+                vk::ImageAspectFlags::COLOR,
+                (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
+                (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, vk::AccessFlags2::NONE),
+                (
+                    vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+                    vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                ),
+            );
+            let depth_tests =
+                vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS;
+            transition_image(
+                device,
+                command_buffer,
+                self.depth.handle(),
+                vk::ImageAspectFlags::DEPTH,
+                (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL),
+                (depth_tests, vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE),
+                (
+                    depth_tests,
+                    vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                ),
+            );
+
+            let color_attachments = [vk::RenderingAttachmentInfo::default()
+                .image_view(self.swapchain.image_view(image_index))
+                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .clear_value(vk::ClearValue {
+                    color: vk::ClearColorValue { float32: CLEAR_COLOR },
+                })];
+            let depth_attachment = vk::RenderingAttachmentInfo::default()
+                .image_view(self.depth.view())
+                .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .clear_value(vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue { depth: 0.0, stencil: 0 },
+                });
+            let rendering_info = vk::RenderingInfo::default()
+                .render_area(extent.into())
+                .layer_count(1)
+                .color_attachments(&color_attachments)
+                .depth_attachment(&depth_attachment);
+            device.cmd_begin_rendering(command_buffer, &rendering_info);
+
+            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.sphere.handle());
+            let viewport = vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: extent.width as f32,
+                height: extent.height as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            };
+            device.cmd_set_viewport(command_buffer, 0, &[viewport]);
+            device.cmd_set_scissor(command_buffer, 0, &[extent.into()]);
+            device.cmd_push_constants(
+                command_buffer,
+                self.sphere.layout(),
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                0,
+                as_bytes(push_constants),
+            );
+            device.cmd_bind_vertex_buffers(command_buffer, 0, &[self.vertex_buffer.handle()], &[0]);
+            device.cmd_bind_index_buffer(command_buffer, self.index_buffer.handle(), 0, vk::IndexType::UINT32);
+            device.cmd_draw_indexed(command_buffer, self.index_count, 1, 0, 0, 0);
+
+            device.cmd_end_rendering(command_buffer);
+
+            transition_image(
+                device,
+                command_buffer,
+                image,
+                vk::ImageAspectFlags::COLOR,
+                (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR),
+                (
+                    vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+                    vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                ),
+                (vk::PipelineStageFlags2::NONE, vk::AccessFlags2::NONE),
+            );
+
+            device.end_command_buffer(command_buffer)?;
+        }
+        Ok(())
+    }
+
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
         unsafe { self.device.handle().device_wait_idle() }?;
         let swapchain = Swapchain::new(
@@ -136,6 +302,11 @@ impl Renderer {
         )?;
         let mut old_swapchain = std::mem::replace(&mut self.swapchain, swapchain);
         unsafe { old_swapchain.destroy(&self.device) };
+
+        let depth = create_depth_image(&self.device, &mut self.allocator, self.swapchain.extent())?;
+        let mut old_depth = std::mem::replace(&mut self.depth, depth);
+        unsafe { old_depth.destroy(&self.device, &mut self.allocator) };
+
         self.swapchain_outdated = false;
         Ok(())
     }
@@ -145,7 +316,10 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.handle().device_wait_idle();
-            self.triangle.destroy(&self.device);
+            self.sphere.destroy(&self.device);
+            self.vertex_buffer.destroy(&self.device, &mut self.allocator);
+            self.index_buffer.destroy(&self.device, &mut self.allocator);
+            self.depth.destroy(&self.device, &mut self.allocator);
             for frame in &mut self.frames {
                 frame.destroy(&self.device);
             }
@@ -194,80 +368,42 @@ impl Frame {
     }
 }
 
-fn record_frame(
-    device: &ash::Device,
-    frame: &Frame,
-    pipeline: vk::Pipeline,
-    image: vk::Image,
-    image_view: vk::ImageView,
-    extent: vk::Extent2D,
-) -> anyhow::Result<()> {
-    let command_buffer = frame.command_buffer;
-    unsafe {
-        device.reset_command_pool(frame.command_pool, vk::CommandPoolResetFlags::empty())?;
-        let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        device.begin_command_buffer(command_buffer, &begin_info)?;
+fn create_depth_image(device: &Device, allocator: &mut Allocator, extent: vk::Extent2D) -> anyhow::Result<Image> {
+    Image::new(
+        device,
+        allocator,
+        "depth",
+        extent,
+        DEPTH_FORMAT,
+        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        vk::ImageAspectFlags::DEPTH,
+    )
+}
 
-        transition_image(
-            device,
-            command_buffer,
-            image,
-            (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
-            (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, vk::AccessFlags2::NONE),
-            (
-                vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            ),
-        );
-
-        let color_attachments = [vk::RenderingAttachmentInfo::default()
-            .image_view(image_view)
-            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(vk::ClearValue {
-                color: vk::ClearColorValue { float32: CLEAR_COLOR },
-            })];
-        let rendering_info = vk::RenderingInfo::default()
-            .render_area(extent.into())
-            .layer_count(1)
-            .color_attachments(&color_attachments);
-        device.cmd_begin_rendering(command_buffer, &rendering_info);
-        device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
-        let viewport = vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: extent.width as f32,
-            height: extent.height as f32,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        };
-        device.cmd_set_viewport(command_buffer, 0, &[viewport]);
-        device.cmd_set_scissor(command_buffer, 0, &[extent.into()]);
-        device.cmd_draw(command_buffer, 3, 1, 0, 0);
-        device.cmd_end_rendering(command_buffer);
-
-        transition_image(
-            device,
-            command_buffer,
-            image,
-            (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR),
-            (
-                vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            ),
-            (vk::PipelineStageFlags2::NONE, vk::AccessFlags2::NONE),
-        );
-
-        device.end_command_buffer(command_buffer)?;
-    }
-    Ok(())
+fn upload<T: Copy>(
+    device: &Device,
+    allocator: &mut Allocator,
+    name: &str,
+    usage: vk::BufferUsageFlags,
+    data: &[T],
+) -> anyhow::Result<Buffer> {
+    let mut buffer = Buffer::new(
+        device,
+        allocator,
+        name,
+        size_of_val(data) as u64,
+        usage,
+        MemoryLocation::CpuToGpu,
+    )?;
+    buffer.write(data)?;
+    Ok(buffer)
 }
 
 fn transition_image(
     device: &ash::Device,
     command_buffer: vk::CommandBuffer,
     image: vk::Image,
+    aspect: vk::ImageAspectFlags,
     (old_layout, new_layout): (vk::ImageLayout, vk::ImageLayout),
     (source_stage, source_access): (vk::PipelineStageFlags2, vk::AccessFlags2),
     (destination_stage, destination_access): (vk::PipelineStageFlags2, vk::AccessFlags2),
@@ -282,12 +418,16 @@ fn transition_image(
         .image(image)
         .subresource_range(
             vk::ImageSubresourceRange::default()
-                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                .aspect_mask(aspect)
                 .level_count(1)
                 .layer_count(1),
         )];
     let dependency_info = vk::DependencyInfo::default().image_memory_barriers(&barriers);
     unsafe { device.cmd_pipeline_barrier2(command_buffer, &dependency_info) };
+}
+
+fn as_bytes<T: Copy>(value: &T) -> &[u8] {
+    unsafe { std::slice::from_raw_parts((value as *const T).cast::<u8>(), size_of::<T>()) }
 }
 
 fn extent(size: PhysicalSize<u32>) -> vk::Extent2D {

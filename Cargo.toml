@@ -6,4 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.104"
 ash = "0.38.0"
+glam = "0.33.11"
+gpu-allocator = { version = "0.28.0", default-features = false, features = ["std", "vulkan"] }
 winit = "0.30.13"

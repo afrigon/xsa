@@ -5,7 +5,41 @@
   already-created frames are never destroyed, and neither are the pieces of a
   half-built `Frame` or `Swapchain`. Fix with the deletion queue, so every
   created object is registered for destruction as soon as it exists.
+- Split depth ranges: one near plane can't serve both a cockpit 1 m away and a
+  planet 10,000 km away (reverse-Z depth below ~1e-8 fails the depth test).
+  Render the far scene with a large near plane, clear depth, then render
+  nearby objects with a small one, in the same frame. Needed once vessels
+  exist; until then the near plane follows the camera's altitude.
 - The triangle pipeline is built for the swapchain's color format. If a
   swapchain recreation ever picks a different format (e.g. the window moves to
   a monitor with other surface formats), the pipeline no longer matches. Goes
   away once scene rendering targets its own fixed-format HDR image.
+
+# Planned features
+
+- Real solar system at scale: bodies generated from real physical and orbital
+  parameters. The general shape must be right; fine detail may be procedural.
+- Planet textures from the Sol mod (CC-BY-NC-SA-4.0): attribution required,
+  no commercial use, derived textures stay under the same license. Keep the
+  texture pipeline source-agnostic so they can be swapped for NASA-derived
+  data before any commercial release.
+- Texture streaming by distance: only bodies near the camera get high
+  resolution textures; distant ones keep a small mip level resident.
+- Planet LOD: cube-sphere faces split into quadtrees as the camera approaches;
+  each tile has its own local origin to keep f32 precision on the surface.
+- Seamless map mode: the map is the live world zoomed out. The camera stays
+  centered on the current target (no automatic re-targeting); map overlays
+  (orbits, markers) fade in only once zoomed out far enough to need them.
+- Camera modes:
+  - Debug: creative-style fly camera — WASD horizontal, Space/Shift up/down,
+    scroll changes speed, mouse captured.
+  - Game: locked on a target — hold right click to capture the cursor and
+    orbit, scroll zooms in and out.
+- Time control: pause and warp rates limited by situation (in atmosphere, in
+  orbit, eventually interstellar). Rewind is out of scope for performance
+  reasons; if ever added, debug mode only.
+- Game modes:
+  - Survival: career with gradual unlocks and a realistic feel.
+  - Creative: survival with infinite resources.
+  - Debug: cheats and dev tools — edit positions, orbits and other state.
+    The mode used to build the game, also available to players.
