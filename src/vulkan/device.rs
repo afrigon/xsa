@@ -20,12 +20,14 @@ impl Device {
             .queue_family_index(queue_family)
             .queue_priorities(&queue_priorities)];
         let extensions = [khr::swapchain::NAME.as_ptr()];
+        let mut vulkan_11_features = vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
         let mut vulkan_13_features = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
             .synchronization2(true);
         let create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&extensions)
+            .push_next(&mut vulkan_11_features)
             .push_next(&mut vulkan_13_features);
         let device = unsafe { instance.handle().create_device(physical_device, &create_info, None) }
             .context("creating the Vulkan device")?;
