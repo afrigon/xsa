@@ -24,7 +24,11 @@ const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
-const POINT_DIAMETER_PIXELS: f32 = 2.0;
+const POINT_MAXIMUM_DIAMETER_PIXELS: f32 = 2.0;
+const POINT_MINIMUM_DIAMETER_PIXELS: f32 = 1.0;
+const POINT_MINIMUM_INTENSITY: f32 = 0.25;
+const POINT_FADE_DECADES: f64 = 3.0;
+const POINT_QUAD_PIXELS: f32 = 4.0;
 const POINT_SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/point.spv"));
 
 #[repr(C)]
@@ -33,7 +37,7 @@ struct FrameData {
     view_projection: Mat4,
     sun_position: Vec4,
     viewport_size: Vec2,
-    point_diameter: f32,
+    point_quad_size: f32,
     padding: f32,
 }
 
@@ -42,6 +46,9 @@ struct FrameData {
 struct ObjectData {
     world_from_model: Mat4,
     color: Vec4,
+    point_diameter: f32,
+    point_intensity: f32,
+    padding: [f32; 2],
 }
 
 #[repr(C)]
@@ -53,7 +60,7 @@ struct PushConstants {
 }
 
 const _: () = assert!(size_of::<FrameData>() == 96);
-const _: () = assert!(size_of::<ObjectData>() == 80);
+const _: () = assert!(size_of::<ObjectData>() == 96);
 const _: () = assert!(size_of::<PushConstants>() == 24);
 
 pub struct Renderer {
@@ -108,6 +115,7 @@ impl Renderer {
                 color_format: swapchain.format(),
                 depth_format: Some(DEPTH_FORMAT),
                 cull_mode: vk::CullModeFlags::NONE,
+                additive_blend: true,
                 vertex_bindings: &[],
                 vertex_attributes: &[],
                 push_constant_size: size_of::<PushConstants>() as u32,
@@ -197,25 +205,30 @@ impl Renderer {
             view_projection: clip_from_view * camera.view_rotation(),
             sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
-            point_diameter: POINT_DIAMETER_PIXELS,
+            point_quad_size: POINT_QUAD_PIXELS,
             padding: 0.0,
         };
         let pixels_per_unit_angle = f64::from(clip_from_view.y_axis.y.abs() * extent.height as f32 / 2.0);
         self.drawn_as_point.clear();
-        self.drawn_as_point.extend(self.scene.objects().iter().map(|object| {
-            let distance = object.position.distance(camera.position);
-            let diameter_pixels = 2.0 * object.scale / distance * pixels_per_unit_angle;
-            diameter_pixels < f64::from(POINT_DIAMETER_PIXELS)
-        }));
         self.object_data.clear();
-        self.object_data.extend(self.scene.objects().iter().map(|object| ObjectData {
-            world_from_model: Mat4::from_scale_rotation_translation(
-                Vec3::splat(object.scale as f32),
-                object.orientation.as_quat(),
-                (object.position - camera.position).as_vec3(),
-            ),
-            color: object.color.extend(1.0),
-        }));
+        for object in self.scene.objects() {
+            let camera_relative = object.position - camera.position;
+            let diameter_pixels = 2.0 * object.scale / camera_relative.length() * pixels_per_unit_angle;
+            let point_size = point_size(diameter_pixels);
+            self.drawn_as_point.push(diameter_pixels < f64::from(POINT_MAXIMUM_DIAMETER_PIXELS));
+            self.object_data.push(ObjectData {
+                world_from_model: Mat4::from_scale_rotation_translation(
+                    Vec3::splat(object.scale as f32),
+                    object.orientation.as_quat(),
+                    camera_relative.as_vec3(),
+                ),
+                color: object.color.extend(1.0),
+                point_diameter: POINT_MINIMUM_DIAMETER_PIXELS
+                    + (POINT_MAXIMUM_DIAMETER_PIXELS - POINT_MINIMUM_DIAMETER_PIXELS) * point_size,
+                point_intensity: POINT_MINIMUM_INTENSITY + (1.0 - POINT_MINIMUM_INTENSITY) * point_size,
+                padding: [0.0; 2],
+            });
+        }
         {
             let frame = &mut self.frames[self.frame_index];
             frame.frame_data.write(&[frame_data])?;
@@ -538,11 +551,17 @@ fn create_material_pipeline(device: &Device, material: Material, color_format: v
             color_format,
             depth_format: Some(DEPTH_FORMAT),
             cull_mode: vk::CullModeFlags::BACK,
+            additive_blend: false,
             vertex_bindings: &vertex_bindings,
             vertex_attributes: &vertex_attributes,
             push_constant_size: size_of::<PushConstants>() as u32,
         },
     )
+}
+
+fn point_size(diameter_pixels: f64) -> f32 {
+    let decades_below_sphere = (diameter_pixels / f64::from(POINT_MAXIMUM_DIAMETER_PIXELS)).log10();
+    (1.0 + decades_below_sphere / POINT_FADE_DECADES).clamp(0.0, 1.0) as f32
 }
 
 fn create_object_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {

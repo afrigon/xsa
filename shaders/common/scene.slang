@@ -3,13 +3,16 @@ struct FrameData
     float4x4 viewProjection;
     float4 sunPosition;
     float2 viewportSize;
-    float pointDiameter;
+    float pointQuadSize;
 };
 
 struct ObjectData
 {
     float4x4 worldFromModel;
     float4 color;
+    float pointDiameter;
+    float pointIntensity;
+    float2 padding;
 };
 
 struct PushConstants

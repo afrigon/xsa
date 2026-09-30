@@ -10,6 +10,7 @@ pub struct GraphicsPipelineDescription<'a> {
     pub color_format: vk::Format,
     pub depth_format: Option<vk::Format>,
     pub cull_mode: vk::CullModeFlags,
+    pub additive_blend: bool,
     pub vertex_bindings: &'a [vk::VertexInputBindingDescription],
     pub vertex_attributes: &'a [vk::VertexInputAttributeDescription],
     pub push_constant_size: u32,
@@ -88,8 +89,15 @@ fn create_pipeline(
         .line_width(1.0);
     let multisample =
         vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
-    let blend_attachments =
-        [vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA)];
+    let blend_attachments = [vk::PipelineColorBlendAttachmentState::default()
+        .color_write_mask(vk::ColorComponentFlags::RGBA)
+        .blend_enable(description.additive_blend)
+        .src_color_blend_factor(vk::BlendFactor::ONE)
+        .dst_color_blend_factor(vk::BlendFactor::ONE)
+        .color_blend_op(vk::BlendOp::ADD)
+        .src_alpha_blend_factor(vk::BlendFactor::ONE)
+        .dst_alpha_blend_factor(vk::BlendFactor::ONE)
+        .alpha_blend_op(vk::BlendOp::ADD)];
     let color_blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
     let mut dynamic_states = vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
     if dynamic_polygon_mode {
@@ -98,7 +106,7 @@ fn create_pipeline(
     let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
     let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
         .depth_test_enable(description.depth_format.is_some())
-        .depth_write_enable(description.depth_format.is_some())
+        .depth_write_enable(description.depth_format.is_some() && !description.additive_blend)
         .depth_compare_op(vk::CompareOp::GREATER);
     let color_formats = [description.color_format];
     let mut rendering = vk::PipelineRenderingCreateInfo::default()
