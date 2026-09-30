@@ -13,7 +13,7 @@ const VIEW_FROM_CAMERA: Mat4 = Mat4::from_cols(
 pub struct Camera {
     pub position: DVec3,
     pub orientation: DQuat,
-    pub vertical_fov: f32,
+    pub horizontal_fov: f32,
     pub near: f32,
 }
 
@@ -23,6 +23,7 @@ impl Camera {
     }
 
     pub fn clip_from_view(&self, aspect_ratio: f32) -> Mat4 {
-        vulkan::perspective_infinite_reverse(self.vertical_fov, aspect_ratio, self.near)
+        let vertical_fov = 2.0 * ((self.horizontal_fov / 2.0).tan() / aspect_ratio).atan();
+        vulkan::perspective_infinite_reverse(vertical_fov, aspect_ratio, self.near)
     }
 }

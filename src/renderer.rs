@@ -85,6 +85,7 @@ impl Renderer {
                 spirv: SPHERE_SHADER,
                 color_format: swapchain.format(),
                 depth_format: Some(DEPTH_FORMAT),
+                cull_mode: vk::CullModeFlags::BACK,
                 vertex_bindings: &vertex_bindings,
                 vertex_attributes: &vertex_attributes,
                 push_constant_size: size_of::<PushConstants>() as u32,

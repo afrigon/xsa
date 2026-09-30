@@ -9,6 +9,7 @@ pub struct GraphicsPipelineDescription<'a> {
     pub spirv: &'a [u8],
     pub color_format: vk::Format,
     pub depth_format: Option<vk::Format>,
+    pub cull_mode: vk::CullModeFlags,
     pub vertex_bindings: &'a [vk::VertexInputBindingDescription],
     pub vertex_attributes: &'a [vk::VertexInputAttributeDescription],
     pub push_constant_size: u32,
@@ -81,7 +82,7 @@ fn create_pipeline(
         .scissor_count(1);
     let rasterization = vk::PipelineRasterizationStateCreateInfo::default()
         .polygon_mode(vk::PolygonMode::FILL)
-        .cull_mode(vk::CullModeFlags::NONE)
+        .cull_mode(description.cull_mode)
         .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
         .line_width(1.0);
     let multisample =

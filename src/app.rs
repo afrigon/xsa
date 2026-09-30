@@ -13,7 +13,7 @@ use crate::input::Input;
 use crate::renderer::{PLANET_RADIUS, Renderer};
 
 const START_DISTANCE: f64 = 20_000_000.0;
-const START_SPEED: f64 = 100_000.0;
+const START_SPEED: f64 = 1_000_000.0;
 const NEAR_PLANE_ALTITUDE_FRACTION: f64 = 0.1;
 const MINIMUM_NEAR_PLANE: f64 = 0.1;
 
@@ -38,7 +38,7 @@ impl Default for App {
             camera: Camera {
                 position: DVec3::new(0.0, -START_DISTANCE, 0.0),
                 orientation: DQuat::IDENTITY,
-                vertical_fov: 60_f32.to_radians(),
+                horizontal_fov: 100_f32.to_radians(),
                 near: MINIMUM_NEAR_PLANE as f32,
             },
             debug_camera: DebugCamera::new(START_SPEED),

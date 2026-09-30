@@ -6,7 +6,7 @@ use winit::keyboard::KeyCode;
 use super::Camera;
 use crate::input::Input;
 
-const MOUSE_SENSITIVITY: f64 = 0.002;
+const MOUSE_SENSITIVITY: f64 = 0.0015;
 const PITCH_LIMIT: f64 = FRAC_PI_2 - 0.01;
 const SPEED_FACTOR_PER_SCROLL_STEP: f64 = 2.0;
 
