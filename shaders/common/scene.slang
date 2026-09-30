@@ -2,6 +2,8 @@ struct FrameData
 {
     float4x4 viewProjection;
     float4 sunPosition;
+    float2 viewportSize;
+    float pointDiameter;
 };
 
 struct ObjectData

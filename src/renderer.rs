@@ -4,7 +4,7 @@ mod scene;
 use std::mem::offset_of;
 
 use ash::vk;
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use winit::dpi::PhysicalSize;
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
@@ -24,12 +24,17 @@ const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
+const POINT_DIAMETER_PIXELS: f32 = 2.0;
+const POINT_SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/point.spv"));
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct FrameData {
     view_projection: Mat4,
     sun_position: Vec4,
+    viewport_size: Vec2,
+    point_diameter: f32,
+    padding: f32,
 }
 
 #[repr(C)]
@@ -47,7 +52,7 @@ struct PushConstants {
     object_index: u32,
 }
 
-const _: () = assert!(size_of::<FrameData>() == 80);
+const _: () = assert!(size_of::<FrameData>() == 96);
 const _: () = assert!(size_of::<ObjectData>() == 80);
 const _: () = assert!(size_of::<PushConstants>() == 24);
 
@@ -56,10 +61,12 @@ pub struct Renderer {
     material_override: Option<Material>,
     wireframe: bool,
     pipelines: Vec<GraphicsPipeline>,
+    point_pipeline: GraphicsPipeline,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     index_count: u32,
     object_data: Vec<ObjectData>,
+    drawn_as_point: Vec<bool>,
     object_capacity: usize,
     depth: Image,
     frames: Vec<Frame>,
@@ -94,16 +101,30 @@ impl Renderer {
             .iter()
             .map(|material| create_material_pipeline(&device, *material, swapchain.format()))
             .collect::<anyhow::Result<_>>()?;
+        let point_pipeline = GraphicsPipeline::new(
+            &device,
+            &GraphicsPipelineDescription {
+                spirv: POINT_SHADER,
+                color_format: swapchain.format(),
+                depth_format: Some(DEPTH_FORMAT),
+                cull_mode: vk::CullModeFlags::NONE,
+                vertex_bindings: &[],
+                vertex_attributes: &[],
+                push_constant_size: size_of::<PushConstants>() as u32,
+            },
+        )?;
 
         Ok(Self {
             scene: Scene::default(),
             material_override: None,
             wireframe: false,
             pipelines,
+            point_pipeline,
             vertex_buffer,
             index_buffer,
             index_count: sphere.indices.len() as u32,
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
+            drawn_as_point: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             depth,
             frames,
@@ -171,10 +192,21 @@ impl Renderer {
 
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
+        let clip_from_view = camera.clip_from_view(aspect_ratio);
         let frame_data = FrameData {
-            view_projection: camera.clip_from_view(aspect_ratio) * camera.view_rotation(),
+            view_projection: clip_from_view * camera.view_rotation(),
             sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
+            viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
+            point_diameter: POINT_DIAMETER_PIXELS,
+            padding: 0.0,
         };
+        let pixels_per_unit_angle = f64::from(clip_from_view.y_axis.y.abs() * extent.height as f32 / 2.0);
+        self.drawn_as_point.clear();
+        self.drawn_as_point.extend(self.scene.objects().iter().map(|object| {
+            let distance = object.position.distance(camera.position);
+            let diameter_pixels = 2.0 * object.scale / distance * pixels_per_unit_angle;
+            diameter_pixels < f64::from(POINT_DIAMETER_PIXELS)
+        }));
         self.object_data.clear();
         self.object_data.extend(self.scene.objects().iter().map(|object| ObjectData {
             world_from_model: Mat4::from_scale_rotation_translation(
@@ -307,7 +339,7 @@ impl Renderer {
                 let pipeline = &self.pipelines[material.index()];
                 let mut bound = false;
                 for (object_index, object) in self.scene.objects().iter().enumerate() {
-                    if self.material_override.unwrap_or(object.material) != material {
+                    if self.drawn_as_point[object_index] || self.material_override.unwrap_or(object.material) != material {
                         continue;
                     }
                     if !bound {
@@ -328,6 +360,27 @@ impl Renderer {
                     );
                     device.cmd_draw_indexed(command_buffer, self.index_count, 1, 0, 0, 0);
                 }
+            }
+
+            let mut point_pipeline_bound = false;
+            for (object_index, _) in self.drawn_as_point.iter().enumerate().filter(|(_, point)| **point) {
+                if !point_pipeline_bound {
+                    device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.point_pipeline.handle());
+                    point_pipeline_bound = true;
+                }
+                let push_constants = PushConstants {
+                    frame: frame_address,
+                    objects: objects_address,
+                    object_index: object_index as u32,
+                };
+                device.cmd_push_constants(
+                    command_buffer,
+                    self.point_pipeline.layout(),
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    0,
+                    as_bytes(&push_constants),
+                );
+                device.cmd_draw(command_buffer, 6, 1, 0, 0);
             }
 
             device.cmd_end_rendering(command_buffer);
@@ -393,6 +446,7 @@ impl Drop for Renderer {
             for pipeline in &mut self.pipelines {
                 pipeline.destroy(&self.device);
             }
+            self.point_pipeline.destroy(&self.device);
             self.vertex_buffer.destroy(&self.device, &mut self.allocator);
             self.index_buffer.destroy(&self.device, &mut self.allocator);
             self.depth.destroy(&self.device, &mut self.allocator);
