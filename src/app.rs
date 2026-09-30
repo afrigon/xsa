@@ -171,8 +171,8 @@ impl App {
     fn cycle_target(&mut self, step: isize) {
         let body_count = self.simulation.bodies.len() as isize;
         let target = (self.orbit_camera.target() as isize + step).rem_euclid(body_count) as usize;
-        self.orbit_camera
-            .set_target(target, self.simulation.bodies[target].radius);
+        let body = &self.simulation.bodies[target];
+        self.orbit_camera.set_target(target, body.position, body.radius);
     }
 
     fn redraw(&mut self) -> anyhow::Result<()> {
