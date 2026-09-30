@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use glam::{DQuat, DVec3};
+use glam::{DQuat, DVec3, Vec3};
 use winit::application::ApplicationHandler;
-use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Window, WindowId};
@@ -10,17 +10,25 @@ use winit::window::{CursorGrabMode, Window, WindowId};
 use crate::camera::Camera;
 use crate::camera::debug::DebugCamera;
 use crate::input::Input;
-use crate::renderer::{PLANET_RADIUS, Renderer};
+use crate::renderer::{Material, ObjectHandle, Renderer, SceneObject};
+use crate::simulation::{Body, Simulation};
 
 const START_DISTANCE: f64 = 20_000_000.0;
-const START_SPEED: f64 = 1_000_000.0;
+const START_SPEED: f64 = 2_000_000.0;
 const NEAR_PLANE_ALTITUDE_FRACTION: f64 = 0.1;
 const MINIMUM_NEAR_PLANE: f64 = 0.1;
+const SUN_COLOR: Vec3 = Vec3::new(1.0, 0.95, 0.85);
+const EARTH_COLOR: Vec3 = Vec3::new(0.1, 0.25, 0.6);
+const MOON_COLOR: Vec3 = Vec3::new(0.5, 0.5, 0.5);
+const DEFAULT_COLOR: Vec3 = Vec3::new(0.6, 0.6, 0.6);
 
 pub struct App {
     renderer: Option<Renderer>,
     window: Option<Window>,
     error: Option<anyhow::Error>,
+    simulation: Simulation,
+    body_objects: Vec<ObjectHandle>,
+    sun_body: Option<usize>,
     input: Input,
     camera: Camera,
     debug_camera: DebugCamera,
@@ -30,13 +38,23 @@ pub struct App {
 
 impl Default for App {
     fn default() -> Self {
+        let simulation = Simulation::solar_system();
+        let earth_position = simulation
+            .bodies
+            .iter()
+            .find(|body| body.name == "Earth")
+            .map_or(DVec3::ZERO, |earth| earth.position);
+        let sun_body = simulation.bodies.iter().position(|body| body.name == "Sun");
         Self {
             renderer: None,
             window: None,
             error: None,
+            simulation,
+            body_objects: Vec::new(),
+            sun_body,
             input: Input::default(),
             camera: Camera {
-                position: DVec3::new(0.0, -START_DISTANCE, 0.0),
+                position: earth_position + DVec3::new(0.0, -START_DISTANCE, 0.0),
                 orientation: DQuat::IDENTITY,
                 horizontal_fov: 100_f32.to_radians(),
                 near: MINIMUM_NEAR_PLANE as f32,
@@ -55,10 +73,25 @@ impl App {
 
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> anyhow::Result<()> {
         let window = event_loop.create_window(Window::default_attributes().with_title("xsa"))?;
-        self.renderer = Some(Renderer::new(&window)?);
+        let mut renderer = Renderer::new(&window)?;
+        self.body_objects = self
+            .simulation
+            .bodies
+            .iter()
+            .map(|body| {
+                let (material, color) = appearance(body);
+                renderer.scene_mut().add(SceneObject {
+                    position: body.position,
+                    orientation: body.orientation,
+                    scale: body.radius,
+                    color,
+                    material,
+                })
+            })
+            .collect();
+        self.renderer = Some(renderer);
         window.request_redraw();
         self.window = Some(window);
-        self.set_mouse_captured(true);
         Ok(())
     }
 
@@ -80,17 +113,57 @@ impl App {
         self.mouse_captured = captured;
     }
 
+    fn handle_hotkey(&mut self, event: &KeyEvent) {
+        if !event.state.is_pressed() || event.repeat {
+            return;
+        }
+        let PhysicalKey::Code(key) = event.physical_key else {
+            return;
+        };
+        if key == KeyCode::Escape {
+            self.set_mouse_captured(false);
+            return;
+        }
+        let Some(renderer) = &mut self.renderer else {
+            return;
+        };
+        match key {
+            KeyCode::Digit1 => renderer.set_material_override(None),
+            KeyCode::Digit2 => renderer.set_material_override(Some(Material::Normals)),
+            KeyCode::Digit3 => renderer.set_material_override(Some(Material::Depth)),
+            KeyCode::Digit4 => renderer.set_material_override(Some(Material::Triangles)),
+            KeyCode::Digit5 => renderer.set_material_override(Some(Material::Lighting)),
+            KeyCode::Backquote => renderer.toggle_wireframe(),
+            _ => {}
+        }
+    }
+
     fn redraw(&mut self) -> anyhow::Result<()> {
         let now = Instant::now();
         let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
         self.last_frame = Some(now);
 
         self.debug_camera.update(&mut self.camera, &self.input, delta_seconds);
-        let altitude = self.camera.position.length() - PLANET_RADIUS;
-        self.camera.near = (altitude * NEAR_PLANE_ALTITUDE_FRACTION).max(MINIMUM_NEAR_PLANE) as f32;
+        let nearest_altitude = self
+            .simulation
+            .bodies
+            .iter()
+            .map(|body| body.position.distance(self.camera.position) - body.radius)
+            .fold(f64::INFINITY, f64::min);
+        self.camera.near = (nearest_altitude * NEAR_PLANE_ALTITUDE_FRACTION).max(MINIMUM_NEAR_PLANE) as f32;
         self.input.end_frame();
 
         if let Some(renderer) = &mut self.renderer {
+            let scene = renderer.scene_mut();
+            for (body, &handle) in self.simulation.bodies.iter().zip(&self.body_objects) {
+                let object = scene.object_mut(handle);
+                object.position = body.position;
+                object.orientation = body.orientation;
+                object.scale = body.radius;
+            }
+            if let Some(sun_body) = self.sun_body {
+                scene.sun_position = self.simulation.bodies[sun_body].position;
+            }
             renderer.draw(&self.camera)?;
         }
         if let Some(window) = &self.window {
@@ -121,9 +194,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Focused(false) => self.input.clear(),
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.physical_key == PhysicalKey::Code(KeyCode::Escape) && event.state.is_pressed() {
-                    self.set_mouse_captured(false);
-                }
+                self.handle_hotkey(&event);
                 self.input.handle_key(&event);
             }
             WindowEvent::MouseInput {
@@ -148,5 +219,14 @@ impl ApplicationHandler for App {
         {
             self.input.handle_mouse_motion(delta);
         }
+    }
+}
+
+fn appearance(body: &Body) -> (Material, Vec3) {
+    match body.name.as_str() {
+        "Sun" => (Material::Emissive, SUN_COLOR),
+        "Earth" => (Material::Lit, EARTH_COLOR),
+        "Moon" => (Material::Lit, MOON_COLOR),
+        _ => (Material::Lit, DEFAULT_COLOR),
     }
 }

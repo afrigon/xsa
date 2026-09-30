@@ -3,6 +3,7 @@ mod camera;
 mod input;
 mod mesh;
 mod renderer;
+mod simulation;
 mod vulkan;
 
 use winit::event_loop::EventLoop;

@@ -22,12 +22,12 @@ pub struct GraphicsPipeline {
 
 impl GraphicsPipeline {
     pub fn new(device: &Device, description: &GraphicsPipelineDescription) -> anyhow::Result<Self> {
-        let device = device.handle();
         let code = ash::util::read_spv(&mut Cursor::new(description.spirv)).context("reading SPIR-V")?;
         let module_info = vk::ShaderModuleCreateInfo::default().code(&code);
-        let module = unsafe { device.create_shader_module(&module_info, None) }?;
-        let pipeline = create_pipeline(device, module, description);
-        unsafe { device.destroy_shader_module(module, None) };
+        let module = unsafe { device.handle().create_shader_module(&module_info, None) }?;
+        let dynamic_polygon_mode = device.extended_dynamic_state3().is_some();
+        let pipeline = create_pipeline(device.handle(), module, description, dynamic_polygon_mode);
+        unsafe { device.handle().destroy_shader_module(module, None) };
         pipeline
     }
 
@@ -52,6 +52,7 @@ fn create_pipeline(
     device: &ash::Device,
     module: vk::ShaderModule,
     description: &GraphicsPipelineDescription,
+    dynamic_polygon_mode: bool,
 ) -> anyhow::Result<GraphicsPipeline> {
     let push_constant_ranges = [vk::PushConstantRange::default()
         .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
@@ -90,7 +91,10 @@ fn create_pipeline(
     let blend_attachments =
         [vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA)];
     let color_blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
-    let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    let mut dynamic_states = vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    if dynamic_polygon_mode {
+        dynamic_states.push(vk::DynamicState::POLYGON_MODE_EXT);
+    }
     let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
     let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
         .depth_test_enable(description.depth_format.is_some())

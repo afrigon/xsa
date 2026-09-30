@@ -1,10 +1,16 @@
+mod material;
+mod scene;
+
 use std::mem::offset_of;
 
 use ash::vk;
-use glam::{DVec3, Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3, Vec4};
 use winit::dpi::PhysicalSize;
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
+
+pub use material::Material;
+pub use scene::{ObjectHandle, Scene, SceneObject};
 
 use crate::camera::Camera;
 use crate::mesh::{self, Vertex};
@@ -16,23 +22,45 @@ use crate::vulkan::{
 const FRAMES_IN_FLIGHT: usize = 2;
 const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
-const SPHERE_SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/sphere.spv"));
-pub const PLANET_RADIUS: f64 = 6_371_000.0;
-const PLANET_SUBDIVISIONS: u32 = 64;
-const SUN_DIRECTION: Vec3 = Vec3::new(-1.0, -1.0, 0.5);
+const SPHERE_SUBDIVISIONS: u32 = 64;
+const INITIAL_OBJECT_CAPACITY: usize = 1024;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct FrameData {
+    view_projection: Mat4,
+    sun_position: Vec4,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ObjectData {
+    world_from_model: Mat4,
+    color: Vec4,
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct PushConstants {
-    clip_from_model: Mat4,
-    sun_direction: Vec4,
+    frame: vk::DeviceAddress,
+    objects: vk::DeviceAddress,
+    object_index: u32,
 }
 
+const _: () = assert!(size_of::<FrameData>() == 80);
+const _: () = assert!(size_of::<ObjectData>() == 80);
+const _: () = assert!(size_of::<PushConstants>() == 24);
+
 pub struct Renderer {
-    sphere: GraphicsPipeline,
+    scene: Scene,
+    material_override: Option<Material>,
+    wireframe: bool,
+    pipelines: Vec<GraphicsPipeline>,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     index_count: u32,
+    object_data: Vec<ObjectData>,
+    object_capacity: usize,
     depth: Image,
     frames: Vec<Frame>,
     frame_index: usize,
@@ -56,47 +84,27 @@ impl Renderer {
         let swapchain = Swapchain::new(&instance, &surface, &device, window_extent, vk::SwapchainKHR::null())?;
         let depth = create_depth_image(&device, &mut allocator, swapchain.extent())?;
         let frames = (0..FRAMES_IN_FLIGHT)
-            .map(|_| Frame::new(&device))
+            .map(|_| Frame::new(&device, &mut allocator, INITIAL_OBJECT_CAPACITY))
             .collect::<anyhow::Result<_>>()?;
 
-        let planet = mesh::cube_sphere(PLANET_RADIUS as f32, PLANET_SUBDIVISIONS);
-        let vertex_buffer = upload(&device, &mut allocator, "planet vertices", vk::BufferUsageFlags::VERTEX_BUFFER, &planet.vertices)?;
-        let index_buffer = upload(&device, &mut allocator, "planet indices", vk::BufferUsageFlags::INDEX_BUFFER, &planet.indices)?;
-
-        let vertex_bindings = [vk::VertexInputBindingDescription::default()
-            .binding(0)
-            .stride(size_of::<Vertex>() as u32)
-            .input_rate(vk::VertexInputRate::VERTEX)];
-        let vertex_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(offset_of!(Vertex, position) as u32),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(offset_of!(Vertex, normal) as u32),
-        ];
-        let sphere = GraphicsPipeline::new(
-            &device,
-            &GraphicsPipelineDescription {
-                spirv: SPHERE_SHADER,
-                color_format: swapchain.format(),
-                depth_format: Some(DEPTH_FORMAT),
-                cull_mode: vk::CullModeFlags::BACK,
-                vertex_bindings: &vertex_bindings,
-                vertex_attributes: &vertex_attributes,
-                push_constant_size: size_of::<PushConstants>() as u32,
-            },
-        )?;
+        let sphere = mesh::cube_sphere(1.0, SPHERE_SUBDIVISIONS);
+        let vertex_buffer = upload(&device, &mut allocator, "sphere vertices", vk::BufferUsageFlags::VERTEX_BUFFER, &sphere.vertices)?;
+        let index_buffer = upload(&device, &mut allocator, "sphere indices", vk::BufferUsageFlags::INDEX_BUFFER, &sphere.indices)?;
+        let pipelines = Material::ALL
+            .iter()
+            .map(|material| create_material_pipeline(&device, *material, swapchain.format()))
+            .collect::<anyhow::Result<_>>()?;
 
         Ok(Self {
-            sphere,
+            scene: Scene::default(),
+            material_override: None,
+            wireframe: false,
+            pipelines,
             vertex_buffer,
             index_buffer,
-            index_count: planet.indices.len() as u32,
+            index_count: sphere.indices.len() as u32,
+            object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
+            object_capacity: INITIAL_OBJECT_CAPACITY,
             depth,
             frames,
             frame_index: 0,
@@ -108,6 +116,20 @@ impl Renderer {
             surface,
             instance,
         })
+    }
+
+    pub fn scene_mut(&mut self) -> &mut Scene {
+        &mut self.scene
+    }
+
+    pub fn set_material_override(&mut self, material: Option<Material>) {
+        self.material_override = material;
+    }
+
+    pub fn toggle_wireframe(&mut self) {
+        if self.device.extended_dynamic_state3().is_some() {
+            self.wireframe = !self.wireframe;
+        }
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -122,18 +144,17 @@ impl Renderer {
         if self.swapchain_outdated {
             self.recreate_swapchain()?;
         }
+        self.ensure_object_capacity()?;
 
         let device = self.device.handle();
-        let frame = &self.frames[self.frame_index];
-        unsafe { device.wait_for_fences(&[frame.in_flight], true, u64::MAX) }?;
+        let in_flight = self.frames[self.frame_index].in_flight;
+        let image_acquired = self.frames[self.frame_index].image_acquired;
+        unsafe { device.wait_for_fences(&[in_flight], true, u64::MAX) }?;
 
         let acquired = unsafe {
-            self.swapchain.loader().acquire_next_image(
-                self.swapchain.handle(),
-                u64::MAX,
-                frame.image_acquired,
-                vk::Fence::null(),
-            )
+            self.swapchain
+                .loader()
+                .acquire_next_image(self.swapchain.handle(), u64::MAX, image_acquired, vk::Fence::null())
         };
         let image_index = match acquired {
             Ok((image_index, suboptimal)) => {
@@ -146,18 +167,31 @@ impl Renderer {
             }
             Err(err) => return Err(err.into()),
         };
-        unsafe { device.reset_fences(&[frame.in_flight]) }?;
+        unsafe { device.reset_fences(&[in_flight]) }?;
 
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
-        let planet_from_camera = (DVec3::ZERO - camera.position).as_vec3();
-        let push_constants = PushConstants {
-            clip_from_model: camera.clip_from_view(aspect_ratio)
-                * camera.view_rotation()
-                * Mat4::from_translation(planet_from_camera),
-            sun_direction: SUN_DIRECTION.normalize().extend(0.0),
+        let frame_data = FrameData {
+            view_projection: camera.clip_from_view(aspect_ratio) * camera.view_rotation(),
+            sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
         };
-        self.record_frame(frame, image_index, &push_constants)?;
+        self.object_data.clear();
+        self.object_data.extend(self.scene.objects().iter().map(|object| ObjectData {
+            world_from_model: Mat4::from_scale_rotation_translation(
+                Vec3::splat(object.scale as f32),
+                object.orientation.as_quat(),
+                (object.position - camera.position).as_vec3(),
+            ),
+            color: object.color.extend(1.0),
+        }));
+        {
+            let frame = &mut self.frames[self.frame_index];
+            frame.frame_data.write(&[frame_data])?;
+            frame.objects.write(&self.object_data)?;
+        }
+
+        let frame = &self.frames[self.frame_index];
+        self.record_frame(frame, image_index)?;
 
         let render_finished = self.swapchain.render_finished(image_index);
         let wait_semaphores = [vk::SemaphoreSubmitInfo::default()
@@ -190,7 +224,7 @@ impl Renderer {
         Ok(())
     }
 
-    fn record_frame(&self, frame: &Frame, image_index: u32, push_constants: &PushConstants) -> anyhow::Result<()> {
+    fn record_frame(&self, frame: &Frame, image_index: u32) -> anyhow::Result<()> {
         let device = self.device.handle();
         let command_buffer = frame.command_buffer;
         let extent = self.swapchain.extent();
@@ -250,7 +284,6 @@ impl Renderer {
                 .depth_attachment(&depth_attachment);
             device.cmd_begin_rendering(command_buffer, &rendering_info);
 
-            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.sphere.handle());
             let viewport = vk::Viewport {
                 x: 0.0,
                 y: 0.0,
@@ -261,16 +294,41 @@ impl Renderer {
             };
             device.cmd_set_viewport(command_buffer, 0, &[viewport]);
             device.cmd_set_scissor(command_buffer, 0, &[extent.into()]);
-            device.cmd_push_constants(
-                command_buffer,
-                self.sphere.layout(),
-                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                0,
-                as_bytes(push_constants),
-            );
+            if let Some(extended_dynamic_state3) = self.device.extended_dynamic_state3() {
+                let polygon_mode = if self.wireframe { vk::PolygonMode::LINE } else { vk::PolygonMode::FILL };
+                extended_dynamic_state3.cmd_set_polygon_mode(command_buffer, polygon_mode);
+            }
             device.cmd_bind_vertex_buffers(command_buffer, 0, &[self.vertex_buffer.handle()], &[0]);
             device.cmd_bind_index_buffer(command_buffer, self.index_buffer.handle(), 0, vk::IndexType::UINT32);
-            device.cmd_draw_indexed(command_buffer, self.index_count, 1, 0, 0, 0);
+
+            let frame_address = frame.frame_data.device_address(&self.device);
+            let objects_address = frame.objects.device_address(&self.device);
+            for material in Material::ALL {
+                let pipeline = &self.pipelines[material.index()];
+                let mut bound = false;
+                for (object_index, object) in self.scene.objects().iter().enumerate() {
+                    if self.material_override.unwrap_or(object.material) != material {
+                        continue;
+                    }
+                    if !bound {
+                        device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline.handle());
+                        bound = true;
+                    }
+                    let push_constants = PushConstants {
+                        frame: frame_address,
+                        objects: objects_address,
+                        object_index: object_index as u32,
+                    };
+                    device.cmd_push_constants(
+                        command_buffer,
+                        pipeline.layout(),
+                        vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                        0,
+                        as_bytes(&push_constants),
+                    );
+                    device.cmd_draw_indexed(command_buffer, self.index_count, 1, 0, 0, 0);
+                }
+            }
 
             device.cmd_end_rendering(command_buffer);
 
@@ -288,6 +346,21 @@ impl Renderer {
             );
 
             device.end_command_buffer(command_buffer)?;
+        }
+        Ok(())
+    }
+
+    fn ensure_object_capacity(&mut self) -> anyhow::Result<()> {
+        let object_count = self.scene.objects().len();
+        if object_count <= self.object_capacity {
+            return Ok(());
+        }
+        unsafe { self.device.handle().device_wait_idle() }?;
+        self.object_capacity = object_count.next_power_of_two();
+        for frame in &mut self.frames {
+            let objects = create_object_buffer(&self.device, &mut self.allocator, self.object_capacity)?;
+            let mut old_objects = std::mem::replace(&mut frame.objects, objects);
+            unsafe { old_objects.destroy(&self.device, &mut self.allocator) };
         }
         Ok(())
     }
@@ -317,12 +390,14 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.handle().device_wait_idle();
-            self.sphere.destroy(&self.device);
+            for pipeline in &mut self.pipelines {
+                pipeline.destroy(&self.device);
+            }
             self.vertex_buffer.destroy(&self.device, &mut self.allocator);
             self.index_buffer.destroy(&self.device, &mut self.allocator);
             self.depth.destroy(&self.device, &mut self.allocator);
             for frame in &mut self.frames {
-                frame.destroy(&self.device);
+                frame.destroy(&self.device, &mut self.allocator);
             }
             self.swapchain.destroy(&self.device);
         }
@@ -334,10 +409,22 @@ struct Frame {
     command_buffer: vk::CommandBuffer,
     image_acquired: vk::Semaphore,
     in_flight: vk::Fence,
+    frame_data: Buffer,
+    objects: Buffer,
 }
 
 impl Frame {
-    fn new(device: &Device) -> anyhow::Result<Self> {
+    fn new(device: &Device, allocator: &mut Allocator, object_capacity: usize) -> anyhow::Result<Self> {
+        let frame_data = Buffer::new(
+            device,
+            allocator,
+            "frame data",
+            size_of::<FrameData>() as u64,
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            MemoryLocation::CpuToGpu,
+        )?;
+        let objects = create_object_buffer(device, allocator, object_capacity)?;
+
         let queue_family = device.queue_family();
         let device = device.handle();
         let pool_info = vk::CommandPoolCreateInfo::default().queue_family_index(queue_family);
@@ -356,17 +443,63 @@ impl Frame {
             command_buffer,
             image_acquired,
             in_flight,
+            frame_data,
+            objects,
         })
     }
 
-    unsafe fn destroy(&mut self, device: &Device) {
-        let device = device.handle();
+    unsafe fn destroy(&mut self, device: &Device, allocator: &mut Allocator) {
         unsafe {
+            self.frame_data.destroy(device, allocator);
+            self.objects.destroy(device, allocator);
+            let device = device.handle();
             device.destroy_fence(self.in_flight, None);
             device.destroy_semaphore(self.image_acquired, None);
             device.destroy_command_pool(self.command_pool, None);
         }
     }
+}
+
+fn create_material_pipeline(device: &Device, material: Material, color_format: vk::Format) -> anyhow::Result<GraphicsPipeline> {
+    let vertex_bindings = [vk::VertexInputBindingDescription::default()
+        .binding(0)
+        .stride(size_of::<Vertex>() as u32)
+        .input_rate(vk::VertexInputRate::VERTEX)];
+    let vertex_attributes = [
+        vk::VertexInputAttributeDescription::default()
+            .location(0)
+            .binding(0)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(offset_of!(Vertex, position) as u32),
+        vk::VertexInputAttributeDescription::default()
+            .location(1)
+            .binding(0)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(offset_of!(Vertex, normal) as u32),
+    ];
+    GraphicsPipeline::new(
+        device,
+        &GraphicsPipelineDescription {
+            spirv: material.spirv(),
+            color_format,
+            depth_format: Some(DEPTH_FORMAT),
+            cull_mode: vk::CullModeFlags::BACK,
+            vertex_bindings: &vertex_bindings,
+            vertex_attributes: &vertex_attributes,
+            push_constant_size: size_of::<PushConstants>() as u32,
+        },
+    )
+}
+
+fn create_object_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {
+    Buffer::new(
+        device,
+        allocator,
+        "object data",
+        (capacity * size_of::<ObjectData>()) as u64,
+        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        MemoryLocation::CpuToGpu,
+    )
 }
 
 fn create_depth_image(device: &Device, allocator: &mut Allocator, extent: vk::Extent2D) -> anyhow::Result<Image> {

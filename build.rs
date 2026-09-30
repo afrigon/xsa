@@ -19,7 +19,7 @@ fn main() {
 
         let status = Command::new("slangc")
             .arg(&source)
-            .args(["-target", "spirv", "-matrix-layout-column-major", "-o"])
+            .args(["-I", SHADER_DIRECTORY, "-target", "spirv", "-matrix-layout-column-major", "-o"])
             .arg(&output)
             .status()
             .expect("running slangc (is the mise environment active?)");

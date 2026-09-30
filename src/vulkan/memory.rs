@@ -16,7 +16,7 @@ impl Allocator {
             device: device.handle().clone(),
             physical_device: device.physical_device(),
             debug_settings: Default::default(),
-            buffer_device_address: false,
+            buffer_device_address: true,
             allocation_sizes: Default::default(),
         })
         .context("creating the GPU memory allocator")?;
@@ -78,6 +78,11 @@ impl Buffer {
 
     pub fn handle(&self) -> vk::Buffer {
         self.buffer
+    }
+
+    pub fn device_address(&self, device: &Device) -> vk::DeviceAddress {
+        let info = vk::BufferDeviceAddressInfo::default().buffer(self.buffer);
+        unsafe { device.handle().get_buffer_device_address(&info) }
     }
 
     pub fn write<T: Copy>(&mut self, data: &[T]) -> anyhow::Result<()> {
