@@ -1,6 +1,7 @@
+use std::path::Path;
 use std::time::Instant;
 
-use glam::{DQuat, DVec3, Vec3};
+use glam::{DQuat, DVec3, Mat3, Vec3};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -11,7 +12,7 @@ use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
 use crate::camera::{Camera, CameraMode};
 use crate::input::Input;
-use crate::renderer::{Material, ObjectHandle, Renderer, SceneObject};
+use crate::renderer::{CubeMapSource, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader};
 use crate::simulation::{Body, Simulation};
 
 const APP_ID: &str = "xsa";
@@ -22,6 +23,16 @@ const SUN_COLOR: Vec3 = Vec3::new(1.0, 0.95, 0.85);
 const EARTH_COLOR: Vec3 = Vec3::new(0.1, 0.25, 0.6);
 const MOON_COLOR: Vec3 = Vec3::new(0.5, 0.5, 0.5);
 const DEFAULT_COLOR: Vec3 = Vec3::new(0.6, 0.6, 0.6);
+const EARTH_OBLIQUITY_DEGREES: f32 = 23.439_281;
+const SOL_SKYBOX_FACES: [&str; 6] = [
+    "assets/sol/GalaxyTex_PositiveX.dds",
+    "assets/sol/GalaxyTex_NegativeX.dds",
+    "assets/sol/GalaxyTex_PositiveY.dds",
+    "assets/sol/GalaxyTex_NegativeY.dds",
+    "assets/sol/GalaxyTex_PositiveZ.dds",
+    "assets/sol/GalaxyTex_NegativeZ.dds",
+];
+const DEEP_STAR_MAPS_SKYBOX: &str = "assets/deep-star-maps/skybox.dds";
 
 pub struct App {
     renderer: Option<Renderer>,
@@ -29,6 +40,8 @@ pub struct App {
     error: Option<anyhow::Error>,
     simulation: Simulation,
     body_objects: Vec<ObjectHandle>,
+    skyboxes: Vec<MaterialHandle>,
+    skybox_choice: usize,
     sun_body: Option<usize>,
     input: Input,
     camera: Camera,
@@ -51,6 +64,8 @@ impl Default for App {
             error: None,
             simulation,
             body_objects: Vec::new(),
+            skyboxes: Vec::new(),
+            skybox_choice: 0,
             sun_body,
             input: Input::default(),
             camera: Camera {
@@ -81,16 +96,18 @@ impl App {
             .bodies
             .iter()
             .map(|body| {
-                let (material, color) = appearance(body);
-                renderer.scene_mut().add(SceneObject {
+                let scene = renderer.scene_mut();
+                let material = scene.add_material(appearance(body));
+                scene.add(SceneObject {
                     position: body.position,
                     orientation: body.orientation,
                     scale: body.radius,
-                    color,
                     material,
                 })
             })
             .collect();
+        self.skyboxes = load_skyboxes(&mut renderer);
+        renderer.scene_mut().skybox = self.skyboxes.first().copied();
         self.renderer = Some(renderer);
         window.request_redraw();
         self.window = Some(window);
@@ -138,12 +155,16 @@ impl App {
             return;
         };
         match key {
-            KeyCode::Digit1 => renderer.set_material_override(None),
-            KeyCode::Digit2 => renderer.set_material_override(Some(Material::Normals)),
-            KeyCode::Digit3 => renderer.set_material_override(Some(Material::Depth)),
-            KeyCode::Digit4 => renderer.set_material_override(Some(Material::Triangles)),
-            KeyCode::Digit5 => renderer.set_material_override(Some(Material::Lighting)),
+            KeyCode::Digit1 => renderer.set_shader_override(None),
+            KeyCode::Digit2 => renderer.set_shader_override(Some(Shader::Normals)),
+            KeyCode::Digit3 => renderer.set_shader_override(Some(Shader::Depth)),
+            KeyCode::Digit4 => renderer.set_shader_override(Some(Shader::Triangles)),
+            KeyCode::Digit5 => renderer.set_shader_override(Some(Shader::Lighting)),
             KeyCode::Backquote => renderer.toggle_wireframe(),
+            KeyCode::F2 => {
+                self.skybox_choice = (self.skybox_choice + 1) % (self.skyboxes.len() + 1);
+                renderer.scene_mut().skybox = self.skyboxes.get(self.skybox_choice).copied();
+            }
             _ => {}
         }
     }
@@ -276,11 +297,29 @@ fn window_attributes() -> WindowAttributes {
     attributes
 }
 
-fn appearance(body: &Body) -> (Material, Vec3) {
+fn appearance(body: &Body) -> Material {
     match body.name.as_str() {
-        "Sun" => (Material::Emissive, SUN_COLOR),
-        "Earth" => (Material::Lit, EARTH_COLOR),
-        "Moon" => (Material::Lit, MOON_COLOR),
-        _ => (Material::Lit, DEFAULT_COLOR),
+        "Sun" => Material::Emissive { color: SUN_COLOR },
+        "Earth" => Material::Lit { base_color: EARTH_COLOR },
+        "Moon" => Material::Lit { base_color: MOON_COLOR },
+        _ => Material::Lit { base_color: DEFAULT_COLOR },
     }
+}
+
+fn load_skyboxes(renderer: &mut Renderer) -> Vec<MaterialHandle> {
+    let sol = CubeMapSource::Faces(SOL_SKYBOX_FACES.map(Path::new));
+    let sol_orientation = Mat3::from_cols(Vec3::X, Vec3::Z, Vec3::Y);
+    let deep_star_maps = CubeMapSource::Single(Path::new(DEEP_STAR_MAPS_SKYBOX));
+    let equatorial_from_ecliptic = Mat3::from_rotation_x(EARTH_OBLIQUITY_DEGREES.to_radians());
+
+    [("Sol skybox", sol, sol_orientation), ("Deep Star Maps skybox", deep_star_maps, equatorial_from_ecliptic)]
+        .into_iter()
+        .filter_map(|(name, source, orientation)| match renderer.load_cube_map(name, source) {
+            Ok(cube_map) => Some(renderer.scene_mut().add_material(Material::Skybox { cube_map, orientation })),
+            Err(err) => {
+                eprintln!("skipping the {name}: {err:#}");
+                None
+            }
+        })
+        .collect()
 }

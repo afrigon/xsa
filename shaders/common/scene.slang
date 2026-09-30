@@ -1,6 +1,7 @@
 struct FrameData
 {
     float4x4 viewProjection;
+    float4x4 worldFromClip;
     float4 sunPosition;
     float2 viewportSize;
     float pointQuadSize;
@@ -9,17 +10,26 @@ struct FrameData
 struct ObjectData
 {
     float4x4 worldFromModel;
-    float4 color;
     float pointDiameter;
     float pointIntensity;
     float2 padding;
+};
+
+struct MaterialData
+{
+    float4 color;
+    float4x4 transform;
+    uint textureIndex;
+    uint3 padding;
 };
 
 struct PushConstants
 {
     FrameData* frame;
     ObjectData* objects;
+    MaterialData* materials;
     uint objectIndex;
+    uint materialIndex;
 };
 
 [[vk::push_constant]]
@@ -43,6 +53,11 @@ struct VertexOutput
 ObjectData currentObject()
 {
     return constants.objects[constants.objectIndex];
+}
+
+MaterialData currentMaterial()
+{
+    return constants.materials[constants.materialIndex];
 }
 
 VertexOutput transformVertex(VertexInput input)

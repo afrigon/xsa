@@ -9,6 +9,7 @@ pub struct Device {
     device: ash::Device,
     queue_family: u32,
     queue: vk::Queue,
+    max_sampler_anisotropy: f32,
     extended_dynamic_state3: Option<ext::extended_dynamic_state3::Device>,
 }
 
@@ -27,9 +28,15 @@ impl Device {
         }
         let features = vk::PhysicalDeviceFeatures::default()
             .fill_mode_non_solid(true)
-            .geometry_shader(true);
+            .geometry_shader(true)
+            .sampler_anisotropy(true);
         let mut vulkan_11_features = vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
-        let mut vulkan_12_features = vk::PhysicalDeviceVulkan12Features::default().buffer_device_address(true);
+        let mut vulkan_12_features = vk::PhysicalDeviceVulkan12Features::default()
+            .buffer_device_address(true)
+            .runtime_descriptor_array(true)
+            .descriptor_binding_partially_bound(true)
+            .descriptor_binding_sampled_image_update_after_bind(true)
+            .shader_sampled_image_array_non_uniform_indexing(true);
         let mut vulkan_13_features = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
             .synchronization2(true);
@@ -50,12 +57,16 @@ impl Device {
         let queue = unsafe { device.get_device_queue(queue_family, 0) };
         let extended_dynamic_state3 =
             supports_polygon_mode.then(|| ext::extended_dynamic_state3::Device::new(instance.handle(), &device));
+        let max_sampler_anisotropy = unsafe { instance.handle().get_physical_device_properties(physical_device) }
+            .limits
+            .max_sampler_anisotropy;
 
         Ok(Self {
             physical_device,
             device,
             queue_family,
             queue,
+            max_sampler_anisotropy,
             extended_dynamic_state3,
         })
     }
@@ -74,6 +85,10 @@ impl Device {
 
     pub fn queue(&self) -> vk::Queue {
         self.queue
+    }
+
+    pub fn max_sampler_anisotropy(&self) -> f32 {
+        self.max_sampler_anisotropy
     }
 
     pub fn extended_dynamic_state3(&self) -> Option<&ext::extended_dynamic_state3::Device> {

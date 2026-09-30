@@ -1,3 +1,57 @@
 [tools]
 "github:shader-slang/slang" = "latest"
+7zip = "latest"
 rust = "latest"
+xh = "latest"
+
+[vars]
+sol_core_url = "https://github.com/RSS-Reborn/Sol-Core/releases/download/V0.9.5-0/Sol_Core-V0.9.5.zip"
+star_map_url = "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/starmap_2020_16k.exr"
+license_url = "https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.txt"
+
+[tasks.build]
+description = "Build the game and the asset tools"
+run = "cargo build"
+
+[tasks.test]
+description = "Run the test suite"
+run = "cargo test"
+
+[tasks.dev]
+description = "Run the game in a debug build"
+run = "cargo run"
+
+[tasks.fetch-assets]
+description = "Download third-party assets into assets/"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p assets/sol assets/deep-star-maps
+
+if [ ! -f assets/sol/GalaxyTex_PositiveX.dds ]; then
+    xh --ignore-stdin --follow --download --output assets/sol/Sol-Core.zip '{{vars.sol_core_url}}' 'Accept:*/*'
+    7zz e -y -oassets/sol assets/sol/Sol-Core.zip 'GameData/Sol-Textures/Skybox/TextureReplacer/Default/*.dds'
+    rm assets/sol/Sol-Core.zip
+fi
+if [ ! -f assets/sol/LICENSE.txt ]; then
+    xh --ignore-stdin --follow --download --output assets/sol/LICENSE.txt '{{vars.license_url}}' 'Accept:*/*'
+fi
+
+if [ ! -f assets/deep-star-maps/starmap_2020_16k.exr ]; then
+    xh --ignore-stdin --follow --download --output assets/deep-star-maps/starmap_2020_16k.exr '{{vars.star_map_url}}' 'Accept:*/*'
+fi
+cat > assets/deep-star-maps/CREDIT.txt <<'CREDIT'
+Deep Star Maps 2020
+NASA/Goddard Space Flight Center Scientific Visualization Studio
+https://svs.gsfc.nasa.gov/4851
+Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2, Tycho-2: ESA.
+CREDIT
+"""
+
+[tasks.convert-skybox]
+description = "Convert the Deep Star Maps star map into a cube map DDS"
+depends = ["fetch-assets"]
+sources = ["assets/deep-star-maps/starmap_2020_16k.exr", "src/bin/convert_skybox.rs"]
+outputs = ["assets/deep-star-maps/skybox.dds"]
+run = "cargo run --release --bin convert_skybox -- assets/deep-star-maps/starmap_2020_16k.exr assets/deep-star-maps/skybox.dds"

@@ -9,5 +9,5 @@ VertexOutput vertexMain(VertexInput input)
 [shader("fragment")]
 float4 fragmentMain(VertexOutput input) : SV_Target
 {
-    return float4(currentObject().color.rgb * sunlight(input), 1.0);
+    return float4(currentMaterial().color.rgb * sunlight(input), 1.0);
 }

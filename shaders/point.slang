@@ -40,7 +40,7 @@ float4 fragmentMain(PointOutput input) : SV_Target
 {
     ObjectData object = currentObject();
     float coverage = saturate(object.pointDiameter / 2.0 + 0.5 - length(input.pixelOffset));
-    float3 color = object.color.rgb;
+    float3 color = currentMaterial().color.rgb;
     float3 hue = color / max(max(color.r, max(color.g, color.b)), 1e-6);
     float whiteMix = saturate((pointLuminance - luminance(hue)) / (1.0 - luminance(hue) + 1e-6));
     float3 pointColor = lerp(hue, float3(1.0), whiteMix);

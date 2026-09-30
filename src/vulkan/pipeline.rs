@@ -9,11 +9,14 @@ pub struct GraphicsPipelineDescription<'a> {
     pub spirv: &'a [u8],
     pub color_format: vk::Format,
     pub depth_format: Option<vk::Format>,
+    pub depth_compare_op: vk::CompareOp,
+    pub depth_write: bool,
     pub cull_mode: vk::CullModeFlags,
     pub additive_blend: bool,
     pub vertex_bindings: &'a [vk::VertexInputBindingDescription],
     pub vertex_attributes: &'a [vk::VertexInputAttributeDescription],
     pub push_constant_size: u32,
+    pub descriptor_set_layouts: &'a [vk::DescriptorSetLayout],
 }
 
 pub struct GraphicsPipeline {
@@ -58,7 +61,7 @@ fn create_pipeline(
     let push_constant_ranges = [vk::PushConstantRange::default()
         .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
         .size(description.push_constant_size)];
-    let mut layout_info = vk::PipelineLayoutCreateInfo::default();
+    let mut layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(description.descriptor_set_layouts);
     if description.push_constant_size > 0 {
         layout_info = layout_info.push_constant_ranges(&push_constant_ranges);
     }
@@ -106,8 +109,8 @@ fn create_pipeline(
     let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
     let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
         .depth_test_enable(description.depth_format.is_some())
-        .depth_write_enable(description.depth_format.is_some() && !description.additive_blend)
-        .depth_compare_op(vk::CompareOp::GREATER);
+        .depth_write_enable(description.depth_format.is_some() && description.depth_write)
+        .depth_compare_op(description.depth_compare_op);
     let color_formats = [description.color_format];
     let mut rendering = vk::PipelineRenderingCreateInfo::default()
         .color_attachment_formats(&color_formats)

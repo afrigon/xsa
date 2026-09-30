@@ -1,5 +1,6 @@
 mod material;
 mod scene;
+mod texture;
 
 use std::mem::offset_of;
 
@@ -9,14 +10,17 @@ use winit::dpi::PhysicalSize;
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
 
-pub use material::Material;
-pub use scene::{ObjectHandle, Scene, SceneObject};
+pub use material::{Material, Shader};
+pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
+pub use texture::{CubeMapHandle, CubeMapSource};
+
+use material::MaterialData;
 
 use crate::camera::Camera;
 use crate::mesh::{self, Vertex};
 use crate::vulkan::{
-    Allocator, Buffer, Device, GraphicsPipeline, GraphicsPipelineDescription, Image, Instance, MemoryLocation, Surface,
-    Swapchain,
+    Allocator, BindlessTextures, Buffer, Device, GraphicsPipeline, GraphicsPipelineDescription, Image, ImageDescription,
+    Instance, MemoryLocation, Surface, Swapchain,
 };
 
 const FRAMES_IN_FLIGHT: usize = 2;
@@ -24,6 +28,7 @@ const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
+const MATERIAL_CAPACITY: usize = 256;
 const POINT_MAXIMUM_DIAMETER_PIXELS: f32 = 2.0;
 const POINT_MINIMUM_DIAMETER_PIXELS: f32 = 1.0;
 const POINT_MINIMUM_INTENSITY: f32 = 0.1;
@@ -35,6 +40,7 @@ const POINT_SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/point.spv"
 #[derive(Clone, Copy)]
 struct FrameData {
     view_projection: Mat4,
+    world_from_clip: Mat4,
     sun_position: Vec4,
     viewport_size: Vec2,
     point_quad_size: f32,
@@ -45,7 +51,6 @@ struct FrameData {
 #[derive(Clone, Copy)]
 struct ObjectData {
     world_from_model: Mat4,
-    color: Vec4,
     point_diameter: f32,
     point_intensity: f32,
     padding: [f32; 2],
@@ -56,16 +61,18 @@ struct ObjectData {
 struct PushConstants {
     frame: vk::DeviceAddress,
     objects: vk::DeviceAddress,
+    materials: vk::DeviceAddress,
     object_index: u32,
+    material_index: u32,
 }
 
-const _: () = assert!(size_of::<FrameData>() == 96);
-const _: () = assert!(size_of::<ObjectData>() == 96);
-const _: () = assert!(size_of::<PushConstants>() == 24);
+const _: () = assert!(size_of::<FrameData>() == 160);
+const _: () = assert!(size_of::<ObjectData>() == 80);
+const _: () = assert!(size_of::<PushConstants>() == 32);
 
 pub struct Renderer {
     scene: Scene,
-    material_override: Option<Material>,
+    shader_override: Option<Shader>,
     wireframe: bool,
     pipelines: Vec<GraphicsPipeline>,
     point_pipeline: GraphicsPipeline,
@@ -73,9 +80,12 @@ pub struct Renderer {
     index_buffer: Buffer,
     index_count: u32,
     object_data: Vec<ObjectData>,
+    material_data: Vec<MaterialData>,
     drawn_as_point: Vec<bool>,
     object_capacity: usize,
     depth: Image,
+    cube_maps: Vec<Image>,
+    bindless: BindlessTextures,
     frames: Vec<Frame>,
     frame_index: usize,
     swapchain: Swapchain,
@@ -104,9 +114,10 @@ impl Renderer {
         let sphere = mesh::cube_sphere(1.0, SPHERE_SUBDIVISIONS);
         let vertex_buffer = upload(&device, &mut allocator, "sphere vertices", vk::BufferUsageFlags::VERTEX_BUFFER, &sphere.vertices)?;
         let index_buffer = upload(&device, &mut allocator, "sphere indices", vk::BufferUsageFlags::INDEX_BUFFER, &sphere.indices)?;
-        let pipelines = Material::ALL
+        let bindless = BindlessTextures::new(&device)?;
+        let pipelines = Shader::ALL
             .iter()
-            .map(|material| create_material_pipeline(&device, *material, swapchain.format()))
+            .map(|shader| create_shader_pipeline(&device, &bindless, *shader, swapchain.format()))
             .collect::<anyhow::Result<_>>()?;
         let point_pipeline = GraphicsPipeline::new(
             &device,
@@ -114,17 +125,20 @@ impl Renderer {
                 spirv: POINT_SHADER,
                 color_format: swapchain.format(),
                 depth_format: Some(DEPTH_FORMAT),
+                depth_compare_op: vk::CompareOp::GREATER,
+                depth_write: false,
                 cull_mode: vk::CullModeFlags::NONE,
                 additive_blend: true,
                 vertex_bindings: &[],
                 vertex_attributes: &[],
                 push_constant_size: size_of::<PushConstants>() as u32,
+                descriptor_set_layouts: &[bindless.layout()],
             },
         )?;
 
         Ok(Self {
             scene: Scene::default(),
-            material_override: None,
+            shader_override: None,
             wireframe: false,
             pipelines,
             point_pipeline,
@@ -133,8 +147,11 @@ impl Renderer {
             index_count: sphere.indices.len() as u32,
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             drawn_as_point: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
+            material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             depth,
+            cube_maps: Vec::new(),
+            bindless,
             frames,
             frame_index: 0,
             swapchain,
@@ -151,8 +168,24 @@ impl Renderer {
         &mut self.scene
     }
 
-    pub fn set_material_override(&mut self, material: Option<Material>) {
-        self.material_override = material;
+    pub fn set_shader_override(&mut self, shader: Option<Shader>) {
+        self.shader_override = shader;
+    }
+
+    pub fn load_cube_map(&mut self, name: &str, source: CubeMapSource) -> anyhow::Result<CubeMapHandle> {
+        let image = texture::upload_cube_map(&self.device, &mut self.allocator, name, source)?;
+        let index = self.bindless.add_cube(&self.device, image.view());
+        match index {
+            Ok(index) => {
+                self.cube_maps.push(image);
+                Ok(CubeMapHandle::new(index))
+            }
+            Err(err) => {
+                let mut image = image;
+                unsafe { image.destroy(&self.device, &mut self.allocator) };
+                Err(err)
+            }
+        }
     }
 
     pub fn toggle_wireframe(&mut self) {
@@ -201,8 +234,10 @@ impl Renderer {
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
         let clip_from_view = camera.clip_from_view(aspect_ratio);
+        let view_projection = clip_from_view * camera.view_rotation();
         let frame_data = FrameData {
-            view_projection: clip_from_view * camera.view_rotation(),
+            view_projection,
+            world_from_clip: view_projection.inverse(),
             sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             point_quad_size: POINT_QUAD_PIXELS,
@@ -222,17 +257,24 @@ impl Renderer {
                     object.orientation.as_quat(),
                     camera_relative.as_vec3(),
                 ),
-                color: object.color.extend(1.0),
                 point_diameter: POINT_MINIMUM_DIAMETER_PIXELS
                     + (POINT_MAXIMUM_DIAMETER_PIXELS - POINT_MINIMUM_DIAMETER_PIXELS) * point_size,
                 point_intensity: POINT_MINIMUM_INTENSITY + (1.0 - POINT_MINIMUM_INTENSITY) * point_size,
                 padding: [0.0; 2],
             });
         }
+        anyhow::ensure!(
+            self.scene.materials().len() <= MATERIAL_CAPACITY,
+            "the scene has more than {MATERIAL_CAPACITY} materials"
+        );
+        self.material_data.clear();
+        self.material_data
+            .extend(self.scene.materials().iter().map(Material::gpu_data));
         {
             let frame = &mut self.frames[self.frame_index];
             frame.frame_data.write(&[frame_data])?;
             frame.objects.write(&self.object_data)?;
+            frame.materials.write(&self.material_data)?;
         }
 
         let frame = &self.frames[self.frame_index];
@@ -348,51 +390,71 @@ impl Renderer {
 
             let frame_address = frame.frame_data.device_address(&self.device);
             let objects_address = frame.objects.device_address(&self.device);
-            for material in Material::ALL {
-                let pipeline = &self.pipelines[material.index()];
+            let materials_address = frame.materials.device_address(&self.device);
+            let push = |pipeline: &GraphicsPipeline, object_index: usize, material: MaterialHandle| {
+                let push_constants = PushConstants {
+                    frame: frame_address,
+                    objects: objects_address,
+                    materials: materials_address,
+                    object_index: object_index as u32,
+                    material_index: material.index() as u32,
+                };
+                device.cmd_push_constants(
+                    command_buffer,
+                    pipeline.layout(),
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    0,
+                    as_bytes(&push_constants),
+                );
+            };
+            device.cmd_bind_descriptor_sets(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.point_pipeline.layout(),
+                0,
+                &[self.bindless.set()],
+                &[],
+            );
+
+            for shader in Shader::ALL.into_iter().filter(|shader| *shader != Shader::Skybox) {
+                let pipeline = &self.pipelines[shader.index()];
                 let mut bound = false;
                 for (object_index, object) in self.scene.objects().iter().enumerate() {
-                    if self.drawn_as_point[object_index] || self.material_override.unwrap_or(object.material) != material {
+                    let object_shader = self
+                        .shader_override
+                        .unwrap_or(self.scene.material(object.material).shader());
+                    if self.drawn_as_point[object_index] || object_shader != shader {
                         continue;
                     }
                     if !bound {
                         device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline.handle());
                         bound = true;
                     }
-                    let push_constants = PushConstants {
-                        frame: frame_address,
-                        objects: objects_address,
-                        object_index: object_index as u32,
-                    };
-                    device.cmd_push_constants(
-                        command_buffer,
-                        pipeline.layout(),
-                        vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                        0,
-                        as_bytes(&push_constants),
-                    );
+                    push(pipeline, object_index, object.material);
                     device.cmd_draw_indexed(command_buffer, self.index_count, 1, 0, 0, 0);
                 }
             }
 
+            if let Some(extended_dynamic_state3) = self.device.extended_dynamic_state3() {
+                extended_dynamic_state3.cmd_set_polygon_mode(command_buffer, vk::PolygonMode::FILL);
+            }
+            if let Some(skybox) = self.scene.skybox {
+                let pipeline = &self.pipelines[Shader::Skybox.index()];
+                device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline.handle());
+                push(pipeline, 0, skybox);
+                device.cmd_draw(command_buffer, 3, 1, 0, 0);
+            }
+
             let mut point_pipeline_bound = false;
-            for (object_index, _) in self.drawn_as_point.iter().enumerate().filter(|(_, point)| **point) {
+            for (object_index, object) in self.scene.objects().iter().enumerate() {
+                if !self.drawn_as_point[object_index] {
+                    continue;
+                }
                 if !point_pipeline_bound {
                     device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.point_pipeline.handle());
                     point_pipeline_bound = true;
                 }
-                let push_constants = PushConstants {
-                    frame: frame_address,
-                    objects: objects_address,
-                    object_index: object_index as u32,
-                };
-                device.cmd_push_constants(
-                    command_buffer,
-                    self.point_pipeline.layout(),
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    0,
-                    as_bytes(&push_constants),
-                );
+                push(&self.point_pipeline, object_index, object.material);
                 device.cmd_draw(command_buffer, 6, 1, 0, 0);
             }
 
@@ -459,6 +521,10 @@ impl Drop for Renderer {
             for pipeline in &mut self.pipelines {
                 pipeline.destroy(&self.device);
             }
+            for cube_map in &mut self.cube_maps {
+                cube_map.destroy(&self.device, &mut self.allocator);
+            }
+            self.bindless.destroy(&self.device);
             self.point_pipeline.destroy(&self.device);
             self.vertex_buffer.destroy(&self.device, &mut self.allocator);
             self.index_buffer.destroy(&self.device, &mut self.allocator);
@@ -478,6 +544,7 @@ struct Frame {
     in_flight: vk::Fence,
     frame_data: Buffer,
     objects: Buffer,
+    materials: Buffer,
 }
 
 impl Frame {
@@ -491,6 +558,14 @@ impl Frame {
             MemoryLocation::CpuToGpu,
         )?;
         let objects = create_object_buffer(device, allocator, object_capacity)?;
+        let materials = Buffer::new(
+            device,
+            allocator,
+            "material data",
+            (MATERIAL_CAPACITY * size_of::<MaterialData>()) as u64,
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            MemoryLocation::CpuToGpu,
+        )?;
 
         let queue_family = device.queue_family();
         let device = device.handle();
@@ -512,6 +587,7 @@ impl Frame {
             in_flight,
             frame_data,
             objects,
+            materials,
         })
     }
 
@@ -519,6 +595,7 @@ impl Frame {
         unsafe {
             self.frame_data.destroy(device, allocator);
             self.objects.destroy(device, allocator);
+            self.materials.destroy(device, allocator);
             let device = device.handle();
             device.destroy_fence(self.in_flight, None);
             device.destroy_semaphore(self.image_acquired, None);
@@ -527,7 +604,12 @@ impl Frame {
     }
 }
 
-fn create_material_pipeline(device: &Device, material: Material, color_format: vk::Format) -> anyhow::Result<GraphicsPipeline> {
+fn create_shader_pipeline(
+    device: &Device,
+    bindless: &BindlessTextures,
+    shader: Shader,
+    color_format: vk::Format,
+) -> anyhow::Result<GraphicsPipeline> {
     let vertex_bindings = [vk::VertexInputBindingDescription::default()
         .binding(0)
         .stride(size_of::<Vertex>() as u32)
@@ -544,19 +626,31 @@ fn create_material_pipeline(device: &Device, material: Material, color_format: v
             .format(vk::Format::R32G32B32_SFLOAT)
             .offset(offset_of!(Vertex, normal) as u32),
     ];
-    GraphicsPipeline::new(
-        device,
-        &GraphicsPipelineDescription {
-            spirv: material.spirv(),
-            color_format,
-            depth_format: Some(DEPTH_FORMAT),
-            cull_mode: vk::CullModeFlags::BACK,
-            additive_blend: false,
-            vertex_bindings: &vertex_bindings,
-            vertex_attributes: &vertex_attributes,
-            push_constant_size: size_of::<PushConstants>() as u32,
+    let mesh_description = GraphicsPipelineDescription {
+        spirv: shader.spirv(),
+        color_format,
+        depth_format: Some(DEPTH_FORMAT),
+        depth_compare_op: vk::CompareOp::GREATER,
+        depth_write: true,
+        cull_mode: vk::CullModeFlags::BACK,
+        additive_blend: false,
+        vertex_bindings: &vertex_bindings,
+        vertex_attributes: &vertex_attributes,
+        push_constant_size: size_of::<PushConstants>() as u32,
+        descriptor_set_layouts: &[bindless.layout()],
+    };
+    let description = match shader {
+        Shader::Skybox => GraphicsPipelineDescription {
+            depth_compare_op: vk::CompareOp::GREATER_OR_EQUAL,
+            depth_write: false,
+            cull_mode: vk::CullModeFlags::NONE,
+            vertex_bindings: &[],
+            vertex_attributes: &[],
+            ..mesh_description
         },
-    )
+        _ => mesh_description,
+    };
+    GraphicsPipeline::new(device, &description)
 }
 
 fn point_size(diameter_pixels: f64) -> f32 {
@@ -579,11 +673,15 @@ fn create_depth_image(device: &Device, allocator: &mut Allocator, extent: vk::Ex
     Image::new(
         device,
         allocator,
-        "depth",
-        extent,
-        DEPTH_FORMAT,
-        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-        vk::ImageAspectFlags::DEPTH,
+        &ImageDescription {
+            name: "depth",
+            extent,
+            format: DEPTH_FORMAT,
+            usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            aspect: vk::ImageAspectFlags::DEPTH,
+            mip_levels: 1,
+            cube: false,
+        },
     )
 }
 

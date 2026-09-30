@@ -105,6 +105,16 @@ impl Buffer {
     }
 }
 
+pub struct ImageDescription<'a> {
+    pub name: &'a str,
+    pub extent: vk::Extent2D,
+    pub format: vk::Format,
+    pub usage: vk::ImageUsageFlags,
+    pub aspect: vk::ImageAspectFlags,
+    pub mip_levels: u32,
+    pub cube: bool,
+}
+
 pub struct Image {
     image: vk::Image,
     view: vk::ImageView,
@@ -112,41 +122,39 @@ pub struct Image {
 }
 
 impl Image {
-    pub fn new(
-        device: &Device,
-        allocator: &mut Allocator,
-        name: &str,
-        extent: vk::Extent2D,
-        format: vk::Format,
-        usage: vk::ImageUsageFlags,
-        aspect: vk::ImageAspectFlags,
-    ) -> anyhow::Result<Self> {
+    pub fn new(device: &Device, allocator: &mut Allocator, description: &ImageDescription) -> anyhow::Result<Self> {
         let device = device.handle();
+        let (layers, flags, view_type) = if description.cube {
+            (6, vk::ImageCreateFlags::CUBE_COMPATIBLE, vk::ImageViewType::CUBE)
+        } else {
+            (1, vk::ImageCreateFlags::empty(), vk::ImageViewType::TYPE_2D)
+        };
         let create_info = vk::ImageCreateInfo::default()
+            .flags(flags)
             .image_type(vk::ImageType::TYPE_2D)
-            .format(format)
-            .extent(extent.into())
-            .mip_levels(1)
-            .array_layers(1)
+            .format(description.format)
+            .extent(description.extent.into())
+            .mip_levels(description.mip_levels)
+            .array_layers(layers)
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(usage)
+            .usage(description.usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
         let image = unsafe { device.create_image(&create_info, None) }?;
         let requirements = unsafe { device.get_image_memory_requirements(image) };
-        let allocation = allocator.allocate(name, requirements, MemoryLocation::GpuOnly, false)?;
+        let allocation = allocator.allocate(description.name, requirements, MemoryLocation::GpuOnly, false)?;
         unsafe { device.bind_image_memory(image, allocation.memory(), allocation.offset()) }?;
 
         let view_info = vk::ImageViewCreateInfo::default()
             .image(image)
-            .view_type(vk::ImageViewType::TYPE_2D)
-            .format(format)
+            .view_type(view_type)
+            .format(description.format)
             .subresource_range(
                 vk::ImageSubresourceRange::default()
-                    .aspect_mask(aspect)
-                    .level_count(1)
-                    .layer_count(1),
+                    .aspect_mask(description.aspect)
+                    .level_count(description.mip_levels)
+                    .layer_count(layers),
             );
         let view = unsafe { device.create_image_view(&view_info, None) }?;
         Ok(Self {
