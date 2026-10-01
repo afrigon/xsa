@@ -7,16 +7,28 @@ xh = "latest"
 star_map_url = "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/starmap_2020_16k.exr"
 
 [tasks.build]
-description = "Build the game and the asset tools"
-run = "cargo build"
+description = "Build every crate in the workspace"
+run = "cargo build --workspace"
 
 [tasks.test]
 description = "Run the test suite"
-run = "cargo test"
+run = "cargo test --workspace"
+
+[tasks.fmt]
+description = "Format the Rust sources"
+run = "cargo fmt"
+
+[tasks.lint]
+description = "Lint with clippy, treating warnings as errors"
+run = "cargo clippy --workspace --all-targets -- -D warnings"
 
 [tasks.dev]
-description = "Run the game in a debug build"
-run = "cargo run"
+description = "Run the game in a debug build; pass flags after --, e.g. --remote [::1]:1969 --fingerprint <hash>"
+run = "cargo run -p xsa --"
+
+[tasks.server]
+description = "Run the dedicated server; pass flags after --, e.g. --host :: --port 1969"
+run = "cargo run -p xsa-server --"
 
 [tasks.fetch-assets]
 description = "Download third-party assets into assets/"
@@ -40,6 +52,6 @@ CREDIT
 [tasks.convert-skybox]
 description = "Convert the Deep Star Maps star map into a cube map DDS"
 depends = ["fetch-assets"]
-sources = ["assets/deep-star-maps/starmap_2020_16k.exr", "src/bin/convert_skybox.rs"]
+sources = ["assets/deep-star-maps/starmap_2020_16k.exr", "tools/src/main.rs"]
 outputs = ["assets/deep-star-maps/skybox.dds"]
-run = "cargo run --release --bin convert_skybox -- assets/deep-star-maps/starmap_2020_16k.exr assets/deep-star-maps/skybox.dds"
+run = "cargo run --release -p xsa-tools --bin convert-skybox -- assets/deep-star-maps/starmap_2020_16k.exr assets/deep-star-maps/skybox.dds"

@@ -10,12 +10,35 @@
   Render the far scene with a large near plane, clear depth, then render
   nearby objects with a small one, in the same frame. Needed once vessels
   exist; until then the near plane follows the camera's altitude.
-- The triangle pipeline is built for the swapchain's color format. If a
-  swapchain recreation ever picks a different format (e.g. the window moves to
-  a monitor with other surface formats), the pipeline no longer matches. Goes
+- Every pipeline is built for the swapchain's color format. If a swapchain
+  recreation ever picks a different format (e.g. the window moves to a
+  monitor with other surface formats), the pipelines no longer match. Goes
   away once scene rendering targets its own fixed-format HDR image.
 
+# Next steps
+
+- Pack system, first version, per docs/packs.md: manifest, pack stack with
+  whole-file overrides, namespaced ids, data/bodies, data/systems,
+  data/simulations, resources/objects, materials, texture references
+  (including the skybox), lang/en.kdl, barycenter entries in systems. A
+  minimal `base` pack and a `sol` pack holding the solar system. Replaces the
+  hardcoded Simulation::solar_system and the client's body appearance table;
+  the Welcome event then carries the pack list and simulation id instead of
+  body definitions. Needs the `kdl` crate and a Kepler solver in core.
+- Asset hosting: publish binary pack resources as a versioned archive in S3
+  (optionally behind CloudFront for download costs); fetch-assets downloads a
+  pinned version and verifies its checksum; upload credentials through fnox.
+  Replaces the assets/ directory and local skybox conversion.
+- Slang ↔ Rust layout check: build.rs reads `slangc -reflection-json`
+  (serde_json as a build dependency) and generates offsets and sizes that Rust
+  const assertions compare field by field.
+- Grow the per-frame material buffer like the object buffer instead of failing
+  past a fixed capacity.
+- Handle types (ObjectHandle, MaterialHandle, CubeMapHandle) use a named
+  `index` field instead of tuple structs.
+
 # Planned features
+
 
 - Real solar system at scale: bodies generated from real physical and orbital
   parameters. The general shape must be right; fine detail may be procedural.
@@ -43,3 +66,32 @@
   - Creative: survival with infinite resources.
   - Debug: cheats and dev tools — edit positions, orbits and other state.
     The mode used to build the game, also available to players.
+- Sky grid debug overlay (to think through): right ascension lines every 1h,
+  declination lines every 10°, celestial equator and ecliptic highlighted,
+  pole markers — drawn procedurally in the skybox shader.
+- HDR rendering with auto-exposure and bloom: stars near the Sun become hard
+  to see through exposure and glare (not light pollution — space has none);
+  also replaces the fixed dot brightness compromise.
+- Multiplayer (single player comes first): time warp across players
+  (subspaces), latency with client interpolation and prediction, bandwidth
+  (bodies on rails need no streaming), streaming a server's packs to
+  connecting clients with consent and safety checks.
+- Interstellar travel: Voronoi regions assign space to star systems; vessels
+  use positions relative to their system, since f64 resolves only ~8 m at
+  interstellar distances.
+- AI-assisted translation of lang files through a mise task; English is the
+  reference language.
+- Effects system (plumes, explosions, particles, possibly custom shaders in
+  packs); atmosphere and cloud visuals tie into it.
+- 3D model formats: glTF 2.0 preferred; support whatever formats the chosen
+  open-source models use.
+- Simulation step: planets on rails — Keplerian orbits with barycenters, and
+  precomputed ephemerides (e.g. JPL DE440) for real bodies, both pure
+  functions of time. Vessels use restricted n-body (planets pull vessels, not
+  the reverse) limited to significant bodies, with symplectic integrators for
+  coasting, adaptive steps for burns and flybys, and Encke's method (integrate
+  the deviation from a Kepler orbit) for large steps. A coasting vessel's
+  trajectory is computed once and treated as rails until it changes — cheap
+  time warp and the map-mode orbit prediction. Any live n-body between bodies
+  stays server-authoritative with periodic keyframes, since floating point
+  differs across machines.

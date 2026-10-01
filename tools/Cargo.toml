@@ -1,0 +1,13 @@
+[package]
+name = "xsa-tools"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "convert-skybox"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+glam.workspace = true
+image.workspace = true
