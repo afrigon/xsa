@@ -22,8 +22,22 @@ run = "cargo fmt"
 description = "Lint with clippy, treating warnings as errors"
 run = "cargo clippy --workspace --all-targets -- -D warnings"
 
+[tasks.shaders]
+description = "Compile the base pack's Slang shaders to SPIR-V next to their sources"
+sources = ["packs/base/base/resources/shaders/**/*.slang"]
+outputs = ["packs/base/base/resources/shaders/*.spv"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+directory=packs/base/base/resources/shaders
+for source in "$directory"/*.slang; do
+    slangc "$source" -I "$directory" -target spirv -matrix-layout-column-major -o "${source%.slang}.spv"
+done
+"""
+
 [tasks.dev]
 description = "Run the game in a debug build; pass flags after --, e.g. --remote [::1]:1969 --fingerprint <hash>"
+depends = ["shaders"]
 run = "cargo run -p xsa --"
 
 [tasks.server]
@@ -53,5 +67,5 @@ CREDIT
 description = "Convert the Deep Star Maps star map into a cube map DDS"
 depends = ["fetch-assets"]
 sources = ["assets/deep-star-maps/starmap_2020_16k.exr", "tools/src/main.rs"]
-outputs = ["assets/deep-star-maps/skybox.dds"]
-run = "cargo run --release -p xsa-tools --bin convert-skybox -- assets/deep-star-maps/starmap_2020_16k.exr assets/deep-star-maps/skybox.dds"
+outputs = ["packs/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds"]
+run = "cargo run --release -p xsa-tools --bin convert-skybox -- assets/deep-star-maps/starmap_2020_16k.exr packs/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds"

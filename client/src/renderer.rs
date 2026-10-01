@@ -15,6 +15,7 @@ use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
 
 pub use material::{Material, Shader};
+pub use pipelines::{POINT_SHADER_PATH, ShaderBinaries};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
 pub use texture::CubeMapHandle;
 
@@ -108,7 +109,7 @@ impl DrawContext<'_> {
 }
 
 impl Renderer {
-    pub fn new(window: &Window) -> anyhow::Result<Self> {
+    pub fn new(window: &Window, shaders: &ShaderBinaries) -> anyhow::Result<Self> {
         let instance = Instance::new(window.display_handle()?.as_raw())?;
         let surface = Surface::new(&instance, window)?;
         let device = Device::new(&instance, &surface)?;
@@ -136,7 +137,7 @@ impl Renderer {
             &sphere.indices,
         )?;
         let bindless = BindlessTextures::new(&device)?;
-        let pipelines = Pipelines::new(&device, &bindless, swapchain.format())?;
+        let pipelines = Pipelines::new(&device, &bindless, shaders, swapchain.format())?;
         Ok(Self {
             scene: Scene::default(),
             shader_override: None,

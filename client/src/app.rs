@@ -1,30 +1,29 @@
-use std::path::Path;
+use std::path::PathBuf;
 use std::time::Instant;
 
-use glam::{DQuat, DVec2, DVec3, Vec3};
+use anyhow::{Context, bail, ensure};
+use glam::DVec2;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
+use xsa_core::packs::{Id, PackStack};
+use xsa_core::simulation::{Simulation, SimulationState};
+use xsa_proto::connection::Connection;
+use xsa_proto::messages::{ClientMessage, PackReference, ServerEvent};
 
 use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
 use crate::camera::{Camera, CameraMode};
+use crate::content;
 use crate::input::Input;
 use crate::renderer::{Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader};
-use xsa_core::frames;
-use xsa_proto::connection::Connection;
-use xsa_proto::messages::{BodyDefinition, ClientMessage, ServerEvent};
 
 const APP_ID: &str = "xsa";
+const BASE_PACK: &str = "base";
 const HORIZONTAL_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
 const DEBUG_CAMERA_SPEED: f64 = 2_000_000.0;
-const SOL_COLOR: Vec3 = Vec3::new(1.0, 0.95, 0.85);
-const EARTH_COLOR: Vec3 = Vec3::new(0.1, 0.25, 0.6);
-const LUNA_COLOR: Vec3 = Vec3::new(0.5, 0.5, 0.5);
-const DEFAULT_COLOR: Vec3 = Vec3::new(0.6, 0.6, 0.6);
-const SKYBOX_PATH: &str = "assets/deep-star-maps/skybox.dds";
 
 struct ShaderShortcut {
     key: KeyCode,
@@ -54,11 +53,19 @@ const SHADER_SHORTCUTS: [ShaderShortcut; 5] = [
     },
 ];
 
-struct ReplicatedBody {
-    id: String,
-    position: DVec3,
-    orientation: DQuat,
-    radius: f64,
+struct World {
+    simulation: Simulation,
+    state: SimulationState,
+    body_objects: Vec<ObjectHandle>,
+    light_body: Option<usize>,
+    server_time: f64,
+    server_time_received: Instant,
+}
+
+impl World {
+    fn time(&self) -> f64 {
+        self.server_time + self.server_time_received.elapsed().as_secs_f64()
+    }
 }
 
 pub struct App {
@@ -66,10 +73,9 @@ pub struct App {
     window: Option<Window>,
     error: Option<anyhow::Error>,
     connection: Connection,
-    bodies: Vec<ReplicatedBody>,
-    body_objects: Vec<ObjectHandle>,
+    packs_directory: PathBuf,
+    world: Option<World>,
     skybox: Option<MaterialHandle>,
-    sun_body: Option<usize>,
     input: Input,
     camera: Camera,
     camera_mode: CameraMode,
@@ -80,16 +86,15 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(connection: Connection) -> Self {
+    pub fn new(connection: Connection, packs_directory: PathBuf) -> Self {
         Self {
             renderer: None,
             window: None,
             error: None,
             connection,
-            bodies: Vec::new(),
-            body_objects: Vec::new(),
+            packs_directory,
+            world: None,
             skybox: None,
-            sun_body: None,
             input: Input::default(),
             camera: Camera::new(HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians()),
             camera_mode: CameraMode::Orbit,
@@ -106,10 +111,9 @@ impl App {
 
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> anyhow::Result<()> {
         let window = event_loop.create_window(window_attributes())?;
-        let mut renderer = Renderer::new(&window)?;
-        self.skybox = load_skybox(&mut renderer);
-        renderer.scene_mut().skybox = self.skybox;
-        self.renderer = Some(renderer);
+        let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
+        let shaders = content::load_shaders(&base)?;
+        self.renderer = Some(Renderer::new(&window, &shaders)?);
         window.request_redraw();
         self.window = Some(window);
         Ok(())
@@ -133,6 +137,7 @@ impl App {
     fn update(&mut self, delta_seconds: f64) -> anyhow::Result<()> {
         self.poll_connection()?;
         self.poll_input();
+        self.update_simulation();
         self.update_camera(delta_seconds);
         Ok(())
     }
@@ -140,46 +145,100 @@ impl App {
     fn poll_connection(&mut self) -> anyhow::Result<()> {
         while let Some(event) = self.connection.poll()? {
             match event {
-                ServerEvent::Welcome { bodies } => self.welcome(bodies),
-                ServerEvent::Tick { .. } => {}
+                ServerEvent::Joined {
+                    simulation,
+                    packs,
+                    time,
+                } => self
+                    .join(&simulation, &packs, time)
+                    .with_context(|| format!("joining simulation {simulation}"))?,
+                ServerEvent::JoinDenied { reason } => bail!("the server refused to let us join: {reason}"),
+                ServerEvent::Tick { time } => {
+                    if let Some(world) = &mut self.world {
+                        world.server_time = time;
+                        world.server_time_received = Instant::now();
+                    }
+                }
             }
         }
         Ok(())
     }
 
-    fn welcome(&mut self, definitions: Vec<BodyDefinition>) {
-        let Some(renderer) = &mut self.renderer else {
-            return;
-        };
-        self.bodies = definitions
-            .into_iter()
-            .map(|definition| ReplicatedBody {
-                id: definition.id,
-                position: DVec3::from_array(definition.position),
-                orientation: DQuat::from_array(definition.orientation),
-                radius: definition.radius,
-            })
-            .collect();
-        self.body_objects = self
-            .bodies
+    fn join(&mut self, simulation: &str, packs: &[PackReference], time: f64) -> anyhow::Result<()> {
+        let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
+        let pack_ids: Vec<String> = packs.iter().map(|pack| pack.id.clone()).collect();
+        let stack = PackStack::load(&self.packs_directory, &pack_ids)?;
+        for (expected, installed) in packs.iter().zip(stack.manifests()) {
+            ensure!(
+                installed.version.to_string() == expected.version,
+                "the server uses {} {}, but {} is installed",
+                expected.id,
+                expected.version,
+                installed.version
+            );
+        }
+
+        let simulation_id = Id::parse(simulation, BASE_PACK)?;
+        let simulation = Simulation::load(&stack, &simulation_id)?;
+        let materials = simulation
+            .bodies()
             .iter()
-            .map(|body| {
-                let scene = renderer.scene_mut();
-                let material = scene.add_material(appearance(body));
+            .map(|body| content::load_body_material(&stack, &body.id))
+            .collect::<anyhow::Result<Vec<Material>>>()?;
+        let mut state = SimulationState::default();
+        simulation.state_at(time, &mut state);
+
+        let scene = renderer.scene_mut();
+        let body_objects = simulation
+            .bodies()
+            .iter()
+            .zip(&materials)
+            .zip(&state.bodies)
+            .map(|((body, material), body_state)| {
+                let material = scene.add_material(*material);
                 scene.add(SceneObject {
-                    position: body.position,
-                    orientation: body.orientation,
+                    position: body_state.position,
+                    orientation: body_state.orientation,
                     scale: body.radius,
                     material,
                 })
             })
             .collect();
-        self.sun_body = self.bodies.iter().position(|body| body.id == "sol");
-        let target = self.bodies.iter().position(|body| body.id == "earth").unwrap_or(0);
-        self.orbit_camera = self
-            .bodies
-            .get(target)
-            .map(|body| OrbitCamera::new(target, body.radius));
+        let light_body = materials
+            .iter()
+            .position(|material| matches!(material, Material::Emissive { .. }));
+        let target = materials
+            .iter()
+            .position(|material| !matches!(material, Material::Emissive { .. }))
+            .unwrap_or(0);
+
+        self.skybox = match content::load_skybox(&stack, &simulation_id)? {
+            Some(skybox) => match renderer.load_cube_map("skybox", &skybox.texture) {
+                Ok(cube_map) => Some(renderer.scene_mut().add_material(Material::Skybox {
+                    cube_map,
+                    orientation: skybox.orientation,
+                })),
+                Err(err) => {
+                    eprintln!("skipping the skybox: {err:#}");
+                    None
+                }
+            },
+            None => None,
+        };
+        renderer.scene_mut().skybox = self.skybox;
+
+        if let Some(body) = simulation.bodies().get(target) {
+            self.orbit_camera = Some(OrbitCamera::new(target, body.radius));
+        }
+        self.world = Some(World {
+            simulation,
+            state,
+            body_objects,
+            light_body,
+            server_time: time,
+            server_time_received: Instant::now(),
+        });
+        Ok(())
     }
 
     fn poll_input(&mut self) {
@@ -224,24 +283,36 @@ impl App {
         }
     }
 
+    fn update_simulation(&mut self) {
+        if let Some(world) = &mut self.world {
+            let time = world.time();
+            world.simulation.state_at(time, &mut world.state);
+        }
+    }
+
     fn update_camera(&mut self, delta_seconds: f64) {
+        let Some(world) = &self.world else {
+            return;
+        };
         match self.camera_mode {
             CameraMode::Orbit => {
                 if let Some(orbit_camera) = &mut self.orbit_camera {
-                    let target = &self.bodies[orbit_camera.target()];
+                    let target = orbit_camera.target();
                     let target = OrbitTarget {
-                        position: target.position,
-                        radius: target.radius,
+                        position: world.state.bodies[target].position,
+                        radius: world.simulation.bodies()[target].radius,
                     };
                     orbit_camera.update(&mut self.camera, &self.input, target, delta_seconds);
                 }
             }
             CameraMode::Debug => self.debug_camera.update(&mut self.camera, &self.input, delta_seconds),
         }
-        let nearest_surface_distance = self
-            .bodies
+        let nearest_surface_distance = world
+            .simulation
+            .bodies()
             .iter()
-            .map(|body| body.position.distance(self.camera.position) - body.radius)
+            .zip(&world.state.bodies)
+            .map(|(body, state)| state.position.distance(self.camera.position) - body.radius)
             .fold(f64::INFINITY, f64::min);
         self.camera.fit_near_plane(nearest_surface_distance);
     }
@@ -258,15 +329,24 @@ impl App {
         let Some(renderer) = &mut self.renderer else {
             return;
         };
+        let Some(world) = &self.world else {
+            return;
+        };
         let scene = renderer.scene_mut();
-        for (body, &handle) in self.bodies.iter().zip(&self.body_objects) {
+        for ((body, state), &handle) in world
+            .simulation
+            .bodies()
+            .iter()
+            .zip(&world.state.bodies)
+            .zip(&world.body_objects)
+        {
             let object = scene.object_mut(handle);
-            object.position = body.position;
-            object.orientation = body.orientation;
+            object.position = state.position;
+            object.orientation = state.orientation;
             object.scale = body.radius;
         }
-        if let Some(sun_body) = self.sun_body {
-            scene.sun_position = self.bodies[sun_body].position;
+        if let Some(light_body) = world.light_body {
+            scene.sun_position = world.state.bodies[light_body].position;
         }
     }
 
@@ -305,10 +385,16 @@ impl App {
         let Some(orbit_camera) = &mut self.orbit_camera else {
             return;
         };
-        let body_count = self.bodies.len() as isize;
+        let Some(world) = &self.world else {
+            return;
+        };
+        let body_count = world.simulation.bodies().len() as isize;
         let target = (orbit_camera.target() as isize + step).rem_euclid(body_count) as usize;
-        let body = &self.bodies[target];
-        orbit_camera.set_target(target, body.position, body.radius);
+        orbit_camera.set_target(
+            target,
+            world.state.bodies[target].position,
+            world.simulation.bodies()[target].radius,
+        );
     }
 }
 
@@ -362,30 +448,4 @@ fn window_attributes() -> WindowAttributes {
     #[cfg(all(unix, not(target_vendor = "apple")))]
     let attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, APP_ID, APP_ID);
     attributes
-}
-
-fn appearance(body: &ReplicatedBody) -> Material {
-    match body.id.as_str() {
-        "sol" => Material::Emissive { color: SOL_COLOR },
-        "earth" => Material::Lit {
-            base_color: EARTH_COLOR,
-        },
-        "luna" => Material::Lit { base_color: LUNA_COLOR },
-        _ => Material::Lit {
-            base_color: DEFAULT_COLOR,
-        },
-    }
-}
-
-fn load_skybox(renderer: &mut Renderer) -> Option<MaterialHandle> {
-    match renderer.load_cube_map("skybox", Path::new(SKYBOX_PATH)) {
-        Ok(cube_map) => Some(renderer.scene_mut().add_material(Material::Skybox {
-            cube_map,
-            orientation: frames::equatorial_from_ecliptic().as_mat3(),
-        })),
-        Err(err) => {
-            eprintln!("skipping the skybox: {err:#}");
-            None
-        }
-    }
 }

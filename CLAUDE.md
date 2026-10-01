@@ -28,27 +28,30 @@ Everything runs through mise; tools (`rust`, `slang`, `xh`) are pinned in
 
 | Task | Does |
 | --- | --- |
-| `mise run dev` | Run the game with an integrated server (debug build, validation layers on) |
+| `mise run dev` | Compile shaders, then run the game with an integrated server (debug build, validation layers on) |
 | `mise run dev -- --remote <host>:<port> --fingerprint <hash>` | Run the game against a dedicated server |
 | `mise run server` | Run the dedicated server (`-- --host <address> --port <port>`) |
 | `mise run build` | Build every crate |
 | `mise run test` | Unit tests |
 | `mise run fmt` | Format (`rustfmt.toml`: 120 columns) |
 | `mise run lint` | Clippy with warnings as errors |
-| `mise run fetch-assets` | Download third-party assets into `assets/` |
-| `mise run convert-skybox` | Build the skybox cube map from the star map EXR |
+| `mise run shaders` | Compile the base pack's Slang shaders to SPIR-V |
+| `mise run fetch-assets` | Download third-party source assets into `assets/` |
+| `mise run convert-skybox` | Build the `system-solar` skybox cube map from the star map EXR |
 
 Before calling a change done: `fmt`, `lint` and `test` pass, and a run of the
 game prints no validation messages.
 
 ## Assets and licensing
 
-- `assets/` is git-ignored and populated by `fetch-assets`; the skybox then
-  needs `convert-skybox`. The game starts without assets and skips what is
-  missing.
+- Game content lives in `packs/` (see `docs/packs.md`). Text files are
+  committed; binaries (`.dds`, `.spv`) are git-ignored and produced by tasks
+  (`shaders`, `convert-skybox`) or, later, fetched from pack releases.
+- `assets/` is git-ignored and holds raw third-party source downloads from
+  `fetch-assets` (the star map EXR the skybox is converted from).
 - Every third-party asset is listed in `LICENSES.md` with source, author and
-  terms, and its license or credit file sits next to it in `assets/`. Adding
-  an asset means updating both.
+  terms, and its license or credit file sits next to its source download.
+  Adding an asset means updating both.
 
 ## Project map
 
@@ -56,10 +59,10 @@ A Cargo workspace; each crate is a top-level directory.
 
 | Crate | Kind | Responsibility |
 | --- | --- | --- |
-| `core/` (`xsa-core`) | library | Simulation data in SI units (`simulation.rs`), coordinate frames (`frames.rs`: ecliptic ↔ equatorial, with tests) |
+| `core/` (`xsa-core`) | library | Pack loading (`packs/`: ids, manifests, the pack stack, KDL helpers, body/system/simulation definitions), the simulation (`simulation.rs`: placements, barycenters, spin), Keplerian orbits (`orbit.rs`), time (`time.rs`: seconds since J2000), coordinate frames (`frames.rs`); `tests/system_solar.rs` checks the real-sky accuracy of the solar system pack |
 | `proto/` (`xsa-proto`) | library | Client ↔ server protocol: `messages.rs` (`ClientMessage`, `ServerEvent`, wire structs, bitcode), `connection.rs` (`Connection`, `ClientLink`), `network.rs` (QUIC transport, server identity, fingerprint pinning) |
-| `server/` (`xsa-server`) | library + binary | `lib.rs`: the authoritative `Server` tick loop and `start_local` for the integrated server; `main.rs`: the dedicated server |
-| `client/` (`xsa`) | binary | The game: `app.rs` (window, frame loop, input polling, camera modes, server events → scene), `camera/`, `input.rs`, `mesh.rs`, `renderer/`, `vulkan/`, `shaders/`, `build.rs` (compiles shaders) |
+| `server/` (`xsa-server`) | library + binary | `lib.rs`: `World` (loaded packs, simulation, time), the authoritative `Server` tick loop and `start_local` for the integrated server; `main.rs`: the dedicated server |
+| `client/` (`xsa`) | binary | The game: `app.rs` (window, frame loop, input polling, camera modes, joining a simulation), `content.rs` (reads pack resources: shaders, materials, skybox), `camera/`, `input.rs`, `mesh.rs`, `renderer/`, `vulkan/` |
 | `tools/` (`xsa-tools`) | binary | `convert-skybox`: equirectangular EXR → cube map DDS |
 
 Dependencies point one way: `core` ← `server` ← `client`, and `proto` ←
@@ -69,12 +72,15 @@ independent of simulation internals.
 **One simulation runner.** Local play starts the same `Server` the dedicated
 binary runs, on its own thread, connected through an in-process `Connection`;
 `--remote` swaps in a QUIC `Connection`. The client code is identical either
-way. The server owns simulation time; bodies on rails are computed from their
-definitions, so ticks carry time rather than full state.
+way. The server owns simulation time. On `Join` it answers `Joined` with the
+simulation id, the pack list with versions and the time; the client loads the
+same packs locally (refusing a version mismatch) and computes every body's
+position from the orbits, so ticks carry only time. Between ticks the client
+advances time with its own clock.
 
-Each frame, `App` runs `update` (poll the connection, poll input, update the
-camera) then `draw` (sync the scene from replicated bodies, render). Window
-events only record input; `poll_input` acts on it.
+Each frame, `App` runs `update` (poll the connection, poll input, compute the
+simulation state at the current time, update the camera) then `draw` (sync the
+scene, render). Window events only record input; `poll_input` acts on it.
 
 **Networking:** QUIC (`quinn`, `rustls` with the `ring` provider only) on UDP
 port 1969 by default. The dedicated server generates a self-signed identity on
@@ -93,6 +99,8 @@ frames on one bidirectional stream.
 - **Precision:** simulation state is `f64` (`DVec3`, `DQuat`). Rendering is
   camera-relative `f32` — positions are subtracted from the camera in `f64`
   before conversion — so solar-system distances never reach the GPU.
+- **Time:** simulation time is `f64` seconds since J2000.0
+  (2000-01-01T12:00:00Z); new simulations start at the current date.
 - **Body ids** are kebab-case scientific names: `sol`, `earth`, `luna`.
 
 ## Architecture
@@ -101,9 +109,11 @@ frames on one bidirectional stream.
   fixed timestep.** Saves, debug-mode editing and time warp all depend on it.
 - **One scene at every scale.** Rendering must handle 1 m to interplanetary
   distances in a single frame; there is no separate map scene.
-- **The renderer never sees simulation types.** `App` owns the simulation and
-  copies transforms into persistent `SceneObject`s each frame; objects and
-  materials are created once and referenced by handle.
+- **The renderer never sees simulation types.** `App` owns the client's copy of
+  the simulation and copies transforms into persistent `SceneObject`s each
+  frame; objects and materials are created once and referenced by handle.
+- **Pack content is resolved at load time.** KDL parsing, id resolution and
+  file lookups happen when a simulation is loaded or joined, never per frame.
 - **Materials are typed, Unity-style:** a `Shader` is a program, a `Material`
   is a shader plus typed parameters, stored in a per-frame GPU buffer.
 
@@ -119,7 +129,7 @@ frames on one bidirectional stream.
 - **Reverse-Z infinite depth.** Clear depth to 0, test `GREATER`. The near
   plane follows the nearest body surface (`Camera::fit_near_plane`); depth
   values below ~1e-8 fail the depth test, which is why it can't stay tiny.
-- **Sub-pixel bodies** are drawn as fixed-size dots (`client/shaders/point.slang`)
+- **Sub-pixel bodies** are drawn as fixed-size dots (`base:point`)
   instead of vanishing.
 - **Rendering architecture target:** clustered forward (Forward+) with a
   depth prepass, HDR render targets and a tonemapping pass. Volumetric effects
@@ -131,21 +141,23 @@ frames on one bidirectional stream.
 
 ## Shaders
 
-- Written in Slang, compiled offline to SPIR-V by `client/build.rs` with `slangc`
-  (pinned in `mise.toml`) and `-matrix-layout-column-major` to match glam.
-  The binary never embeds a shader compiler.
+- Written in Slang in the base pack (`packs/base/base/resources/shaders/`),
+  compiled offline to SPIR-V next to the sources by `mise run shaders` with
+  `slangc` (pinned in `mise.toml`) and `-matrix-layout-column-major` to match
+  glam. The game loads them from the pack at startup and never embeds a
+  shader compiler.
 - One top-level file per shader, with entry points named `vertexMain` and
-  `fragmentMain`. Shared code lives in `client/shaders/common/` and is imported, never
-  compiled on its own.
+  `fragmentMain`. Shared code lives in `shaders/common/` and is imported,
+  never compiled on its own.
 - Adding a material shader: create the file, then add it to the `shaders!`
-  list in `client/src/renderer/material.rs`, which generates the `Shader` enum, its
-  pipeline order and its SPIR-V mapping.
+  list in `client/src/renderer/material.rs`, which generates the `Shader`
+  enum, its pipeline order and its pack path.
 - **Struct layouts must match between Slang and Rust.** The `#[repr(C)]`
   structs in `client/src/renderer/gpu_data.rs` and `material.rs` mirror
-  `client/shaders/common/scene.slang`. Rust-side size assertions can't see Slang's
-  layout: after changing a shared struct, check the compiled SPIR-V
-  (`spirv-dis` on `target/debug/build/xsa-*/out/*.spv`, look at `Offset` and
-  `ArrayStride`). glam's `Mat4` forces 16-byte alignment, so Slang structs
+  `packs/base/base/resources/shaders/common/scene.slang`. Rust-side size
+  assertions can't see Slang's layout: after changing a shared struct, check
+  the compiled SPIR-V (`spirv-dis` on `packs/base/base/resources/shaders/*.spv`,
+  look at `Offset` and `ArrayStride`). glam's `Mat4` forces 16-byte alignment, so Slang structs
   often need explicit padding.
 
 ## Vulkan object lifetime

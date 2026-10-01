@@ -8,14 +8,21 @@ pub enum ClientMessage {
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
 pub enum ServerEvent {
-    Welcome { bodies: Vec<BodyDefinition> },
-    Tick { time: f64 },
+    Joined {
+        simulation: String,
+        packs: Vec<PackReference>,
+        time: f64,
+    },
+    JoinDenied {
+        reason: String,
+    },
+    Tick {
+        time: f64,
+    },
 }
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
-pub struct BodyDefinition {
+pub struct PackReference {
     pub id: String,
-    pub position: [f64; 3],
-    pub orientation: [f64; 4],
-    pub radius: f64,
+    pub version: String,
 }

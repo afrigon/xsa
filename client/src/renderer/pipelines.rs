@@ -8,7 +8,12 @@ use super::material::Shader;
 use crate::mesh::Vertex;
 use crate::vulkan::{BindlessTextures, Device, GraphicsPipeline, GraphicsPipelineDescription};
 
-const POINT_SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/point.spv"));
+pub const POINT_SHADER_PATH: &str = "point";
+
+pub struct ShaderBinaries {
+    pub shaders: Vec<Vec<u8>>,
+    pub point: Vec<u8>,
+}
 
 pub(super) struct Pipelines {
     shaders: Vec<GraphicsPipeline>,
@@ -16,15 +21,28 @@ pub(super) struct Pipelines {
 }
 
 impl Pipelines {
-    pub fn new(device: &Device, bindless: &BindlessTextures, color_format: vk::Format) -> anyhow::Result<Self> {
+    pub fn new(
+        device: &Device,
+        bindless: &BindlessTextures,
+        binaries: &ShaderBinaries,
+        color_format: vk::Format,
+    ) -> anyhow::Result<Self> {
         let shaders = Shader::ALL
             .iter()
-            .map(|shader| create_shader_pipeline(device, bindless, *shader, color_format))
+            .map(|shader| {
+                create_shader_pipeline(
+                    device,
+                    bindless,
+                    *shader,
+                    &binaries.shaders[shader.index()],
+                    color_format,
+                )
+            })
             .collect::<anyhow::Result<_>>()?;
         let point = GraphicsPipeline::new(
             device,
             &GraphicsPipelineDescription {
-                spirv: POINT_SHADER,
+                spirv: &binaries.point,
                 color_format,
                 depth_format: Some(DEPTH_FORMAT),
                 depth_compare_op: vk::CompareOp::GREATER,
@@ -62,6 +80,7 @@ fn create_shader_pipeline(
     device: &Device,
     bindless: &BindlessTextures,
     shader: Shader,
+    spirv: &[u8],
     color_format: vk::Format,
 ) -> anyhow::Result<GraphicsPipeline> {
     let vertex_bindings = [vk::VertexInputBindingDescription::default()
@@ -81,7 +100,7 @@ fn create_shader_pipeline(
             .offset(offset_of!(Vertex, normal) as u32),
     ];
     let mesh_description = GraphicsPipelineDescription {
-        spirv: shader.spirv(),
+        spirv,
         color_format,
         depth_format: Some(DEPTH_FORMAT),
         depth_compare_op: vk::CompareOp::GREATER,

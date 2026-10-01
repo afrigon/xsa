@@ -1,0 +1,98 @@
+use std::fs;
+use std::path::PathBuf;
+
+use anyhow::{Context, bail, ensure};
+use glam::{Mat3, Vec3};
+use xsa_core::frames;
+use xsa_core::packs::document::{self, Document};
+use xsa_core::packs::{Id, PackStack};
+
+use crate::renderer::{Material, POINT_SHADER_PATH, Shader, ShaderBinaries};
+
+const BASE_NAMESPACE: &str = "base";
+const SHADERS: &str = "shaders";
+const SHADER_EXTENSION: &str = "spv";
+const MATERIALS: &str = "materials";
+const BODY_OBJECTS: &str = "objects/bodies";
+const SIMULATION_OBJECTS: &str = "objects/simulations";
+const TEXTURES: &str = "textures";
+const TEXTURE_EXTENSION: &str = "dds";
+const DEFINITION_EXTENSION: &str = "kdl";
+
+pub struct SkyboxDefinition {
+    pub texture: PathBuf,
+    pub orientation: Mat3,
+}
+
+pub fn load_shaders(stack: &PackStack) -> anyhow::Result<ShaderBinaries> {
+    let read = |path: &str| {
+        let id = Id {
+            namespace: BASE_NAMESPACE.to_string(),
+            path: path.to_string(),
+        };
+        let file = stack
+            .resource(SHADERS, &id, SHADER_EXTENSION)
+            .context("shaders are missing: run `mise run shaders`")?;
+        fs::read(file).with_context(|| format!("reading {}", file.display()))
+    };
+    Ok(ShaderBinaries {
+        shaders: Shader::ALL
+            .iter()
+            .map(|shader| read(shader.path()))
+            .collect::<anyhow::Result<_>>()?,
+        point: read(POINT_SHADER_PATH)?,
+    })
+}
+
+pub fn load_body_material(stack: &PackStack, body: &Id) -> anyhow::Result<Material> {
+    let object = Document::read(stack.resource(BODY_OBJECTS, body, DEFINITION_EXTENSION)?)?;
+    let material = Id::parse(document::string_argument(object.node("material")?)?, &body.namespace)
+        .with_context(|| format!("{}", object.path().display()))?;
+    let file = Document::read(stack.resource(MATERIALS, &material, DEFINITION_EXTENSION)?)?;
+    parse_material(&file, &material.namespace).with_context(|| format!("{}", file.path().display()))
+}
+
+fn parse_material(file: &Document, namespace: &str) -> anyhow::Result<Material> {
+    let shader = Id::parse(document::string_argument(file.node("shader")?)?, namespace)?;
+    let color = |name: &str| -> anyhow::Result<Vec3> {
+        let components = document::number_arguments(file.node(name)?)?;
+        ensure!(components.len() == 3, "`{name}` needs three components: red green blue");
+        Ok(Vec3::new(
+            components[0] as f32,
+            components[1] as f32,
+            components[2] as f32,
+        ))
+    };
+    match shader.to_string().as_str() {
+        "base:lit" => Ok(Material::Lit {
+            base_color: color("base-color")?,
+        }),
+        "base:emissive" => Ok(Material::Emissive { color: color("color")? }),
+        _ => bail!("shader {shader} is not supported by materials yet"),
+    }
+}
+
+pub fn load_skybox(stack: &PackStack, simulation: &Id) -> anyhow::Result<Option<SkyboxDefinition>> {
+    let Ok(path) = stack.resource(SIMULATION_OBJECTS, simulation, DEFINITION_EXTENSION) else {
+        return Ok(None);
+    };
+    let object = Document::read(path)?;
+    let Some(skybox) = object.optional_node("skybox") else {
+        return Ok(None);
+    };
+    let parse = || -> anyhow::Result<SkyboxDefinition> {
+        let texture = Id::parse(document::string_property(skybox, "texture")?, &simulation.namespace)?;
+        let orientation = match document::string_property(skybox, "frame")? {
+            "equatorial" => frames::equatorial_from_ecliptic().as_mat3(),
+            "ecliptic" => Mat3::IDENTITY,
+            other => bail!("unknown skybox frame `{other}`: use `equatorial` or `ecliptic`"),
+        };
+        Ok(SkyboxDefinition {
+            texture: stack.resource(TEXTURES, &texture, TEXTURE_EXTENSION)?.to_path_buf(),
+            orientation,
+        })
+    };
+    parse()
+        .map(Some)
+        .with_context(|| format!("{}", object.path().display()))
+}

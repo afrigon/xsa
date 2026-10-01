@@ -1,0 +1,2 @@
+shader "base:lit"
+base-color 0.5 0.5 0.5

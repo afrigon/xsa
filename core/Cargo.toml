@@ -6,3 +6,5 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 glam.workspace = true
+kdl = "6.7.1"
+semver = "1.0.28"

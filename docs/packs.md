@@ -2,77 +2,186 @@
 
 Everything that defines what exists in the game and how it looks — bodies,
 star systems, simulations, parts, materials, textures, sounds, text — comes
-from packs: directories of KDL files and assets. `packs/base` holds only what
-the game itself needs (built-in shader types, default textures, UI) and
-defines no star system. Star systems ship as their own packs — the real solar
-system is `packs/sol` — and custom systems, reskins and mods are packs layered
-on top. With no system installed, the game asks the player to install one.
+from packs: directories of KDL files and assets, modeled on Minecraft's data
+and resource packs. `packs/base` holds only what the game itself needs
+(built-in shaders, later default textures and UI) and defines no star system.
+Star systems ship as their own packs — the real solar system is
+`packs/system-solar` — and custom systems, reskins and mods are packs layered
+on top. With no system installed, the game refuses to start a simulation.
+
+Packs are parsed and resolved once, at load time, into typed data with
+indices; gameplay never reads KDL or looks anything up by name.
 
 ## Pack structure
 
+A pack contains **namespace folders**, each holding its own `data/` and
+`resources/`. A pack usually uses its own id as its only namespace, and adds a
+folder for another namespace only to override that pack's content.
+
 ```
 packs/<pack>/
-  pack.kdl                    manifest
-  data/                       gameplay and physics — read by the server
-    bodies/                   intrinsic properties of each body
-    systems/                  how bodies relate: hierarchy and orbits
-    simulations/              which systems make up a playable simulation
-    parts/                    rocket parts
-  resources/                  presentation — read by the client
-    objects/                  mirrors data/ one-to-one
-      bodies/  systems/  simulations/  parts/
-    materials/                shader type, texture slots and usage parameters
-    textures/  models/  sounds/  fonts/    shared assets, organized freely
-    lang/                     localization files
+  pack.kdl                                  manifest
+  <namespace>/
+    data/                                   gameplay and physics — read by the server
+      bodies/                               intrinsic properties of each body
+      systems/                              how bodies relate: hierarchy and orbits
+      simulations/                          which systems make up a playable simulation
+      parts/                                rocket parts (reserved)
+    resources/                              presentation — read by the client
+      objects/                              mirrors data/ one-to-one
+        bodies/  systems/  simulations/  parts/
+      materials/                            shader and its parameters
+      shaders/                              SPIR-V shaders (base only, see below)
+      textures/  models/  sounds/  fonts/   shared assets, organized freely
+      lang/                                 localization files (reserved)
 ```
 
-A pack may contain `data/`, `resources/` or both. The server only reads `data/`;
-the client reads both. Trimming the resources from a server installation, or
-streaming a server's packs to connecting clients, is a distribution concern
-and does not change the format.
+The server only reads `data/`; the client reads both.
 
 ## Manifest
 
-`pack.kdl` declares the pack id, display name key, version, pack format
-version, description key and the packs it depends on. The loader rejects packs
-whose format version it doesn't support.
+```kdl
+version "0.1.0"
+format 1
+dependencies {
+    base "^0.1.0"
+}
+```
+
+- **`version`:** the pack's semantic version.
+- **`format`:** the pack format version; the loader rejects formats it does
+  not support.
+- **`dependencies`:** one child per required pack, named by pack id, with a
+  Cargo-style version requirement. A dependency must appear earlier in the
+  pack list.
 
 ## Ids and namespaces
 
-Every entry has a namespaced id, `<pack>:<path>`, derived from its location:
-`packs/base/data/bodies/earth.kdl` is `base:bodies/earth`. Namespaces let two
-packs add entries with the same name without colliding, and make overriding
-an explicit act. Body ids use kebab-case scientific names (`sol`, `earth`,
-`luna`).
+An id is `namespace:path`, where the path is the file's location inside the
+folder for its kind, without the extension:
+`packs/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds`
+is the texture `system-solar:skyboxes/deep-star-maps`. The kind comes from
+where a reference is used — a `material` reference looks in `materials/`, a
+skybox `texture` in `textures/` — so ids never repeat it. Inside a file, a
+reference without a namespace means the file's own namespace. Body ids use
+kebab-case scientific names (`sol`, `earth`, `luna`).
 
 ## Stack and overrides
 
-The effective game content is built from an ordered list of packs. A later
-pack replaces an earlier pack's entry with the same id, one whole file at a
-time. Field-level merging between packs is deliberately not supported.
-Higher-resolution textures, reskins and rebalanced systems are all plain
-overrides.
+The effective game content is built from an ordered list of packs. Every file
+fills the slot `namespace/section/kind/path`; a later pack's file in the same
+slot replaces the earlier one, one whole file at a time. Field-level merging is
+deliberately not supported. Overriding another pack means adding a folder for
+its namespace — `system-solar/resources/textures/…` in a reskin pack — which
+makes the intent explicit.
 
 ## Data
 
-The split between bodies and systems follows what is intrinsic to a body and
-what depends on its surroundings.
+### Bodies — `<namespace>/data/bodies/`
 
-| `data/bodies/` — intrinsic | `data/systems/` — relational |
-| --- | --- |
-| radius and shape (flattening) | parent body |
-| gravitational parameter (μ = G·M) | orbital elements and their epoch |
-| rotation period | spin axis orientation in the system frame |
-| axial tilt relative to its own orbital plane | initial rotation angle |
-| terrain shape: heightmaps and procedural parameters | tidal locking, overriding the body's rotation |
-| atmosphere physics: density and pressure profiles | |
+Properties intrinsic to a body, valid in any system. SI units; angles in
+degrees.
 
-A body definition can be reused in several systems. Systems also contain
-**barycenters** — massless points that bodies orbit and that orbit something
-themselves — so pairs like Earth–Moon, Pluto–Charon or binary stars stay on
-exact Keplerian rails. `data/simulations/` composes one or more systems into
-what the player selects in game, including their placement relative to each
-other and the start date.
+```kdl
+radius 6371000
+gravitational-parameter 3.986004418e14
+rotation-period 86164.0905
+axial-tilt 23.4392811
+```
+
+- **`radius`** (m): mean radius.
+- **`gravitational-parameter`** (m³/s²): μ = G·M, which is measured far more
+  precisely than the mass itself.
+- **`rotation-period`** (s): sidereal rotation period.
+- **`axial-tilt`** (°): tilt of the spin axis relative to the body's own
+  orbital plane.
+
+### Systems — `<namespace>/data/systems/`
+
+How bodies relate. Nesting mirrors the orbit hierarchy: a node's children
+orbit it.
+
+```kdl
+epoch "2000-01-01T12:00:00Z"
+star "sol" spin-azimuth=75.76 {
+    barycenter "earth-moon" {
+        orbit semi-major-axis=1.49598261e11 eccentricity=0.01671123 inclination=-0.00001531 ascending-node=0 periapsis=102.93768193 mean-anomaly=-2.47311027 {
+            rates semi-major-axis=840.7 eccentricity=-0.00004392 inclination=-0.01294668 periapsis=0.32327364
+        }
+        primary "earth" spin-azimuth=180 prime-meridian=100.46061837
+        secondary "luna" tidally-locked=#true {
+            orbit semi-major-axis=384399000 eccentricity=0.0549 inclination=5.145 ascending-node=125.0445479 periapsis=318.3086986 mean-anomaly=134.9633964 mean-motion=477198.8675055 {
+                rates ascending-node=-1934.1362891 periapsis=6003.1500178
+            }
+        }
+    }
+}
+```
+
+**Top level**
+
+- **`epoch`** (UTC timestamp): the instant at which every orbital element in
+  the file is valid. Positions at any other time are propagated from it.
+- **Root**, exactly one of `star "<body>"` (a body at the system origin) or
+  `barycenter "<name>"` (an invisible center of mass at the origin, for binary
+  stars).
+
+**Nodes**
+
+- **`body "<body id>"`:** a body from `data/bodies/`; needs an `orbit` unless
+  it is the root.
+- **`barycenter "<name>"`:** a pair orbiting their common center of mass. Its
+  `orbit` is the barycenter's own orbit around its parent (omitted at the
+  root); it contains a `primary "<body id>"` with no orbit and a
+  `secondary "<body id>"` whose `orbit` is **relative to the primary**. The
+  loader splits that relative orbit by mass ratio into exact orbits around the
+  barycenter. Larger groupings nest barycenters.
+
+**`orbit`** — classical Keplerian elements relative to the parent, in the
+ecliptic J2000 frame; angles in degrees.
+
+- **`semi-major-axis`** (m): half the ellipse's longest diameter.
+- **`eccentricity`:** shape, from 0 (circle) to below 1 (closed orbits only).
+- **`inclination`:** tilt of the orbital plane relative to the ecliptic.
+- **`ascending-node`:** where the orbit crosses the ecliptic going north,
+  measured from the vernal equinox (+X).
+- **`periapsis`:** argument of periapsis — angle in the orbital plane from the
+  ascending node to the closest point.
+- **`mean-anomaly`:** position along the orbit at the epoch, as an angle
+  growing uniformly with time.
+- **`mean-motion`** (optional, °/Julian century): how fast the mean anomaly
+  grows. Derived from the semi-major axis and the combined μ of the body and
+  its parent when absent; given explicitly where perturbations make the
+  two-body value wrong (the Moon).
+- **`rates`** (optional child): per-element change per Julian century
+  (36,525 days) — `semi-major-axis` (m), `eccentricity`, `inclination`,
+  `ascending-node`, `periapsis` (°). Absent rates are zero. Real bodies need
+  them to stay accurate decades away from the epoch; fictional systems can
+  omit them.
+
+**Spin properties** on `star`, `body`, `primary` and `secondary` nodes, all
+optional:
+
+- **`spin-azimuth`** (°): the direction, around the reference plane's normal,
+  toward which the spin axis tilts. The reference plane is the body's orbit
+  (for a primary, its barycenter's orbit; for the root, the ecliptic).
+- **`prime-meridian`** (°): the body's rotation angle at the epoch.
+- **`tidally-locked=#true`:** the rotation period equals the orbital period,
+  phased so the body faces its parent on average. Rotation stays uniform, so
+  libration appears naturally on eccentric or inclined orbits.
+
+### Simulations — `<namespace>/data/simulations/`
+
+What the player selects in game.
+
+```kdl
+system "sol"
+```
+
+- **`system`:** the system to run.
+
+A new save starts at the current date; the date is a property of the save,
+not of the simulation.
 
 **Anything the physics needs lives in `data/`**, because the server never
 reads resources. Terrain shape decides where a lander touches down, and
@@ -81,53 +190,65 @@ of them is binary.
 
 ## Resources
 
-- **`objects/` mirrors `data/`.** `data/bodies/earth.kdl` is presented by
-  `resources/objects/bodies/earth.kdl`: its material, levels of detail,
-  atmosphere and cloud visuals, icon, and the localization keys of its name
-  and description. Systems and simulations have object files too, for icons,
-  text and — for simulations — the skybox.
-- **Shared assets** (`textures/`, `models/`, `sounds/`, `fonts/`) sit at the
-  top level so any object or material can use them. Their folders are
-  organized by subject for people (`textures/bodies/earth/color.dds`); the
-  engine gives folder and file names no meaning.
-- **A texture's purpose is declared where it is used.** A material names which
-  texture fills which slot (`base-color`, `normal`, …), so new texture roles
-  need no new folder conventions.
-- **A skybox is a cube-map texture.** The simulation's object file references
-  it together with the frame it is aligned to.
+### Objects — `<namespace>/resources/objects/`
 
-### Texture metadata
+Mirror `data/`: `<namespace>/data/bodies/earth.kdl` is presented by
+`<namespace>/resources/objects/bodies/earth.kdl`.
 
-- **What the texture is** lives in an optional sidecar next to it
-  (`color.dds.kdl`): color space (sRGB or linear), mipmap generation,
-  filtering, animation frames and timing, streaming hints.
-- **How it is used** lives in the material: slot, tiling, scale, scroll
-  speed. The same texture can be used differently by several materials.
+```kdl
+material "earth"
+```
 
-## Localization
+A simulation's object file holds its skybox:
 
-Every player-visible string in resources is a key (`base.bodies.earth.name`)
-resolved through `resources/lang/<language>.kdl`. English is the reference
-language.
+```kdl
+skybox texture="skyboxes/deep-star-maps" frame="equatorial"
+```
+
+- **`texture`:** a cube-map texture.
+- **`frame`:** `equatorial` for celestial-coordinate star maps, `ecliptic` for
+  maps already aligned with the world frame.
+
+### Materials — `<namespace>/resources/materials/`
+
+```kdl
+shader "base:lit"
+base-color 0.1 0.25 0.6
+```
+
+- **`shader "base:lit"`** with **`base-color`** (linear red green blue).
+- **`shader "base:emissive"`** with **`color`**; the first emissive body is
+  the light source.
+
+### Shaders — `base/resources/shaders/`
+
+The built-in shaders live in the base pack as Slang sources compiled to SPIR-V
+by `mise run shaders`; the game loads them by id (`base:lit`). Shaders from
+other packs, with their own material properties, are planned.
+
+### Textures — `<namespace>/resources/textures/`
+
+DDS files (BC7 or uncompressed RGBA8), uploaded exactly as stored. Folders are
+organized by subject for people; a texture's purpose is declared by whatever
+references it.
 
 ## Formats
 
-- **Definitions:** KDL.
-- **Textures:** DDS, uploaded exactly as stored (BC7, BC6H or uncompressed) —
-  never re-encoded at load, so no quality is lost.
+- **Definitions:** KDL v2.
+- **Textures:** DDS, never re-encoded at load, so no quality is lost.
 - **3D models:** glTF 2.0 where a source offers it; other formats as needed by
-  the models available. Simple geometry (spheres, cube-spheres, boxes) is
-  defined inline in KDL.
+  the models available.
 
 ## Not part of the first version
 
-Parts, custom shaders, effects (plumes, explosions, particles), sounds, fonts
-and UI layouts. Their directories are reserved so packs can grow into them
-without a format change.
+Parts, custom shaders, effects (plumes, explosions, particles), sounds, fonts,
+localization and UI layouts. Their directories are reserved so packs can grow
+into them without a format change.
 
 ## Distribution
 
-Pack definitions (`.kdl`) are committed to the repository next to the code
-that reads them. Large binary resources are not: they are published as a
-versioned archive in object storage, and `mise run fetch-assets` downloads a
-pinned version, verifies its checksum and extracts it into the pack.
+Pack text files (`.kdl`, `.slang`) are committed to the repository; binary
+files (`.dds`, `.spv`, …) are git-ignored. Releases publish each pack, text
+and binaries together, as a versioned `.tar.zst` archive in object storage;
+`mise run fetch-assets` downloads the latest release and extracts the binaries
+into the working tree.

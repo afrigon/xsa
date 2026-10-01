@@ -16,9 +16,9 @@ macro_rules! shaders {
                 self as usize
             }
 
-            pub fn spirv(self) -> &'static [u8] {
+            pub fn path(self) -> &'static str {
                 match self {
-                    $(Shader::$variant => include_bytes!(concat!(env!("OUT_DIR"), "/", $file, ".spv"))),+
+                    $(Shader::$variant => $file),+
                 }
             }
         }

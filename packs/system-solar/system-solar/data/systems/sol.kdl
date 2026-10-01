@@ -1,0 +1,14 @@
+epoch "2000-01-01T12:00:00Z"
+star "sol" spin-azimuth=75.76 {
+    barycenter "earth-moon" {
+        orbit semi-major-axis=1.49598261e11 eccentricity=0.01671123 inclination=-0.00001531 ascending-node=0 periapsis=102.93768193 mean-anomaly=-2.47311027 {
+            rates semi-major-axis=840.7 eccentricity=-0.00004392 inclination=-0.01294668 periapsis=0.32327364
+        }
+        primary "earth" spin-azimuth=180 prime-meridian=100.46061837
+        secondary "luna" tidally-locked=#true {
+            orbit semi-major-axis=384399000 eccentricity=0.0549 inclination=5.145 ascending-node=125.0445479 periapsis=318.3086986 mean-anomaly=134.9633964 mean-motion=477198.8675055 {
+                rates ascending-node=-1934.1362891 periapsis=6003.1500178
+            }
+        }
+    }
+}

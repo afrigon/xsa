@@ -14,22 +14,36 @@
   recreation ever picks a different format (e.g. the window moves to a
   monitor with other surface formats), the pipelines no longer match. Goes
   away once scene rendering targets its own fixed-format HDR image.
+- Pack files: unknown nodes are rejected, but unknown properties are not, so a
+  misspelled optional property (e.g. a rate) is silently ignored. Reject
+  properties a node doesn't define.
+- system-solar data: the Sun's and Moon's spin orientation (pole direction,
+  prime meridian) is approximate, and the Moon's mean elements are referred to
+  the equinox of date (~0.36° offset by 2026). Fix with ephemerides; invisible
+  until bodies are textured.
+- The client loads shaders from the `base` pack only, before joining, so other
+  packs cannot override them yet (part of custom shaders in packs).
+- A remote client must have the server's packs installed with matching
+  versions; streaming them is part of multiplayer.
 
 # Next steps
 
-- Pack system, first version, per docs/packs.md: manifest, pack stack with
-  whole-file overrides, namespaced ids, data/bodies, data/systems,
-  data/simulations, resources/objects, materials, texture references
-  (including the skybox), lang/en.kdl, barycenter entries in systems. A
-  minimal `base` pack and a `sol` pack holding the solar system. Replaces the
-  hardcoded Simulation::solar_system and the client's body appearance table;
-  the Welcome event then carries the pack list and simulation id instead of
-  body definitions. Needs the `kdl` crate and a Kepler solver in core.
-- Asset hosting: publish binary pack resources as a versioned archive in S3
-  (optionally behind CloudFront for download costs); fetch-assets downloads a
-  pinned version and verifies its checksum; upload credentials through fnox.
-  Replaces the assets/ directory and local skybox conversion.
-- Slang ↔ Rust layout check: build.rs reads `slangc -reflection-json`
+- Commit the pack system (core packs/orbit/time/simulation, base and
+  system-solar packs in the namespace-first layout, Joined/JoinDenied
+  protocol, content loading in the client, shaders task) — left uncommitted
+  until the user asks.
+- Translation keys (undecided): explicit keys in files following
+  `<pack>.description`, `<pack>.<module>.<entry>.<field>` and
+  `<pack>.ui.<screen>.<name>`, or keys derived implicitly from ids.
+- Asset hosting: publish binary pack resources as a versioned `.tar.zst`
+  archive per pack (players open it with 7-Zip 24.01+ or Windows 11; we create
+  it with our own tooling) in S3, optionally behind CloudFront for download
+  costs. Repository keeps pack text files only; fetch-assets downloads the
+  latest release and extracts the binaries into the working tree (first
+  release bootstrapped by hand); a release task packs and uploads, later a
+  GitHub Action. Upload credentials through fnox.
+- Slang ↔ Rust layout check: the `shaders` task also writes
+  `slangc -reflection-json` output; a client build script reads it
   (serde_json as a build dependency) and generates offsets and sizes that Rust
   const assertions compare field by field.
 - Grow the per-frame material buffer like the object buffer instead of failing
@@ -46,8 +60,11 @@
   no commercial use, derived textures stay under the same license. Keep the
   texture pipeline source-agnostic so they can be swapped for NASA-derived
   data before any commercial release.
-- Texture streaming by distance: only bodies near the camera get high
-  resolution textures; distant ones keep a small mip level resident.
+- Texture streaming and a VRAM budget: textures are not all preloaded — only
+  the mip levels a texture needs at its current on-screen size are resident,
+  loaded and evicted in the background, and total usage stays under the budget
+  reported by VK_EXT_memory_budget (least recently used evicted first).
+  Required before high-resolution texture packs.
 - Planet LOD: cube-sphere faces split into quadtrees as the camera approaches;
   each tile has its own local origin to keep f32 precision on the surface.
 - Seamless map mode: the map is the live world zoomed out. The camera stays
@@ -81,8 +98,12 @@
   interstellar distances.
 - AI-assisted translation of lang files through a mise task; English is the
   reference language.
-- Effects system (plumes, explosions, particles, possibly custom shaders in
-  packs); atmosphere and cloud visuals tie into it.
+- Effects system (plumes, explosions, particles); atmosphere and cloud visuals
+  tie into it.
+- Custom shaders in packs: packs ship SPIR-V compiled against the shader
+  interface published by `base` (shared module, data layouts); shaders declare
+  their material properties in a sidecar so materials set them by name, which
+  replaces the closed Material enum. Interface changes bump the pack format.
 - 3D model formats: glTF 2.0 preferred; support whatever formats the chosen
   open-source models use.
 - Simulation step: planets on rails — Keplerian orbits with barycenters, and
