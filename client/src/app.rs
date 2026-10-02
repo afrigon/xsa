@@ -10,8 +10,8 @@ use winit::keyboard::KeyCode;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
 use xsa_core::packs::{Id, PackStack};
 use xsa_core::simulation::{Simulation, SimulationState};
-use xsa_proto::connection::Connection;
 use xsa_proto::messages::{ClientMessage, PackReference, ServerEvent};
+use xsa_proto::session::ServerSession;
 
 use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
@@ -63,21 +63,13 @@ struct World {
     state: SimulationState,
     body_objects: Vec<ObjectHandle>,
     light_body: Option<usize>,
-    server_time: f64,
-    server_time_received: Instant,
-}
-
-impl World {
-    fn time(&self) -> f64 {
-        self.server_time + self.server_time_received.elapsed().as_secs_f64()
-    }
 }
 
 pub struct App {
     renderer: Option<Renderer>,
     window: Option<Window>,
     error: Option<anyhow::Error>,
-    connection: Connection,
+    session: ServerSession,
     packs_directory: PathBuf,
     world: Option<World>,
     skybox: Option<MaterialHandle>,
@@ -91,12 +83,12 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(connection: Connection, packs_directory: PathBuf) -> Self {
+    pub fn new(session: ServerSession, packs_directory: PathBuf) -> Self {
         Self {
             renderer: None,
             window: None,
             error: None,
-            connection,
+            session,
             packs_directory,
             world: None,
             skybox: None,
@@ -148,22 +140,17 @@ impl App {
     }
 
     fn poll_connection(&mut self) -> anyhow::Result<()> {
-        while let Some(event) = self.connection.poll()? {
+        while let Some(event) = self.session.poll()? {
             match event {
-                ServerEvent::Joined {
-                    simulation,
-                    packs,
-                    time,
-                } => self
-                    .join(&simulation, &packs, time)
-                    .with_context(|| format!("joining simulation {simulation}"))?,
+                ServerEvent::JoinAccepted { state } => self
+                    .join(&state.simulation, &state.packs, state.time)
+                    .with_context(|| format!("joining simulation {}", state.simulation))?,
                 ServerEvent::JoinDenied { reason } => bail!("the server refused to let us join: {reason}"),
-                ServerEvent::Tick { time } => {
-                    if let Some(world) = &mut self.world {
-                        world.server_time = time;
-                        world.server_time_received = Instant::now();
-                    }
-                }
+                ServerEvent::PlayerJoined { .. }
+                | ServerEvent::PlayerLeft { .. }
+                | ServerEvent::TimeChanged { .. }
+                | ServerEvent::Tick { .. }
+                | ServerEvent::Reply { .. } => {}
             }
         }
         Ok(())
@@ -254,8 +241,6 @@ impl App {
             state,
             body_objects,
             light_body,
-            server_time: time,
-            server_time_received: Instant::now(),
         });
         Ok(())
     }
@@ -343,9 +328,10 @@ impl App {
     }
 
     fn update_simulation(&mut self) {
-        if let Some(world) = &mut self.world {
-            let time = world.time();
-            world.simulation.state_at(time, &mut world.state);
+        if let Some(world) = &mut self.world
+            && let Some(state) = self.session.state()
+        {
+            world.simulation.state_at(state.time(), &mut world.state);
         }
     }
 
@@ -469,7 +455,7 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                let _ = self.connection.send(ClientMessage::Leave);
+                let _ = self.session.send(ClientMessage::Leave);
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {

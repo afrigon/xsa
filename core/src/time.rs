@@ -6,6 +6,7 @@ const SECONDS_PER_DAY: f64 = 86_400.0;
 const UNIX_EPOCH_SECONDS_SINCE_J2000: f64 = -946_728_000.0;
 
 pub const SECONDS_PER_JULIAN_CENTURY: f64 = 36_525.0 * SECONDS_PER_DAY;
+pub const TICK_RATE_HERTZ: f64 = 60.0;
 
 pub fn now() -> anyhow::Result<f64> {
     let since_unix_epoch = SystemTime::now()

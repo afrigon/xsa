@@ -58,6 +58,13 @@ struct WorldArguments {
 struct ClientArguments {
     #[usage(
         long,
+        env_fallback("USER", "USERNAME"),
+        default = "player",
+        help = "Player name shown to other players"
+    )]
+    player: String,
+    #[usage(
+        long,
         requires("--fingerprint"),
         help = "Connect to a remote server at <host>:<port>; IPv6 hosts go in brackets, e.g. [::1]:1969"
     )]
@@ -119,6 +126,7 @@ fn run_client(arguments: ClientArguments) -> anyhow::Result<()> {
         None => None,
     };
     xsa_client::run(xsa_client::ClientOptions {
+        player: arguments.player,
         remote,
         world: arguments.world.into_options(),
     })

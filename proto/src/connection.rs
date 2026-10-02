@@ -2,15 +2,15 @@ use anyhow::{anyhow, bail};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
-use crate::messages::{ClientMessage, ServerEvent};
+use crate::messages::{ClientFrame, ServerEvent};
 
 pub struct Connection {
-    pub(crate) messages: UnboundedSender<ClientMessage>,
+    pub(crate) messages: UnboundedSender<ClientFrame>,
     pub(crate) events: UnboundedReceiver<ServerEvent>,
 }
 
 pub struct ClientLink {
-    pub messages: UnboundedReceiver<ClientMessage>,
+    pub messages: UnboundedReceiver<ClientFrame>,
     pub events: UnboundedSender<ServerEvent>,
 }
 
@@ -29,10 +29,17 @@ impl Connection {
         (connection, link)
     }
 
-    pub fn send(&self, message: ClientMessage) -> anyhow::Result<()> {
+    pub fn send(&self, frame: ClientFrame) -> anyhow::Result<()> {
         self.messages
-            .send(message)
+            .send(frame)
             .map_err(|_| anyhow!("the server has disconnected"))
+    }
+
+    pub async fn receive(&mut self) -> anyhow::Result<ServerEvent> {
+        self.events
+            .recv()
+            .await
+            .ok_or_else(|| anyhow!("the server has disconnected"))
     }
 
     pub fn poll(&mut self) -> anyhow::Result<Option<ServerEvent>> {
