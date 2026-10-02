@@ -1,0 +1,15 @@
+[package]
+name = "xsa"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["client"]
+client = ["server", "dep:xsa-client"]
+server = ["dep:xsa-server"]
+
+[dependencies]
+anyhow.workspace = true
+usage.workspace = true
+xsa-client = { workspace = true, optional = true }
+xsa-server = { workspace = true, optional = true }

@@ -1,3 +1,5 @@
+pub mod dedicated;
+
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};

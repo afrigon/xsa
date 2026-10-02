@@ -3,53 +3,23 @@ use std::path::PathBuf;
 use std::thread;
 
 use tokio::sync::mpsc::unbounded_channel;
-use usage::Cli;
 use xsa_proto::network::{self, Identity};
-use xsa_server::{Server, World, WorldOptions};
 
-#[derive(Cli)]
-#[usage(
-    bin = "xsa-server",
-    version,
-    about = "Dedicated xsa server",
-    unknown_flags = "error",
-    args_override_self = false
-)]
-struct Arguments {
-    #[usage(long, default = "::1", help = "Address to listen on")]
-    host: IpAddr,
-    #[usage(long, default = "1969", help = "UDP port to listen on")]
-    port: u16,
-    #[usage(long, default = ".xsa/server", help = "Directory holding the server identity")]
-    identity: PathBuf,
-    #[usage(long, default = "packs", help = "Directory containing the installed packs")]
-    packs_directory: PathBuf,
-    #[usage(
-        long,
-        delimiter = ',',
-        default = "base",
-        default = "system-solar",
-        help = "Packs to load, in stack order (later packs override earlier ones)"
-    )]
-    packs: Vec<String>,
-    #[usage(
-        long,
-        help = "Simulation to run, e.g. system-solar:sol; defaults to the only one installed"
-    )]
-    simulation: Option<String>,
+use crate::{Server, World, WorldOptions};
+
+pub struct DedicatedOptions {
+    pub host: IpAddr,
+    pub port: u16,
+    pub identity: PathBuf,
+    pub world: WorldOptions,
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let arguments = Arguments::parse();
-    let world = World::load(&WorldOptions {
-        packs_directory: arguments.packs_directory,
-        packs: arguments.packs,
-        simulation: arguments.simulation,
-    })?;
+pub async fn run(options: DedicatedOptions) -> anyhow::Result<()> {
+    let world = World::load(&options.world)?;
     println!("simulation {}", world.simulation().id());
-    let identity = Identity::load_or_generate(&arguments.identity)?;
-    let address = SocketAddr::new(arguments.host, arguments.port);
+    let identity = Identity::load_or_generate(&options.identity)?;
+    let address = SocketAddr::new(options.host, options.port);
     let listener = network::listen(&identity, address)?;
     println!("listening on {address}");
     println!("fingerprint {}", identity.fingerprint());

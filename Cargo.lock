@@ -2546,10 +2546,19 @@ name = "xsa"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "usage-rs",
+ "xsa-client",
+ "xsa-server",
+]
+
+[[package]]
+name = "xsa-client"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
  "ash",
  "glam",
  "gpu-allocator",
- "usage-rs",
  "winit",
  "xsa-core",
  "xsa-proto",
@@ -2585,7 +2594,6 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "tokio",
- "usage-rs",
  "xsa-core",
  "xsa-proto",
 ]

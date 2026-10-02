@@ -4,11 +4,19 @@ rust = "latest"
 xh = "latest"
 
 [vars]
+server_target_directory = "target/server"
 star_map_url = "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/starmap_2020_16k.exr"
 
 [tasks.build]
-description = "Build every crate in the workspace"
-run = "cargo build --workspace"
+description = "Build every crate in the workspace with the client and server"
+depends = ["shaders"]
+usage = 'flag "--release" help="Build with optimizations"'
+run = 'cargo build --workspace ${usage_release:+--release}'
+
+[tasks.build-server]
+description = "Build the server-only xsa binary into target/server"
+usage = 'flag "--release" help="Build with optimizations"'
+run = 'cargo build -p xsa --no-default-features --features server --target-dir {{vars.server_target_directory}} ${usage_release:+--release}'
 
 [tasks.test]
 description = "Run the test suite"
@@ -16,14 +24,17 @@ run = "cargo test --workspace"
 
 [tasks.fmt]
 description = "Format the Rust sources"
-run = "cargo fmt"
+run = "cargo fmt --all"
 
 [tasks.lint]
-description = "Lint with clippy, treating warnings as errors"
-run = "cargo clippy --workspace --all-targets -- -D warnings"
+description = "Lint every crate with clippy, with the client and server-only, treating warnings as errors"
+run = [
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "cargo clippy -p xsa --all-targets --no-default-features --features server --target-dir {{vars.server_target_directory}} -- -D warnings",
+]
 
 [tasks.shaders]
-description = "Compile the base pack's Slang shaders to SPIR-V next to their sources"
+description = "Compile the base pack's Slang shaders to SPIR-V next to their sources and validate the output"
 sources = ["packs/base/base/resources/shaders/**/*.slang"]
 outputs = ["packs/base/base/resources/shaders/*.spv"]
 run = """
@@ -32,17 +43,36 @@ set -euo pipefail
 directory=packs/base/base/resources/shaders
 for source in "$directory"/*.slang; do
     slangc "$source" -I "$directory" -target spirv -matrix-layout-column-major -fvk-use-entrypoint-name -o "${source%.slang}.spv"
+    spirv-val --target-env vulkan1.3 "${source%.slang}.spv"
 done
 """
 
-[tasks.dev]
-description = "Run the game in a debug build; pass flags after --, e.g. --remote [::1]:1969 --fingerprint <hash>"
+[tasks.client]
+description = "Run the game with an integrated server; pass xsa flags after --, e.g. -- --remote [::1]:1969 --fingerprint <hash>"
 depends = ["shaders"]
-run = "cargo run -p xsa --"
+usage = '''
+flag "--release" help="Build with optimizations"
+arg "[arguments]..." help="Arguments for xsa" double_dash="automatic"
+'''
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+eval "arguments=($usage_arguments)"
+cargo run -p xsa ${usage_release:+--release} -- "${arguments[@]}"
+"""
 
 [tasks.server]
-description = "Run the dedicated server; pass flags after --, e.g. --host :: --port 1969"
-run = "cargo run -p xsa-server --"
+description = "Run the server-only build as a dedicated server; pass flags after --, e.g. -- --host :: --port 1969"
+usage = '''
+flag "--release" help="Build with optimizations"
+arg "[arguments]..." help="Arguments for xsa server" double_dash="automatic"
+'''
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+eval "arguments=($usage_arguments)"
+cargo run -p xsa --no-default-features --features server --target-dir {{vars.server_target_directory}} ${usage_release:+--release} -- server "${arguments[@]}"
+"""
 
 [tasks.fetch-assets]
 description = "Download third-party assets into assets/"
