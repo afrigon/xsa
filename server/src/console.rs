@@ -30,7 +30,7 @@ pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<Invo
     while !host.quit_requested {
         tokio::select! {
             event = host.session.receive() => dispatcher.handle_event(&event?, &host.session),
-            invocation = invocations.recv(), if invocations_open => match invocation {
+            invocation = invocations.recv(), if invocations_open && host.session.state().is_some() => match invocation {
                 Some(invocation) => dispatcher.dispatch(invocation, &mut host),
                 None => invocations_open = false,
             },

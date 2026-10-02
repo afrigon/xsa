@@ -4,6 +4,7 @@ use std::thread;
 
 use anyhow::anyhow;
 use tokio::sync::mpsc::unbounded_channel;
+use xsa_commands::repl;
 use xsa_proto::connection::Connection;
 use xsa_proto::network::{self, Identity};
 
@@ -35,7 +36,8 @@ pub async fn run(options: DedicatedOptions) -> anyhow::Result<()> {
     new_clients
         .send(console_link)
         .map_err(|_| anyhow!("the simulation thread stopped"))?;
-    let (_invocation_sender, invocations) = unbounded_channel();
+    let (invocation_sender, invocations) = unbounded_channel();
+    repl::spawn(invocation_sender)?;
     let mut console = tokio::spawn(console::run(console_connection, invocations));
 
     loop {

@@ -107,8 +107,8 @@ impl Server {
         let tick = Duration::from_secs_f64(1.0 / TICK_RATE_HERTZ);
         let mut next_tick = Instant::now();
         while self.accept_clients() {
-            self.handle_frames();
             self.advance(tick.as_secs_f64());
+            self.handle_frames();
             self.broadcast(&ServerEvent::Tick { time: self.world.time });
             self.remove_disconnected();
 

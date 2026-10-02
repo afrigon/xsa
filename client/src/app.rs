@@ -170,6 +170,9 @@ impl App {
     }
 
     fn poll_invocations(&mut self) {
+        if self.world.is_none() {
+            return;
+        }
         let mut dispatcher = std::mem::take(&mut self.dispatcher);
         while let Ok(invocation) = self.invocations.try_recv() {
             dispatcher.dispatch(invocation, self);
@@ -530,11 +533,17 @@ impl CommandHost for App {
     fn run_client(&mut self, command: ClientCommand) -> anyhow::Result<String> {
         match command {
             ClientCommand::Camera(CameraAction::Mode { mode }) => {
-                self.set_camera_mode(match mode {
-                    CommandCameraMode::Target => CameraMode::Orbit,
-                    CommandCameraMode::Debug => CameraMode::Debug,
-                });
-                Ok(format!("camera: {}", self.camera_mode.name()))
+                let description = match mode {
+                    CommandCameraMode::Target => {
+                        self.set_camera_mode(CameraMode::Orbit);
+                        "camera: target"
+                    }
+                    CommandCameraMode::Debug => {
+                        self.set_camera_mode(CameraMode::Debug);
+                        "camera: debug"
+                    }
+                };
+                Ok(description.to_string())
             }
             ClientCommand::Camera(CameraAction::Target(request)) => self.target_camera(request),
             ClientCommand::Camera(CameraAction::LookAt { target }) => self.look_at(&target),
