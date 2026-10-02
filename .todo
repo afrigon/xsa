@@ -10,10 +10,12 @@
   Render the far scene with a large near plane, clear depth, then render
   nearby objects with a small one, in the same frame. Needed once vessels
   exist; until then the near plane follows the camera's altitude.
-- Every pipeline is built for the swapchain's color format. If a swapchain
-  recreation ever picks a different format (e.g. the window moves to a
-  monitor with other surface formats), the pipelines no longer match. Goes
-  away once scene rendering targets its own fixed-format HDR image.
+- The tonemap pipeline is built for the swapchain's color format. If a
+  swapchain recreation ever picks a different format (e.g. the window moves to
+  a monitor with other surface formats), it no longer matches; rebuild it on
+  recreation when the format changes.
+- Bodies drawn as dots use the material's flat color, which is white for
+  textured planets; use the color texture's average (its smallest mip).
 - Pack files: unknown nodes are rejected, but unknown properties are not, so a
   misspelled optional property (e.g. a rate) is silently ignored. Reject
   properties a node doesn't define.
@@ -86,6 +88,15 @@
   Emissive are linear. Shading is Custom/HapkeScaled from CharonSSS/
   AdvancedPQSTools (MIT, port with its notice): Scatter R = w, G = b,
   B = (c + 1)/2; Surge R = B_S0/2, G = h_S, B = B_C0/2, A = h_C.
+- Anti-aliasing: TAA built in-house. It must handle geometric edges (planet
+  limbs), shader aliasing (normal-mapped detail, glints), sub-pixel objects
+  and noise from ray-marched effects: camera jitter, per-body motion vectors,
+  neighborhood color clamping, sharpening, history reset on time-warp jumps
+  and target switches; dots and orbit lines drawn analytically after it.
+  Lands after bloom and before atmospheres and clouds, which depend on
+  temporal accumulation; gets a toggle key. Later, optionally: AMD FSR 2/3
+  (MIT, vendor-neutral) as a quality and upscaling mode on the same inputs.
+  No motion blur: motion vectors exist only for TAA and FSR.
 - Rings as data: inner/outer radii and orientation in the system data
   (literature values; Sol's ring radii use an unknown unit), textures as
   resources.

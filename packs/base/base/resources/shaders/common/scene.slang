@@ -5,6 +5,9 @@ struct FrameData
     float4 sunPosition;
     float2 viewportSize;
     float pointQuadSize;
+    float exposure;
+    uint hdrTexture;
+    uint tonemapper;
 };
 
 struct ObjectData

@@ -9,7 +9,10 @@ pub(super) struct FrameData {
     pub sun_position: Vec4,
     pub viewport_size: Vec2,
     pub point_quad_size: f32,
-    pub padding: f32,
+    pub exposure: f32,
+    pub hdr_texture: u32,
+    pub tonemapper: u32,
+    pub padding: [u32; 2],
 }
 
 #[repr(C)]
@@ -31,7 +34,7 @@ pub(super) struct PushConstants {
     pub material_index: u32,
 }
 
-const _: () = assert!(size_of::<FrameData>() == 160);
+const _: () = assert!(size_of::<FrameData>() == 176);
 const _: () = assert!(size_of::<ObjectData>() == 80);
 const _: () = assert!(size_of::<PushConstants>() == 32);
 

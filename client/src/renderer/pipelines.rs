@@ -9,15 +9,18 @@ use crate::mesh::Vertex;
 use crate::vulkan::{BindlessTextures, Device, GraphicsPipeline, GraphicsPipelineDescription};
 
 pub const POINT_SHADER_PATH: &str = "point";
+pub const TONEMAP_SHADER_PATH: &str = "tonemap";
 
 pub struct ShaderBinaries {
     pub shaders: Vec<Vec<u8>>,
     pub point: Vec<u8>,
+    pub tonemap: Vec<u8>,
 }
 
 pub(super) struct Pipelines {
     shaders: Vec<GraphicsPipeline>,
     point: GraphicsPipeline,
+    tonemap: GraphicsPipeline,
 }
 
 impl Pipelines {
@@ -25,7 +28,8 @@ impl Pipelines {
         device: &Device,
         bindless: &BindlessTextures,
         binaries: &ShaderBinaries,
-        color_format: vk::Format,
+        scene_format: vk::Format,
+        swapchain_format: vk::Format,
     ) -> anyhow::Result<Self> {
         let shaders = Shader::ALL
             .iter()
@@ -35,7 +39,7 @@ impl Pipelines {
                     bindless,
                     *shader,
                     &binaries.shaders[shader.index()],
-                    color_format,
+                    scene_format,
                 )
             })
             .collect::<anyhow::Result<_>>()?;
@@ -43,7 +47,7 @@ impl Pipelines {
             device,
             &GraphicsPipelineDescription {
                 spirv: &binaries.point,
-                color_format,
+                color_format: scene_format,
                 depth_format: Some(DEPTH_FORMAT),
                 depth_compare_op: vk::CompareOp::GREATER,
                 depth_write: false,
@@ -55,7 +59,27 @@ impl Pipelines {
                 descriptor_set_layouts: &[bindless.layout()],
             },
         )?;
-        Ok(Self { shaders, point })
+        let tonemap = GraphicsPipeline::new(
+            device,
+            &GraphicsPipelineDescription {
+                spirv: &binaries.tonemap,
+                color_format: swapchain_format,
+                depth_format: None,
+                depth_compare_op: vk::CompareOp::ALWAYS,
+                depth_write: false,
+                cull_mode: vk::CullModeFlags::NONE,
+                additive_blend: false,
+                vertex_bindings: &[],
+                vertex_attributes: &[],
+                push_constant_size: size_of::<PushConstants>() as u32,
+                descriptor_set_layouts: &[bindless.layout()],
+            },
+        )?;
+        Ok(Self {
+            shaders,
+            point,
+            tonemap,
+        })
     }
 
     pub fn shader(&self, shader: Shader) -> &GraphicsPipeline {
@@ -66,12 +90,17 @@ impl Pipelines {
         &self.point
     }
 
+    pub fn tonemap(&self) -> &GraphicsPipeline {
+        &self.tonemap
+    }
+
     pub unsafe fn destroy(&mut self, device: &Device) {
         unsafe {
             for pipeline in &mut self.shaders {
                 pipeline.destroy(device);
             }
             self.point.destroy(device);
+            self.tonemap.destroy(device);
         }
     }
 }

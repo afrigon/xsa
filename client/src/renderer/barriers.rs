@@ -32,6 +32,40 @@ pub(super) fn to_color_attachment(device: &ash::Device, command_buffer: vk::Comm
     );
 }
 
+pub(super) fn sampled_to_color_attachment(device: &ash::Device, command_buffer: vk::CommandBuffer, image: vk::Image) {
+    record(
+        device,
+        command_buffer,
+        &ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::UNDEFINED,
+            new_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            source_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            source_access: vk::AccessFlags2::NONE,
+            destination_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            destination_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+        },
+    );
+}
+
+pub(super) fn color_attachment_to_sampled(device: &ash::Device, command_buffer: vk::CommandBuffer, image: vk::Image) {
+    record(
+        device,
+        command_buffer,
+        &ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            source_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            source_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            destination_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            destination_access: vk::AccessFlags2::SHADER_SAMPLED_READ,
+        },
+    );
+}
+
 pub(super) fn to_depth_attachment(device: &ash::Device, command_buffer: vk::CommandBuffer, image: vk::Image) {
     record(
         device,

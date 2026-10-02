@@ -7,7 +7,7 @@ use xsa_core::frames;
 use xsa_core::packs::document::{self, Document};
 use xsa_core::packs::{Id, PackStack};
 
-use crate::renderer::{POINT_SHADER_PATH, Shader, ShaderBinaries};
+use crate::renderer::{POINT_SHADER_PATH, Shader, ShaderBinaries, TONEMAP_SHADER_PATH};
 
 const BASE_NAMESPACE: &str = "base";
 const SHADERS: &str = "shaders";
@@ -55,6 +55,7 @@ pub fn load_shaders(stack: &PackStack) -> anyhow::Result<ShaderBinaries> {
             .map(|shader| read(shader.path()))
             .collect::<anyhow::Result<_>>()?,
         point: read(POINT_SHADER_PATH)?,
+        tonemap: read(TONEMAP_SHADER_PATH)?,
     })
 }
 

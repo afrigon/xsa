@@ -146,6 +146,10 @@ impl BindlessTextures {
         Ok(index)
     }
 
+    pub fn set_texture(&self, device: &Device, index: u32, view: vk::ImageView) {
+        self.write_image(device, TEXTURES_BINDING, index, view);
+    }
+
     fn write_image(&self, device: &Device, binding: u32, index: u32, view: vk::ImageView) {
         let image_infos = [vk::DescriptorImageInfo::default()
             .image_view(view)

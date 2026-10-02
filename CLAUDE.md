@@ -138,6 +138,10 @@ frames on one bidirectional stream.
   upscaling.
 - **Keep the pipeline count small** — bindless resources and dynamic state
   over per-material pipelines, and a `VkPipelineCache` persisted to disk.
+- Every rendering feature is explained before it is implemented: what it is,
+  why the renderer needs it, and how it fits the pipeline.
+- Every post-processing effect has a toggle key, listed in the controls table,
+  so its effect can be compared on and off.
 
 ## Shaders
 
@@ -196,6 +200,7 @@ it first. Deliberately avoided:
 | Tab / Shift+Tab | Next / previous target |
 | F1 | Toggle the debug fly camera (WASD, Space/Shift, mouse look; click to capture, Escape to release) |
 | F2 | Toggle the skybox |
+| F3 | Cycle the tonemapper: AgX, Khronos PBR Neutral, none (clipped) |
 | 1–5 | Shader override: lit, normals, depth, triangles, lighting |
 | \` | Wireframe |
 

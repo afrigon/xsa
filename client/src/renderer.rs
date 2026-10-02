@@ -5,6 +5,7 @@ mod material;
 mod pipelines;
 mod scene;
 mod texture;
+mod tonemapper;
 
 use std::path::Path;
 
@@ -15,9 +16,10 @@ use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
 
 pub use material::{Material, Shader};
-pub use pipelines::{POINT_SHADER_PATH, ShaderBinaries};
+pub use pipelines::{POINT_SHADER_PATH, ShaderBinaries, TONEMAP_SHADER_PATH};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
+pub use tonemapper::Tonemapper;
 
 use frame::Frame;
 use gpu_data::{FrameData, ObjectData, PushConstants};
@@ -34,6 +36,9 @@ use crate::vulkan::{
 const FRAMES_IN_FLIGHT: usize = 2;
 const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
+const HDR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+const EXPOSURE: f32 = 1.0;
+const FULLSCREEN_VERTEX_COUNT: u32 = 3;
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const MATERIAL_CAPACITY: usize = 256;
@@ -42,13 +47,13 @@ const POINT_MINIMUM_DIAMETER_PIXELS: f32 = 1.0;
 const POINT_MINIMUM_INTENSITY: f32 = 0.1;
 const POINT_FADE_DECADES: f64 = 3.0;
 const POINT_QUAD_PIXELS: f32 = 4.0;
-const SKYBOX_VERTEX_COUNT: u32 = 3;
 const POINT_VERTEX_COUNT: u32 = 6;
 
 pub struct Renderer {
     scene: Scene,
     shader_override: Option<Shader>,
     wireframe: bool,
+    tonemapper: Tonemapper,
     pipelines: Pipelines,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -58,6 +63,8 @@ pub struct Renderer {
     drawn_as_point: Vec<bool>,
     object_capacity: usize,
     depth: Image,
+    hdr: Image,
+    hdr_texture: u32,
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
     bindless: BindlessTextures,
@@ -137,12 +144,15 @@ impl Renderer {
             vk::BufferUsageFlags::INDEX_BUFFER,
             &sphere.indices,
         )?;
-        let bindless = BindlessTextures::new(&device)?;
-        let pipelines = Pipelines::new(&device, &bindless, shaders, swapchain.format())?;
+        let mut bindless = BindlessTextures::new(&device)?;
+        let hdr = create_hdr_image(&device, &mut allocator, swapchain.extent())?;
+        let hdr_texture = bindless.add_texture(&device, hdr.view())?;
+        let pipelines = Pipelines::new(&device, &bindless, shaders, HDR_FORMAT, swapchain.format())?;
         Ok(Self {
             scene: Scene::default(),
             shader_override: None,
             wireframe: false,
+            tonemapper: Tonemapper::Agx,
             pipelines,
             vertex_buffer,
             index_buffer,
@@ -152,6 +162,8 @@ impl Renderer {
             drawn_as_point: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             depth,
+            hdr,
+            hdr_texture,
             cube_maps: Vec::new(),
             textures: Vec::new(),
             bindless,
@@ -179,6 +191,11 @@ impl Renderer {
         if self.device.extended_dynamic_state3().is_some() {
             self.wireframe = !self.wireframe;
         }
+    }
+
+    pub fn cycle_tonemapper(&mut self) -> Tonemapper {
+        self.tonemapper = self.tonemapper.next();
+        self.tonemapper
     }
 
     pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
@@ -270,7 +287,10 @@ impl Renderer {
             sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             point_quad_size: POINT_QUAD_PIXELS,
-            padding: 0.0,
+            exposure: EXPOSURE,
+            hdr_texture: self.hdr_texture,
+            tonemapper: self.tonemapper.shader_id(),
+            padding: [0; 2],
         };
 
         let pixels_per_unit_angle = f64::from(clip_from_view.y_axis.y.abs() * extent.height as f32 / 2.0);
@@ -318,9 +338,9 @@ impl Renderer {
             let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
             device.begin_command_buffer(command_buffer, &begin_info)?;
         }
-        barriers::to_color_attachment(device, command_buffer, image);
+        barriers::sampled_to_color_attachment(device, command_buffer, self.hdr.handle());
         barriers::to_depth_attachment(device, command_buffer, self.depth.handle());
-        self.begin_rendering(command_buffer, image_index);
+        self.begin_rendering(command_buffer, self.hdr.view(), Some(self.depth.view()));
 
         let context = DrawContext {
             device,
@@ -332,37 +352,46 @@ impl Renderer {
         self.record_objects(&context);
         self.record_skybox(&context);
         self.record_points(&context);
+        unsafe { device.cmd_end_rendering(command_buffer) };
 
+        barriers::color_attachment_to_sampled(device, command_buffer, self.hdr.handle());
+        barriers::to_color_attachment(device, command_buffer, image);
+        self.begin_rendering(command_buffer, self.swapchain.image_view(image_index), None);
+        self.record_tonemap(&context);
         unsafe { device.cmd_end_rendering(command_buffer) };
         barriers::to_present(device, command_buffer, image);
         unsafe { device.end_command_buffer(command_buffer) }?;
         Ok(())
     }
 
-    fn begin_rendering(&self, command_buffer: vk::CommandBuffer, image_index: u32) {
+    fn begin_rendering(&self, command_buffer: vk::CommandBuffer, color: vk::ImageView, depth: Option<vk::ImageView>) {
         let device = self.device.handle();
         let extent = self.swapchain.extent();
         let color_attachments = [vk::RenderingAttachmentInfo::default()
-            .image_view(self.swapchain.image_view(image_index))
+            .image_view(color)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
             .clear_value(vk::ClearValue {
                 color: vk::ClearColorValue { float32: CLEAR_COLOR },
             })];
-        let depth_attachment = vk::RenderingAttachmentInfo::default()
-            .image_view(self.depth.view())
-            .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .clear_value(vk::ClearValue {
-                depth_stencil: vk::ClearDepthStencilValue { depth: 0.0, stencil: 0 },
-            });
-        let rendering_info = vk::RenderingInfo::default()
+        let depth_attachment = depth.map(|view| {
+            vk::RenderingAttachmentInfo::default()
+                .image_view(view)
+                .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .clear_value(vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue { depth: 0.0, stencil: 0 },
+                })
+        });
+        let mut rendering_info = vk::RenderingInfo::default()
             .render_area(extent.into())
             .layer_count(1)
-            .color_attachments(&color_attachments)
-            .depth_attachment(&depth_attachment);
+            .color_attachments(&color_attachments);
+        if let Some(depth_attachment) = &depth_attachment {
+            rendering_info = rendering_info.depth_attachment(depth_attachment);
+        }
         let viewport = vk::Viewport {
             x: 0.0,
             y: 0.0,
@@ -434,7 +463,18 @@ impl Renderer {
         unsafe {
             context
                 .device
-                .cmd_draw(context.command_buffer, SKYBOX_VERTEX_COUNT, 1, 0, 0)
+                .cmd_draw(context.command_buffer, FULLSCREEN_VERTEX_COUNT, 1, 0, 0)
+        };
+    }
+
+    fn record_tonemap(&self, context: &DrawContext) {
+        let pipeline = self.pipelines.tonemap();
+        context.bind(pipeline);
+        context.push(pipeline, 0, 0);
+        unsafe {
+            context
+                .device
+                .cmd_draw(context.command_buffer, FULLSCREEN_VERTEX_COUNT, 1, 0, 0)
         };
     }
 
@@ -540,6 +580,11 @@ impl Renderer {
         let mut old_depth = std::mem::replace(&mut self.depth, depth);
         unsafe { old_depth.destroy(&self.device, &mut self.allocator) };
 
+        let hdr = create_hdr_image(&self.device, &mut self.allocator, self.swapchain.extent())?;
+        self.bindless.set_texture(&self.device, self.hdr_texture, hdr.view());
+        let mut old_hdr = std::mem::replace(&mut self.hdr, hdr);
+        unsafe { old_hdr.destroy(&self.device, &mut self.allocator) };
+
         self.swapchain_outdated = false;
         Ok(())
     }
@@ -557,6 +602,7 @@ impl Drop for Renderer {
             self.vertex_buffer.destroy(&self.device, &mut self.allocator);
             self.index_buffer.destroy(&self.device, &mut self.allocator);
             self.depth.destroy(&self.device, &mut self.allocator);
+            self.hdr.destroy(&self.device, &mut self.allocator);
             for frame in &mut self.frames {
                 frame.destroy(&self.device, &mut self.allocator);
             }
@@ -580,6 +626,22 @@ fn create_depth_image(device: &Device, allocator: &mut Allocator, extent: vk::Ex
             format: DEPTH_FORMAT,
             usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             aspect: vk::ImageAspectFlags::DEPTH,
+            mip_levels: 1,
+            cube: false,
+        },
+    )
+}
+
+fn create_hdr_image(device: &Device, allocator: &mut Allocator, extent: vk::Extent2D) -> anyhow::Result<Image> {
+    Image::new(
+        device,
+        allocator,
+        &ImageDescription {
+            name: "hdr color",
+            extent,
+            format: HDR_FORMAT,
+            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+            aspect: vk::ImageAspectFlags::COLOR,
             mip_levels: 1,
             cube: false,
         },

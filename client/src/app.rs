@@ -285,6 +285,9 @@ impl App {
             let scene = renderer.scene_mut();
             scene.skybox = if scene.skybox.is_some() { None } else { self.skybox };
         }
+        if self.input.was_pressed(KeyCode::F3) {
+            println!("tonemapper: {:?}", renderer.cycle_tonemapper());
+        }
     }
 
     fn update_simulation(&mut self) {
