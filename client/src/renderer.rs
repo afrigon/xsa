@@ -1,4 +1,5 @@
 mod barriers;
+mod bloom;
 mod exposure;
 mod frame;
 mod gpu_data;
@@ -6,6 +7,7 @@ mod material;
 mod pipelines;
 mod scene;
 mod texture;
+mod tonemapper;
 
 use std::path::Path;
 
@@ -15,11 +17,16 @@ use winit::dpi::PhysicalSize;
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
 
-pub use material::{Material, Shader};
-pub use pipelines::{HISTOGRAM_SHADER_PATH, POINT_SHADER_PATH, ShaderBinaries, TONEMAP_SHADER_PATH};
+pub use material::{HapkeParameters, Material, Shader, ShadingModel};
+pub use pipelines::{
+    BLOOM_DOWNSAMPLE_SHADER_PATH, BLOOM_UPSAMPLE_SHADER_PATH, HISTOGRAM_SHADER_PATH, ShaderBinaries,
+    TONEMAP_SHADER_PATH,
+};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
+pub use tonemapper::Tonemapper;
 
+use bloom::Bloom;
 use exposure::{AutoExposure, HISTOGRAM_BINS};
 use frame::Frame;
 use gpu_data::{FrameData, HistogramPushConstants, ObjectData, PushConstants};
@@ -30,7 +37,7 @@ use crate::camera::Camera;
 use crate::mesh;
 use crate::vulkan::{
     Allocator, BindlessTextures, Buffer, Device, GraphicsPipeline, Image, ImageDescription, Instance, MemoryLocation,
-    Surface, Swapchain,
+    SAMPLED_LAYOUT, Surface, Swapchain,
 };
 
 const FRAMES_IN_FLIGHT: usize = 2;
@@ -39,24 +46,21 @@ const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 const HDR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 const HISTOGRAM_TILE_SIZE: u32 = 16;
+// Fraction of all light redistributed into the glow, like the scatter of a real lens.
+const INITIAL_BLOOM_STRENGTH: f32 = 0.02;
 // Background light from stars and zodiacal light, in lux.
 const STARLIGHT_ILLUMINANCE: f32 = 2e-4;
 const FULLSCREEN_VERTEX_COUNT: u32 = 3;
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const MATERIAL_CAPACITY: usize = 256;
-const POINT_MAXIMUM_DIAMETER_PIXELS: f32 = 2.0;
-const POINT_MINIMUM_DIAMETER_PIXELS: f32 = 1.0;
-const POINT_MINIMUM_INTENSITY: f32 = 0.1;
-const POINT_FADE_DECADES: f64 = 3.0;
-const POINT_QUAD_PIXELS: f32 = 4.0;
-const POINT_VERTEX_COUNT: u32 = 6;
 
 pub struct Renderer {
     scene: Scene,
     shader_override: Option<Shader>,
     wireframe: bool,
-    tonemapping: bool,
+    tonemapper: Tonemapper,
+    shading_model: ShadingModel,
     auto_exposure: AutoExposure,
     histogram: Vec<u32>,
     pipelines: Pipelines,
@@ -65,11 +69,13 @@ pub struct Renderer {
     index_count: u32,
     object_data: Vec<ObjectData>,
     material_data: Vec<MaterialData>,
-    drawn_as_point: Vec<bool>,
     object_capacity: usize,
     depth: Image,
     hdr: Image,
     hdr_texture: u32,
+    bloom: Bloom,
+    bloom_enabled: bool,
+    bloom_strength: f32,
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
     bindless: BindlessTextures,
@@ -151,13 +157,15 @@ impl Renderer {
         )?;
         let mut bindless = BindlessTextures::new(&device)?;
         let hdr = create_hdr_image(&device, &mut allocator, swapchain.extent())?;
-        let hdr_texture = bindless.add_texture(&device, hdr.view())?;
+        let hdr_texture = bindless.add_texture(&device, hdr.view(), SAMPLED_LAYOUT)?;
+        let bloom = Bloom::new(&device, &mut allocator, &mut bindless, swapchain.extent())?;
         let pipelines = Pipelines::new(&device, &bindless, shaders, HDR_FORMAT, swapchain.format())?;
         Ok(Self {
             scene: Scene::default(),
             shader_override: None,
             wireframe: false,
-            tonemapping: true,
+            tonemapper: Tonemapper::Agx,
+            shading_model: ShadingModel::HapkeSol,
             auto_exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
             histogram: vec![0; HISTOGRAM_BINS],
             pipelines,
@@ -166,11 +174,13 @@ impl Renderer {
             index_count: sphere.indices.len() as u32,
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
-            drawn_as_point: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             depth,
             hdr,
             hdr_texture,
+            bloom,
+            bloom_enabled: true,
+            bloom_strength: INITIAL_BLOOM_STRENGTH,
             cube_maps: Vec::new(),
             textures: Vec::new(),
             bindless,
@@ -194,23 +204,35 @@ impl Renderer {
         self.shader_override = shader;
     }
 
-    pub fn toggle_wireframe(&mut self) {
-        if self.device.extended_dynamic_state3().is_some() {
-            self.wireframe = !self.wireframe;
-        }
+    // None when the device cannot switch polygon modes dynamically.
+    pub fn toggle_wireframe(&mut self) -> Option<bool> {
+        self.device.extended_dynamic_state3()?;
+        self.wireframe = !self.wireframe;
+        Some(self.wireframe)
     }
 
-    pub fn toggle_tonemapping(&mut self) -> bool {
-        self.tonemapping = !self.tonemapping;
-        self.tonemapping
+    pub fn cycle_shading_model(&mut self) -> ShadingModel {
+        self.shading_model = self.shading_model.next();
+        self.shading_model
+    }
+
+    pub fn cycle_tonemapper(&mut self) -> Tonemapper {
+        self.tonemapper = self.tonemapper.next();
+        self.tonemapper
     }
 
     pub fn adjust_exposure(&mut self, stops: f32) {
         self.auto_exposure.adjust(stops);
     }
 
-    pub fn toggle_instant_exposure(&mut self) -> bool {
-        self.auto_exposure.toggle_instant()
+    pub fn toggle_bloom(&mut self) -> bool {
+        self.bloom_enabled = !self.bloom_enabled;
+        self.bloom_enabled
+    }
+
+    pub fn adjust_bloom_strength(&mut self, stops: f32) -> f32 {
+        self.bloom_strength *= stops.exp2();
+        self.bloom_strength
     }
 
     pub fn toggle_auto_exposure(&mut self) -> bool {
@@ -245,7 +267,7 @@ impl Renderer {
 
     pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
         let mut image = texture::upload_texture(&self.device, &mut self.allocator, name, path, color_space)?;
-        match self.bindless.add_texture(&self.device, image.view()) {
+        match self.bindless.add_texture(&self.device, image.view(), SAMPLED_LAYOUT) {
             Ok(index) => {
                 self.textures.push(image);
                 Ok(TextureHandle::new(index))
@@ -329,33 +351,25 @@ impl Renderer {
             sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
             sun_intensity: self.scene.sun_intensity.extend(0.0),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
-            point_quad_size: POINT_QUAD_PIXELS,
             exposure: exposure(self.auto_exposure.ev100()),
             hdr_texture: self.hdr_texture,
-            tonemapping: u32::from(self.tonemapping),
+            tonemapper: self.tonemapper.shader_id(),
             starlight_illuminance: STARLIGHT_ILLUMINANCE,
-            padding: 0,
+            bloom_texture: self.bloom.texture(),
+            bloom_strength: if self.bloom_enabled { self.bloom_strength } else { 0.0 },
+            shading_model: self.shading_model.shader_id(),
+            padding: [0; 3],
         };
 
-        let pixels_per_unit_angle = f64::from(clip_from_view.y_axis.y.abs() * extent.height as f32 / 2.0);
-        self.drawn_as_point.clear();
         self.object_data.clear();
         for object in self.scene.objects() {
             let camera_relative = object.position - camera.position;
-            let diameter_pixels = 2.0 * object.scale / camera_relative.length() * pixels_per_unit_angle;
-            let point_size = point_size(diameter_pixels);
-            self.drawn_as_point
-                .push(diameter_pixels < f64::from(POINT_MAXIMUM_DIAMETER_PIXELS));
             self.object_data.push(ObjectData {
                 world_from_model: Mat4::from_scale_rotation_translation(
                     Vec3::splat(object.scale as f32),
                     object.orientation.as_quat(),
                     camera_relative.as_vec3(),
                 ),
-                point_diameter: POINT_MINIMUM_DIAMETER_PIXELS
-                    + (POINT_MAXIMUM_DIAMETER_PIXELS - POINT_MINIMUM_DIAMETER_PIXELS) * point_size,
-                point_intensity: POINT_MINIMUM_INTENSITY + (1.0 - POINT_MINIMUM_INTENSITY) * point_size,
-                padding: [0.0; 2],
             });
         }
 
@@ -397,11 +411,14 @@ impl Renderer {
         };
         self.record_objects(&context);
         self.record_skybox(&context);
-        self.record_points(&context);
         unsafe { device.cmd_end_rendering(command_buffer) };
 
         barriers::color_attachment_to_sampled(device, command_buffer, self.hdr.handle());
         self.record_histogram(command_buffer, frame);
+        if self.bloom_enabled {
+            self.bloom
+                .record(device, command_buffer, &self.pipelines.bloom(), self.hdr_texture);
+        }
         barriers::to_color_attachment(device, command_buffer, image);
         self.begin_rendering(command_buffer, self.swapchain.image_view(image_index), None);
         self.record_tonemap(&context);
@@ -454,7 +471,7 @@ impl Renderer {
             device.cmd_bind_descriptor_sets(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                self.pipelines.point().layout(),
+                self.pipelines.tonemap().layout(),
                 0,
                 &[self.bindless.set()],
                 &[],
@@ -482,7 +499,7 @@ impl Renderer {
                 let object_shader = self
                     .shader_override
                     .unwrap_or(self.scene.material(object.material).shader());
-                if self.drawn_as_point[object_index] || object_shader != shader {
+                if object_shader != shader {
                     continue;
                 }
                 if !bound {
@@ -558,26 +575,6 @@ impl Renderer {
                 .device
                 .cmd_draw(context.command_buffer, FULLSCREEN_VERTEX_COUNT, 1, 0, 0)
         };
-    }
-
-    fn record_points(&self, context: &DrawContext) {
-        let pipeline = self.pipelines.point();
-        let mut bound = false;
-        for (object_index, object) in self.scene.objects().iter().enumerate() {
-            if !self.drawn_as_point[object_index] {
-                continue;
-            }
-            if !bound {
-                context.bind(pipeline);
-                bound = true;
-            }
-            context.push(pipeline, object_index, object.material.index());
-            unsafe {
-                context
-                    .device
-                    .cmd_draw(context.command_buffer, POINT_VERTEX_COUNT, 1, 0, 0)
-            };
-        }
     }
 
     fn set_polygon_mode(&self, context: &DrawContext, wireframe: bool) {
@@ -663,9 +660,16 @@ impl Renderer {
         unsafe { old_depth.destroy(&self.device, &mut self.allocator) };
 
         let hdr = create_hdr_image(&self.device, &mut self.allocator, self.swapchain.extent())?;
-        self.bindless.set_texture(&self.device, self.hdr_texture, hdr.view());
+        self.bindless
+            .set_texture(&self.device, self.hdr_texture, hdr.view(), SAMPLED_LAYOUT);
         let mut old_hdr = std::mem::replace(&mut self.hdr, hdr);
         unsafe { old_hdr.destroy(&self.device, &mut self.allocator) };
+        self.bloom.recreate(
+            &self.device,
+            &mut self.allocator,
+            &self.bindless,
+            self.swapchain.extent(),
+        )?;
 
         self.swapchain_outdated = false;
         Ok(())
@@ -685,6 +689,7 @@ impl Drop for Renderer {
             self.index_buffer.destroy(&self.device, &mut self.allocator);
             self.depth.destroy(&self.device, &mut self.allocator);
             self.hdr.destroy(&self.device, &mut self.allocator);
+            self.bloom.destroy(&self.device, &mut self.allocator);
             for frame in &mut self.frames {
                 frame.destroy(&self.device, &mut self.allocator);
             }
@@ -696,11 +701,6 @@ impl Drop for Renderer {
 // Scales luminance (cd/m²) so that a scene metered at this EV100 lands mid-range, as a camera with ISO 100 would.
 fn exposure(ev100: f32) -> f32 {
     1.0 / (1.2 * 2.0_f32.powf(ev100))
-}
-
-fn point_size(diameter_pixels: f64) -> f32 {
-    let decades_below_sphere = (diameter_pixels / f64::from(POINT_MAXIMUM_DIAMETER_PIXELS)).log10();
-    (1.0 + decades_below_sphere / POINT_FADE_DECADES).clamp(0.0, 1.0) as f32
 }
 
 fn create_depth_image(device: &Device, allocator: &mut Allocator, extent: vk::Extent2D) -> anyhow::Result<Image> {

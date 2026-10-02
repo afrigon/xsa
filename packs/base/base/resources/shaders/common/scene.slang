@@ -3,9 +3,18 @@ __exported import common.frame;
 struct ObjectData
 {
     float4x4 worldFromModel;
-    float pointDiameter;
-    float pointIntensity;
-    float2 padding;
+};
+
+struct HapkeData
+{
+    uint scatterTexture;
+    uint surgeTexture;
+    float porosity;
+    float roughness;
+    float blend;
+    float lightBoost;
+    float gammaBoost;
+    uint padding;
 };
 
 struct MaterialData
@@ -16,6 +25,7 @@ struct MaterialData
     uint normalTexture;
     uint emissiveTexture;
     float luminance;
+    HapkeData hapke;
 };
 
 struct PushConstants
@@ -81,8 +91,14 @@ float3 sunIlluminance(float3 worldPosition)
     return constants.frame.sunIntensity.rgb / dot(toSun, toSun);
 }
 
-// cd/m² reflected by a Lambertian surface of the given albedo, including the faint starlight from every direction.
+// cd/m² reflected from the faint starlight arriving from every direction.
+float3 starlightLuminance(float3 albedo)
+{
+    return albedo / pi * constants.frame.starlightIlluminance;
+}
+
+// cd/m² reflected by a Lambertian surface of the given albedo, including starlight.
 float3 lambertLuminance(float3 albedo, float3 illuminance, float cosine)
 {
-    return albedo / pi * (illuminance * cosine + constants.frame.starlightIlluminance);
+    return albedo / pi * illuminance * cosine + starlightLuminance(albedo);
 }

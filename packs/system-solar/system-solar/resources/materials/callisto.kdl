@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/callisto/color"
 normal-texture "bodies/callisto/normal"
+hapke scatter-texture="bodies/callisto/scatter" surge-texture="bodies/callisto/surge" porosity=1.86 roughness=15 blend=1 light-boost=0.65 gamma-boost=0.6

@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/saturn/color"
 normal-texture "bodies/saturn/normal"
+hapke scatter-texture="bodies/saturn/scatter" surge-texture="bodies/saturn/surge" porosity=1.8 roughness=10 blend=0.45 light-boost=1 gamma-boost=0.75

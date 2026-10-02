@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/phobos/color"
 normal-texture "bodies/phobos/normal"
+hapke scatter-texture="bodies/phobos/scatter" surge-texture="bodies/phobos/surge" porosity=1.19 roughness=24 blend=1 light-boost=1 gamma-boost=0.75

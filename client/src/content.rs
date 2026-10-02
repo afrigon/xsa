@@ -3,11 +3,15 @@ use std::path::PathBuf;
 
 use anyhow::{Context, bail, ensure};
 use glam::{Mat3, Vec3};
+
 use xsa_core::frames;
-use xsa_core::packs::document::{self, Document};
+use xsa_core::packs::document::{self, Document, KdlNode};
 use xsa_core::packs::{Id, PackStack};
 
-use crate::renderer::{HISTOGRAM_SHADER_PATH, POINT_SHADER_PATH, Shader, ShaderBinaries, TONEMAP_SHADER_PATH};
+use crate::renderer::{
+    BLOOM_DOWNSAMPLE_SHADER_PATH, BLOOM_UPSAMPLE_SHADER_PATH, HISTOGRAM_SHADER_PATH, Shader, ShaderBinaries,
+    TONEMAP_SHADER_PATH,
+};
 
 const BASE_NAMESPACE: &str = "base";
 const SHADERS: &str = "shaders";
@@ -32,7 +36,18 @@ pub enum MaterialDefinition {
         normal: Option<PathBuf>,
         emissive: Option<PathBuf>,
         emissive_luminance: f32,
+        hapke: Option<HapkeDefinition>,
     },
+}
+
+pub struct HapkeDefinition {
+    pub scatter: PathBuf,
+    pub surge: PathBuf,
+    pub porosity: f32,
+    pub roughness_degrees: f32,
+    pub blend: f32,
+    pub light_boost: f32,
+    pub gamma_boost: f32,
 }
 
 pub struct SkyboxDefinition {
@@ -57,9 +72,10 @@ pub fn load_shaders(stack: &PackStack) -> anyhow::Result<ShaderBinaries> {
             .iter()
             .map(|shader| read(shader.path()))
             .collect::<anyhow::Result<_>>()?,
-        point: read(POINT_SHADER_PATH)?,
         tonemap: read(TONEMAP_SHADER_PATH)?,
         histogram: read(HISTOGRAM_SHADER_PATH)?,
+        bloom_downsample: read(BLOOM_DOWNSAMPLE_SHADER_PATH)?,
+        bloom_upsample: read(BLOOM_UPSAMPLE_SHADER_PATH)?,
     })
 }
 
@@ -117,10 +133,31 @@ fn parse_material(stack: &PackStack, file: &Document, namespace: &str) -> anyhow
                 normal: texture("normal-texture")?,
                 emissive,
                 emissive_luminance: emissive_luminance.unwrap_or(0.0),
+                hapke: file
+                    .optional_node("hapke")
+                    .map(|node| parse_hapke(stack, node, namespace))
+                    .transpose()?,
             })
         }
         _ => bail!("shader {shader} is not supported by materials yet"),
     }
+}
+
+fn parse_hapke(stack: &PackStack, node: &KdlNode, namespace: &str) -> anyhow::Result<HapkeDefinition> {
+    let texture = |key: &str| -> anyhow::Result<PathBuf> {
+        let id = Id::parse(document::string_property(node, key)?, namespace)?;
+        Ok(stack.resource(TEXTURES, &id, TEXTURE_EXTENSION)?.to_path_buf())
+    };
+    let number = |key: &str| document::number_property(node, key).map(|value| value as f32);
+    Ok(HapkeDefinition {
+        scatter: texture("scatter-texture")?,
+        surge: texture("surge-texture")?,
+        porosity: number("porosity")?,
+        roughness_degrees: number("roughness")?,
+        blend: number("blend")?,
+        light_boost: number("light-boost")?,
+        gamma_boost: number("gamma-boost")?,
+    })
 }
 
 pub fn load_skybox(stack: &PackStack, simulation: &Id) -> anyhow::Result<Option<SkyboxDefinition>> {

@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/ida/color"
 normal-texture "bodies/ida/normal"
+hapke scatter-texture="bodies/ida/scatter" surge-texture="bodies/ida/surge" porosity=1.86 roughness=18 blend=1 light-boost=0.75 gamma-boost=0.75

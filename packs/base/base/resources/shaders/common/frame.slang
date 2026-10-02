@@ -5,9 +5,11 @@ struct FrameData
     float4 sunPosition;
     float4 sunIntensity;
     float2 viewportSize;
-    float pointQuadSize;
     float exposure;
     uint hdrTexture;
-    uint tonemapping;
+    uint tonemapper;
     float starlightIlluminance;
+    uint bloomTexture;
+    float bloomStrength;
+    uint shadingModel;
 };

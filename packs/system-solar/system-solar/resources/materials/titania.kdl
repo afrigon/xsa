@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/titania/color"
 normal-texture "bodies/titania/normal"
+hapke scatter-texture="bodies/titania/scatter" surge-texture="bodies/titania/surge" porosity=1.86 roughness=15 blend=1 light-boost=0.5 gamma-boost=0.78

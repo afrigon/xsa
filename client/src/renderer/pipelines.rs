@@ -3,27 +3,31 @@ use std::mem::offset_of;
 use ash::vk;
 
 use super::DEPTH_FORMAT;
-use super::gpu_data::{HistogramPushConstants, PushConstants};
+use super::bloom::BloomPipelines;
+use super::gpu_data::{BloomPushConstants, HistogramPushConstants, PushConstants};
 use super::material::Shader;
 use crate::mesh::Vertex;
 use crate::vulkan::{BindlessTextures, ComputePipeline, Device, GraphicsPipeline, GraphicsPipelineDescription};
 
-pub const POINT_SHADER_PATH: &str = "point";
 pub const TONEMAP_SHADER_PATH: &str = "tonemap";
 pub const HISTOGRAM_SHADER_PATH: &str = "histogram";
+pub const BLOOM_DOWNSAMPLE_SHADER_PATH: &str = "bloom-downsample";
+pub const BLOOM_UPSAMPLE_SHADER_PATH: &str = "bloom-upsample";
 
 pub struct ShaderBinaries {
     pub shaders: Vec<Vec<u8>>,
-    pub point: Vec<u8>,
     pub tonemap: Vec<u8>,
     pub histogram: Vec<u8>,
+    pub bloom_downsample: Vec<u8>,
+    pub bloom_upsample: Vec<u8>,
 }
 
 pub(super) struct Pipelines {
     shaders: Vec<GraphicsPipeline>,
-    point: GraphicsPipeline,
     tonemap: GraphicsPipeline,
     histogram: ComputePipeline,
+    bloom_downsample: ComputePipeline,
+    bloom_upsample: ComputePipeline,
 }
 
 impl Pipelines {
@@ -46,22 +50,6 @@ impl Pipelines {
                 )
             })
             .collect::<anyhow::Result<_>>()?;
-        let point = GraphicsPipeline::new(
-            device,
-            &GraphicsPipelineDescription {
-                spirv: &binaries.point,
-                color_format: scene_format,
-                depth_format: Some(DEPTH_FORMAT),
-                depth_compare_op: vk::CompareOp::GREATER,
-                depth_write: false,
-                cull_mode: vk::CullModeFlags::NONE,
-                additive_blend: true,
-                vertex_bindings: &[],
-                vertex_attributes: &[],
-                push_constant_size: size_of::<PushConstants>() as u32,
-                descriptor_set_layouts: &[bindless.layout()],
-            },
-        )?;
         let tonemap = GraphicsPipeline::new(
             device,
             &GraphicsPipelineDescription {
@@ -84,20 +72,27 @@ impl Pipelines {
             size_of::<HistogramPushConstants>() as u32,
             &[bindless.layout()],
         )?;
+        let bloom = |spirv: &[u8]| {
+            ComputePipeline::new(
+                device,
+                spirv,
+                size_of::<BloomPushConstants>() as u32,
+                &[bindless.layout()],
+            )
+        };
+        let bloom_downsample = bloom(&binaries.bloom_downsample)?;
+        let bloom_upsample = bloom(&binaries.bloom_upsample)?;
         Ok(Self {
             shaders,
-            point,
             tonemap,
             histogram,
+            bloom_downsample,
+            bloom_upsample,
         })
     }
 
     pub fn shader(&self, shader: Shader) -> &GraphicsPipeline {
         &self.shaders[shader.index()]
-    }
-
-    pub fn point(&self) -> &GraphicsPipeline {
-        &self.point
     }
 
     pub fn tonemap(&self) -> &GraphicsPipeline {
@@ -108,14 +103,22 @@ impl Pipelines {
         &self.histogram
     }
 
+    pub fn bloom(&self) -> BloomPipelines<'_> {
+        BloomPipelines {
+            downsample: &self.bloom_downsample,
+            upsample: &self.bloom_upsample,
+        }
+    }
+
     pub unsafe fn destroy(&mut self, device: &Device) {
         unsafe {
             for pipeline in &mut self.shaders {
                 pipeline.destroy(device);
             }
-            self.point.destroy(device);
             self.tonemap.destroy(device);
             self.histogram.destroy(device);
+            self.bloom_downsample.destroy(device);
+            self.bloom_upsample.destroy(device);
         }
     }
 }

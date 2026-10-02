@@ -7,8 +7,32 @@ const SAMPLER_BINDING: u32 = 0;
 const CUBE_TEXTURES_BINDING: u32 = 1;
 const WRAPPING_SAMPLER_BINDING: u32 = 2;
 const TEXTURES_BINDING: u32 = 3;
+const STORAGE_IMAGES_BINDING: u32 = 4;
 const MAX_CUBE_TEXTURES: u32 = 64;
 const MAX_TEXTURES: u32 = 1024;
+const MAX_STORAGE_IMAGES: u32 = 64;
+
+pub const SAMPLED_LAYOUT: vk::ImageLayout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+
+struct ImageWrite {
+    binding: u32,
+    index: u32,
+    view: vk::ImageView,
+    descriptor_type: vk::DescriptorType,
+    layout: vk::ImageLayout,
+}
+
+impl ImageWrite {
+    fn sampled(binding: u32, index: u32, view: vk::ImageView, layout: vk::ImageLayout) -> Self {
+        Self {
+            binding,
+            index,
+            view,
+            descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+            layout,
+        }
+    }
+}
 
 pub struct BindlessTextures {
     layout: vk::DescriptorSetLayout,
@@ -18,6 +42,7 @@ pub struct BindlessTextures {
     wrapping_sampler: vk::Sampler,
     cube_texture_count: u32,
     texture_count: u32,
+    storage_image_count: u32,
 }
 
 impl BindlessTextures {
@@ -58,6 +83,11 @@ impl BindlessTextures {
                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                 .descriptor_count(MAX_TEXTURES)
                 .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(STORAGE_IMAGES_BINDING)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .descriptor_count(MAX_STORAGE_IMAGES)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE),
         ];
         let bindless_flags =
             vk::DescriptorBindingFlags::PARTIALLY_BOUND | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND;
@@ -65,6 +95,7 @@ impl BindlessTextures {
             vk::DescriptorBindingFlags::empty(),
             bindless_flags,
             vk::DescriptorBindingFlags::empty(),
+            bindless_flags,
             bindless_flags,
         ];
         let mut binding_flags_info =
@@ -82,6 +113,9 @@ impl BindlessTextures {
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::SAMPLED_IMAGE)
                 .descriptor_count(MAX_CUBE_TEXTURES + MAX_TEXTURES),
+            vk::DescriptorPoolSize::default()
+                .ty(vk::DescriptorType::STORAGE_IMAGE)
+                .descriptor_count(MAX_STORAGE_IMAGES),
         ];
         let pool_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
@@ -119,6 +153,7 @@ impl BindlessTextures {
             wrapping_sampler,
             cube_texture_count: 0,
             texture_count: 0,
+            storage_image_count: 0,
         })
     }
 
@@ -133,32 +168,64 @@ impl BindlessTextures {
     pub fn add_cube(&mut self, device: &Device, view: vk::ImageView) -> anyhow::Result<u32> {
         ensure!(self.cube_texture_count < MAX_CUBE_TEXTURES, "out of cube texture slots");
         let index = self.cube_texture_count;
-        self.write_image(device, CUBE_TEXTURES_BINDING, index, view);
+        self.write_image(
+            device,
+            &ImageWrite::sampled(CUBE_TEXTURES_BINDING, index, view, SAMPLED_LAYOUT),
+        );
         self.cube_texture_count += 1;
         Ok(index)
     }
 
-    pub fn add_texture(&mut self, device: &Device, view: vk::ImageView) -> anyhow::Result<u32> {
+    pub fn add_texture(
+        &mut self,
+        device: &Device,
+        view: vk::ImageView,
+        layout: vk::ImageLayout,
+    ) -> anyhow::Result<u32> {
         ensure!(self.texture_count < MAX_TEXTURES, "out of texture slots");
         let index = self.texture_count;
-        self.write_image(device, TEXTURES_BINDING, index, view);
+        self.set_texture(device, index, view, layout);
         self.texture_count += 1;
         Ok(index)
     }
 
-    pub fn set_texture(&self, device: &Device, index: u32, view: vk::ImageView) {
-        self.write_image(device, TEXTURES_BINDING, index, view);
+    pub fn set_texture(&self, device: &Device, index: u32, view: vk::ImageView, layout: vk::ImageLayout) {
+        self.write_image(device, &ImageWrite::sampled(TEXTURES_BINDING, index, view, layout));
     }
 
-    fn write_image(&self, device: &Device, binding: u32, index: u32, view: vk::ImageView) {
+    pub fn add_storage_image(&mut self, device: &Device, view: vk::ImageView) -> anyhow::Result<u32> {
+        ensure!(
+            self.storage_image_count < MAX_STORAGE_IMAGES,
+            "out of storage image slots"
+        );
+        let index = self.storage_image_count;
+        self.set_storage_image(device, index, view);
+        self.storage_image_count += 1;
+        Ok(index)
+    }
+
+    pub fn set_storage_image(&self, device: &Device, index: u32, view: vk::ImageView) {
+        self.write_image(
+            device,
+            &ImageWrite {
+                binding: STORAGE_IMAGES_BINDING,
+                index,
+                view,
+                descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
+                layout: vk::ImageLayout::GENERAL,
+            },
+        );
+    }
+
+    fn write_image(&self, device: &Device, image: &ImageWrite) {
         let image_infos = [vk::DescriptorImageInfo::default()
-            .image_view(view)
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
+            .image_view(image.view)
+            .image_layout(image.layout)];
         let write = vk::WriteDescriptorSet::default()
             .dst_set(self.set)
-            .dst_binding(binding)
-            .dst_array_element(index)
-            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+            .dst_binding(image.binding)
+            .dst_array_element(image.index)
+            .descriptor_type(image.descriptor_type)
             .image_info(&image_infos);
         unsafe { device.handle().update_descriptor_sets(&[write], &[]) };
     }

@@ -101,6 +101,63 @@ pub(super) fn to_present(device: &ash::Device, command_buffer: vk::CommandBuffer
     );
 }
 
+const COMPUTE_IMAGE_ACCESS: vk::AccessFlags2 = vk::AccessFlags2::from_raw(
+    vk::AccessFlags2::SHADER_STORAGE_READ.as_raw()
+        | vk::AccessFlags2::SHADER_STORAGE_WRITE.as_raw()
+        | vk::AccessFlags2::SHADER_SAMPLED_READ.as_raw(),
+);
+
+pub(super) fn bloom_start(device: &ash::Device, command_buffer: vk::CommandBuffer, image: vk::Image) {
+    record(
+        device,
+        command_buffer,
+        &ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::UNDEFINED,
+            new_layout: vk::ImageLayout::GENERAL,
+            source_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            source_access: vk::AccessFlags2::NONE,
+            destination_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            destination_access: COMPUTE_IMAGE_ACCESS,
+        },
+    );
+}
+
+pub(super) fn bloom_between_passes(device: &ash::Device, command_buffer: vk::CommandBuffer, image: vk::Image) {
+    record(
+        device,
+        command_buffer,
+        &ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::GENERAL,
+            new_layout: vk::ImageLayout::GENERAL,
+            source_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            source_access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+            destination_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            destination_access: COMPUTE_IMAGE_ACCESS,
+        },
+    );
+}
+
+pub(super) fn bloom_to_fragment(device: &ash::Device, command_buffer: vk::CommandBuffer, image: vk::Image) {
+    record(
+        device,
+        command_buffer,
+        &ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::GENERAL,
+            new_layout: vk::ImageLayout::GENERAL,
+            source_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            source_access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+            destination_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            destination_access: vk::AccessFlags2::SHADER_SAMPLED_READ,
+        },
+    );
+}
+
 pub(super) fn cleared_to_compute(device: &ash::Device, command_buffer: vk::CommandBuffer, buffer: vk::Buffer) {
     record_buffer(
         device,
@@ -161,7 +218,7 @@ fn record(device: &ash::Device, command_buffer: vk::CommandBuffer, transition: &
         .subresource_range(
             vk::ImageSubresourceRange::default()
                 .aspect_mask(transition.aspect)
-                .level_count(1)
+                .level_count(vk::REMAINING_MIP_LEVELS)
                 .layer_count(1),
         )];
     let dependency_info = vk::DependencyInfo::default().image_memory_barriers(&barriers);

@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/triton/color"
 normal-texture "bodies/triton/normal"
+hapke scatter-texture="bodies/triton/scatter" surge-texture="bodies/triton/surge" porosity=1.86 roughness=31 blend=1 light-boost=0.25 gamma-boost=0.84

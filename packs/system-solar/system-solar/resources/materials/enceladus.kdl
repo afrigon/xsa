@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/enceladus/color"
 normal-texture "bodies/enceladus/normal"
+hapke scatter-texture="bodies/enceladus/scatter" surge-texture="bodies/enceladus/surge" porosity=1.73 roughness=6 blend=0.45 light-boost=0.3 gamma-boost=0.65

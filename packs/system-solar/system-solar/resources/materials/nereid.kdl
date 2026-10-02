@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/nereid/color"
 normal-texture "bodies/nereid/normal"
+hapke scatter-texture="bodies/nereid/scatter" surge-texture="bodies/nereid/surge" porosity=1.86 roughness=15 blend=1 light-boost=0.35 gamma-boost=0.75

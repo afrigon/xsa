@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/venus/color"
 normal-texture "bodies/venus/normal"
+hapke scatter-texture="bodies/venus/scatter" surge-texture="bodies/venus/surge" porosity=1.86 roughness=18 blend=0.45 light-boost=1 gamma-boost=0.76

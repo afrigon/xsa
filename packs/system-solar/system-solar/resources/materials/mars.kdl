@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/mars/color"
 normal-texture "bodies/mars/normal"
+hapke scatter-texture="bodies/mars/scatter" surge-texture="bodies/mars/surge" porosity=2.0183 roughness=24 blend=0.65 light-boost=0.84 gamma-boost=0.72

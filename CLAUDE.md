@@ -129,8 +129,6 @@ frames on one bidirectional stream.
 - **Reverse-Z infinite depth.** Clear depth to 0, test `GREATER`. The near
   plane follows the nearest body surface (`Camera::fit_near_plane`); depth
   values below ~1e-8 fail the depth test, which is why it can't stay tiny.
-- **Sub-pixel bodies** are drawn as fixed-size dots (`base:point`)
-  instead of vanishing.
 - **Rendering architecture target:** clustered forward (Forward+) with a
   depth prepass, HDR render targets and a tonemapping pass. Volumetric effects
   (atmosphere via Hillaire's LUT technique, clouds, plumes, explosions) are
@@ -183,6 +181,10 @@ it first. Deliberately avoided:
 
 ## Code conventions
 
+- **Fix root causes, never work around them.** Don't propose hacks, clamps,
+  special cases or magic constants that hide a flaw. Find why the problem
+  happens and fix that; if the real fix is out of scope, say so and record
+  it in `.todo` instead of papering over it.
 - **No tuples in our own data shapes** — function arguments, return values,
   fields, constant tables and local destructuring use named structs or
   separate bindings; handles are structs with a named field, not tuple
@@ -200,9 +202,11 @@ it first. Deliberately avoided:
 | Tab / Shift+Tab | Next / previous target |
 | F1 | Toggle the debug fly camera (WASD, Space/Shift, mouse look; click to capture, Escape to release) |
 | F2 | Toggle the skybox |
-| F3 | Toggle tonemapping (AgX; off clips) |
+| F3 | Cycle the tonemapper for comparison: AgX, AgX Punchy, Khronos PBR Neutral, off (clipped) |
 | F4 | Toggle auto-exposure (off: manual EV100) |
-| F6 | Toggle instant exposure adaptation (comparison while tuning) |
+| F5 | Toggle bloom |
+| F7 | Cycle planet shading for comparison: Hapke as Sol renders it, textbook Hapke, Lambert |
+| `[` / `]` | Bloom strength down / up by half a stop (starts at 2%) |
 | `-` / `=` | Darker / brighter by 1/3 stop: exposure compensation in auto mode, EV100 in manual mode |
 | 1–5 | Shader override: lit, normals, depth, triangles, lighting |
 | \` | Wireframe |

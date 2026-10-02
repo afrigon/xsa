@@ -5,29 +5,36 @@ pub(super) const HISTOGRAM_BINS: usize = 256;
 const MINIMUM_LOG2_LUMINANCE: f32 = -16.0;
 const MAXIMUM_LOG2_LUMINANCE: f32 = 32.0;
 
-// Above the brightest stars of the sky (about 0.05 cd/m²), so starfields never count as lit content.
+// Pixels are classified by what they physically are. Below LIT_FLOOR: starfield and night sides (the brightest
+// stars of the sky are about 0.05 cd/m²). Above STAR_SURFACE: emitted light; the brightest reflected sunlight, a
+// white surface at Mercury, stays below 3·10⁵ cd/m².
 const LIT_FLOOR_LUMINANCE: f32 = 0.1;
-const MINIMUM_LIT_FRACTION: f32 = 0.01;
-const BRIGHTEST_EXCLUDED_FRACTION: f32 = 0.02;
+const STAR_SURFACE_LUMINANCE: f32 = 1e7;
+const AVERAGE_MINIMUM_LIT_FRACTION: f32 = 0.01;
+const HIGHLIGHT_MINIMUM_LIT_FRACTION: f32 = 1e-4;
+// The highlight is the 99th percentile of lit pixels, so a few hot texels do not set the exposure.
+const HIGHLIGHT_PERCENTILE_FRACTION: f32 = 0.01;
 const MINIMUM_EV100: f32 = -6.0;
 const MAXIMUM_EV100: f32 = 20.0;
 const BRIGHTENING_HALF_LIFE_SECONDS: f32 = 0.1;
 const DARKENING_HALF_LIFE_SECONDS: f32 = 1.5;
 // ISO 100 and the reflected-light meter calibration constant K = 12.5.
 const METER_SENSITIVITY: f32 = 100.0 / 12.5;
-// Exposed value of the brightest metered pixels: just under AgX's white point (about 2.9).
+// Exposed value of lit highlights: just under AgX's white point (about 2.9).
 const HIGHLIGHT_EXPOSED_VALUE: f32 = 2.0;
+// A camera sensor records about 14 stops above its white point; a visible star's surface is kept within that range.
+const SENSOR_DYNAMIC_RANGE_STOPS: f32 = 14.0;
 // The exposure for an EV100 is 1 / (1.2 × 2^EV100).
 const EXPOSURE_SCALE: f32 = 1.2;
-
+#[derive(Default)]
 struct Metering {
-    average: f32,
-    highlight: f32,
+    average: Option<f32>,
+    highlight: Option<f32>,
+    star_surface: Option<f32>,
 }
 
 pub(super) struct AutoExposure {
     enabled: bool,
-    instant: bool,
     ev100: f32,
     manual_ev100: f32,
     compensation: f32,
@@ -38,7 +45,6 @@ impl AutoExposure {
     pub fn new(initial_ev100: f32) -> Self {
         Self {
             enabled: true,
-            instant: false,
             ev100: initial_ev100,
             manual_ev100: initial_ev100,
             compensation: 0.0,
@@ -56,11 +62,6 @@ impl AutoExposure {
 
     pub fn compensation(&self) -> f32 {
         self.compensation
-    }
-
-    pub fn toggle_instant(&mut self) -> bool {
-        self.instant = !self.instant;
-        self.instant
     }
 
     pub fn toggle(&mut self) -> bool {
@@ -89,23 +90,29 @@ impl AutoExposure {
         if !self.enabled {
             return;
         }
-        let Some(metering) = meter(histogram) else {
-            return;
-        };
-        let target = target_ev100(&metering) - self.compensation;
+        let target = target_ev100(&meter(histogram)) - self.compensation;
         self.ev100 = match elapsed {
-            Some(seconds) if !self.instant => adapt(self.ev100, target, seconds),
-            _ => target,
+            Some(seconds) => adapt(self.ev100, target, seconds),
+            None => target,
         };
     }
 }
 
-// The darker of two exposures: the average lit surface at mid-grey, and the highlights just under white, so
-// dark bodies with bright patches (Earth's oceans and ice) do not clip.
+// The darkest of the exposures each part of the view calls for: the average lit surface at mid-grey, lit highlights
+// just under white, and a visible star's surface within the sensor's dynamic range. With nothing lit, the dark limit.
 fn target_ev100(metering: &Metering) -> f32 {
-    let average = (metering.average * METER_SENSITIVITY).log2();
-    let highlight = (metering.highlight / (EXPOSURE_SCALE * HIGHLIGHT_EXPOSED_VALUE)).log2();
-    average.max(highlight).clamp(MINIMUM_EV100, MAXIMUM_EV100)
+    let average = metering.average.map(|luminance| (luminance * METER_SENSITIVITY).log2());
+    let highlight = metering
+        .highlight
+        .map(|luminance| (luminance / (EXPOSURE_SCALE * HIGHLIGHT_EXPOSED_VALUE)).log2());
+    let star_surface = metering
+        .star_surface
+        .map(|luminance| (luminance / (EXPOSURE_SCALE * HIGHLIGHT_EXPOSED_VALUE)).log2() - SENSOR_DYNAMIC_RANGE_STOPS);
+    [average, highlight, star_surface]
+        .into_iter()
+        .flatten()
+        .fold(MINIMUM_EV100, f32::max)
+        .clamp(MINIMUM_EV100, MAXIMUM_EV100)
 }
 
 fn adapt(current: f32, target: f32, seconds: f32) -> f32 {
@@ -123,42 +130,49 @@ fn bin_log2_luminance(bin: usize) -> f32 {
     MINIMUM_LOG2_LUMINANCE + position * (MAXIMUM_LOG2_LUMINANCE - MINIMUM_LOG2_LUMINANCE)
 }
 
-// Average luminance of the lit part of the view, ignoring black space and the brightest pixels (the Sun's disk);
-// when almost nothing is lit, the whole view counts.
-fn meter(histogram: &[u32]) -> Option<Metering> {
-    let total: u64 = histogram.iter().map(|&count| u64::from(count)).sum();
-    let floor = LIT_FLOOR_LUMINANCE.log2();
-    let first_lit = (1..HISTOGRAM_BINS)
-        .find(|&bin| bin_log2_luminance(bin) >= floor)
-        .unwrap_or(HISTOGRAM_BINS);
-    let lit: u64 = histogram[first_lit..].iter().map(|&count| u64::from(count)).sum();
-    let first_metered = if lit as f32 >= MINIMUM_LIT_FRACTION * total as f32 {
-        first_lit
-    } else {
-        1
-    };
+fn bin_luminance(bin: usize) -> f32 {
+    bin_log2_luminance(bin).exp2()
+}
 
-    let metered: u64 = histogram[first_metered..].iter().map(|&count| u64::from(count)).sum();
-    let mut excluded = (metered as f32 * BRIGHTEST_EXCLUDED_FRACTION) as u64;
-    let mut weighted_log = 0.0;
-    let mut counted = 0;
-    let mut highlight = None;
-    for bin in (first_metered..HISTOGRAM_BINS).rev() {
-        let count = u64::from(histogram[bin]);
-        let skipped = count.min(excluded);
-        excluded -= skipped;
-        let kept = count - skipped;
-        if kept > 0 && highlight.is_none() {
-            highlight = Some(bin_log2_luminance(bin).exp2());
-        }
-        weighted_log += kept as f64 * f64::from(bin_log2_luminance(bin));
-        counted += kept;
+fn meter(histogram: &[u32]) -> Metering {
+    let total: u64 = histogram.iter().map(|&count| u64::from(count)).sum();
+    let mut metering = Metering::default();
+    if total == 0 {
+        return metering;
     }
-    let highlight = highlight?;
-    Some(Metering {
-        average: (weighted_log / counted as f64).exp2() as f32,
-        highlight,
-    })
+    let first_lit = (1..HISTOGRAM_BINS)
+        .find(|&bin| bin_luminance(bin) >= LIT_FLOOR_LUMINANCE)
+        .unwrap_or(HISTOGRAM_BINS);
+    let first_star_surface = (first_lit..HISTOGRAM_BINS)
+        .find(|&bin| bin_luminance(bin) >= STAR_SURFACE_LUMINANCE)
+        .unwrap_or(HISTOGRAM_BINS);
+    let lit_bins = first_lit..first_star_surface;
+
+    metering.star_surface = (first_star_surface..HISTOGRAM_BINS)
+        .rev()
+        .find(|&bin| histogram[bin] > 0)
+        .map(bin_luminance);
+
+    let lit: u64 = histogram[lit_bins.clone()].iter().map(|&count| u64::from(count)).sum();
+    let lit_fraction = lit as f32 / total as f32;
+    if lit == 0 || lit_fraction < HIGHLIGHT_MINIMUM_LIT_FRACTION {
+        return metering;
+    }
+
+    let mut brighter_than = 0;
+    let percentile_count = (lit as f32 * HIGHLIGHT_PERCENTILE_FRACTION).ceil() as u64;
+    metering.highlight = lit_bins.clone().rev().find_map(|bin| {
+        brighter_than += u64::from(histogram[bin]);
+        (brighter_than >= percentile_count).then(|| bin_luminance(bin))
+    });
+
+    if lit_fraction >= AVERAGE_MINIMUM_LIT_FRACTION {
+        let weighted_log: f64 = lit_bins
+            .map(|bin| f64::from(histogram[bin]) * f64::from(bin_log2_luminance(bin)))
+            .sum();
+        metering.average = Some((weighted_log / lit as f64).exp2() as f32);
+    }
+    metering
 }
 
 #[cfg(test)]
@@ -188,74 +202,121 @@ mod tests {
         count: u32,
     }
 
+    fn ev100(pixels: &[Pixels]) -> f32 {
+        target_ev100(&meter(&histogram(pixels)))
+    }
+
+    fn exposed(luminance: f32, ev100: f32) -> f32 {
+        luminance / (EXPOSURE_SCALE * ev100.exp2())
+    }
+
+    const SKY: f32 = 1e-4;
+    const SUNLIT: f32 = 5_000.0;
+    const SUN_DISK: f32 = 1.9e9;
+
     #[test]
-    fn small_sunlit_planet_in_black_space_is_metered_on_the_planet() {
-        let view = histogram(&[
+    fn a_large_sunlit_planet_sits_near_mid_grey() {
+        let ev100 = ev100(&[
             Pixels {
-                luminance: 1e-4,
-                count: 950_000,
+                luminance: SKY,
+                count: 600_000,
             },
             Pixels {
-                luminance: 10_000.0,
-                count: 50_000,
+                luminance: SUNLIT,
+                count: 400_000,
             },
         ]);
-        let luminance = meter(&view).unwrap().average;
-        assert!((5_000.0..20_000.0).contains(&luminance), "{luminance} cd/m²");
+        assert!((0.05..0.5).contains(&exposed(SUNLIT, ev100)), "EV100 {ev100}");
+    }
+
+    #[test]
+    fn a_thin_crescent_is_kept_under_white() {
+        let ev100 = ev100(&[
+            Pixels {
+                luminance: SKY,
+                count: 995_000,
+            },
+            Pixels {
+                luminance: SUNLIT,
+                count: 5_000,
+            },
+        ]);
+        let value = exposed(SUNLIT, ev100);
+        assert!(
+            (0.5..=HIGHLIGHT_EXPOSED_VALUE * 1.2).contains(&value),
+            "crescent at {value}, EV100 {ev100}"
+        );
+    }
+
+    #[test]
+    fn a_distant_small_planet_is_kept_under_white() {
+        let ev100 = ev100(&[
+            Pixels {
+                luminance: SKY,
+                count: 999_800,
+            },
+            Pixels {
+                luminance: SUNLIT,
+                count: 200,
+            },
+        ]);
+        assert!(exposed(SUNLIT, ev100) <= HIGHLIGHT_EXPOSED_VALUE * 1.2, "EV100 {ev100}");
+    }
+
+    #[test]
+    fn the_sun_in_view_stays_within_the_sensor_range() {
+        let ev100 = ev100(&[
+            Pixels {
+                luminance: SKY,
+                count: 994_900,
+            },
+            Pixels {
+                luminance: SUNLIT,
+                count: 5_000,
+            },
+            Pixels {
+                luminance: SUN_DISK,
+                count: 100,
+            },
+        ]);
+        let stops_over_white = (exposed(SUN_DISK, ev100) / HIGHLIGHT_EXPOSED_VALUE).log2();
+        assert!(
+            stops_over_white <= SENSOR_DYNAMIC_RANGE_STOPS + 0.2,
+            "Sun {stops_over_white} stops over white"
+        );
     }
 
     #[test]
     fn open_space_stops_at_the_dark_limit() {
-        let view = histogram(&[Pixels {
-            luminance: 1e-4,
-            count: 1_000_000,
-        }]);
-        assert_eq!(target_ev100(&meter(&view).unwrap()), MINIMUM_EV100);
-    }
-
-    #[test]
-    fn the_brightest_pixels_do_not_set_the_exposure() {
-        let view = histogram(&[
-            Pixels {
-                luminance: 10_000.0,
-                count: 990_000,
-            },
-            Pixels {
-                luminance: 2e9,
-                count: 10_000,
-            },
-        ]);
-        let luminance = meter(&view).unwrap().average;
-        assert!(luminance < 20_000.0, "{luminance} cd/m²");
-    }
-
-    #[test]
-    fn a_black_view_keeps_the_current_exposure() {
-        let view = histogram(&[Pixels {
-            luminance: 0.0,
-            count: 1_000_000,
-        }]);
-        assert!(meter(&view).is_none());
+        assert_eq!(
+            ev100(&[Pixels {
+                luminance: SKY,
+                count: 1_000_000
+            }]),
+            MINIMUM_EV100
+        );
+        assert_eq!(
+            ev100(&[Pixels {
+                luminance: 0.0,
+                count: 1_000_000
+            }]),
+            MINIMUM_EV100
+        );
     }
 
     #[test]
     fn bright_patches_on_a_dark_body_stay_under_white() {
-        let view = histogram(&[
+        let ev100 = ev100(&[
             Pixels {
                 luminance: 50.0,
                 count: 80_000,
             },
             Pixels {
-                luminance: 5_000.0,
+                luminance: SUNLIT,
                 count: 20_000,
             },
         ]);
-        let ev100 = target_ev100(&meter(&view).unwrap());
-        let exposed = 5_000.0 / (EXPOSURE_SCALE * ev100.exp2());
-        assert!(
-            exposed <= HIGHLIGHT_EXPOSED_VALUE * 1.2,
-            "land exposed to {exposed} at EV100 {ev100}"
-        );
+        assert!(exposed(SUNLIT, ev100) <= HIGHLIGHT_EXPOSED_VALUE * 1.2, "EV100 {ev100}");
     }
 
     #[test]

@@ -14,8 +14,9 @@
   swapchain recreation ever picks a different format (e.g. the window moves to
   a monitor with other surface formats), it no longer matches; rebuild it on
   recreation when the format changes.
-- Bodies drawn as dots use the material's flat color, which is white for
-  textured planets; use the color texture's average (its smallest mip).
+- Distant-body markers: bodies smaller than a pixel are no longer drawn at
+  all (the fixed-brightness dots were removed). Redesign how distant bodies
+  are shown, e.g. as physically bright points, map-mode icons or labels.
 - Pack files: unknown nodes are rejected, but unknown properties are not, so a
   misspelled optional property (e.g. a rate) is silently ignored. Reject
   properties a node doesn't define.
@@ -41,16 +42,24 @@
 - Every body texture is uploaded when joining a simulation (~1.1 GB of VRAM
   with Sol's 4k set), one at a time with a full queue wait each. Fine at 4k;
   the 16k set needs texture streaming with a VRAM budget.
-- Auto-exposure clips thin crescents to white: under 1% lit pixels the meter
-  falls back to the whole view, where excluding the brightest 2% (meant for
-  the Sun's disk) discards the crescent itself, so exposure drops to the
-  EV −6 dark limit. Planned fix in `renderer/exposure.rs`: exclude the Sun by
-  luminance (above 10⁷ cd/m²) instead of by percentage; always apply
-  highlight protection while at least 0.01% of the view is lit; move the
-  dots out of the HDR image into the tonemap pass (depth stored by the scene
-  pass, read by the tonemap pass), since their fixed unexposed brightness
-  would otherwise feed back into the meter. Deferred on purpose: retune auto-
-  exposure once bloom, atmospheres, clouds and planetshine interact with it.
+- Revisit auto-exposure: no approach so far is satisfying. In place: an
+  image-based meter (luminance histogram) that classifies pixels as dark
+  (below 0.1 cd/m²), lit, or star surface (above 10⁷ cd/m²) and exposes for
+  the darkest of the average lit surface at mid-grey, lit highlights just
+  under white, and a visible star within a 14-stop sensor range. Known
+  problems: the Sun flickers as the camera moves (its disk overflows
+  RGBA16F, so its measured brightness depends on the exposure and flips
+  between classes); the Sun plus a crescent darkens the crescent (the
+  14-stop rule); stars only show in full darkness (physically expected). An
+  incident-light meter (exposure from the illuminance at the camera, with
+  body shadows) was tried side by side and did not satisfy either. Ideas:
+  treat saturated pixels as a lower bound (star surface, never lit); meter
+  the subject and let light sources clip; identify star disks by a ray-
+  sphere test instead of luminance (also keeps sun glints on metal or water
+  and bright plumes from counting as stars); local exposure (eye-like
+  regional adaptation) for starfields beside bright bodies; the Sun's glare
+  as its own effect. Revisit once terrain, vessels, plumes, atmospheres and
+  planetshine exist, and decide with the scenes side by side.
 - The client loads shaders from the `base` pack only, before joining, so other
   packs cannot override them yet (part of custom shaders in packs).
 - A remote client must have the server's packs installed with matching
@@ -102,7 +111,7 @@
   limbs), shader aliasing (normal-mapped detail, glints), sub-pixel objects
   and noise from ray-marched effects: camera jitter, per-body motion vectors,
   neighborhood color clamping, sharpening, history reset on time-warp jumps
-  and target switches; dots and orbit lines drawn analytically after it.
+  and target switches; distant-body markers and orbit lines drawn after it.
   Lands after bloom and before atmospheres and clouds, which depend on
   temporal accumulation; gets a toggle key. Later, optionally: AMD FSR 2/3
   (MIT, vendor-neutral) as a quality and upscaling mode on the same inputs.
@@ -111,6 +120,20 @@
   more detail (where on or around the body: a launch site, a surface
   position, an orbit), or become a points-of-interest system where several
   places, such as space stations, can be chosen as the starting point.
+- Lens effects for the Sun: diffraction spikes and lens-flare ghosts, drawn
+  as their own post-processing effect with a toggle key (Sol ships flare,
+  spike and ghost textures). Kept subtle; separate from bloom, which only
+  models the lens's soft scatter.
+- Stars from a catalog: render stars as points from a star catalog (Hipparcos
+  or Tycho-2, or Gaia for millions) with physical brightness from their
+  measured magnitudes, pinpoint sharp at any zoom, over a dimmer Milky Way
+  texture for the diffuse glow. Keeps the physically calibrated sky.
+- In-game command parsing, then scenario files built on it: a scenario is a
+  list of commands (load a simulation, set time, target, camera angles and
+  distance, toggle render settings, take a screenshot to PNG) run in order,
+  then exit. Lets visual changes be inspected and compared reproducibly, and
+  doubles as visual regression tests. Screenshots are taken by the renderer
+  itself; external capture on Hyprland is unreliable.
 - Rings as data: inner/outer radii and orientation in the system data
   (literature values; Sol's ring radii use an unknown unit), textures as
   resources.

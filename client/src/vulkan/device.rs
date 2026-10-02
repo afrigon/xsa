@@ -33,13 +33,15 @@ impl Device {
         let features = vk::PhysicalDeviceFeatures::default()
             .fill_mode_non_solid(true)
             .geometry_shader(true)
-            .sampler_anisotropy(true);
+            .sampler_anisotropy(true)
+            .shader_storage_image_extended_formats(true);
         let mut vulkan_11_features = vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
         let mut vulkan_12_features = vk::PhysicalDeviceVulkan12Features::default()
             .buffer_device_address(true)
             .runtime_descriptor_array(true)
             .descriptor_binding_partially_bound(true)
             .descriptor_binding_sampled_image_update_after_bind(true)
+            .descriptor_binding_storage_image_update_after_bind(true)
             .shader_sampled_image_array_non_uniform_indexing(true);
         let mut vulkan_13_features = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)

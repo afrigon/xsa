@@ -3,3 +3,4 @@ color-texture "bodies/io/color"
 normal-texture "bodies/io/normal"
 emissive-texture "bodies/io/emissive"
 emissive-luminance 20
+hapke scatter-texture="bodies/io/scatter" surge-texture="bodies/io/surge" porosity=1.86 roughness=20 blend=1 light-boost=0.5 gamma-boost=0.75

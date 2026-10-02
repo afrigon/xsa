@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/luna/color"
 normal-texture "bodies/luna/normal"
+hapke scatter-texture="bodies/luna/scatter" surge-texture="bodies/luna/surge" porosity=1.86 roughness=18 blend=1 light-boost=1 gamma-boost=0.7

@@ -9,21 +9,20 @@ pub(super) struct FrameData {
     pub sun_position: Vec4,
     pub sun_intensity: Vec4,
     pub viewport_size: Vec2,
-    pub point_quad_size: f32,
     pub exposure: f32,
     pub hdr_texture: u32,
-    pub tonemapping: u32,
+    pub tonemapper: u32,
     pub starlight_illuminance: f32,
-    pub padding: u32,
+    pub bloom_texture: u32,
+    pub bloom_strength: f32,
+    pub shading_model: u32,
+    pub padding: [u32; 3],
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(super) struct ObjectData {
     pub world_from_model: Mat4,
-    pub point_diameter: f32,
-    pub point_intensity: f32,
-    pub padding: [f32; 2],
 }
 
 #[repr(C)]
@@ -43,8 +42,17 @@ pub(super) struct HistogramPushConstants {
     pub histogram: vk::DeviceAddress,
 }
 
-const _: () = assert!(size_of::<FrameData>() == 192);
-const _: () = assert!(size_of::<ObjectData>() == 80);
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(super) struct BloomPushConstants {
+    pub source_texture: u32,
+    pub source_level: u32,
+    pub target_image: u32,
+    pub karis_average: u32,
+}
+
+const _: () = assert!(size_of::<FrameData>() == 208);
+const _: () = assert!(size_of::<ObjectData>() == 64);
 const _: () = assert!(size_of::<PushConstants>() == 32);
 
 pub(super) fn as_bytes<T: Copy>(value: &T) -> &[u8] {

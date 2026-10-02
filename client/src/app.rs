@@ -19,13 +19,16 @@ use crate::camera::{Camera, CameraMode};
 use crate::content::{self, MaterialDefinition};
 use crate::input::Input;
 use crate::lighting::{self, StarLight};
-use crate::renderer::{ColorSpace, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader};
+use crate::renderer::{
+    ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader,
+};
 
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
 const HORIZONTAL_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
 const DEBUG_CAMERA_SPEED: f64 = 2_000_000.0;
 const EXPOSURE_STEP_STOPS: f32 = 1.0 / 3.0;
+const BLOOM_STRENGTH_STEP_STOPS: f32 = 0.5;
 
 struct ShaderShortcut {
     key: KeyCode,
@@ -217,7 +220,9 @@ impl App {
             })
             .collect();
         let light_body = star_lights.iter().position(Option::is_some);
-        if let Some(Some(star_light)) = light_body.map(|index| &star_lights[index]) {
+        if let Some(index) = light_body
+            && let Some(star_light) = &star_lights[index]
+        {
             scene.sun_intensity = star_light.color * star_light.luminous_intensity as f32;
         }
         let target = simulation
@@ -261,6 +266,7 @@ impl App {
         }
         if self.input.was_pressed(KeyCode::F1) {
             self.toggle_camera_mode();
+            println!("camera: {}", self.camera_mode.name());
         }
         if self.camera_mode == CameraMode::Orbit && self.input.was_pressed(KeyCode::Tab) {
             let backwards = self.input.is_held(KeyCode::ShiftLeft) || self.input.is_held(KeyCode::ShiftRight);
@@ -286,14 +292,19 @@ impl App {
         for shortcut in &SHADER_SHORTCUTS {
             if self.input.was_pressed(shortcut.key) {
                 renderer.set_shader_override(shortcut.shader);
+                println!("view: {}", shortcut.shader.map_or("shaded", Shader::path));
             }
         }
         if self.input.was_pressed(KeyCode::Backquote) {
-            renderer.toggle_wireframe();
+            match renderer.toggle_wireframe() {
+                Some(enabled) => println!("wireframe: {}", on_off(enabled)),
+                None => println!("wireframe: unsupported by this device"),
+            }
         }
         if self.input.was_pressed(KeyCode::F2) {
             let scene = renderer.scene_mut();
             scene.skybox = if scene.skybox.is_some() { None } else { self.skybox };
+            println!("skybox: {}", on_off(scene.skybox.is_some()));
         }
         if self.input.was_pressed(KeyCode::Minus) {
             renderer.adjust_exposure(-EXPOSURE_STEP_STOPS);
@@ -307,13 +318,27 @@ impl App {
             renderer.toggle_auto_exposure();
             print_exposure(renderer);
         }
-        if self.input.was_pressed(KeyCode::F6) {
-            let instant = renderer.toggle_instant_exposure();
-            println!("exposure adaptation: {}", if instant { "instant" } else { "eye-like" });
+        if self.input.was_pressed(KeyCode::F5) {
+            let enabled = renderer.toggle_bloom();
+            println!("bloom: {}", on_off(enabled));
+        }
+        if self.input.was_pressed(KeyCode::BracketLeft) {
+            println!(
+                "bloom strength: {:.4}",
+                renderer.adjust_bloom_strength(-BLOOM_STRENGTH_STEP_STOPS)
+            );
+        }
+        if self.input.was_pressed(KeyCode::BracketRight) {
+            println!(
+                "bloom strength: {:.4}",
+                renderer.adjust_bloom_strength(BLOOM_STRENGTH_STEP_STOPS)
+            );
+        }
+        if self.input.was_pressed(KeyCode::F7) {
+            println!("shading: {}", renderer.cycle_shading_model().name());
         }
         if self.input.was_pressed(KeyCode::F3) {
-            let enabled = renderer.toggle_tonemapping();
-            println!("tonemapping: {}", if enabled { "AgX" } else { "off (clipped)" });
+            println!("tonemapper: {}", renderer.cycle_tonemapper().name());
         }
     }
 
@@ -482,6 +507,10 @@ fn window_attributes() -> WindowAttributes {
     attributes
 }
 
+fn on_off(enabled: bool) -> &'static str {
+    if enabled { "on" } else { "off" }
+}
+
 fn print_exposure(renderer: &Renderer) {
     if renderer.auto_exposure_enabled() {
         println!(
@@ -516,6 +545,7 @@ fn create_material(
             normal,
             emissive,
             emissive_luminance,
+            hapke,
         } => {
             let mut load = |kind: &str, path: &PathBuf, color_space| {
                 renderer.load_texture(&format!("{body} {kind}"), path, color_space)
@@ -529,6 +559,19 @@ fn create_material(
                     .map(|path| load("emissive", &path, ColorSpace::Srgb))
                     .transpose()?,
                 emissive_luminance,
+                hapke: hapke
+                    .map(|hapke| -> anyhow::Result<HapkeParameters> {
+                        Ok(HapkeParameters {
+                            scatter: load("scatter", &hapke.scatter, ColorSpace::Linear)?,
+                            surge: load("surge", &hapke.surge, ColorSpace::Linear)?,
+                            porosity: hapke.porosity,
+                            roughness: hapke.roughness_degrees.to_radians(),
+                            blend: hapke.blend,
+                            light_boost: hapke.light_boost,
+                            gamma_boost: hapke.gamma_boost,
+                        })
+                    })
+                    .transpose()?,
             }
         }
     })

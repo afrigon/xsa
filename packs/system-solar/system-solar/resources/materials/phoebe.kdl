@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/phoebe/color"
 normal-texture "bodies/phoebe/normal"
+hapke scatter-texture="bodies/phoebe/scatter" surge-texture="bodies/phoebe/surge" porosity=1.86 roughness=32 blend=1 light-boost=1.35 gamma-boost=1

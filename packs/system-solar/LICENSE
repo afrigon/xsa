@@ -27,17 +27,21 @@ Studio (https://svs.gsfc.nasa.gov/4851). Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2,
 Tycho-2: ESA. Used under the NASA media usage guidelines; the cube map is
 converted from the source EXR.
 
-Body textures (system-solar/resources/textures/bodies/)
--------------------------------------------------------
+Body textures and Hapke parameters (system-solar/resources/)
+-----------------------------------------------------------
 
-From Sol 0.9.5 by RSS-Reborn (https://github.com/RSS-Reborn), licensed under
-the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
-license (CC BY-NC-SA 4.0), reproduced below. Authors and sources of each
-texture are credited in Sol's credits file:
+The body textures (textures/bodies/) and the Hapke shading parameters in the
+materials (materials/, the `hapke` nodes: porosity, roughness, blend,
+light-boost, gamma-boost) are from Sol 0.9.5 by RSS-Reborn
+(https://github.com/RSS-Reborn), licensed under the Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International license (CC BY-NC-SA
+4.0), reproduced below. Authors and sources of each texture are credited in
+Sol's credits file:
 https://github.com/RSS-Reborn/Sol-Configs/blob/f9e6fdf4e26c4a5ba1364ba93babfa2ada3e5a5c/Sol-Configs/Credits-License.md
 
-Changes: files are renamed and reorganized into this pack's layout; their
-contents are unmodified.
+Changes: texture files are renamed and reorganized into this pack's layout,
+their contents unmodified; the Hapke parameters are copied from Sol's
+Parallax configuration files into this pack's material format.
 
 No commercial use. Derived textures must be shared under the same license.
 

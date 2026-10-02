@@ -6,7 +6,7 @@ mod pipeline;
 mod surface;
 mod swapchain;
 
-pub use bindless::BindlessTextures;
+pub use bindless::{BindlessTextures, SAMPLED_LAYOUT};
 pub use device::Device;
 pub use instance::Instance;
 pub use memory::{Allocator, Buffer, Image, ImageDescription, MemoryLocation};

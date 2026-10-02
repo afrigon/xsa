@@ -20,6 +20,15 @@ pub enum CameraMode {
     Debug,
 }
 
+impl CameraMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            CameraMode::Orbit => "orbit",
+            CameraMode::Debug => "debug",
+        }
+    }
+}
+
 pub struct Camera {
     pub position: DVec3,
     pub orientation: DQuat,

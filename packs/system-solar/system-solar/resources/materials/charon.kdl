@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/charon/color"
 normal-texture "bodies/charon/normal"
+hapke scatter-texture="bodies/charon/scatter" surge-texture="bodies/charon/surge" porosity=1.86 roughness=23 blend=1 light-boost=0.5 gamma-boost=0.72

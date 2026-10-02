@@ -42,3 +42,11 @@ them into `assets/`, next to their license or credit file.
 - **Local copy:** archives in `assets/sol/archives/`, extracted to
   `assets/sol/extracted/`; the license text and attribution ship with the pack
   in `packs/system-solar/LICENSE`
+
+## AdvancedPQSTools (Hapke shader code)
+
+- **Source:** [CharonSSS/AdvancedPQSTools](https://github.com/CharonSSS/AdvancedPQSTools),
+  `Shaders/Hapke/HapkeScaledFunctions.cginc` (Hapke shaders by ballisticfox)
+- **License:** MIT, Copyright (c) 2022 Niako
+- **Local copy:** ported into `packs/base/base/resources/shaders/common/hapke.slang`;
+  the license text ships with the base pack in `packs/base/LICENSE`

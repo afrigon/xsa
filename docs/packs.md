@@ -254,6 +254,13 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
   optional **`normal-texture`** and **`emissive-texture`** (sRGB), each a
   texture id; an emissive texture needs **`emissive-luminance`** (cd/m² for a
   texture value of 1).
+  An optional **`hapke`** node shades the surface with Hapke's model of
+  particulate surfaces instead of Lambert: `scatter-texture` (red: single-
+  scattering albedo w, green: phase-function lobe width b, blue: lobe balance
+  (c + 1) / 2) and `surge-texture` (opposition-surge amplitudes and widths:
+  B_S0 / 2, h_S, B_C0 / 2, h_C), both linear; `porosity` (Hapke's K) and
+  `roughness` (mean slope angle, °); and Sol's look trims `blend`,
+  `light-boost` and `gamma-boost`, used only by the Sol-exact variant.
   Maps are equirectangular with the first row at the south pole, longitude 0
   at u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
   Parallax, which Sol's textures follow). Normal maps are tangent-space with

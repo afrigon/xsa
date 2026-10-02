@@ -2,7 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use kdl::{KdlDocument, KdlNode, KdlValue};
+pub use kdl::KdlNode;
+use kdl::{KdlDocument, KdlValue};
 
 pub struct Document {
     path: PathBuf,

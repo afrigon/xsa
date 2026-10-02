@@ -1,3 +1,4 @@
+import common.hapke;
 import common.scene;
 
 [[vk::binding(2, 0)]]
@@ -7,6 +8,10 @@ SamplerState wrappingSampler;
 Texture2D textures[];
 
 static const uint noTexture = 0xFFFFFFFF;
+
+// Must match ShadingModel::shader_id in client/src/renderer/material.rs.
+static const uint shadingHapkeSol = 0;
+static const uint shadingHapkeTextbook = 1;
 
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input)
@@ -63,6 +68,43 @@ float3 surfaceNormal(MaterialData material, float3 modelNormal, SurfaceCoordinat
     return normalize(-east * tangent.x + north * tangent.y + modelNormal * outward);
 }
 
+float4 sampleSurfaceCoarser(uint texture, SurfaceCoordinates coordinates, float scale)
+{
+    return textures[texture].SampleGrad(
+        wrappingSampler, coordinates.uv, coordinates.uvPerPixelX * scale, coordinates.uvPerPixelY * scale);
+}
+
+HapkeSurface hapkeSurface(MaterialData material, SurfaceCoordinates coordinates, float3 albedo)
+{
+    float4 scatter = sampleSurface(material.hapke.scatterTexture, coordinates);
+    float4 surge = sampleSurface(material.hapke.surgeTexture, coordinates);
+    HapkeSurface surface;
+    surface.albedo = albedo;
+    surface.singleScatteringAlbedo = scatter.r;
+    surface.lobeWidth = scatter.g;
+    surface.lobeBalance = 2.0 * scatter.b - 1.0;
+    surface.shadowHidingAmplitude = 2.0 * surge.r;
+    surface.shadowHidingWidth = surge.g;
+    surface.backscatterAmplitude = 2.0 * surge.b;
+    surface.backscatterWidth = surge.a;
+    surface.porosity = material.hapke.porosity;
+    surface.roughness = material.hapke.roughness;
+    return surface;
+}
+
+// The scatter map gives the regional single-scattering albedo at a fraction of the colour map's resolution; the
+// colour map adds colour and fine detail as its ratio to its own average at the scatter map's resolution.
+float3 textbookAlbedo(MaterialData material, SurfaceCoordinates coordinates, float3 color, float singleScatteringAlbedo)
+{
+    uint colorWidth, colorHeight, scatterWidth, scatterHeight;
+    textures[material.texture].GetDimensions(colorWidth, colorHeight);
+    textures[material.hapke.scatterTexture].GetDimensions(scatterWidth, scatterHeight);
+    float scale = max(float(colorWidth) / float(scatterWidth), 1.0);
+    float3 regional = sampleSurfaceCoarser(material.texture, coordinates, scale).rgb;
+    float regionalLuminance = max(dot(regional, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+    return singleScatteringAlbedo * color / regionalLuminance;
+}
+
 [shader("fragment")]
 float4 fragmentMain(VertexOutput input) : SV_Target
 {
@@ -76,7 +118,31 @@ float4 fragmentMain(VertexOutput input) : SV_Target
     float cosine = sunCosine(input.worldPosition, worldNormal) * facingSun;
 
     float3 albedo = sampleSurface(material.texture, coordinates).rgb;
-    float3 luminance = lambertLuminance(albedo, sunIlluminance(input.worldPosition), cosine);
+    float3 illuminance = sunIlluminance(input.worldPosition);
+    float3 luminance = lambertLuminance(albedo, illuminance, cosine);
+    uint shading = constants.frame.shadingModel;
+    if (material.hapke.scatterTexture != noTexture && cosine > 0.0
+        && (shading == shadingHapkeSol || shading == shadingHapkeTextbook))
+    {
+        float3 toCamera = normalize(-input.worldPosition);
+        float3 toSun = normalize(constants.frame.sunPosition.xyz - input.worldPosition);
+        HapkeGeometry geometry;
+        geometry.incidenceCosine = clamp(dot(toSun, worldNormal), 1e-4, 1.0);
+        geometry.emissionCosine = clamp(dot(toCamera, worldNormal), 1e-4, 1.0);
+        geometry.phaseAngle = acos(clamp(dot(toSun, toCamera), -1.0, 1.0));
+        HapkeSurface surface = hapkeSurface(material, coordinates, albedo);
+        float3 reflectance;
+        if (shading == shadingHapkeSol)
+        {
+            reflectance = hapkeSol(surface, geometry, material.hapke.blend, material.hapke.lightBoost, material.hapke.gammaBoost);
+        }
+        else
+        {
+            surface.albedo = textbookAlbedo(material, coordinates, albedo, surface.singleScatteringAlbedo);
+            reflectance = hapkeTextbook(surface, geometry);
+        }
+        luminance = reflectance * illuminance + starlightLuminance(albedo);
+    }
     if (material.emissiveTexture != noTexture)
     {
         luminance += sampleSurface(material.emissiveTexture, coordinates).rgb * material.luminance;

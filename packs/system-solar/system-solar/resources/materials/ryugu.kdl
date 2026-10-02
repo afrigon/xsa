@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/ryugu/color"
 normal-texture "bodies/ryugu/normal"
+hapke scatter-texture="bodies/ryugu/scatter" surge-texture="bodies/ryugu/surge" porosity=1.86 roughness=20 blend=0.65 light-boost=1 gamma-boost=0.73

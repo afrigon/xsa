@@ -1,3 +1,4 @@
 shader "base:planet"
 color-texture "bodies/puck/color"
 normal-texture "bodies/puck/normal"
+hapke scatter-texture="bodies/puck/scatter" surge-texture="bodies/puck/surge" porosity=1.86 roughness=23 blend=1 light-boost=0.45 gamma-boost=0.65
