@@ -1,3 +1,4 @@
+mod console;
 pub mod dedicated;
 
 use std::path::PathBuf;

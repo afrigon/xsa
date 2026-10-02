@@ -2559,10 +2559,24 @@ dependencies = [
  "ash",
  "glam",
  "gpu-allocator",
+ "tokio",
  "winit",
+ "xsa-commands",
  "xsa-core",
  "xsa-proto",
  "xsa-server",
+]
+
+[[package]]
+name = "xsa-commands"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "shlex",
+ "tokio",
+ "usage-rs",
+ "xsa-core",
+ "xsa-proto",
 ]
 
 [[package]]
@@ -2594,6 +2608,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "tokio",
+ "xsa-commands",
  "xsa-core",
  "xsa-proto",
 ]

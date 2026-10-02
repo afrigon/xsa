@@ -8,7 +8,9 @@ anyhow.workspace = true
 ash.workspace = true
 glam.workspace = true
 gpu-allocator.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 winit.workspace = true
+xsa-commands = { workspace = true, features = ["client"] }
 xsa-core.workspace = true
 xsa-proto.workspace = true
 xsa-server.workspace = true

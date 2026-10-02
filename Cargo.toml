@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "proto", "server", "client", "xsa", "tools"]
+members = ["core", "proto", "commands", "server", "client", "xsa", "tools"]
 
 [workspace.package]
 version = "0.0.1"
@@ -16,6 +16,7 @@ tokio = "1.53.1"
 usage = { version = "6.12.0", package = "usage-rs" }
 winit = "0.30.13"
 xsa-client = { path = "client" }
+xsa-commands = { path = "commands" }
 xsa-core = { path = "core" }
 xsa-proto = { path = "proto" }
 xsa-server = { path = "server" }

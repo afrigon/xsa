@@ -1,0 +1,299 @@
+use std::collections::HashMap;
+use std::ffi::OsString;
+
+use tokio::sync::oneshot;
+use usage::embedded::Outcome as ParseOutcome;
+use xsa_core::time;
+use xsa_proto::messages::{ClientMessage, MessageId, Outcome, ServerEvent};
+use xsa_proto::session::{ServerSession, SessionState};
+
+#[cfg(feature = "client")]
+use crate::command::ClientCommand;
+use crate::command::{CommandLine, Route};
+
+pub struct Invocation {
+    pub words: Vec<String>,
+    pub reply: oneshot::Sender<Output>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Output {
+    pub text: String,
+    pub succeeded: bool,
+}
+
+impl Output {
+    pub fn success(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            succeeded: true,
+        }
+    }
+
+    pub fn failure(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            succeeded: false,
+        }
+    }
+}
+
+pub trait CommandHost {
+    fn session(&mut self) -> &mut ServerSession;
+
+    fn quit(&mut self);
+
+    #[cfg(feature = "client")]
+    fn run_client(&mut self, _command: ClientCommand) -> anyhow::Result<String> {
+        anyhow::bail!("this command is only available in the game client")
+    }
+}
+
+#[derive(Default)]
+pub struct Dispatcher {
+    pending: HashMap<MessageId, Pending>,
+}
+
+struct Pending {
+    message: ClientMessage,
+    reply: oneshot::Sender<Output>,
+}
+
+impl Dispatcher {
+    pub fn dispatch(&mut self, invocation: Invocation, host: &mut impl CommandHost) {
+        let words: Vec<OsString> = invocation.words.iter().map(OsString::from).collect();
+        let command = match CommandLine::embedded_outcome(&words) {
+            ParseOutcome::Parsed(line) => line.command,
+            ParseOutcome::Exit(exit) => {
+                let _ = invocation.reply.send(Output {
+                    text: exit.text,
+                    succeeded: exit.code == 0,
+                });
+                return;
+            }
+        };
+        let output = match command.route() {
+            #[cfg(feature = "client")]
+            Route::Client(command) => match host.run_client(command) {
+                Ok(text) => Output::success(text),
+                Err(err) => Output::failure(format!("{err:#}")),
+            },
+            Route::Server(message) => match host.session().send(message.clone()) {
+                Ok(id) => {
+                    self.pending.insert(
+                        id,
+                        Pending {
+                            message,
+                            reply: invocation.reply,
+                        },
+                    );
+                    return;
+                }
+                Err(err) => Output::failure(format!("{err:#}")),
+            },
+            Route::ShowTime => describe_time(host.session().state()),
+            Route::Quit => {
+                host.quit();
+                Output::success("quitting")
+            }
+        };
+        let _ = invocation.reply.send(output);
+    }
+
+    pub fn handle_event(&mut self, event: &ServerEvent, session: &ServerSession) {
+        let ServerEvent::Reply { id, outcome } = event else {
+            return;
+        };
+        let Some(pending) = self.pending.remove(id) else {
+            return;
+        };
+        let output = match outcome {
+            Outcome::Accepted => describe(&pending.message, session.state()),
+            Outcome::Denied { reason } => Output::failure(reason.clone()),
+        };
+        let _ = pending.reply.send(output);
+    }
+}
+
+fn describe(message: &ClientMessage, state: Option<&SessionState>) -> Output {
+    match message {
+        ClientMessage::SetTime { .. } | ClientMessage::SetTimeRate { .. } | ClientMessage::StepTime { .. } => {
+            describe_time(state)
+        }
+        ClientMessage::Join { .. } | ClientMessage::Leave => Output::success("done"),
+    }
+}
+
+fn describe_time(state: Option<&SessionState>) -> Output {
+    let Some(state) = state else {
+        return Output::failure("not joined to a simulation yet");
+    };
+    let rate = match state.rate() {
+        0.0 => "paused".to_string(),
+        rate => format!("rate {rate}×"),
+    };
+    Output::success(format!("time: {}, {rate}", time::format_timestamp(state.time())))
+}
+
+#[cfg(test)]
+mod tests {
+    use xsa_proto::connection::{ClientLink, Connection};
+    use xsa_proto::messages::{ClientFrame, Role, WorldState};
+
+    use super::*;
+
+    struct FakeHost {
+        session: ServerSession,
+        quit: bool,
+    }
+
+    impl CommandHost for FakeHost {
+        fn session(&mut self) -> &mut ServerSession {
+            &mut self.session
+        }
+
+        fn quit(&mut self) {
+            self.quit = true;
+        }
+    }
+
+    struct Harness {
+        host: FakeHost,
+        link: ClientLink,
+        dispatcher: Dispatcher,
+    }
+
+    impl Harness {
+        fn joined() -> Self {
+            let (connection, link) = Connection::local();
+            let mut harness = Self {
+                host: FakeHost {
+                    session: ServerSession::new(connection),
+                    quit: false,
+                },
+                link,
+                dispatcher: Dispatcher::default(),
+            };
+            harness
+                .host
+                .session
+                .send(ClientMessage::Join { role: Role::Console })
+                .unwrap();
+            harness.link.messages.try_recv().unwrap();
+            harness.deliver(ServerEvent::JoinAccepted {
+                state: WorldState {
+                    simulation: "system-solar:sol".to_string(),
+                    packs: Vec::new(),
+                    time: 0.0,
+                    rate: 0.0,
+                    players: Vec::new(),
+                },
+            });
+            harness
+        }
+
+        fn deliver(&mut self, event: ServerEvent) {
+            self.link.events.send(event).unwrap();
+            while let Some(event) = self.host.session.poll().unwrap() {
+                self.dispatcher.handle_event(&event, &self.host.session);
+            }
+        }
+
+        fn invoke(&mut self, line: &str) -> oneshot::Receiver<Output> {
+            let (reply, receiver) = oneshot::channel();
+            let words = crate::words::split(line).unwrap();
+            self.dispatcher.dispatch(Invocation { words, reply }, &mut self.host);
+            receiver
+        }
+
+        fn sent(&mut self) -> ClientFrame {
+            self.link.messages.try_recv().unwrap()
+        }
+    }
+
+    #[test]
+    fn time_shows_the_session_time() {
+        let mut harness = Harness::joined();
+        let output = harness.invoke("time").try_recv().unwrap();
+        assert_eq!(output, Output::success("time: 2000-01-01T12:00:00.000Z, paused"));
+    }
+
+    #[test]
+    fn server_commands_become_messages_answered_by_the_reply() {
+        let mut harness = Harness::joined();
+        let mut receiver = harness.invoke("time rate 100");
+        let frame = harness.sent();
+        assert_eq!(frame.message, ClientMessage::SetTimeRate { rate: 100.0 });
+        assert!(receiver.try_recv().is_err());
+
+        harness.deliver(ServerEvent::TimeChanged { time: 0.0, rate: 100.0 });
+        harness.deliver(ServerEvent::Reply {
+            id: frame.id,
+            outcome: Outcome::Accepted,
+        });
+        let output = receiver.try_recv().unwrap();
+        assert!(output.succeeded && output.text.contains("rate 100×"), "{output:?}");
+    }
+
+    #[test]
+    fn a_denied_reply_fails_with_its_reason() {
+        let mut harness = Harness::joined();
+        let mut receiver = harness.invoke("time rate 5");
+        let frame = harness.sent();
+        harness.deliver(ServerEvent::Reply {
+            id: frame.id,
+            outcome: Outcome::Denied {
+                reason: "no".to_string(),
+            },
+        });
+        assert_eq!(receiver.try_recv().unwrap(), Output::failure("no"));
+    }
+
+    struct Case {
+        line: &'static str,
+        message: ClientMessage,
+    }
+
+    #[test]
+    fn aliases_and_durations_map_to_their_messages() {
+        let mut harness = Harness::joined();
+        let cases = [
+            Case {
+                line: "time pause",
+                message: ClientMessage::SetTimeRate { rate: 0.0 },
+            },
+            Case {
+                line: "time resume",
+                message: ClientMessage::SetTimeRate { rate: 1.0 },
+            },
+            Case {
+                line: "time step 2min",
+                message: ClientMessage::StepTime { seconds: 120.0 },
+            },
+            Case {
+                line: "time set 2000-01-01T12:00:10Z",
+                message: ClientMessage::SetTime { time: 10.0 },
+            },
+        ];
+        for case in cases {
+            harness.invoke(case.line);
+            assert_eq!(harness.sent().message, case.message, "{}", case.line);
+        }
+    }
+
+    #[test]
+    fn parse_errors_and_help_come_back_as_output() {
+        let mut harness = Harness::joined();
+        let error = harness.invoke("time rate fast").try_recv().unwrap();
+        assert!(!error.succeeded && error.text.contains("fast"), "{error:?}");
+        let help = harness.invoke("time --help").try_recv().unwrap();
+        assert!(help.succeeded && help.text.contains("rate"), "{help:?}");
+    }
+
+    #[test]
+    fn quit_asks_the_host_to_quit() {
+        let mut harness = Harness::joined();
+        harness.invoke("quit");
+        assert!(harness.host.quit);
+    }
+}

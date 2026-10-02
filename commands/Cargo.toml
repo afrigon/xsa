@@ -1,11 +1,15 @@
 [package]
-name = "xsa-server"
+name = "xsa-commands"
 version.workspace = true
 edition.workspace = true
 
+[features]
+client = []
+
 [dependencies]
 anyhow.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync"] }
-xsa-commands.workspace = true
+shlex = "2.0.1"
+tokio = { workspace = true, features = ["sync"] }
+usage.workspace = true
 xsa-core.workspace = true
 xsa-proto.workspace = true

@@ -7,6 +7,7 @@ mod mesh;
 mod renderer;
 mod vulkan;
 
+use tokio::sync::mpsc::unbounded_channel;
 use winit::event_loop::EventLoop;
 use xsa_proto::messages::{ClientMessage, Role};
 use xsa_proto::network;
@@ -35,8 +36,9 @@ pub fn run(options: ClientOptions) -> anyhow::Result<()> {
         role: Role::Player { name: options.player },
     })?;
 
+    let (_invocation_sender, invocations) = unbounded_channel();
     let event_loop = EventLoop::new()?;
-    let mut app = app::App::new(session, packs_directory);
+    let mut app = app::App::new(session, invocations, packs_directory);
     event_loop.run_app(&mut app)?;
     app.into_result()
 }
