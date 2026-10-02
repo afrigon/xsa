@@ -5,7 +5,7 @@ use glam::{DQuat, DVec3};
 
 use crate::orbit::OrbitalElements;
 use crate::packs::data::{
-    BarycenterNode, BodyDefinition, BodyNode, SimulationDefinition, Spin, SystemDefinition, SystemNode,
+    BarycenterNode, BodyDefinition, BodyNode, SimulationDefinition, Spin, Star, SystemDefinition, SystemNode,
 };
 use crate::packs::{Id, PackStack};
 
@@ -13,6 +13,7 @@ pub struct Body {
     pub id: Id,
     pub radius: f64,
     pub gravitational_parameter: f64,
+    pub star: Option<Star>,
 }
 
 #[derive(Clone, Copy)]
@@ -31,6 +32,7 @@ pub struct Simulation {
     id: Id,
     epoch: f64,
     bodies: Vec<Body>,
+    spawn: Option<usize>,
     placements: Vec<Placement>,
     body_placements: Vec<usize>,
     rotations: Vec<Rotation>,
@@ -70,17 +72,27 @@ impl Simulation {
                 id: id.clone(),
                 epoch: system.epoch,
                 bodies: Vec::new(),
+                spawn: None,
                 placements: Vec::new(),
                 body_placements: Vec::new(),
                 rotations: Vec::new(),
             },
         };
         builder.add_node(&system.root, None, 0.0)?;
-        Ok(builder.simulation)
+        let mut simulation = builder.simulation;
+        if let Some(spawn) = &definition.spawn {
+            let index = simulation.bodies.iter().position(|body| body.id == *spawn);
+            simulation.spawn = Some(index.with_context(|| format!("the spawn body {spawn} is not in the system"))?);
+        }
+        Ok(simulation)
     }
 
     pub fn id(&self) -> &Id {
         &self.id
+    }
+
+    pub fn spawn(&self) -> Option<usize> {
+        self.spawn
     }
 
     pub fn bodies(&self) -> &[Body] {
@@ -286,6 +298,7 @@ impl Builder<'_> {
             id: definition.id,
             radius: definition.radius,
             gravitational_parameter,
+            star: definition.star,
         });
         for child in &node.children {
             self.add_node(child, Some(placement), gravitational_parameter)?;

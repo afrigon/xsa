@@ -41,6 +41,16 @@
 - Every body texture is uploaded when joining a simulation (~1.1 GB of VRAM
   with Sol's 4k set), one at a time with a full queue wait each. Fine at 4k;
   the 16k set needs texture streaming with a VRAM budget.
+- Auto-exposure clips thin crescents to white: under 1% lit pixels the meter
+  falls back to the whole view, where excluding the brightest 2% (meant for
+  the Sun's disk) discards the crescent itself, so exposure drops to the
+  EV −6 dark limit. Planned fix in `renderer/exposure.rs`: exclude the Sun by
+  luminance (above 10⁷ cd/m²) instead of by percentage; always apply
+  highlight protection while at least 0.01% of the view is lit; move the
+  dots out of the HDR image into the tonemap pass (depth stored by the scene
+  pass, read by the tonemap pass), since their fixed unexposed brightness
+  would otherwise feed back into the meter. Deferred on purpose: retune auto-
+  exposure once bloom, atmospheres, clouds and planetshine interact with it.
 - The client loads shaders from the `base` pack only, before joining, so other
   packs cannot override them yet (part of custom shaders in packs).
 - A remote client must have the server's packs installed with matching
@@ -97,6 +107,10 @@
   temporal accumulation; gets a toggle key. Later, optionally: AMD FSR 2/3
   (MIT, vendor-neutral) as a quality and upscaling mode on the same inputs.
   No motion blur: motion vectors exist only for TAA and FSR.
+- Spawn locations: `spawn` in a simulation names only a body. It will need
+  more detail (where on or around the body: a launch site, a surface
+  position, an orbit), or become a points-of-interest system where several
+  places, such as space stations, can be chosen as the starting point.
 - Rings as data: inner/outer radii and orientation in the system data
   (literature values; Sol's ring radii use an unknown unit), textures as
   resources.

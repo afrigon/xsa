@@ -19,6 +19,13 @@ pub struct BodyDefinition {
     pub gravitational_parameter: f64,
     pub rotation_period: f64,
     pub axial_tilt: f64,
+    pub star: Option<Star>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Star {
+    pub luminosity: f64,
+    pub effective_temperature: f64,
 }
 
 pub struct SystemDefinition {
@@ -57,6 +64,7 @@ pub struct Spin {
 pub struct SimulationDefinition {
     pub id: Id,
     pub system: Id,
+    pub spawn: Option<Id>,
 }
 
 impl BodyDefinition {
@@ -69,6 +77,7 @@ impl BodyDefinition {
                 gravitational_parameter: document::number_argument(file.node("gravitational-parameter")?)?,
                 rotation_period: document::number_argument(file.node("rotation-period")?)?,
                 axial_tilt: document::number_argument(file.node("axial-tilt")?)?.to_radians(),
+                star: parse_star(&file)?,
             })
         };
         parse().with_context(|| format!("{}", file.path().display()))
@@ -105,10 +114,33 @@ impl SimulationDefinition {
             Ok(SimulationDefinition {
                 id: id.clone(),
                 system: Id::parse(document::string_argument(file.node("system")?)?, &id.namespace)?,
+                spawn: file
+                    .optional_node("spawn")
+                    .map(|node| Id::parse(document::string_argument(node)?, &id.namespace))
+                    .transpose()?,
             })
         };
         parse().with_context(|| format!("{}", file.path().display()))
     }
+}
+
+fn parse_star(file: &Document) -> anyhow::Result<Option<Star>> {
+    let luminosity = file.optional_node("luminosity");
+    let temperature = file.optional_node("effective-temperature");
+    ensure!(
+        luminosity.is_some() == temperature.is_some(),
+        "a star needs both `luminosity` and `effective-temperature`"
+    );
+    let Some(luminosity) = luminosity else {
+        return Ok(None);
+    };
+    let Some(temperature) = temperature else {
+        return Ok(None);
+    };
+    Ok(Some(Star {
+        luminosity: document::number_argument(luminosity)?,
+        effective_temperature: document::number_argument(temperature)?,
+    }))
 }
 
 fn parse_body(node: &KdlNode, namespace: &str) -> anyhow::Result<BodyNode> {

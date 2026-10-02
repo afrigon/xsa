@@ -1,14 +1,4 @@
-struct FrameData
-{
-    float4x4 viewProjection;
-    float4x4 worldFromClip;
-    float4 sunPosition;
-    float2 viewportSize;
-    float pointQuadSize;
-    float exposure;
-    uint hdrTexture;
-    uint tonemapper;
-};
+__exported import common.frame;
 
 struct ObjectData
 {
@@ -25,7 +15,7 @@ struct MaterialData
     uint texture;
     uint normalTexture;
     uint emissiveTexture;
-    uint padding;
+    float luminance;
 };
 
 struct PushConstants
@@ -40,7 +30,7 @@ struct PushConstants
 [[vk::push_constant]]
 ConstantBuffer<PushConstants> constants;
 
-static const float ambient = 0.02;
+static const float pi = 3.14159265358979;
 
 struct VertexInput
 {
@@ -78,8 +68,21 @@ VertexOutput transformVertex(VertexInput input)
     return output;
 }
 
-float sunlight(VertexOutput input)
+float sunCosine(float3 worldPosition, float3 normal)
 {
-    float3 toSun = normalize(constants.frame.sunPosition.xyz - input.worldPosition);
-    return max(dot(normalize(input.normal), toSun), 0.0) + ambient;
+    float3 toSun = normalize(constants.frame.sunPosition.xyz - worldPosition);
+    return max(dot(normal, toSun), 0.0);
+}
+
+// Lux per color channel: the star's luminous intensity falls off with the square of the distance.
+float3 sunIlluminance(float3 worldPosition)
+{
+    float3 toSun = constants.frame.sunPosition.xyz - worldPosition;
+    return constants.frame.sunIntensity.rgb / dot(toSun, toSun);
+}
+
+// cd/m² reflected by a Lambertian surface of the given albedo, including the faint starlight from every direction.
+float3 lambertLuminance(float3 albedo, float3 illuminance, float cosine)
+{
+    return albedo / pi * (illuminance * cosine + constants.frame.starlightIlluminance);
 }

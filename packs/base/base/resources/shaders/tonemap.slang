@@ -3,9 +3,6 @@ import common.scene;
 [[vk::binding(3, 0)]]
 Texture2D textures[];
 
-static const uint tonemapperAgx = 0;
-static const uint tonemapperKhronosNeutral = 1;
-
 struct FullscreenOutput
 {
     float4 position : SV_Position;
@@ -45,42 +42,11 @@ float3 agx(float3 color)
     return pow(saturate(x), 2.2);
 }
 
-// Khronos PBR Neutral, from the Khronos reference implementation.
-float3 khronosNeutral(float3 color)
-{
-    float startCompression = 0.8 - 0.04;
-    float desaturation = 0.15;
-    float lowest = min(color.r, min(color.g, color.b));
-    float offset = lowest < 0.08 ? lowest - 6.25 * lowest * lowest : 0.04;
-    color -= offset;
-    float peak = max(color.r, max(color.g, color.b));
-    if (peak < startCompression)
-    {
-        return color;
-    }
-    float d = 1.0 - startCompression;
-    float newPeak = 1.0 - d * d / (peak + d - startCompression);
-    color *= newPeak / peak;
-    float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);
-    return lerp(color, float3(newPeak), g);
-}
-
 [shader("fragment")]
 float4 fragmentMain(FullscreenOutput input) : SV_Target
 {
     FrameData frame = *constants.frame;
-    float3 color = textures[frame.hdrTexture].Load(int3(int2(input.position.xy), 0)).rgb * frame.exposure;
-    switch (frame.tonemapper)
-    {
-    case tonemapperAgx:
-        color = agx(color);
-        break;
-    case tonemapperKhronosNeutral:
-        color = khronosNeutral(color);
-        break;
-    default:
-        color = saturate(color);
-        break;
-    }
+    float3 color = textures[frame.hdrTexture].Load(int3(int2(input.position.xy), 0)).rgb;
+    color = frame.tonemapping != 0 ? agx(color) : saturate(color);
     return float4(color, 1.0);
 }

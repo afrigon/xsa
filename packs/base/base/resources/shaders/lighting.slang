@@ -9,5 +9,5 @@ VertexOutput vertexMain(VertexInput input)
 [shader("fragment")]
 float4 fragmentMain(VertexOutput input) : SV_Target
 {
-    return float4(sunlight(input).xxx, 1.0);
+    return float4(sunCosine(input.worldPosition, normalize(input.normal)).xxx, 1.0);
 }

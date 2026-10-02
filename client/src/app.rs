@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::{Context, bail, ensure};
-use glam::DVec2;
+use glam::{DVec2, Vec3};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -18,12 +18,14 @@ use crate::camera::orbit::{OrbitCamera, OrbitTarget};
 use crate::camera::{Camera, CameraMode};
 use crate::content::{self, MaterialDefinition};
 use crate::input::Input;
+use crate::lighting::{self, StarLight};
 use crate::renderer::{ColorSpace, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader};
 
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
 const HORIZONTAL_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
 const DEBUG_CAMERA_SPEED: f64 = 2_000_000.0;
+const EXPOSURE_STEP_STOPS: f32 = 1.0 / 3.0;
 
 struct ShaderShortcut {
     key: KeyCode,
@@ -180,12 +182,18 @@ impl App {
 
         let simulation_id = Id::parse(simulation, BASE_PACK)?;
         let simulation = Simulation::load(&stack, &simulation_id)?;
+        let star_lights: Vec<Option<StarLight>> = simulation
+            .bodies()
+            .iter()
+            .map(|body| body.star.map(|star| lighting::star_light(&star, body.radius)))
+            .collect();
         let materials = simulation
             .bodies()
             .iter()
-            .map(|body| {
+            .zip(&star_lights)
+            .map(|(body, star_light)| {
                 let definition = content::load_body_material(&stack, &body.id)?;
-                create_material(renderer, &body.id, definition)
+                create_material(renderer, &body.id, definition, star_light.as_ref())
                     .with_context(|| format!("loading the material of {}", body.id))
             })
             .collect::<anyhow::Result<Vec<Material>>>()?;
@@ -208,12 +216,13 @@ impl App {
                 })
             })
             .collect();
-        let light_body = materials
-            .iter()
-            .position(|material| matches!(material, Material::Emissive { .. }));
-        let target = materials
-            .iter()
-            .position(|material| !matches!(material, Material::Emissive { .. }))
+        let light_body = star_lights.iter().position(Option::is_some);
+        if let Some(Some(star_light)) = light_body.map(|index| &star_lights[index]) {
+            scene.sun_intensity = star_light.color * star_light.luminous_intensity as f32;
+        }
+        let target = simulation
+            .spawn()
+            .or_else(|| star_lights.iter().position(Option::is_none))
             .unwrap_or(0);
 
         self.skybox = match content::load_skybox(&stack, &simulation_id)? {
@@ -221,6 +230,7 @@ impl App {
                 Ok(cube_map) => Some(renderer.scene_mut().add_material(Material::Skybox {
                     cube_map,
                     orientation: skybox.orientation,
+                    luminance: skybox.luminance,
                 })),
                 Err(err) => {
                     eprintln!("skipping the skybox: {err:#}");
@@ -285,8 +295,25 @@ impl App {
             let scene = renderer.scene_mut();
             scene.skybox = if scene.skybox.is_some() { None } else { self.skybox };
         }
+        if self.input.was_pressed(KeyCode::Minus) {
+            renderer.adjust_exposure(-EXPOSURE_STEP_STOPS);
+            print_exposure(renderer);
+        }
+        if self.input.was_pressed(KeyCode::Equal) {
+            renderer.adjust_exposure(EXPOSURE_STEP_STOPS);
+            print_exposure(renderer);
+        }
+        if self.input.was_pressed(KeyCode::F4) {
+            renderer.toggle_auto_exposure();
+            print_exposure(renderer);
+        }
+        if self.input.was_pressed(KeyCode::F6) {
+            let instant = renderer.toggle_instant_exposure();
+            println!("exposure adaptation: {}", if instant { "instant" } else { "eye-like" });
+        }
         if self.input.was_pressed(KeyCode::F3) {
-            println!("tonemapper: {:?}", renderer.cycle_tonemapper());
+            let enabled = renderer.toggle_tonemapping();
+            println!("tonemapping: {}", if enabled { "AgX" } else { "off (clipped)" });
         }
     }
 
@@ -397,11 +424,9 @@ impl App {
         };
         let body_count = world.simulation.bodies().len() as isize;
         let target = (orbit_camera.target() as isize + step).rem_euclid(body_count) as usize;
-        orbit_camera.set_target(
-            target,
-            world.state.bodies[target].position,
-            world.simulation.bodies()[target].radius,
-        );
+        let body = &world.simulation.bodies()[target];
+        orbit_camera.set_target(target, world.state.bodies[target].position, body.radius);
+        println!("target: {}", body.id);
     }
 }
 
@@ -457,14 +482,40 @@ fn window_attributes() -> WindowAttributes {
     attributes
 }
 
-fn create_material(renderer: &mut Renderer, body: &Id, definition: MaterialDefinition) -> anyhow::Result<Material> {
+fn print_exposure(renderer: &Renderer) {
+    if renderer.auto_exposure_enabled() {
+        println!(
+            "exposure: auto, EV100 {:.2}, compensation {:+.2}",
+            renderer.exposure_ev100(),
+            renderer.exposure_compensation()
+        );
+    } else {
+        println!("exposure: manual, EV100 {:.2}", renderer.exposure_ev100());
+    }
+}
+
+fn create_material(
+    renderer: &mut Renderer,
+    body: &Id,
+    definition: MaterialDefinition,
+    star_light: Option<&StarLight>,
+) -> anyhow::Result<Material> {
     Ok(match definition {
         MaterialDefinition::Lit { base_color } => Material::Lit { base_color },
-        MaterialDefinition::Emissive { color } => Material::Emissive { color },
+        MaterialDefinition::Emissive { color, luminance } => {
+            let luminance = match star_light {
+                Some(star_light) => star_light.color * star_light.surface_luminance as f32,
+                None => Vec3::splat(luminance.context("an emissive material needs a `luminance` in cd/m²")?),
+            };
+            Material::Emissive {
+                luminance: color * luminance,
+            }
+        }
         MaterialDefinition::Planet {
             color,
             normal,
             emissive,
+            emissive_luminance,
         } => {
             let mut load = |kind: &str, path: &PathBuf, color_space| {
                 renderer.load_texture(&format!("{body} {kind}"), path, color_space)
@@ -477,6 +528,7 @@ fn create_material(renderer: &mut Renderer, body: &Id, definition: MaterialDefin
                 emissive: emissive
                     .map(|path| load("emissive", &path, ColorSpace::Srgb))
                     .transpose()?,
+                emissive_luminance,
             }
         }
     })

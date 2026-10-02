@@ -200,7 +200,10 @@ it first. Deliberately avoided:
 | Tab / Shift+Tab | Next / previous target |
 | F1 | Toggle the debug fly camera (WASD, Space/Shift, mouse look; click to capture, Escape to release) |
 | F2 | Toggle the skybox |
-| F3 | Cycle the tonemapper: AgX, Khronos PBR Neutral, none (clipped) |
+| F3 | Toggle tonemapping (AgX; off clips) |
+| F4 | Toggle auto-exposure (off: manual EV100) |
+| F6 | Toggle instant exposure adaptation (comparison while tuning) |
+| `-` / `=` | Darker / brighter by 1/3 stop: exposure compensation in auto mode, EV100 in manual mode |
 | 1–5 | Shader override: lit, normals, depth, triangles, lighting |
 | \` | Wireframe |
 

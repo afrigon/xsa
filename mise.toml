@@ -31,7 +31,7 @@ run = """
 set -euo pipefail
 directory=packs/base/base/resources/shaders
 for source in "$directory"/*.slang; do
-    slangc "$source" -I "$directory" -target spirv -matrix-layout-column-major -o "${source%.slang}.spv"
+    slangc "$source" -I "$directory" -target spirv -matrix-layout-column-major -fvk-use-entrypoint-name -o "${source%.slang}.spv"
 done
 """
 

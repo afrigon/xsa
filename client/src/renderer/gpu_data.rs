@@ -7,12 +7,14 @@ pub(super) struct FrameData {
     pub view_projection: Mat4,
     pub world_from_clip: Mat4,
     pub sun_position: Vec4,
+    pub sun_intensity: Vec4,
     pub viewport_size: Vec2,
     pub point_quad_size: f32,
     pub exposure: f32,
     pub hdr_texture: u32,
-    pub tonemapper: u32,
-    pub padding: [u32; 2],
+    pub tonemapping: u32,
+    pub starlight_illuminance: f32,
+    pub padding: u32,
 }
 
 #[repr(C)]
@@ -34,7 +36,14 @@ pub(super) struct PushConstants {
     pub material_index: u32,
 }
 
-const _: () = assert!(size_of::<FrameData>() == 176);
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(super) struct HistogramPushConstants {
+    pub frame: vk::DeviceAddress,
+    pub histogram: vk::DeviceAddress,
+}
+
+const _: () = assert!(size_of::<FrameData>() == 192);
 const _: () = assert!(size_of::<ObjectData>() == 80);
 const _: () = assert!(size_of::<PushConstants>() == 32);
 

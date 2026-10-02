@@ -107,6 +107,18 @@ impl Buffer {
         Ok(())
     }
 
+    pub fn read<T: Copy>(&self, data: &mut [T]) -> anyhow::Result<()> {
+        let source = self
+            .allocation
+            .as_ref()
+            .and_then(|allocation| allocation.mapped_slice())
+            .context("reading from a buffer the CPU cannot access")?;
+        let size = size_of_val(data);
+        anyhow::ensure!(size <= source.len(), "reading {size} bytes past the end of a buffer");
+        unsafe { std::ptr::copy_nonoverlapping(source.as_ptr(), data.as_mut_ptr().cast::<u8>(), size) };
+        Ok(())
+    }
+
     pub unsafe fn destroy(&mut self, device: &Device, allocator: &mut Allocator) {
         unsafe { device.handle().destroy_buffer(self.buffer, None) };
         if let Some(allocation) = self.allocation.take() {

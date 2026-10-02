@@ -1,1 +1,1 @@
-skybox texture="skyboxes/deep-star-maps" frame="equatorial"
+skybox texture="skyboxes/deep-star-maps" frame="equatorial" luminance=0.05

@@ -1,11 +1,11 @@
 mod barriers;
+mod exposure;
 mod frame;
 mod gpu_data;
 mod material;
 mod pipelines;
 mod scene;
 mod texture;
-mod tonemapper;
 
 use std::path::Path;
 
@@ -16,13 +16,13 @@ use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
 
 pub use material::{Material, Shader};
-pub use pipelines::{POINT_SHADER_PATH, ShaderBinaries, TONEMAP_SHADER_PATH};
+pub use pipelines::{HISTOGRAM_SHADER_PATH, POINT_SHADER_PATH, ShaderBinaries, TONEMAP_SHADER_PATH};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
-pub use tonemapper::Tonemapper;
 
+use exposure::{AutoExposure, HISTOGRAM_BINS};
 use frame::Frame;
-use gpu_data::{FrameData, ObjectData, PushConstants};
+use gpu_data::{FrameData, HistogramPushConstants, ObjectData, PushConstants};
 use material::MaterialData;
 use pipelines::Pipelines;
 
@@ -37,7 +37,10 @@ const FRAMES_IN_FLIGHT: usize = 2;
 const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 const HDR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
-const EXPOSURE: f32 = 1.0;
+const INITIAL_EXPOSURE_EV100: f32 = 15.0;
+const HISTOGRAM_TILE_SIZE: u32 = 16;
+// Background light from stars and zodiacal light, in lux.
+const STARLIGHT_ILLUMINANCE: f32 = 2e-4;
 const FULLSCREEN_VERTEX_COUNT: u32 = 3;
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
@@ -53,7 +56,9 @@ pub struct Renderer {
     scene: Scene,
     shader_override: Option<Shader>,
     wireframe: bool,
-    tonemapper: Tonemapper,
+    tonemapping: bool,
+    auto_exposure: AutoExposure,
+    histogram: Vec<u32>,
     pipelines: Pipelines,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -152,7 +157,9 @@ impl Renderer {
             scene: Scene::default(),
             shader_override: None,
             wireframe: false,
-            tonemapper: Tonemapper::Agx,
+            tonemapping: true,
+            auto_exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
+            histogram: vec![0; HISTOGRAM_BINS],
             pipelines,
             vertex_buffer,
             index_buffer,
@@ -193,9 +200,33 @@ impl Renderer {
         }
     }
 
-    pub fn cycle_tonemapper(&mut self) -> Tonemapper {
-        self.tonemapper = self.tonemapper.next();
-        self.tonemapper
+    pub fn toggle_tonemapping(&mut self) -> bool {
+        self.tonemapping = !self.tonemapping;
+        self.tonemapping
+    }
+
+    pub fn adjust_exposure(&mut self, stops: f32) {
+        self.auto_exposure.adjust(stops);
+    }
+
+    pub fn toggle_instant_exposure(&mut self) -> bool {
+        self.auto_exposure.toggle_instant()
+    }
+
+    pub fn toggle_auto_exposure(&mut self) -> bool {
+        self.auto_exposure.toggle()
+    }
+
+    pub fn auto_exposure_enabled(&self) -> bool {
+        self.auto_exposure.enabled()
+    }
+
+    pub fn exposure_ev100(&self) -> f32 {
+        self.auto_exposure.ev100()
+    }
+
+    pub fn exposure_compensation(&self) -> f32 {
+        self.auto_exposure.compensation()
     }
 
     pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
@@ -242,10 +273,21 @@ impl Renderer {
         let Some(image_index) = self.acquire_image()? else {
             return Ok(());
         };
+        self.update_exposure()?;
         self.write_frame_data(camera)?;
         self.record_frame(&self.frames[self.frame_index], image_index)?;
         self.submit_and_present(image_index)?;
+        self.frames[self.frame_index].histogram_ready = true;
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
+        Ok(())
+    }
+
+    fn update_exposure(&mut self) -> anyhow::Result<()> {
+        let frame = &self.frames[self.frame_index];
+        if frame.histogram_ready {
+            frame.histogram.read(&mut self.histogram)?;
+            self.auto_exposure.update(&self.histogram);
+        }
         Ok(())
     }
 
@@ -285,12 +327,14 @@ impl Renderer {
             view_projection,
             world_from_clip: view_projection.inverse(),
             sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
+            sun_intensity: self.scene.sun_intensity.extend(0.0),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             point_quad_size: POINT_QUAD_PIXELS,
-            exposure: EXPOSURE,
+            exposure: exposure(self.auto_exposure.ev100()),
             hdr_texture: self.hdr_texture,
-            tonemapper: self.tonemapper.shader_id(),
-            padding: [0; 2],
+            tonemapping: u32::from(self.tonemapping),
+            starlight_illuminance: STARLIGHT_ILLUMINANCE,
+            padding: 0,
         };
 
         let pixels_per_unit_angle = f64::from(clip_from_view.y_axis.y.abs() * extent.height as f32 / 2.0);
@@ -338,6 +382,8 @@ impl Renderer {
             let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
             device.begin_command_buffer(command_buffer, &begin_info)?;
         }
+        unsafe { device.cmd_fill_buffer(command_buffer, frame.histogram.handle(), 0, vk::WHOLE_SIZE, 0) };
+        barriers::cleared_to_compute(device, command_buffer, frame.histogram.handle());
         barriers::sampled_to_color_attachment(device, command_buffer, self.hdr.handle());
         barriers::to_depth_attachment(device, command_buffer, self.depth.handle());
         self.begin_rendering(command_buffer, self.hdr.view(), Some(self.depth.view()));
@@ -355,6 +401,7 @@ impl Renderer {
         unsafe { device.cmd_end_rendering(command_buffer) };
 
         barriers::color_attachment_to_sampled(device, command_buffer, self.hdr.handle());
+        self.record_histogram(command_buffer, frame);
         barriers::to_color_attachment(device, command_buffer, image);
         self.begin_rendering(command_buffer, self.swapchain.image_view(image_index), None);
         self.record_tonemap(&context);
@@ -465,6 +512,41 @@ impl Renderer {
                 .device
                 .cmd_draw(context.command_buffer, FULLSCREEN_VERTEX_COUNT, 1, 0, 0)
         };
+    }
+
+    fn record_histogram(&self, command_buffer: vk::CommandBuffer, frame: &Frame) {
+        let device = self.device.handle();
+        let pipeline = self.pipelines.histogram();
+        let extent = self.swapchain.extent();
+        let push_constants = HistogramPushConstants {
+            frame: frame.frame_data.device_address(),
+            histogram: frame.histogram.device_address(),
+        };
+        unsafe {
+            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline.handle());
+            device.cmd_bind_descriptor_sets(
+                command_buffer,
+                vk::PipelineBindPoint::COMPUTE,
+                pipeline.layout(),
+                0,
+                &[self.bindless.set()],
+                &[],
+            );
+            device.cmd_push_constants(
+                command_buffer,
+                pipeline.layout(),
+                vk::ShaderStageFlags::COMPUTE,
+                0,
+                gpu_data::as_bytes(&push_constants),
+            );
+            device.cmd_dispatch(
+                command_buffer,
+                extent.width.div_ceil(HISTOGRAM_TILE_SIZE),
+                extent.height.div_ceil(HISTOGRAM_TILE_SIZE),
+                1,
+            );
+        }
+        barriers::compute_to_host(device, command_buffer, frame.histogram.handle());
     }
 
     fn record_tonemap(&self, context: &DrawContext) {
@@ -609,6 +691,11 @@ impl Drop for Renderer {
             self.swapchain.destroy(&self.device);
         }
     }
+}
+
+// Scales luminance (cd/m²) so that a scene metered at this EV100 lands mid-range, as a camera with ISO 100 would.
+fn exposure(ev100: f32) -> f32 {
+    1.0 / (1.2 * 2.0_f32.powf(ev100))
 }
 
 fn point_size(diameter_pixels: f64) -> f32 {

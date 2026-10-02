@@ -41,7 +41,7 @@ pub(super) fn sampled_to_color_attachment(device: &ash::Device, command_buffer: 
             aspect: vk::ImageAspectFlags::COLOR,
             old_layout: vk::ImageLayout::UNDEFINED,
             new_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            source_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            source_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER | vk::PipelineStageFlags2::COMPUTE_SHADER,
             source_access: vk::AccessFlags2::NONE,
             destination_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
             destination_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
@@ -60,7 +60,7 @@ pub(super) fn color_attachment_to_sampled(device: &ash::Device, command_buffer: 
             new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             source_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
             source_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            destination_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            destination_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER | vk::PipelineStageFlags2::COMPUTE_SHADER,
             destination_access: vk::AccessFlags2::SHADER_SAMPLED_READ,
         },
     );
@@ -99,6 +99,54 @@ pub(super) fn to_present(device: &ash::Device, command_buffer: vk::CommandBuffer
             destination_access: vk::AccessFlags2::NONE,
         },
     );
+}
+
+pub(super) fn cleared_to_compute(device: &ash::Device, command_buffer: vk::CommandBuffer, buffer: vk::Buffer) {
+    record_buffer(
+        device,
+        command_buffer,
+        &BufferDependency {
+            buffer,
+            source_stage: vk::PipelineStageFlags2::CLEAR,
+            source_access: vk::AccessFlags2::TRANSFER_WRITE,
+            destination_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            destination_access: vk::AccessFlags2::SHADER_STORAGE_READ | vk::AccessFlags2::SHADER_STORAGE_WRITE,
+        },
+    );
+}
+
+pub(super) fn compute_to_host(device: &ash::Device, command_buffer: vk::CommandBuffer, buffer: vk::Buffer) {
+    record_buffer(
+        device,
+        command_buffer,
+        &BufferDependency {
+            buffer,
+            source_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            source_access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+            destination_stage: vk::PipelineStageFlags2::HOST,
+            destination_access: vk::AccessFlags2::HOST_READ,
+        },
+    );
+}
+
+struct BufferDependency {
+    buffer: vk::Buffer,
+    source_stage: vk::PipelineStageFlags2,
+    source_access: vk::AccessFlags2,
+    destination_stage: vk::PipelineStageFlags2,
+    destination_access: vk::AccessFlags2,
+}
+
+fn record_buffer(device: &ash::Device, command_buffer: vk::CommandBuffer, dependency: &BufferDependency) {
+    let barriers = [vk::BufferMemoryBarrier2::default()
+        .src_stage_mask(dependency.source_stage)
+        .src_access_mask(dependency.source_access)
+        .dst_stage_mask(dependency.destination_stage)
+        .dst_access_mask(dependency.destination_access)
+        .buffer(dependency.buffer)
+        .size(vk::WHOLE_SIZE)];
+    let dependency_info = vk::DependencyInfo::default().buffer_memory_barriers(&barriers);
+    unsafe { device.cmd_pipeline_barrier2(command_buffer, &dependency_info) };
 }
 
 fn record(device: &ash::Device, command_buffer: vk::CommandBuffer, transition: &ImageTransition) {

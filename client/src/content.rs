@@ -7,7 +7,7 @@ use xsa_core::frames;
 use xsa_core::packs::document::{self, Document};
 use xsa_core::packs::{Id, PackStack};
 
-use crate::renderer::{POINT_SHADER_PATH, Shader, ShaderBinaries, TONEMAP_SHADER_PATH};
+use crate::renderer::{HISTOGRAM_SHADER_PATH, POINT_SHADER_PATH, Shader, ShaderBinaries, TONEMAP_SHADER_PATH};
 
 const BASE_NAMESPACE: &str = "base";
 const SHADERS: &str = "shaders";
@@ -25,17 +25,20 @@ pub enum MaterialDefinition {
     },
     Emissive {
         color: Vec3,
+        luminance: Option<f32>,
     },
     Planet {
         color: PathBuf,
         normal: Option<PathBuf>,
         emissive: Option<PathBuf>,
+        emissive_luminance: f32,
     },
 }
 
 pub struct SkyboxDefinition {
     pub texture: PathBuf,
     pub orientation: Mat3,
+    pub luminance: f32,
 }
 
 pub fn load_shaders(stack: &PackStack) -> anyhow::Result<ShaderBinaries> {
@@ -56,6 +59,7 @@ pub fn load_shaders(stack: &PackStack) -> anyhow::Result<ShaderBinaries> {
             .collect::<anyhow::Result<_>>()?,
         point: read(POINT_SHADER_PATH)?,
         tonemap: read(TONEMAP_SHADER_PATH)?,
+        histogram: read(HISTOGRAM_SHADER_PATH)?,
     })
 }
 
@@ -78,6 +82,11 @@ fn parse_material(stack: &PackStack, file: &Document, namespace: &str) -> anyhow
             components[2] as f32,
         ))
     };
+    let number = |name: &str| -> anyhow::Result<Option<f32>> {
+        file.optional_node(name)
+            .map(|node| document::number_argument(node).map(|value| value as f32))
+            .transpose()
+    };
     let texture = |name: &str| -> anyhow::Result<Option<PathBuf>> {
         let Some(node) = file.optional_node(name) else {
             return Ok(None);
@@ -89,12 +98,27 @@ fn parse_material(stack: &PackStack, file: &Document, namespace: &str) -> anyhow
         "base:lit" => Ok(MaterialDefinition::Lit {
             base_color: color("base-color")?,
         }),
-        "base:emissive" => Ok(MaterialDefinition::Emissive { color: color("color")? }),
-        "base:planet" => Ok(MaterialDefinition::Planet {
-            color: texture("color-texture")?.context("a planet material needs a `color-texture`")?,
-            normal: texture("normal-texture")?,
-            emissive: texture("emissive-texture")?,
+        "base:emissive" => Ok(MaterialDefinition::Emissive {
+            color: match file.optional_node("color") {
+                Some(_) => color("color")?,
+                None => Vec3::ONE,
+            },
+            luminance: number("luminance")?,
         }),
+        "base:planet" => {
+            let emissive = texture("emissive-texture")?;
+            let emissive_luminance = number("emissive-luminance")?;
+            ensure!(
+                emissive.is_none() || emissive_luminance.is_some(),
+                "an `emissive-texture` needs an `emissive-luminance` in cd/m²"
+            );
+            Ok(MaterialDefinition::Planet {
+                color: texture("color-texture")?.context("a planet material needs a `color-texture`")?,
+                normal: texture("normal-texture")?,
+                emissive,
+                emissive_luminance: emissive_luminance.unwrap_or(0.0),
+            })
+        }
         _ => bail!("shader {shader} is not supported by materials yet"),
     }
 }
@@ -117,6 +141,7 @@ pub fn load_skybox(stack: &PackStack, simulation: &Id) -> anyhow::Result<Option<
         Ok(SkyboxDefinition {
             texture: stack.resource(TEXTURES, &texture, TEXTURE_EXTENSION)?.to_path_buf(),
             orientation,
+            luminance: document::number_property(skybox, "luminance")? as f32,
         })
     };
     parse()

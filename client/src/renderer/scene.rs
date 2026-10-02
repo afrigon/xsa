@@ -1,4 +1,4 @@
-use glam::{DQuat, DVec3};
+use glam::{DQuat, DVec3, Vec3};
 
 use super::Material;
 
@@ -26,6 +26,7 @@ pub struct Scene {
     objects: Vec<SceneObject>,
     materials: Vec<Material>,
     pub sun_position: DVec3,
+    pub sun_intensity: Vec3,
     pub skybox: Option<MaterialHandle>,
 }
 

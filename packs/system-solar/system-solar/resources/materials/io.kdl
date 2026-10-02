@@ -2,3 +2,4 @@ shader "base:planet"
 color-texture "bodies/io/color"
 normal-texture "bodies/io/normal"
 emissive-texture "bodies/io/emissive"
+emissive-luminance 20

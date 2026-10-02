@@ -1,6 +1,7 @@
 use ash::vk;
 
 use super::MATERIAL_CAPACITY;
+use super::exposure::HISTOGRAM_BINS;
 use super::gpu_data::{FrameData, ObjectData};
 use super::material::MaterialData;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
@@ -13,6 +14,8 @@ pub(super) struct Frame {
     pub frame_data: Buffer,
     pub objects: Buffer,
     pub materials: Buffer,
+    pub histogram: Buffer,
+    pub histogram_ready: bool,
 }
 
 impl Frame {
@@ -24,6 +27,17 @@ impl Frame {
             allocator,
             "material data",
             MATERIAL_CAPACITY * size_of::<MaterialData>(),
+        )?;
+
+        let histogram = Buffer::new(
+            device,
+            allocator,
+            "luminance histogram",
+            (HISTOGRAM_BINS * size_of::<u32>()) as u64,
+            vk::BufferUsageFlags::STORAGE_BUFFER
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuToCpu,
         )?;
 
         let queue_family = device.queue_family();
@@ -47,6 +61,8 @@ impl Frame {
             frame_data,
             objects,
             materials,
+            histogram,
+            histogram_ready: false,
         })
     }
 
@@ -55,6 +71,7 @@ impl Frame {
             self.frame_data.destroy(device, allocator);
             self.objects.destroy(device, allocator);
             self.materials.destroy(device, allocator);
+            self.histogram.destroy(device, allocator);
             let device = device.handle();
             device.destroy_fence(self.in_flight, None);
             device.destroy_semaphore(self.image_acquired, None);

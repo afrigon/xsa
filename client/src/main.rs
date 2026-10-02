@@ -2,6 +2,7 @@ mod app;
 mod camera;
 mod content;
 mod input;
+mod lighting;
 mod mesh;
 mod renderer;
 mod vulkan;

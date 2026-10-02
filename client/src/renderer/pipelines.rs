@@ -3,24 +3,27 @@ use std::mem::offset_of;
 use ash::vk;
 
 use super::DEPTH_FORMAT;
-use super::gpu_data::PushConstants;
+use super::gpu_data::{HistogramPushConstants, PushConstants};
 use super::material::Shader;
 use crate::mesh::Vertex;
-use crate::vulkan::{BindlessTextures, Device, GraphicsPipeline, GraphicsPipelineDescription};
+use crate::vulkan::{BindlessTextures, ComputePipeline, Device, GraphicsPipeline, GraphicsPipelineDescription};
 
 pub const POINT_SHADER_PATH: &str = "point";
 pub const TONEMAP_SHADER_PATH: &str = "tonemap";
+pub const HISTOGRAM_SHADER_PATH: &str = "histogram";
 
 pub struct ShaderBinaries {
     pub shaders: Vec<Vec<u8>>,
     pub point: Vec<u8>,
     pub tonemap: Vec<u8>,
+    pub histogram: Vec<u8>,
 }
 
 pub(super) struct Pipelines {
     shaders: Vec<GraphicsPipeline>,
     point: GraphicsPipeline,
     tonemap: GraphicsPipeline,
+    histogram: ComputePipeline,
 }
 
 impl Pipelines {
@@ -75,10 +78,17 @@ impl Pipelines {
                 descriptor_set_layouts: &[bindless.layout()],
             },
         )?;
+        let histogram = ComputePipeline::new(
+            device,
+            &binaries.histogram,
+            size_of::<HistogramPushConstants>() as u32,
+            &[bindless.layout()],
+        )?;
         Ok(Self {
             shaders,
             point,
             tonemap,
+            histogram,
         })
     }
 
@@ -94,6 +104,10 @@ impl Pipelines {
         &self.tonemap
     }
 
+    pub fn histogram(&self) -> &ComputePipeline {
+        &self.histogram
+    }
+
     pub unsafe fn destroy(&mut self, device: &Device) {
         unsafe {
             for pipeline in &mut self.shaders {
@@ -101,6 +115,7 @@ impl Pipelines {
             }
             self.point.destroy(device);
             self.tonemap.destroy(device);
+            self.histogram.destroy(device);
         }
     }
 }

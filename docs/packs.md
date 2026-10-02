@@ -102,6 +102,11 @@ axial-tilt 23.4392811
   north pole stays the IAU one that textures are mapped to.
 - **`axial-tilt`** (°): tilt of the spin axis relative to the body's own
   orbital plane.
+- **`luminosity`** (W) and **`effective-temperature`** (K), together and only
+  on stars: the star's total radiated power and the temperature of the
+  blackbody that matches it. Lighting derives from them: illuminance at any
+  distance, the star's surface brightness and its color. The first star in a
+  simulation is its light source.
 
 ### Systems — `<namespace>/data/systems/`
 
@@ -193,9 +198,12 @@ What the player selects in game.
 
 ```kdl
 system "sol"
+spawn "earth"
 ```
 
 - **`system`:** the system to run.
+- **`spawn`** (optional): the body players start at, a body id from the
+  system.
 
 A new save starts at the current date; the date is a property of the save,
 not of the simulation.
@@ -219,10 +227,11 @@ material "earth"
 A simulation's object file holds its skybox:
 
 ```kdl
-skybox texture="skyboxes/deep-star-maps" frame="equatorial"
+skybox texture="skyboxes/deep-star-maps" frame="equatorial" luminance=0.05
 ```
 
 - **`texture`:** a cube-map texture.
+- **`luminance`** (cd/m²): the sky's luminance for a texture value of 1.
 - **`frame`:** `equatorial` for celestial-coordinate star maps, `ecliptic` for
   maps already aligned with the world frame.
 
@@ -233,11 +242,18 @@ shader "base:lit"
 base-color 0.1 0.25 0.6
 ```
 
-- **`shader "base:lit"`** with **`base-color`** (linear red green blue).
-- **`shader "base:emissive"`** with **`color`**; the first emissive body is
-  the light source.
-- **`shader "base:planet"`** with **`color-texture`** (sRGB) and optional
-  **`normal-texture`** and **`emissive-texture`** (sRGB), each a texture id.
+Light is physical: surfaces reflect the star's illuminance (lux) as luminance
+(cd/m²), and emissive values are luminances in cd/m².
+
+- **`shader "base:lit"`** with **`base-color`**: the albedo (linear red green
+  blue).
+- **`shader "base:emissive"`** with optional **`color`** (a tint, white by
+  default) and **`luminance`** (cd/m²). A star takes its luminance and color
+  from its data and needs neither.
+- **`shader "base:planet"`** with **`color-texture`** (sRGB albedo) and
+  optional **`normal-texture`** and **`emissive-texture`** (sRGB), each a
+  texture id; an emissive texture needs **`emissive-luminance`** (cd/m² for a
+  texture value of 1).
   Maps are equirectangular with the first row at the south pole, longitude 0
   at u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
   Parallax, which Sol's textures follow). Normal maps are tangent-space with

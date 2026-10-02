@@ -7,7 +7,6 @@ SamplerState wrappingSampler;
 Texture2D textures[];
 
 static const uint noTexture = 0xFFFFFFFF;
-static const float pi = 3.14159265358979;
 
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input)
@@ -73,14 +72,15 @@ float4 fragmentMain(VertexOutput input) : SV_Target
 
     float3 normal = surfaceNormal(material, modelNormal, coordinates);
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
-    float3 toSun = normalize(constants.frame.sunPosition.xyz - input.worldPosition);
-    float facingSun = dot(normalize(input.normal), toSun) > 0.0 ? 1.0 : 0.0;
-    float light = max(dot(worldNormal, toSun), 0.0) * facingSun + ambient;
+    float facingSun = sunCosine(input.worldPosition, normalize(input.normal)) > 0.0 ? 1.0 : 0.0;
+    float cosine = sunCosine(input.worldPosition, worldNormal) * facingSun;
 
-    float3 color = sampleSurface(material.texture, coordinates).rgb * light;
+    float3 albedo = sampleSurface(material.texture, coordinates).rgb;
+    float3 luminance = lambertLuminance(albedo, sunIlluminance(input.worldPosition), cosine);
     if (material.emissiveTexture != noTexture)
     {
-        color += sampleSurface(material.emissiveTexture, coordinates).rgb;
+        luminance += sampleSurface(material.emissiveTexture, coordinates).rgb * material.luminance;
     }
+    float3 color = luminance * constants.frame.exposure;
     return float4(color, 1.0);
 }

@@ -47,13 +47,15 @@ pub enum Material {
         color: TextureHandle,
         normal: Option<TextureHandle>,
         emissive: Option<TextureHandle>,
+        emissive_luminance: f32,
     },
     Emissive {
-        color: Vec3,
+        luminance: Vec3,
     },
     Skybox {
         cube_map: CubeMapHandle,
         orientation: Mat3,
+        luminance: f32,
     },
 }
 
@@ -65,7 +67,7 @@ pub(super) struct MaterialData {
     texture: u32,
     normal_texture: u32,
     emissive_texture: u32,
-    padding: u32,
+    luminance: f32,
 }
 
 const _: () = assert!(size_of::<MaterialData>() == 96);
@@ -87,7 +89,7 @@ impl Material {
             texture: NO_TEXTURE,
             normal_texture: NO_TEXTURE,
             emissive_texture: NO_TEXTURE,
-            padding: 0,
+            luminance: 0.0,
         };
         let index = |texture: Option<TextureHandle>| texture.map_or(NO_TEXTURE, TextureHandle::index);
         match *self {
@@ -96,15 +98,22 @@ impl Material {
                 color,
                 normal,
                 emissive,
+                emissive_luminance,
             } => {
                 data.texture = color.index();
                 data.normal_texture = index(normal);
                 data.emissive_texture = index(emissive);
+                data.luminance = emissive_luminance;
             }
-            Material::Emissive { color } => data.color = color.extend(1.0),
-            Material::Skybox { cube_map, orientation } => {
+            Material::Emissive { luminance } => data.color = luminance.extend(1.0),
+            Material::Skybox {
+                cube_map,
+                orientation,
+                luminance,
+            } => {
                 data.transform = Mat4::from_mat3(orientation);
                 data.texture = cube_map.index();
+                data.luminance = luminance;
             }
         }
         data
