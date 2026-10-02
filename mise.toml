@@ -57,7 +57,7 @@ arg "[arguments]..." help="Arguments for xsa" double_dash="automatic"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-eval "arguments=($usage_arguments)"
+eval "arguments=(${usage_arguments:-})"
 cargo run -p xsa ${usage_release:+--release} -- "${arguments[@]}"
 """
 
@@ -70,7 +70,7 @@ arg "[arguments]..." help="Arguments for xsa server" double_dash="automatic"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-eval "arguments=($usage_arguments)"
+eval "arguments=(${usage_arguments:-})"
 cargo run -p xsa --no-default-features --features server --target-dir {{vars.server_target_directory}} ${usage_release:+--release} -- server "${arguments[@]}"
 """
 
