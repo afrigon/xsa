@@ -16,9 +16,9 @@ use xsa_proto::messages::{ClientMessage, PackReference, ServerEvent};
 use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
 use crate::camera::{Camera, CameraMode};
-use crate::content;
+use crate::content::{self, MaterialDefinition};
 use crate::input::Input;
-use crate::renderer::{Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader};
+use crate::renderer::{ColorSpace, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader};
 
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
@@ -183,7 +183,11 @@ impl App {
         let materials = simulation
             .bodies()
             .iter()
-            .map(|body| content::load_body_material(&stack, &body.id))
+            .map(|body| {
+                let definition = content::load_body_material(&stack, &body.id)?;
+                create_material(renderer, &body.id, definition)
+                    .with_context(|| format!("loading the material of {}", body.id))
+            })
             .collect::<anyhow::Result<Vec<Material>>>()?;
         let mut state = SimulationState::default();
         simulation.state_at(time, &mut state);
@@ -448,4 +452,29 @@ fn window_attributes() -> WindowAttributes {
     #[cfg(all(unix, not(target_vendor = "apple")))]
     let attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, APP_ID, APP_ID);
     attributes
+}
+
+fn create_material(renderer: &mut Renderer, body: &Id, definition: MaterialDefinition) -> anyhow::Result<Material> {
+    Ok(match definition {
+        MaterialDefinition::Lit { base_color } => Material::Lit { base_color },
+        MaterialDefinition::Emissive { color } => Material::Emissive { color },
+        MaterialDefinition::Planet {
+            color,
+            normal,
+            emissive,
+        } => {
+            let mut load = |kind: &str, path: &PathBuf, color_space| {
+                renderer.load_texture(&format!("{body} {kind}"), path, color_space)
+            };
+            Material::Planet {
+                color: load("color", &color, ColorSpace::Srgb)?,
+                normal: normal
+                    .map(|path| load("normal", &path, ColorSpace::Linear))
+                    .transpose()?,
+                emissive: emissive
+                    .map(|path| load("emissive", &path, ColorSpace::Srgb))
+                    .transpose()?,
+            }
+        }
+    })
 }

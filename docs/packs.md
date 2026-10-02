@@ -21,6 +21,7 @@ folder for another namespace only to override that pack's content.
 ```
 packs/<pack>/
   pack.kdl                                  manifest
+  LICENSE                                   terms of third-party content, if any
   <namespace>/
     data/                                   gameplay and physics — read by the server
       bodies/                               intrinsic properties of each body
@@ -37,6 +38,10 @@ packs/<pack>/
 ```
 
 The server only reads `data/`; the client reads both.
+
+A pack that ships third-party content carries a `LICENSE` file at its root
+stating which content is under which terms, with the full text of each license
+that requires it and the attribution it asks for.
 
 ## Manifest
 
@@ -92,7 +97,9 @@ axial-tilt 23.4392811
 - **`radius`** (m): mean radius.
 - **`gravitational-parameter`** (m³/s²): μ = G·M, which is measured far more
   precisely than the mass itself.
-- **`rotation-period`** (s): sidereal rotation period.
+- **`rotation-period`** (s): sidereal rotation period; negative when the body
+  spins clockwise seen from above its north pole (Venus, Uranus), so the
+  north pole stays the IAU one that textures are mapped to.
 - **`axial-tilt`** (°): tilt of the spin axis relative to the body's own
   orbital plane.
 
@@ -135,7 +142,9 @@ star "sol" spin-azimuth=75.76 {
   root); it contains a `primary "<body id>"` with no orbit and a
   `secondary "<body id>"` whose `orbit` is **relative to the primary**. The
   loader splits that relative orbit by mass ratio into exact orbits around the
-  barycenter. Larger groupings nest barycenters.
+  barycenter. Larger groupings nest barycenters. A barycenter may also contain
+  `body` and `barycenter` children, which orbit the pair's center of mass with
+  the pair's combined μ (Pluto's small moons around Pluto–Charon).
 
 **`orbit`** — classical Keplerian elements relative to the parent, in the
 ecliptic J2000 frame; angles in degrees.
@@ -158,6 +167,14 @@ ecliptic J2000 frame; angles in degrees.
   `ascending-node`, `periapsis` (°). Absent rates are zero. Real bodies need
   them to stay accurate decades away from the epoch; fictional systems can
   omit them.
+- **`plane`** (optional child): the reference plane the elements are measured
+  against, given by its pole's `right-ascension` and `declination` (°, in the
+  celestial equatorial frame). The ascending node is then measured from where
+  that plane crosses the celestial equator going north. Moons close to an
+  oblate planet precess around a plane between the planet's equator and its
+  orbit (the Laplace plane); measured against it, that precession is a
+  constant `ascending-node` rate. Absent, the elements are relative to the
+  ecliptic.
 
 **Spin properties** on `star`, `body`, `primary` and `secondary` nodes, all
 optional:
@@ -219,6 +236,12 @@ base-color 0.1 0.25 0.6
 - **`shader "base:lit"`** with **`base-color`** (linear red green blue).
 - **`shader "base:emissive"`** with **`color`**; the first emissive body is
   the light source.
+- **`shader "base:planet"`** with **`color-texture`** (sRGB) and optional
+  **`normal-texture`** and **`emissive-texture`** (sRGB), each a texture id.
+  Maps are equirectangular with the first row at the south pole, longitude 0
+  at u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
+  Parallax, which Sol's textures follow). Normal maps are tangent-space with
+  red toward west and green toward north; z is reconstructed.
 
 ### Shaders — `base/resources/shaders/`
 
@@ -228,9 +251,10 @@ other packs, with their own material properties, are planned.
 
 ### Textures — `<namespace>/resources/textures/`
 
-DDS files (BC7 or uncompressed RGBA8), uploaded exactly as stored. Folders are
-organized by subject for people; a texture's purpose is declared by whatever
-references it.
+DDS files with a DX10 header (BC7, BC5, BC4 or uncompressed RGBA8), uploaded
+exactly as stored; whether a texture is sRGB or linear comes from how it is
+used. Folders are organized by subject for people; a texture's purpose is
+declared by whatever references it.
 
 ## Formats
 

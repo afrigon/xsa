@@ -17,7 +17,7 @@ use winit::window::Window;
 pub use material::{Material, Shader};
 pub use pipelines::{POINT_SHADER_PATH, ShaderBinaries};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
-pub use texture::CubeMapHandle;
+pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
 
 use frame::Frame;
 use gpu_data::{FrameData, ObjectData, PushConstants};
@@ -59,6 +59,7 @@ pub struct Renderer {
     object_capacity: usize,
     depth: Image,
     cube_maps: Vec<Image>,
+    textures: Vec<Image>,
     bindless: BindlessTextures,
     frames: Vec<Frame>,
     frame_index: usize,
@@ -152,6 +153,7 @@ impl Renderer {
             object_capacity: INITIAL_OBJECT_CAPACITY,
             depth,
             cube_maps: Vec::new(),
+            textures: Vec::new(),
             bindless,
             frames,
             frame_index: 0,
@@ -185,6 +187,20 @@ impl Renderer {
             Ok(index) => {
                 self.cube_maps.push(image);
                 Ok(CubeMapHandle::new(index))
+            }
+            Err(err) => {
+                unsafe { image.destroy(&self.device, &mut self.allocator) };
+                Err(err)
+            }
+        }
+    }
+
+    pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
+        let mut image = texture::upload_texture(&self.device, &mut self.allocator, name, path, color_space)?;
+        match self.bindless.add_texture(&self.device, image.view()) {
+            Ok(index) => {
+                self.textures.push(image);
+                Ok(TextureHandle::new(index))
             }
             Err(err) => {
                 unsafe { image.destroy(&self.device, &mut self.allocator) };
@@ -534,8 +550,8 @@ impl Drop for Renderer {
         unsafe {
             let _ = self.device.handle().device_wait_idle();
             self.pipelines.destroy(&self.device);
-            for cube_map in &mut self.cube_maps {
-                cube_map.destroy(&self.device, &mut self.allocator);
+            for image in self.cube_maps.iter_mut().chain(&mut self.textures) {
+                image.destroy(&self.device, &mut self.allocator);
             }
             self.bindless.destroy(&self.device);
             self.vertex_buffer.destroy(&self.device, &mut self.allocator);

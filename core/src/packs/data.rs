@@ -1,9 +1,11 @@
 use anyhow::{Context, bail, ensure};
+use glam::DQuat;
 use kdl::KdlNode;
 
 use super::document::{self, Document};
 use super::id::Id;
 use super::stack::PackStack;
+use crate::frames;
 use crate::orbit::{ElementRates, OrbitalElements};
 use crate::time::{self, SECONDS_PER_JULIAN_CENTURY};
 
@@ -26,7 +28,7 @@ pub struct SystemDefinition {
 }
 
 pub enum SystemNode {
-    Body(BodyNode),
+    Body(Box<BodyNode>),
     Barycenter(Box<BarycenterNode>),
 }
 
@@ -42,6 +44,7 @@ pub struct BarycenterNode {
     pub orbit: Option<OrbitalElements>,
     pub primary: BodyNode,
     pub secondary: BodyNode,
+    pub children: Vec<SystemNode>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -81,7 +84,7 @@ impl SystemDefinition {
             let root = roots.next().context("a system needs a `star` or `barycenter` root")?;
             ensure!(roots.next().is_none(), "a system has exactly one root");
             let root = match document::name(root) {
-                "star" => SystemNode::Body(parse_body(root, &id.namespace)?),
+                "star" => SystemNode::Body(Box::new(parse_body(root, &id.namespace)?)),
                 "barycenter" => SystemNode::Barycenter(Box::new(parse_barycenter(root, &id.namespace)?)),
                 other => bail!("unknown system root `{other}`"),
             };
@@ -123,7 +126,9 @@ fn parse_body(node: &KdlNode, namespace: &str) -> anyhow::Result<BodyNode> {
     for child in document::children(node) {
         match document::name(child) {
             "orbit" => parsed.orbit = Some(parse_orbit(child)?),
-            "body" => parsed.children.push(SystemNode::Body(parse_body(child, namespace)?)),
+            "body" => parsed
+                .children
+                .push(SystemNode::Body(Box::new(parse_body(child, namespace)?))),
             "barycenter" => parsed
                 .children
                 .push(SystemNode::Barycenter(Box::new(parse_barycenter(child, namespace)?))),
@@ -138,11 +143,14 @@ fn parse_barycenter(node: &KdlNode, namespace: &str) -> anyhow::Result<Barycente
     let mut orbit = None;
     let mut primary = None;
     let mut secondary = None;
+    let mut children = Vec::new();
     for child in document::children(node) {
         match document::name(child) {
             "orbit" => orbit = Some(parse_orbit(child)?),
             "primary" => primary = Some(parse_body(child, namespace)?),
             "secondary" => secondary = Some(parse_body(child, namespace)?),
+            "body" => children.push(SystemNode::Body(Box::new(parse_body(child, namespace)?))),
+            "barycenter" => children.push(SystemNode::Barycenter(Box::new(parse_barycenter(child, namespace)?))),
             other => bail!("unknown node `{other}` in barycenter {name}"),
         }
     }
@@ -161,26 +169,34 @@ fn parse_barycenter(node: &KdlNode, namespace: &str) -> anyhow::Result<Barycente
         orbit,
         primary,
         secondary,
+        children,
     })
 }
 
 fn parse_orbit(node: &KdlNode) -> anyhow::Result<OrbitalElements> {
     let per_second = |per_century: f64| per_century / SECONDS_PER_JULIAN_CENTURY;
     let mut rates = ElementRates::default();
+    let mut reference_plane = DQuat::IDENTITY;
     for child in document::children(node) {
-        ensure!(
-            document::name(child) == "rates",
-            "unknown node `{}` in orbit",
-            document::name(child)
-        );
-        let rate = |key| document::optional_number_property(child, key).map(Option::unwrap_or_default);
-        rates = ElementRates {
-            semi_major_axis: per_second(rate("semi-major-axis")?),
-            eccentricity: per_second(rate("eccentricity")?),
-            inclination: per_second(rate("inclination")?.to_radians()),
-            ascending_node: per_second(rate("ascending-node")?.to_radians()),
-            periapsis: per_second(rate("periapsis")?.to_radians()),
-        };
+        match document::name(child) {
+            "rates" => {
+                let rate = |key| document::optional_number_property(child, key).map(Option::unwrap_or_default);
+                rates = ElementRates {
+                    semi_major_axis: per_second(rate("semi-major-axis")?),
+                    eccentricity: per_second(rate("eccentricity")?),
+                    inclination: per_second(rate("inclination")?.to_radians()),
+                    ascending_node: per_second(rate("ascending-node")?.to_radians()),
+                    periapsis: per_second(rate("periapsis")?.to_radians()),
+                };
+            }
+            "plane" => {
+                reference_plane = frames::plane_from_equatorial_pole(
+                    document::number_property(child, "right-ascension")?.to_radians(),
+                    document::number_property(child, "declination")?.to_radians(),
+                );
+            }
+            other => bail!("unknown node `{other}` in orbit"),
+        }
     }
     let eccentricity = document::number_property(node, "eccentricity")?;
     ensure!(
@@ -197,6 +213,7 @@ fn parse_orbit(node: &KdlNode) -> anyhow::Result<OrbitalElements> {
         mean_motion: document::optional_number_property(node, "mean-motion")?
             .map(|degrees_per_century| per_second(degrees_per_century.to_radians())),
         rates,
+        reference_plane,
     })
 }
 

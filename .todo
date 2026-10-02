@@ -17,10 +17,28 @@
 - Pack files: unknown nodes are rejected, but unknown properties are not, so a
   misspelled optional property (e.g. a rate) is silently ignored. Reject
   properties a node doesn't define.
-- system-solar data: the Sun's and Moon's spin orientation (pole direction,
-  prime meridian) is approximate, and the Moon's mean elements are referred to
-  the equinox of date (~0.36° offset by 2026). Fix with ephemerides; invisible
-  until bodies are textured.
+- system-solar data accuracy against JPL Horizons (fitted mean elements, see
+  `core/tests/system_solar.rs`): planets and most moons within ~0.1° as seen
+  from their parent. Weak fits: Mimas drifts several degrees and Tethys ~0.3°
+  (their resonance swings Mimas ±44° over 70 years), Hyperion up to 15° (4:3
+  resonance with Titan), Phoebe ~1°, Pluto's small moons 1–2° (they orbit a
+  binary), Ryugu, Pallas and Psyche 0.2–0.3° today. Mimas, Tethys and the
+  asteroids are fitted over 2016–2036, everything else over 2000–2050;
+  accuracy degrades outside those spans. Dactyl's orbit comes from Sol's
+  config (Horizons has none). The Moon's mean elements omit its periodic
+  terms (up to ~2° along its orbit) and are referred to the equinox of date
+  (~0.36° offset by 2026). Spin poles are exact at J2000 but their drift (up
+  to ~0.1° per century) is not representable; moons spin with their axis
+  along their orbit normal; bodies without an IAU rotation model spin
+  untilted with Sol's period (Sol's own behavior). Vesta, Eros, Ida and
+  Phoebe rotation values and Arrokoth's 9 km radius should be checked
+  against their sources.
+- Simulation time treats UTC as TDB (Barycentric Dynamical Time), ignoring a
+  ~69 s offset: Io sits ~1,200 km and the Moon ~70 km behind NASA's live
+  positions. Fix with a leap-second table in `time.rs`.
+- Every body texture is uploaded when joining a simulation (~1.1 GB of VRAM
+  with Sol's 4k set), one at a time with a full queue wait each. Fine at 4k;
+  the 16k set needs texture streaming with a VRAM budget.
 - The client loads shaders from the `base` pack only, before joining, so other
   packs cannot override them yet (part of custom shaders in packs).
 - A remote client must have the server's packs installed with matching
@@ -28,10 +46,6 @@
 
 # Next steps
 
-- Commit the pack system (core packs/orbit/time/simulation, base and
-  system-solar packs in the namespace-first layout, Joined/JoinDenied
-  protocol, content loading in the client, shaders task) — left uncommitted
-  until the user asks.
 - Translation keys (undecided): explicit keys in files following
   `<pack>.description`, `<pack>.<module>.<entry>.<field>` and
   `<pack>.ui.<screen>.<name>`, or keys derived implicitly from ids.
@@ -56,10 +70,28 @@
 
 - Real solar system at scale: bodies generated from real physical and orbital
   parameters. The general shape must be right; fine detail may be procedural.
-- Planet textures from the Sol mod (CC-BY-NC-SA-4.0): attribution required,
-  no commercial use, derived textures stay under the same license. Keep the
-  texture pipeline source-agnostic so they can be swapped for NASA-derived
-  data before any commercial release.
+- Planet textures from Sol (RSS-Reborn, CC BY-NC-SA 4.0, license shipped in
+  `packs/system-solar/LICENSE`). Keep the texture pipeline source-agnostic so
+  they can be swapped for NASA-derived data before any commercial release.
+  Used: Color (alpha is a water mask on Earth), Normal, Height, Emissive (Io),
+  Scatter and Surge (Hapke parameters), VertexHeight (terrain, goes to
+  `data/`). Ignored: Dummy, Icon, Biomes, VertexColor. Order: textured bodies
+  first, then HDR, Hapke shading, and only later rings, atmospheres, clouds,
+  the Sun's corona and flares. Texture conventions (confirmed from the
+  AdvancedPQSTools, Parallax and Kopernicus sources): DDS rows are uploaded
+  as stored, first row is the south pole (v = 0); u = 0.25 − longitude/360°
+  (prime meridian at u = 0.25, u grows westward), v = 0.5 + latitude/180°.
+  Normal maps are tangent-space RG: R toward west (+u), G toward north,
+  z = sqrt(1 − x² − y²). Color is sRGB; Normal, Height, Scatter, Surge and
+  Emissive are linear. Shading is Custom/HapkeScaled from CharonSSS/
+  AdvancedPQSTools (MIT, port with its notice): Scatter R = w, G = b,
+  B = (c + 1)/2; Surge R = B_S0/2, G = h_S, B = B_C0/2, A = h_C.
+- Rings as data: inner/outer radii and orientation in the system data
+  (literature values; Sol's ring radii use an unknown unit), textures as
+  resources.
+- Ground detail textures: Sol ships its own only for Earth, Luna and Mars;
+  other bodies reference stock KSP textures that cannot be redistributed.
+  Investigate Sol's set and build similar textures for the rest.
 - Texture streaming and a VRAM budget: textures are not all preloaded — only
   the mip levels a texture needs at its current on-screen size are resident,
   loaded and evicted in the background, and total usage stays under the budget

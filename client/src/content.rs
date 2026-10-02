@@ -7,7 +7,7 @@ use xsa_core::frames;
 use xsa_core::packs::document::{self, Document};
 use xsa_core::packs::{Id, PackStack};
 
-use crate::renderer::{Material, POINT_SHADER_PATH, Shader, ShaderBinaries};
+use crate::renderer::{POINT_SHADER_PATH, Shader, ShaderBinaries};
 
 const BASE_NAMESPACE: &str = "base";
 const SHADERS: &str = "shaders";
@@ -18,6 +18,20 @@ const SIMULATION_OBJECTS: &str = "objects/simulations";
 const TEXTURES: &str = "textures";
 const TEXTURE_EXTENSION: &str = "dds";
 const DEFINITION_EXTENSION: &str = "kdl";
+
+pub enum MaterialDefinition {
+    Lit {
+        base_color: Vec3,
+    },
+    Emissive {
+        color: Vec3,
+    },
+    Planet {
+        color: PathBuf,
+        normal: Option<PathBuf>,
+        emissive: Option<PathBuf>,
+    },
+}
 
 pub struct SkyboxDefinition {
     pub texture: PathBuf,
@@ -44,15 +58,15 @@ pub fn load_shaders(stack: &PackStack) -> anyhow::Result<ShaderBinaries> {
     })
 }
 
-pub fn load_body_material(stack: &PackStack, body: &Id) -> anyhow::Result<Material> {
+pub fn load_body_material(stack: &PackStack, body: &Id) -> anyhow::Result<MaterialDefinition> {
     let object = Document::read(stack.resource(BODY_OBJECTS, body, DEFINITION_EXTENSION)?)?;
     let material = Id::parse(document::string_argument(object.node("material")?)?, &body.namespace)
         .with_context(|| format!("{}", object.path().display()))?;
     let file = Document::read(stack.resource(MATERIALS, &material, DEFINITION_EXTENSION)?)?;
-    parse_material(&file, &material.namespace).with_context(|| format!("{}", file.path().display()))
+    parse_material(stack, &file, &material.namespace).with_context(|| format!("{}", file.path().display()))
 }
 
-fn parse_material(file: &Document, namespace: &str) -> anyhow::Result<Material> {
+fn parse_material(stack: &PackStack, file: &Document, namespace: &str) -> anyhow::Result<MaterialDefinition> {
     let shader = Id::parse(document::string_argument(file.node("shader")?)?, namespace)?;
     let color = |name: &str| -> anyhow::Result<Vec3> {
         let components = document::number_arguments(file.node(name)?)?;
@@ -63,11 +77,23 @@ fn parse_material(file: &Document, namespace: &str) -> anyhow::Result<Material> 
             components[2] as f32,
         ))
     };
+    let texture = |name: &str| -> anyhow::Result<Option<PathBuf>> {
+        let Some(node) = file.optional_node(name) else {
+            return Ok(None);
+        };
+        let id = Id::parse(document::string_argument(node)?, namespace)?;
+        Ok(Some(stack.resource(TEXTURES, &id, TEXTURE_EXTENSION)?.to_path_buf()))
+    };
     match shader.to_string().as_str() {
-        "base:lit" => Ok(Material::Lit {
+        "base:lit" => Ok(MaterialDefinition::Lit {
             base_color: color("base-color")?,
         }),
-        "base:emissive" => Ok(Material::Emissive { color: color("color")? }),
+        "base:emissive" => Ok(MaterialDefinition::Emissive { color: color("color")? }),
+        "base:planet" => Ok(MaterialDefinition::Planet {
+            color: texture("color-texture")?.context("a planet material needs a `color-texture`")?,
+            normal: texture("normal-texture")?,
+            emissive: texture("emissive-texture")?,
+        }),
         _ => bail!("shader {shader} is not supported by materials yet"),
     }
 }

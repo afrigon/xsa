@@ -1,0 +1,3 @@
+shader "base:planet"
+color-texture "bodies/hydra/color"
+normal-texture "bodies/hydra/normal"

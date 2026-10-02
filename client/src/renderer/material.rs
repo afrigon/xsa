@@ -1,6 +1,8 @@
 use glam::{Mat3, Mat4, Vec3, Vec4};
 
-use super::texture::CubeMapHandle;
+use super::texture::{CubeMapHandle, TextureHandle};
+
+const NO_TEXTURE: u32 = u32::MAX;
 
 macro_rules! shaders {
     ($($variant:ident => $file:literal),+ $(,)?) => {
@@ -27,6 +29,7 @@ macro_rules! shaders {
 
 shaders! {
     Lit => "lit",
+    Planet => "planet",
     Emissive => "emissive",
     Normals => "normals",
     Depth => "depth",
@@ -37,9 +40,21 @@ shaders! {
 
 #[derive(Clone, Copy)]
 pub enum Material {
-    Lit { base_color: Vec3 },
-    Emissive { color: Vec3 },
-    Skybox { cube_map: CubeMapHandle, orientation: Mat3 },
+    Lit {
+        base_color: Vec3,
+    },
+    Planet {
+        color: TextureHandle,
+        normal: Option<TextureHandle>,
+        emissive: Option<TextureHandle>,
+    },
+    Emissive {
+        color: Vec3,
+    },
+    Skybox {
+        cube_map: CubeMapHandle,
+        orientation: Mat3,
+    },
 }
 
 #[repr(C)]
@@ -47,8 +62,10 @@ pub enum Material {
 pub(super) struct MaterialData {
     color: Vec4,
     transform: Mat4,
-    texture_index: u32,
-    padding: [u32; 3],
+    texture: u32,
+    normal_texture: u32,
+    emissive_texture: u32,
+    padding: u32,
 }
 
 const _: () = assert!(size_of::<MaterialData>() == 96);
@@ -57,6 +74,7 @@ impl Material {
     pub fn shader(&self) -> Shader {
         match self {
             Material::Lit { .. } => Shader::Lit,
+            Material::Planet { .. } => Shader::Planet,
             Material::Emissive { .. } => Shader::Emissive,
             Material::Skybox { .. } => Shader::Skybox,
         }
@@ -66,15 +84,27 @@ impl Material {
         let mut data = MaterialData {
             color: Vec4::ONE,
             transform: Mat4::IDENTITY,
-            texture_index: 0,
-            padding: [0; 3],
+            texture: NO_TEXTURE,
+            normal_texture: NO_TEXTURE,
+            emissive_texture: NO_TEXTURE,
+            padding: 0,
         };
+        let index = |texture: Option<TextureHandle>| texture.map_or(NO_TEXTURE, TextureHandle::index);
         match *self {
             Material::Lit { base_color } => data.color = base_color.extend(1.0),
+            Material::Planet {
+                color,
+                normal,
+                emissive,
+            } => {
+                data.texture = color.index();
+                data.normal_texture = index(normal);
+                data.emissive_texture = index(emissive);
+            }
             Material::Emissive { color } => data.color = color.extend(1.0),
             Material::Skybox { cube_map, orientation } => {
                 data.transform = Mat4::from_mat3(orientation);
-                data.texture_index = cube_map.index();
+                data.texture = cube_map.index();
             }
         }
         data

@@ -252,7 +252,11 @@ impl Builder<'_> {
                 factor: secondary_factor,
             },
             Some(relative),
-        )
+        )?;
+        for child in &node.children {
+            self.add_node(child, Some(barycenter), pair_gravitational_parameter)?;
+        }
+        Ok(())
     }
 
     fn add_body(

@@ -66,3 +66,102 @@ fn moon_stays_within_its_real_distance_range() {
         assert!((356_000.0..407_000.0).contains(&distance), "day {day}: {distance} km");
     }
 }
+
+struct Reference {
+    body: &'static str,
+    parent: &'static str,
+    kilometers: [f64; 3],
+    tolerance_degrees: f64,
+}
+
+// JPL Horizons, ecliptic J2000, relative to the parent's center at 2026-10-01T00:00 TDB.
+const HORIZONS_2026_10_01: [Reference; 11] = [
+    Reference {
+        body: "jupiter",
+        parent: "sol",
+        kilometers: [-5.221632141e8, 5.979565007e8, 9.198782169e6],
+        tolerance_degrees: 0.05,
+    },
+    Reference {
+        body: "saturn",
+        parent: "sol",
+        kilometers: [1.385149691e9, 2.642948909e8, -5.974019060e7],
+        tolerance_degrees: 0.2,
+    },
+    Reference {
+        body: "pluto",
+        parent: "sol",
+        kilometers: [2.986604697e9, -4.393689164e9, -3.936314894e8],
+        tolerance_degrees: 0.05,
+    },
+    Reference {
+        body: "io",
+        parent: "jupiter",
+        kilometers: [4.405540914e4, 4.183189810e5, 1.575805527e4],
+        tolerance_degrees: 0.05,
+    },
+    Reference {
+        body: "ganymede",
+        parent: "jupiter",
+        kilometers: [8.405344405e5, 6.585803899e5, 3.745925331e4],
+        tolerance_degrees: 0.15,
+    },
+    Reference {
+        body: "titan",
+        parent: "saturn",
+        kilometers: [1.068315076e6, 4.223177262e5, -3.240312691e5],
+        tolerance_degrees: 0.05,
+    },
+    Reference {
+        body: "iapetus",
+        parent: "saturn",
+        kilometers: [-6.609833738e4, -3.487491832e6, 8.151935736e5],
+        tolerance_degrees: 0.1,
+    },
+    Reference {
+        body: "titania",
+        parent: "uranus",
+        kilometers: [-4.027762100e5, 6.697867458e4, -1.523246248e5],
+        tolerance_degrees: 0.15,
+    },
+    Reference {
+        body: "triton",
+        parent: "neptune",
+        kilometers: [3.010274569e5, 1.127751974e5, -1.500855254e5],
+        tolerance_degrees: 0.05,
+    },
+    Reference {
+        body: "phobos",
+        parent: "mars",
+        kilometers: [-8.297237210e2, -9.343751083e3, -2.010869397e2],
+        tolerance_degrees: 0.5,
+    },
+    Reference {
+        body: "hydra",
+        parent: "pluto",
+        kilometers: [3.182607067e4, 5.183839361e4, 2.776632149e4],
+        tolerance_degrees: 2.5,
+    },
+];
+
+#[test]
+fn bodies_match_horizons_on_2026_10_01() {
+    let simulation = load();
+    let mut state = SimulationState::default();
+    simulation.state_at(time::parse_timestamp("2026-10-01T00:00:00Z").unwrap(), &mut state);
+    let position = |id: &str| {
+        let index = simulation.bodies().iter().position(|body| body.id.path == id).unwrap();
+        state.bodies[index].position
+    };
+    for reference in &HORIZONS_2026_10_01 {
+        let actual = position(reference.body) - position(reference.parent);
+        let expected = glam::DVec3::from_array(reference.kilometers) * 1000.0;
+        let error_degrees = actual.angle_between(expected).to_degrees();
+        let distance_error = (actual.length() - expected.length()).abs() / expected.length();
+        assert!(
+            error_degrees < reference.tolerance_degrees && distance_error < 0.01,
+            "{}: {error_degrees}° and {distance_error} relative distance away from Horizons",
+            reference.body
+        );
+    }
+}

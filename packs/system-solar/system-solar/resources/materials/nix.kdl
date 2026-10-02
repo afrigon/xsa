@@ -1,0 +1,3 @@
+shader "base:planet"
+color-texture "bodies/nix/color"
+normal-texture "bodies/nix/normal"

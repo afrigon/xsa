@@ -1,5 +1,15 @@
 epoch "2000-01-01T12:00:00Z"
-star "sol" spin-azimuth=75.76 {
+star "sol" spin-azimuth=75.76574249 prime-meridian=23.0754851 {
+    body "mercury" spin-azimuth=339.8626934 prime-meridian=311.316754 {
+        orbit semi-major-axis=5.790908226e10 eccentricity=0.2056317769 inclination=7.004980397 ascending-node=48.33085064 periapsis=29.12527874 mean-anomaly=174.7945778 mean-motion=149472.5165 {
+            rates eccentricity=2.133369977e-05 inclination=-0.005944804978 ascending-node=-0.125429289 periapsis=0.2841930423
+        }
+    }
+    body "venus" spin-azimuth=161.1262868 prime-meridian=284.906817 {
+        orbit semi-major-axis=1.082085981e11 eccentricity=0.006770899692 inclination=3.394660008 ascending-node=76.67969304 periapsis=54.89481916 mean-anomaly=50.40559976 mean-motion=58517.83877 {
+            rates eccentricity=-4.369076518e-05 inclination=-0.0008877094139 ascending-node=-0.2775417061 periapsis=0.2557885061
+        }
+    }
     barycenter "earth-moon" {
         orbit semi-major-axis=1.49598261e11 eccentricity=0.01671123 inclination=-0.00001531 ascending-node=0 periapsis=102.93768193 mean-anomaly=-2.47311027 {
             rates semi-major-axis=840.7 eccentricity=-0.00004392 inclination=-0.01294668 periapsis=0.32327364
@@ -9,6 +19,264 @@ star "sol" spin-azimuth=75.76 {
             orbit semi-major-axis=384399000 eccentricity=0.0549 inclination=5.145 ascending-node=125.0445479 periapsis=318.3086986 mean-anomaly=134.9633964 mean-motion=477198.8675055 {
                 rates ascending-node=-1934.1362891 periapsis=6003.1500178
             }
+        }
+    }
+    body "ryugu" {
+        orbit semi-major-axis=1.781412251e11 eccentricity=0.1890709773 inclination=5.90867705 ascending-node=252.0312424 periapsis=211.2457669 mean-anomaly=298.1311966 mean-motion=27704.9634 {
+            rates eccentricity=0.007396412184 inclination=-0.154078166 ascending-node=-2.701268504 periapsis=1.311648086
+        }
+    }
+    body "eros" spin-azimuth=163.1503581 prime-meridian=299.4462409 {
+        orbit semi-major-axis=2.181399277e11 eccentricity=0.2225202275 inclination=10.8294736 ascending-node=304.4121656 periapsis=178.643586 mean-anomaly=58.12406521 mean-motion=20443.54549 {
+            rates eccentricity=0.00106067761 inclination=-0.004399354317 ascending-node=-0.5327028847 periapsis=1.034622783
+        }
+    }
+    body "mars" spin-azimuth=37.68167534 prime-meridian=130.4843957 {
+        orbit semi-major-axis=2.27939275e11 eccentricity=0.093419012 inclination=1.849718481 ascending-node=49.55789067 periapsis=286.5003848 mean-anomaly=19.38760299 mean-motion=19139.86266 {
+            rates eccentricity=2.304336583e-05 inclination=-0.008147303869 ascending-node=-0.2934228312 periapsis=0.7338702438
+        }
+        body "phobos" tidally-locked=#true {
+            orbit semi-major-axis=9374918.873 eccentricity=0.01510818164 inclination=1.06324406 ascending-node=169.6858691 periapsis=215.8638571 mean-anomaly=189.4108608 mean-motion=41215164.81 {
+                plane right-ascension=317.7 declination=52.9
+                rates eccentricity=2.964226143e-05 inclination=0.03637925604 ascending-node=-15918.65032 periapsis=31813.89669
+            }
+        }
+        body "deimos" tidally-locked=#true {
+            orbit semi-major-axis=23457543.9 eccentricity=0.000252710489 inclination=1.778325212 ascending-node=55.36881131 periapsis=195.9636856 mean-anomaly=8.301027613 mean-motion=10414890.43 {
+                plane right-ascension=316.6 declination=53.5
+                rates eccentricity=8.892178221e-05 inclination=0.04448381567 ascending-node=-663.5888433 periapsis=1310.295008
+            }
+        }
+    }
+    body "vesta" spin-azimuth=307.5214841 prime-meridian=268.0545539 {
+        orbit semi-major-axis=3.532743805e11 eccentricity=0.08711520645 inclination=7.141208534 ascending-node=104.0629202 periapsis=150.6363677 mean-anomaly=339.6602922 mean-motion=9917.773941 {
+            rates eccentricity=0.00926968907 inclination=0.002716327512 ascending-node=-1.321229815 periapsis=2.318025536
+        }
+    }
+    body "ceres" spin-azimuth=131.9525293 prime-meridian=337.5855966 {
+        orbit semi-major-axis=4.139386121e11 eccentricity=0.07882304702 inclination=10.58338035 ascending-node=80.53858714 periapsis=72.90918721 mean-anomaly=7.360728339 mean-motion=7818.890142 {
+            rates eccentricity=-0.003620615458 inclination=0.02660909724 ascending-node=-1.383616574 periapsis=1.961723443
+        }
+    }
+    body "pallas" {
+        orbit semi-major-axis=4.144574291e11 eccentricity=0.2296020434 inclination=34.76442718 ascending-node=173.2431033 periapsis=309.7274374 mean-anomaly=351.7159349 mean-motion=7804.416012 {
+            rates eccentricity=0.003920816617 inclination=0.5392924061 ascending-node=-1.180736495 periapsis=3.318662321
+        }
+    }
+    body "ida" spin-azimuth=27.30264637 prime-meridian=7.31184588 {
+        orbit semi-major-axis=4.280725847e11 eccentricity=0.03986711023 inclination=1.135309951 ascending-node=324.2443876 periapsis=118.2223755 mean-anomaly=238.1902003 mean-motion=7462.686391 {
+            rates eccentricity=0.01720604975 inclination=-0.02297799494 ascending-node=-2.543116367 periapsis=-23.72655679
+        }
+        body "dactyl" tidally-locked=#true {
+            orbit semi-major-axis=83498.8 eccentricity=0.13 inclination=8.88 ascending-node=258.76 periapsis=220 mean-anomaly=39.2836
+        }
+    }
+    body "psyche" {
+        orbit semi-major-axis=4.372289241e11 eccentricity=0.1275016378 inclination=3.085631391 ascending-node=150.3752991 periapsis=226.6620792 mean-anomaly=339.0300187 mean-motion=7193.286197 {
+            rates eccentricity=0.03341639317 inclination=0.0572230095 ascending-node=-1.345692105 periapsis=10.03616709
+        }
+    }
+    body "jupiter" spin-azimuth=216.7413705 prime-meridian=325.9708426 {
+        orbit semi-major-axis=7.783348417e11 eccentricity=0.049127078 inclination=1.303928781 ascending-node=100.4898903 periapsis=273.8101416 mean-anomaly=20.08101433 mean-motion=3033.498256 {
+            rates eccentricity=-0.002896650835 inclination=-0.001110159047 ascending-node=0.1601663398 periapsis=1.096602137
+        }
+        body "amalthea" tidally-locked=#true {
+            orbit semi-major-axis=181364987 eccentricity=0.004298470569 inclination=0.3835463089 ascending-node=283.6403224 periapsis=129.7484085 mean-anomaly=0.1455096597 mean-motion=-0.8084168913 {
+                plane right-ascension=268.1 declination=64.5
+                rates eccentricity=-1.347668632e-05 inclination=-0.02117650417 ascending-node=-91492.44089 periapsis=26485616.89
+            }
+        }
+        body "thebe" tidally-locked=#true {
+            orbit semi-major-axis=221888155.1 eccentricity=0.01762547976 inclination=1.074345762 ascending-node=340.0765621 periapsis=26.87454975 mean-anomaly=182.0943714 mean-motion=19448164.41 {
+                plane right-ascension=268.1 declination=64.5
+                rates eccentricity=1.193853016e-06 inclination=-0.0188557814 ascending-node=-45155.62926 periapsis=90393.68091
+            }
+        }
+        body "io" tidally-locked=#true {
+            orbit semi-major-axis=421766229.3 eccentricity=0.004174424395 inclination=0.04264014269 ascending-node=262.7379572 periapsis=146.1471371 mean-anomaly=331.0216783 mean-motion=7459444.352 {
+                plane right-ascension=268.1 declination=64.5
+                rates eccentricity=6.090276744e-06 inclination=-0.01478350386 ascending-node=-4860.768894 periapsis=-22149.37598
+            }
+        }
+        body "europa" tidally-locked=#true {
+            orbit semi-major-axis=671060262.6 eccentricity=0.009382936341 inclination=0.4708874727 ascending-node=184.1509318 periapsis=44.91815069 mean-anomaly=345.3871789 mean-motion=3729722.601 {
+                plane right-ascension=268.1 declination=64.5
+                rates eccentricity=-5.024164145e-05 inclination=-0.02755547548 ascending-node=-1194.804767 periapsis=-25815.95899
+            }
+        }
+        body "ganymede" tidally-locked=#true {
+            orbit semi-major-axis=1070428920 eccentricity=0.001653110719 inclination=0.2113070993 ascending-node=39.67998242 periapsis=248.027487 mean-anomaly=293.9449871 mean-motion=1837651.835 {
+                plane right-ascension=268.2 declination=64.6
+                rates eccentricity=0.001394191059 inclination=0.07572064258 ascending-node=-213.0071511 periapsis=411.7886034
+            }
+        }
+        body "callisto" tidally-locked=#true {
+            orbit semi-major-axis=1882745801 eccentricity=0.007357214487 inclination=0.2360272451 ascending-node=298.4848511 periapsis=55.86084109 mean-anomaly=86.03994008 mean-motion=787818.6182 {
+                plane right-ascension=268.7 declination=64.8
+                rates eccentricity=-0.0003582856626 inclination=-0.06529539015 ascending-node=-61.99854327 periapsis=126.8178363
+            }
+        }
+    }
+    body "saturn" spin-azimuth=59.95173649 prime-meridian=354.3537789 {
+        orbit semi-major-axis=1.429077716e12 eccentricity=0.05509775724 inclination=2.486776726 ascending-node=113.6436243 periapsis=338.2809286 mean-anomaly=318.0954377 mean-motion=1219.877424 {
+            rates eccentricity=-0.003541137064 inclination=0.001999895964 ascending-node=-0.2283496531 periapsis=2.85693748
+        }
+        body "mimas" tidally-locked=#true {
+            orbit semi-major-axis=185530451.3 eccentricity=0.0197048137 inclination=1.542526566 ascending-node=174.5243322 periapsis=331.7280327 mean-anomaly=343.8283387 mean-motion=13915769.56 {
+                plane right-ascension=40.6 declination=83.5
+                rates eccentricity=-7.99195536e-05 inclination=0.1219003055 ascending-node=-36511.06128 periapsis=73066.85911
+            }
+        }
+        body "enceladus" tidally-locked=#true {
+            orbit semi-major-axis=238035516.9 eccentricity=0.004859042985 inclination=0.03747791669 ascending-node=187.4866381 periapsis=344.5183952 mean-anomaly=10.29776517 mean-motion=9583939.657 {
+                plane right-ascension=40.6 declination=83.5
+                rates eccentricity=-1.490710147e-06 inclination=-0.002685322377 ascending-node=-5.241820059 periapsis=12348.00021
+            }
+        }
+        body "tethys" tidally-locked=#true {
+            orbit semi-major-axis=294672985.3 eccentricity=0.001047124433 inclination=1.123309211 ascending-node=260.7404045 periapsis=288.7428316 mean-anomaly=0.5382647992 mean-motion=-2.107007256 {
+                plane right-ascension=40.6 declination=83.5
+                rates eccentricity=-7.183947478e-05 inclination=-0.1041067552 ascending-node=-7230.035528 periapsis=6972473.876
+            }
+        }
+        body "dione" tidally-locked=#true {
+            orbit semi-major-axis=377415332.5 eccentricity=0.002255478489 inclination=0.04777778187 ascending-node=194.5564613 periapsis=19.6150315 mean-anomaly=322.7303763 mean-motion=4801234.468 {
+                plane right-ascension=40.6 declination=83.5
+                rates eccentricity=-2.427305525e-05 inclination=-0.008218150592 ascending-node=4.69346869 periapsis=3074.180198
+            }
+        }
+        body "rhea" tidally-locked=#true {
+            orbit semi-major-axis=527067245.5 eccentricity=0.0009833205776 inclination=0.3346930362 ascending-node=348.4297242 periapsis=217.2688494 mean-anomaly=206.4691517 mean-motion=2910626.827 {
+                plane right-ascension=40.6 declination=83.5
+                rates eccentricity=7.544658402e-05 inclination=0.02310390684 ascending-node=-1003.849429 periapsis=1055.939051
+            }
+        }
+        body "titan" tidally-locked=#true {
+            orbit semi-major-axis=1221860293 eccentricity=0.02870706132 inclination=0.3408573759 ascending-node=23.08378349 periapsis=185.0611391 mean-anomaly=163.5798979 mean-motion=824572.1978 {
+                plane right-ascension=36.4 declination=84.0
+                rates eccentricity=-9.077646921e-05 inclination=0.02590129762 ascending-node=-47.18364604 periapsis=99.03642987
+            }
+        }
+        body "hyperion" {
+            orbit semi-major-axis=1481425148 eccentricity=0.1101185875 inclination=1.081283564 ascending-node=256.0931481 periapsis=339.3251426 mean-anomaly=54.31448288 mean-motion=619866.777 {
+                plane right-ascension=40.2 declination=83.6
+                rates eccentricity=-0.02204546179 inclination=-0.7764490623 ascending-node=-126.5919527 periapsis=-1739.606984
+            }
+        }
+        body "iapetus" tidally-locked=#true {
+            orbit semi-major-axis=3560845645 eccentricity=0.02832326151 inclination=7.570717147 ascending-node=74.74464621 periapsis=276.7190338 mean-anomaly=208.7843164 mean-motion=165738.5642 {
+                plane right-ascension=288.7 declination=78.9
+                rates eccentricity=0.0003516363646 inclination=0.05202264068 ascending-node=-11.47043779 periapsis=21.38874323
+            }
+        }
+        body "phoebe" spin-azimuth=261.4865547 prime-meridian=276.3521068 {
+            orbit semi-major-axis=1.294588974e10 eccentricity=0.1625241004 inclination=175.1433112 ascending-node=241.2002166 periapsis=342.2916641 mean-anomaly=53.3508732 mean-motion=23864.5242 {
+                plane right-ascension=276.0 declination=67.5
+                rates eccentricity=-0.001602731559 inclination=0.05730009873 ascending-node=47.74153975 periapsis=77.21409444
+            }
+        }
+    }
+    body "uranus" spin-azimuth=273.5772914 prime-meridian=209.6460949 {
+        orbit semi-major-axis=2.873600473e12 eccentricity=0.04672275771 inclination=0.7719343586 ascending-node=73.96459342 periapsis=96.42112289 mean-anomaly=142.8547382 mean-motion=430.2101038 {
+            rates eccentricity=0.002546467914 inclination=-0.0001931933583 ascending-node=0.115769571 periapsis=-1.842692141
+        }
+        body "puck" tidally-locked=#true {
+            orbit semi-major-axis=86005981.03 eccentricity=0.009034822625 inclination=1.046191437 ascending-node=273.3393414 periapsis=13.42673836 mean-anomaly=343.355038 mean-motion=17250391.38 {
+                plane right-ascension=77.3 declination=15.2
+                rates eccentricity=-6.056625736e-07 inclination=0.02444324607 ascending-node=-9287.298264 periapsis=18573.12201
+            }
+        }
+        body "miranda" tidally-locked=#true {
+            orbit semi-major-axis=129847967 eccentricity=0.001349517169 inclination=4.42837532 ascending-node=100.8462012 periapsis=156.5533221 mean-anomaly=71.1892233 mean-motion=9300578.61 {
+                plane right-ascension=77.311 declination=15.175
+                rates eccentricity=9.052023683e-05 inclination=-0.00428842523 ascending-node=-2023.917082 periapsis=4021.725576
+            }
+        }
+        body "ariel" tidally-locked=#true {
+            orbit semi-major-axis=190929255.6 eccentricity=0.001036787222 inclination=0.007515650331 ascending-node=153.012775 periapsis=236.514356 mean-anomaly=173.6002729 mean-motion=5216239.46 {
+                plane right-ascension=77.311 declination=15.175
+                rates eccentricity=-0.0005959729312 inclination=0.04554332675 ascending-node=-1113.674121 periapsis=1946.291391
+            }
+        }
+        body "umbriel" tidally-locked=#true {
+            orbit semi-major-axis=265981173.5 eccentricity=0.003841040603 inclination=0.05278975894 ascending-node=183.0351552 periapsis=161.1417063 mean-anomaly=267.075653 mean-motion=3172570.464 {
+                plane right-ascension=77.311 declination=15.175
+                rates eccentricity=-7.89727202e-05 inclination=0.08693787386 ascending-node=-294.9875905 periapsis=610.1289822
+            }
+        }
+        body "titania" tidally-locked=#true {
+            orbit semi-major-axis=436282957.4 eccentricity=0.002155465619 inclination=0.08651057594 ascending-node=331.5553744 periapsis=252.5790427 mean-anomaly=57.4267923 mean-motion=1510217.639 {
+                plane right-ascension=77.311 declination=15.175
+                rates eccentricity=-0.001799574698 inclination=-0.1046078355 ascending-node=152.349147 periapsis=-9.540955108
+            }
+        }
+        body "oberon" tidally-locked=#true {
+            orbit semi-major-axis=583449615.8 eccentricity=0.001251226417 inclination=0.1940550152 ascending-node=39.56221005 periapsis=136.0974027 mean-anomaly=176.8936566 mean-motion=976585.8794 {
+                plane right-ascension=77.311 declination=15.175
+                rates eccentricity=0.001781826655 inclination=0.01806203694 ascending-node=-62.6584681 periapsis=136.4002442
+            }
+        }
+    }
+    body "neptune" spin-azimuth=274.1274084 prime-meridian=229.2145748 {
+        orbit semi-major-axis=4.504099864e12 eccentricity=0.009506110853 inclination=1.770227809 ascending-node=131.785781 periapsis=271.6187417 mean-anomaly=261.4992374 mean-motion=221.1798188 {
+            rates eccentricity=0.002077391721 inclination=-2.308707909e-05 ascending-node=-0.01138517635 periapsis=-2.789762153
+        }
+        body "proteus" tidally-locked=#true {
+            orbit semi-major-axis=117646963.5 eccentricity=0.0005179395215 inclination=0.3629523898 ascending-node=289.0655827 periapsis=88.1385704 mean-anomaly=256.6113118 mean-motion=11713151.8 {
+                plane right-ascension=299.8 declination=42.6
+                rates eccentricity=1.557187389e-06 inclination=-0.5564759906 ascending-node=194.11131 periapsis=2618.884846
+            }
+        }
+        body "triton" tidally-locked=#true {
+            orbit semi-major-axis=354759072.2 eccentricity=0.0001274841105 inclination=157.1770618 ascending-node=176.7645675 periapsis=76.28737466 mean-anomaly=341.4393121 mean-motion=2237380.889 {
+                plane right-ascension=299.8 declination=43.1
+                rates eccentricity=-1.680433499e-07 inclination=0.2230641394 ascending-node=53.25737274 periapsis=93.88091147
+            }
+        }
+        body "nereid" {
+            orbit semi-major-axis=5503793497 eccentricity=0.7450978432 inclination=5.059464201 ascending-node=319.8636013 periapsis=296.6716568 mean-anomaly=215.7938162 mean-motion=36515.47991 {
+                rates eccentricity=0.01221804988 inclination=-0.01169023204 ascending-node=-3.211305388 periapsis=1.870406821
+            }
+        }
+    }
+    barycenter "pluto-charon" {
+        orbit semi-major-axis=5.916810662e12 eccentricity=0.2502086212 inclination=17.14538779 ascending-node=110.2871225 periapsis=113.8478631 mean-anomaly=14.73744574 mean-motion=144.5737094 {
+            rates eccentricity=-0.002752619093 inclination=-0.01350141118 ascending-node=0.04867324326 periapsis=0.7124709265
+        }
+        primary "pluto" spin-azimuth=109.2367739 prime-meridian=302.2333158
+        secondary "charon" tidally-locked=#true {
+            orbit semi-major-axis=19595764.88 eccentricity=0.0001608625351 inclination=112.8899072 ascending-node=227.3912587 periapsis=172.4794783 mean-anomaly=148.7700062 mean-motion=2058641.341 {
+                rates eccentricity=8.171274559e-09 inclination=-0.005950935573 ascending-node=0.007129899172 periapsis=0.09389753189
+            }
+        }
+        body "styx" {
+            orbit semi-major-axis=42396738.67 eccentricity=0.02469376522 inclination=0.08801574748 ascending-node=10.36185315 periapsis=245.9565066 mean-anomaly=294.3951541 mean-motion=55253.51268 {
+                plane right-ascension=132.993 declination=-6.163
+                rates eccentricity=0.0001611354049 inclination=0.006619750363 ascending-node=1.615372546 periapsis=596914.7506
+            }
+        }
+        body "nix" {
+            orbit semi-major-axis=48683339.83 eccentricity=0.01534575926 inclination=0.08606581399 ascending-node=10.06691694 periapsis=62.642238 mean-anomaly=19.37928942 mean-motion=62462.77045 {
+                plane right-ascension=132.993 declination=-6.163
+                rates eccentricity=9.613409375e-06 inclination=-0.005974111727 ascending-node=2.632672568 periapsis=466568.9595
+            }
+        }
+        body "kerberos" {
+            orbit semi-major-axis=57745548.92 eccentricity=0.009895613164 inclination=0.4232004647 ascending-node=315.0333289 periapsis=186.0662465 mean-anomaly=126.7280481 mean-motion=2830.755895 {
+                plane right-ascension=132.993 declination=-6.163
+                rates eccentricity=-8.005613131e-06 inclination=-0.005753743942 ascending-node=-3978.348067 periapsis=409908.3575
+            }
+        }
+        body "hydra" {
+            orbit semi-major-axis=64717920.18 eccentricity=0.008562310265 inclination=0.2932410605 ascending-node=113.4483184 periapsis=134.3956996 mean-anomaly=345.1113896 mean-motion=13920.65949 {
+                plane right-ascension=132.993 declination=-6.163
+                rates eccentricity=-1.742299277e-05 inclination=-0.0007022296247 ascending-node=-2572.728577 periapsis=332848.5437
+            }
+        }
+    }
+    body "arrokoth" {
+        orbit semi-major-axis=6.634801961e12 eccentricity=0.03885363695 inclination=2.454857799 ascending-node=158.9187711 periapsis=173.6890974 mean-anomaly=293.5524751 mean-motion=92.85043242 {
+            rates eccentricity=0.003447606759 inclination=-0.0211555353 ascending-node=0.5069050316 periapsis=30.3074965
         }
     }
 }

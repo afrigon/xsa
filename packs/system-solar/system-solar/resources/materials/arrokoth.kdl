@@ -1,0 +1,3 @@
+shader "base:planet"
+color-texture "bodies/arrokoth/color"
+normal-texture "bodies/arrokoth/normal"

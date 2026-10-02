@@ -1,0 +1,3 @@
+shader "base:planet"
+color-texture "bodies/nereid/color"
+normal-texture "bodies/nereid/normal"

@@ -25,6 +25,7 @@ pub struct OrbitalElements {
     pub mean_anomaly: f64,
     pub mean_motion: Option<f64>,
     pub rates: ElementRates,
+    pub reference_plane: DQuat,
 }
 
 impl OrbitalElements {
@@ -36,7 +37,7 @@ impl OrbitalElements {
     pub fn plane_orientation(&self, seconds_since_epoch: f64) -> DQuat {
         let ascending_node = self.ascending_node + self.rates.ascending_node * seconds_since_epoch;
         let inclination = self.inclination + self.rates.inclination * seconds_since_epoch;
-        DQuat::from_rotation_z(ascending_node) * DQuat::from_rotation_x(inclination)
+        self.reference_plane * DQuat::from_rotation_z(ascending_node) * DQuat::from_rotation_x(inclination)
     }
 
     pub fn periapsis_at(&self, seconds_since_epoch: f64) -> f64 {
@@ -98,6 +99,7 @@ mod tests {
             mean_anomaly: 0.0,
             mean_motion: None,
             rates: ElementRates::default(),
+            reference_plane: DQuat::IDENTITY,
         }
     }
 

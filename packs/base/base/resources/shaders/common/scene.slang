@@ -19,8 +19,10 @@ struct MaterialData
 {
     float4 color;
     float4x4 transform;
-    uint textureIndex;
-    uint3 padding;
+    uint texture;
+    uint normalTexture;
+    uint emissiveTexture;
+    uint padding;
 };
 
 struct PushConstants
@@ -48,6 +50,7 @@ struct VertexOutput
     float4 position : SV_Position;
     float3 worldPosition;
     float3 normal;
+    float3 modelNormal;
 };
 
 ObjectData currentObject()
@@ -68,6 +71,7 @@ VertexOutput transformVertex(VertexInput input)
     output.position = mul(constants.frame.viewProjection, world);
     output.worldPosition = world.xyz;
     output.normal = mul(object.worldFromModel, float4(input.normal, 0.0)).xyz;
+    output.modelNormal = input.normal;
     return output;
 }
 

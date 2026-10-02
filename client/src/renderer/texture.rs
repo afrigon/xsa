@@ -9,9 +9,12 @@ const DDS_MAGIC: &[u8; 4] = b"DDS ";
 const DDS_HEADER_SIZE: usize = 148;
 const DXGI_FORMAT_R8G8B8A8_UNORM: u32 = 28;
 const DXGI_FORMAT_R8G8B8A8_UNORM_SRGB: u32 = 29;
+const DXGI_FORMAT_BC4_UNORM: u32 = 80;
+const DXGI_FORMAT_BC5_UNORM: u32 = 83;
 const DXGI_FORMAT_BC7_UNORM: u32 = 98;
 const DXGI_FORMAT_BC7_UNORM_SRGB: u32 = 99;
 const DDS_RESOURCE_MISC_TEXTURECUBE: u32 = 0x4;
+const CUBE_FACE_COUNT: usize = 6;
 
 #[derive(Clone, Copy)]
 pub struct CubeMapHandle(u32);
@@ -26,41 +29,90 @@ impl CubeMapHandle {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct TextureHandle {
+    index: u32,
+}
+
+impl TextureHandle {
+    pub(super) fn new(index: u32) -> Self {
+        Self { index }
+    }
+
+    pub fn index(self) -> u32 {
+        self.index
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ColorSpace {
+    Srgb,
+    Linear,
+}
+
 struct DdsImage {
     format: vk::Format,
-    size: u32,
+    width: u32,
+    height: u32,
     mip_levels: u32,
-    faces: Vec<Vec<u8>>,
+    layers: Vec<Vec<u8>>,
 }
 
 pub fn upload_cube_map(device: &Device, allocator: &mut Allocator, name: &str, path: &Path) -> anyhow::Result<Image> {
-    let cube_map = read_dds(path)?;
-    ensure!(cube_map.faces.len() == 6, "{name}: a cube map needs 6 faces");
+    let cube_map = read_dds(path, ColorSpace::Srgb)?;
+    ensure!(
+        cube_map.layers.len() == CUBE_FACE_COUNT,
+        "{name}: a cube map needs {CUBE_FACE_COUNT} faces"
+    );
+    ensure!(
+        cube_map.width == cube_map.height,
+        "{name}: cube map faces must be square"
+    );
+    upload(device, allocator, name, &cube_map, true)
+}
 
-    let image = Image::new(
+pub fn upload_texture(
+    device: &Device,
+    allocator: &mut Allocator,
+    name: &str,
+    path: &Path,
+    color_space: ColorSpace,
+) -> anyhow::Result<Image> {
+    let texture = read_dds(path, color_space)?;
+    ensure!(
+        texture.layers.len() == 1,
+        "{name}: expected a 2D texture, found a cube map"
+    );
+    upload(device, allocator, name, &texture, false)
+}
+
+fn upload(device: &Device, allocator: &mut Allocator, name: &str, dds: &DdsImage, cube: bool) -> anyhow::Result<Image> {
+    let mut image = Image::new(
         device,
         allocator,
         &ImageDescription {
             name,
             extent: vk::Extent2D {
-                width: cube_map.size,
-                height: cube_map.size,
+                width: dds.width,
+                height: dds.height,
             },
-            format: cube_map.format,
+            format: dds.format,
             usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
             aspect: vk::ImageAspectFlags::COLOR,
-            mip_levels: cube_map.mip_levels,
-            cube: true,
+            mip_levels: dds.mip_levels,
+            cube,
         },
     )?;
-    for (face, data) in cube_map.faces.iter().enumerate() {
-        upload_face(device, allocator, &image, &cube_map, face as u32, data)
-            .with_context(|| format!("{name}: uploading face {face}"))?;
+    for (layer, data) in dds.layers.iter().enumerate() {
+        if let Err(err) = upload_layer(device, allocator, &image, dds, layer as u32, data) {
+            unsafe { image.destroy(device, allocator) };
+            return Err(err.context(format!("{name}: uploading layer {layer}")));
+        }
     }
     Ok(image)
 }
 
-fn read_dds(path: &Path) -> anyhow::Result<DdsImage> {
+fn read_dds(path: &Path, color_space: ColorSpace) -> anyhow::Result<DdsImage> {
     let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
     ensure!(
         bytes.len() >= DDS_HEADER_SIZE && &bytes[..4] == DDS_MAGIC,
@@ -77,76 +129,83 @@ fn read_dds(path: &Path) -> anyhow::Result<DdsImage> {
     let height = word(12);
     let width = word(16);
     let mip_levels = word(28).max(1);
-    ensure!(width == height, "{}: cube map faces must be square", path.display());
+    let srgb = color_space == ColorSpace::Srgb;
     let format = match word(128) {
-        DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => vk::Format::R8G8B8A8_SRGB,
-        DXGI_FORMAT_BC7_UNORM | DXGI_FORMAT_BC7_UNORM_SRGB => vk::Format::BC7_SRGB_BLOCK,
+        DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB if srgb => vk::Format::R8G8B8A8_SRGB,
+        DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => vk::Format::R8G8B8A8_UNORM,
+        DXGI_FORMAT_BC7_UNORM | DXGI_FORMAT_BC7_UNORM_SRGB if srgb => vk::Format::BC7_SRGB_BLOCK,
+        DXGI_FORMAT_BC7_UNORM | DXGI_FORMAT_BC7_UNORM_SRGB => vk::Format::BC7_UNORM_BLOCK,
+        DXGI_FORMAT_BC4_UNORM if !srgb => vk::Format::BC4_UNORM_BLOCK,
+        DXGI_FORMAT_BC5_UNORM if !srgb => vk::Format::BC5_UNORM_BLOCK,
+        DXGI_FORMAT_BC4_UNORM | DXGI_FORMAT_BC5_UNORM => {
+            bail!("{}: BC4 and BC5 hold data, not colors", path.display())
+        }
         other => bail!("{}: unsupported DXGI format {other}", path.display()),
     };
-    let face_count = if word(136) & DDS_RESOURCE_MISC_TEXTURECUBE != 0 {
-        6
+    let layer_count = if word(136) & DDS_RESOURCE_MISC_TEXTURECUBE != 0 {
+        CUBE_FACE_COUNT
     } else {
         1
     };
 
-    let face_size: usize = (0..mip_levels).map(|level| mip_size(format, width >> level)).sum();
+    let layer_size: usize = (0..mip_levels)
+        .map(|level| mip_size(format, width >> level, height >> level))
+        .sum();
     let data = &bytes[DDS_HEADER_SIZE..];
     ensure!(
-        data.len() >= face_size * face_count,
+        data.len() >= layer_size * layer_count,
         "{}: file is truncated",
         path.display()
     );
-    let faces = data
-        .chunks_exact(face_size)
-        .take(face_count)
+    let layers = data
+        .chunks_exact(layer_size)
+        .take(layer_count)
         .map(<[u8]>::to_vec)
         .collect();
     Ok(DdsImage {
         format,
-        size: width,
+        width,
+        height,
         mip_levels,
-        faces,
+        layers,
     })
 }
 
-fn mip_size(format: vk::Format, size: u32) -> usize {
-    let size = size.max(1) as usize;
+fn mip_size(format: vk::Format, width: u32, height: u32) -> usize {
+    let width = width.max(1) as usize;
+    let height = height.max(1) as usize;
+    let blocks = width.div_ceil(4) * height.div_ceil(4);
     match format {
-        vk::Format::BC7_SRGB_BLOCK => size.div_ceil(4).pow(2) * 16,
-        _ => size * size * 4,
+        vk::Format::BC4_UNORM_BLOCK => blocks * 8,
+        vk::Format::BC5_UNORM_BLOCK | vk::Format::BC7_UNORM_BLOCK | vk::Format::BC7_SRGB_BLOCK => blocks * 16,
+        _ => width * height * 4,
     }
 }
 
-fn upload_face(
+fn upload_layer(
     device: &Device,
     allocator: &mut Allocator,
     image: &Image,
-    cube_map: &DdsImage,
-    face: u32,
+    dds: &DdsImage,
+    layer: u32,
     data: &[u8],
 ) -> anyhow::Result<()> {
     let mut staging = Buffer::new(
         device,
         allocator,
-        "cube map staging",
+        "texture staging",
         data.len() as u64,
         vk::BufferUsageFlags::TRANSFER_SRC,
         MemoryLocation::CpuToGpu,
     )?;
     let result = staging
         .write(data)
-        .and_then(|()| copy_to_face(device, &staging, image, cube_map, face));
+        .and_then(|()| copy_to_layer(device, &staging, image, dds, layer));
     unsafe { staging.destroy(device, allocator) };
     result
 }
 
-fn copy_to_face(
-    device: &Device,
-    staging: &Buffer,
-    image: &Image,
-    cube_map: &DdsImage,
-    face: u32,
-) -> anyhow::Result<()> {
+fn copy_to_layer(device: &Device, staging: &Buffer, image: &Image, dds: &DdsImage, layer: u32) -> anyhow::Result<()> {
     let handle = device.handle();
     let pool_info = vk::CommandPoolCreateInfo::default()
         .flags(vk::CommandPoolCreateFlags::TRANSIENT)
@@ -161,29 +220,30 @@ fn copy_to_face(
         let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         let range = vk::ImageSubresourceRange::default()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
-            .level_count(cube_map.mip_levels)
-            .base_array_layer(face)
+            .level_count(dds.mip_levels)
+            .base_array_layer(layer)
             .layer_count(1);
 
         let mut offset = 0;
-        let regions: Vec<vk::BufferImageCopy> = (0..cube_map.mip_levels)
+        let regions: Vec<vk::BufferImageCopy> = (0..dds.mip_levels)
             .map(|level| {
-                let size = (cube_map.size >> level).max(1);
+                let width = (dds.width >> level).max(1);
+                let height = (dds.height >> level).max(1);
                 let region = vk::BufferImageCopy::default()
                     .buffer_offset(offset as u64)
                     .image_subresource(
                         vk::ImageSubresourceLayers::default()
                             .aspect_mask(vk::ImageAspectFlags::COLOR)
                             .mip_level(level)
-                            .base_array_layer(face)
+                            .base_array_layer(layer)
                             .layer_count(1),
                     )
                     .image_extent(vk::Extent3D {
-                        width: size,
-                        height: size,
+                        width,
+                        height,
                         depth: 1,
                     });
-                offset += mip_size(cube_map.format, size);
+                offset += mip_size(dds.format, width, height);
                 region
             })
             .collect();

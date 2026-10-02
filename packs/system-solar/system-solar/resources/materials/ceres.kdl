@@ -1,0 +1,3 @@
+shader "base:planet"
+color-texture "bodies/ceres/color"
+normal-texture "bodies/ceres/normal"

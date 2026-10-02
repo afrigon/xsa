@@ -29,5 +29,5 @@ float4 fragmentMain(SkyOutput input) : SV_Target
     float3 direction = normalize(world.xyz / world.w);
     MaterialData material = currentMaterial();
     float3 cubeDirection = mul(material.transform, float4(direction, 0.0)).xyz;
-    return float4(cubeTextures[material.textureIndex].Sample(linearSampler, cubeDirection).rgb, 1.0);
+    return float4(cubeTextures[material.texture].Sample(linearSampler, cubeDirection).rgb, 1.0);
 }
