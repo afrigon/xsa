@@ -1,0 +1,5 @@
+default "gray" 900
+muted "gray" 700
+on-emphasis "gray" 200
+disabled "gray" 500
+link "blue" 400

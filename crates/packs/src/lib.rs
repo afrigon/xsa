@@ -11,6 +11,7 @@ mod parse_context;
 mod simulation_definition;
 mod skybox_definition;
 mod stack;
+mod theme;
 
 pub use dependency::Dependency;
 pub use document::{Document, NodeExtension};
@@ -24,3 +25,7 @@ pub use parse_context::ParseContext;
 pub use simulation_definition::SimulationDefinition;
 pub use skybox_definition::SkyboxDefinition;
 pub use stack::{DOCUMENT_EXTENSION, PackStack};
+pub use theme::{
+    BackgroundColors, BorderColors, ColorRole, ForegroundColors, SrgbColor, TextCase, TextStyle, ThemeDefinition,
+    ThemedColor, Typeface,
+};

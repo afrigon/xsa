@@ -1,0 +1,4 @@
+default "gray" 300
+emphasis "gray" 400
+muted "gray" 200
+disabled "gray" 400
