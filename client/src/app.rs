@@ -545,7 +545,7 @@ impl CommandExecutor for App {
                 .bodies()
                 .iter()
                 .map(|body| CompletionCandidate {
-                    value: body.id.path.clone(),
+                    value: body.id.to_string(),
                     description: None,
                 })
                 .collect(),

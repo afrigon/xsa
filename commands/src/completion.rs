@@ -6,6 +6,8 @@ use tokio::sync::oneshot;
 use usage::complete::{self, Shell};
 #[cfg(feature = "client")]
 use usage::spec::{Candidate, CompleteCtx};
+#[cfg(feature = "client")]
+use xsa_core::packs::id::NAMESPACE_SEPARATOR;
 
 use crate::command::CommandLine;
 
@@ -65,29 +67,50 @@ pub fn complete(line: &str, cursor: usize, values: impl Fn(CompletionKind) -> Ve
     }
 }
 
+// Body values are full ids; until a namespace is typed, offer short paths and the namespaces themselves.
 #[cfg(feature = "client")]
-pub(crate) fn complete_target<Partial>(_partial: &Partial, _context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
+pub(crate) fn complete_target<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
+    let bodies = known(CompletionKind::Body);
+    if context.prefix.contains(NAMESPACE_SEPARATOR) {
+        return bodies.iter().map(candidate).collect();
+    }
     let mut candidates = vec![
         Candidate::described("next", "the next body"),
         Candidate::described("previous", "the previous body"),
     ];
-    candidates.extend(values_of(CompletionKind::Body));
+    let mut namespaces = Vec::new();
+    for body in &bodies {
+        let Some((namespace, path)) = body.value.split_once(NAMESPACE_SEPARATOR) else {
+            continue;
+        };
+        candidates.push(candidate(&CompletionCandidate {
+            value: path.to_string(),
+            description: body.description.clone(),
+        }));
+        let namespace = format!("{namespace}{NAMESPACE_SEPARATOR}");
+        if !namespaces.contains(&namespace) {
+            namespaces.push(namespace);
+        }
+    }
+    candidates.extend(
+        namespaces
+            .into_iter()
+            .map(|namespace| Candidate::described(namespace, "pack")),
+    );
     candidates
 }
 
 #[cfg(feature = "client")]
-fn values_of(kind: CompletionKind) -> Vec<Candidate<'static>> {
-    VALUES.with_borrow(|known| {
-        known
-            .get(&kind)
-            .into_iter()
-            .flatten()
-            .map(|value| match &value.description {
-                Some(description) => Candidate::described(value.value.clone(), description.clone()),
-                None => Candidate::new(value.value.clone()),
-            })
-            .collect()
-    })
+fn known(kind: CompletionKind) -> Vec<CompletionCandidate> {
+    VALUES.with_borrow(|known| known.get(&kind).cloned().unwrap_or_default())
+}
+
+#[cfg(feature = "client")]
+fn candidate(value: &CompletionCandidate) -> Candidate<'static> {
+    match &value.description {
+        Some(description) => Candidate::described(value.value.clone(), description.clone()),
+        None => Candidate::new(value.value.clone()),
+    }
 }
 
 #[cfg(test)]
@@ -122,13 +145,17 @@ mod tests {
     #[cfg(feature = "client")]
     #[test]
     fn targets_complete_from_the_executor_values() {
-        assert_eq!(completed("camera target ma", &["mars", "mercury"]), ["mars"]);
-        let all = completed("camera look-at ", &["earth"]);
-        assert!(
-            ["next", "previous", "earth"]
-                .iter()
-                .all(|value| all.contains(&value.to_string()))
+        let bodies = ["system-solar:mars", "system-solar:mercury", "system-solar:luna"];
+        assert_eq!(completed("camera target ma", &bodies), ["mars"]);
+        assert_eq!(completed("camera target syst", &bodies), ["system-solar:"]);
+        assert_eq!(
+            completed("camera target system-solar:lu", &bodies),
+            ["system-solar:luna"]
         );
+        let all = completed("camera look-at ", &bodies);
+        for value in ["next", "previous", "luna", "system-solar:"] {
+            assert!(all.contains(&value.to_string()), "{value} in {all:?}");
+        }
     }
 
     #[test]

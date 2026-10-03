@@ -2,6 +2,8 @@ use std::fmt;
 
 use anyhow::ensure;
 
+pub const NAMESPACE_SEPARATOR: char = ':';
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Id {
     pub namespace: String,
@@ -10,7 +12,7 @@ pub struct Id {
 
 impl Id {
     pub fn parse(text: &str, default_namespace: &str) -> anyhow::Result<Id> {
-        let id = match text.split_once(':') {
+        let id = match text.split_once(NAMESPACE_SEPARATOR) {
             Some((namespace, path)) => Id {
                 namespace: namespace.to_string(),
                 path: path.to_string(),
@@ -21,7 +23,7 @@ impl Id {
             },
         };
         ensure!(
-            !id.namespace.is_empty() && !id.path.is_empty() && !id.path.contains(':'),
+            !id.namespace.is_empty() && !id.path.is_empty() && !id.path.contains(NAMESPACE_SEPARATOR),
             "{text:?} is not an identifier like namespace:path"
         );
         Ok(id)
@@ -30,7 +32,7 @@ impl Id {
 
 impl fmt::Display for Id {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{}:{}", self.namespace, self.path)
+        write!(formatter, "{}{NAMESPACE_SEPARATOR}{}", self.namespace, self.path)
     }
 }
 

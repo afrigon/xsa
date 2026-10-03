@@ -12,6 +12,8 @@ use rustyline::{
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
+use xsa_core::packs::id::NAMESPACE_SEPARATOR;
+
 use crate::completion::CommandCompletion;
 use crate::router::{CommandExecution, CommandInvocation, Output};
 use crate::terminal::TerminalGuard;
@@ -130,7 +132,11 @@ impl Completer for CommandCompleter {
             .into_iter()
             .map(|candidate| Pair {
                 display: candidate.value.clone(),
-                replacement: format!("{} ", candidate.value),
+                replacement: if candidate.value.ends_with(NAMESPACE_SEPARATOR) {
+                    candidate.value
+                } else {
+                    format!("{} ", candidate.value)
+                },
             })
             .collect();
         Ok((completions.start, candidates))
