@@ -4,8 +4,11 @@ compile_error!("xsa needs the `server` feature; `client` enables it too");
 use std::net::IpAddr;
 use std::path::PathBuf;
 
+use anyhow::Context;
+use usage::complete::Shell;
+use usage::spec::{Candidate, CompleteCtx};
 use usage::{Args, Cli, Subcommands};
-use xsa_commands::ipc;
+use xsa_commands::{completion, ipc};
 use xsa_server::WorldOptions;
 use xsa_server::dedicated::{self, DedicatedOptions};
 
@@ -14,6 +17,7 @@ use xsa_server::dedicated::{self, DedicatedOptions};
     bin = "xsa",
     version,
     about = "xsa space flight simulator",
+    completion,
     unknown_flags = "error",
     args_override_self = false
 )]
@@ -35,6 +39,14 @@ enum Command {
     Server(ServerArguments),
     /// Send a command to a running xsa instance, e.g. xsa ipc time rate 100
     Ipc(IpcArguments),
+    /// Print the shell completion script, e.g. xsa completion fish | source
+    Completion(CompletionArguments),
+}
+
+#[derive(Args)]
+struct CompletionArguments {
+    #[usage(arg, choices("bash", "elvish", "fish", "nu", "powershell", "zsh"))]
+    shell: String,
 }
 
 #[derive(Args)]
@@ -42,6 +54,7 @@ struct IpcArguments {
     #[usage(
         long,
         env = "XSA_INSTANCE",
+        complete = complete_instances,
         help = "Instance to send to; required when several are running"
     )]
     instance: Option<String>,
@@ -51,7 +64,8 @@ struct IpcArguments {
         arg,
         trailing_var_arg,
         allow_hyphen_values,
-        help = "The command, as typed at the console"
+        complete = complete_ipc_words,
+        help = "The command, as typed at the prompt"
     )]
     words: Vec<String>,
 }
@@ -139,7 +153,49 @@ fn main() -> anyhow::Result<()> {
             world: arguments.world.into_options(),
         }),
         Command::Ipc(arguments) => run_ipc(arguments),
+        Command::Completion(arguments) => {
+            let shell = Shell::from_name(&arguments.shell).context("unsupported shell")?;
+            print!("{}", Arguments::completion_script(shell));
+            Ok(())
+        }
     }
+}
+
+fn complete_instances<Partial>(_partial: &Partial, _context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
+    ipc::list()
+        .unwrap_or_default()
+        .into_iter()
+        .map(Candidate::new)
+        .collect()
+}
+
+// The words after `ipc` belong to the instance's command tree, so the instance completes them.
+fn complete_ipc_words<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
+    let mut instance = std::env::var("XSA_INSTANCE").ok();
+    let mut words = Vec::new();
+    let mut given = context.command_words.iter();
+    while let Some(word) = given.next() {
+        match word.as_str() {
+            "--instance" if words.is_empty() => instance = given.next().cloned(),
+            "--list" if words.is_empty() => {}
+            word => words.push(word.to_string()),
+        }
+    }
+    let mut line = shlex::try_join(words.iter().map(String::as_str)).unwrap_or_default();
+    if !line.is_empty() {
+        line.push(' ');
+    }
+    line.push_str(context.prefix);
+    let completions = ipc::complete(instance.as_deref(), line.clone(), line.len())
+        .unwrap_or_else(|_| completion::complete(&line, line.len(), |_| Vec::new()));
+    completions
+        .candidates
+        .into_iter()
+        .map(|candidate| match candidate.description {
+            Some(description) => Candidate::described(candidate.value, description),
+            None => Candidate::new(candidate.value),
+        })
+        .collect()
 }
 
 fn run_ipc(arguments: IpcArguments) -> anyhow::Result<()> {
@@ -160,8 +216,6 @@ fn run_ipc(arguments: IpcArguments) -> anyhow::Result<()> {
 
 #[cfg(feature = "client")]
 fn run_client(arguments: ClientArguments) -> anyhow::Result<()> {
-    use anyhow::Context;
-
     let remote = match arguments.remote {
         Some(address) => Some(xsa_client::RemoteServer {
             address,

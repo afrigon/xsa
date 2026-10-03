@@ -1,4 +1,5 @@
 pub mod command;
+pub mod completion;
 #[cfg(feature = "client")]
 pub mod distance;
 pub mod duration;

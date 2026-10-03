@@ -11,23 +11,20 @@ use rustyline::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
-use usage::complete::{self, Shell};
 
-use crate::command::CommandLine;
-use crate::router::{CommandExecution, Output};
+use crate::completion::CommandCompletion;
+use crate::router::{CommandExecution, CommandInvocation, Output};
 use crate::terminal::TerminalGuard;
 use crate::words;
 
 const PROMPT: &str = "> ";
 const EXIT: &str = "exit";
-// Completion splits a full command line, whose first word is the program.
-const PROGRAM_WORD: &str = "xsa ";
 
 pub struct Repl {
     _terminal: Option<TerminalGuard>,
 }
 
-pub fn spawn(invocations: UnboundedSender<CommandExecution>) -> io::Result<Repl> {
+pub fn spawn(invocations: UnboundedSender<CommandInvocation>) -> io::Result<Repl> {
     let terminal = TerminalGuard::capture();
     thread::Builder::new()
         .name("repl".into())
@@ -35,7 +32,7 @@ pub fn spawn(invocations: UnboundedSender<CommandExecution>) -> io::Result<Repl>
     Ok(Repl { _terminal: terminal })
 }
 
-fn run(invocations: UnboundedSender<CommandExecution>) {
+fn run(invocations: UnboundedSender<CommandInvocation>) {
     let mut editor = match Editor::new() {
         Ok(editor) => editor,
         Err(err) => {
@@ -43,7 +40,9 @@ fn run(invocations: UnboundedSender<CommandExecution>) {
             return;
         }
     };
-    editor.set_helper(Some(CommandCompleter));
+    editor.set_helper(Some(CommandCompleter {
+        invocations: invocations.clone(),
+    }));
     let interrupted_empty_line = Arc::new(AtomicBool::new(false));
     editor.bind_sequence(
         KeyEvent::ctrl('C'),
@@ -73,11 +72,11 @@ fn run(invocations: UnboundedSender<CommandExecution>) {
         let _ = editor.add_history_entry(line);
         let (reply, receiver) = oneshot::channel();
         if invocations
-            .send(CommandExecution {
+            .send(CommandInvocation::Execute(CommandExecution {
                 words,
                 reply,
                 styled: true,
-            })
+            }))
             .is_err()
         {
             return;
@@ -106,22 +105,34 @@ impl ConditionalEventHandler for InterruptHandler {
 }
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
-struct CommandCompleter;
+struct CommandCompleter {
+    invocations: UnboundedSender<CommandInvocation>,
+}
 
 impl Completer for CommandCompleter {
     type Candidate = Pair;
 
     fn complete(&self, line: &str, position: usize, _context: &Context<'_>) -> rustyline::Result<(usize, Vec<Pair>)> {
-        let full_line = format!("{PROGRAM_WORD}{line}");
-        let split = complete::split(&full_line, PROGRAM_WORD.len() + position, Shell::Bash);
-        let candidates = complete::candidates(CommandLine::spec(), &split)
+        let (reply, receiver) = oneshot::channel();
+        let completion = CommandCompletion {
+            line: line.to_string(),
+            cursor: position,
+            reply,
+        };
+        if self.invocations.send(CommandInvocation::Complete(completion)).is_err() {
+            return Ok((position, Vec::new()));
+        }
+        let Ok(completions) = receiver.blocking_recv() else {
+            return Ok((position, Vec::new()));
+        };
+        let candidates = completions
+            .candidates
             .into_iter()
-            .filter(|candidate| candidate.value.starts_with(&split.prefix))
             .map(|candidate| Pair {
                 display: candidate.value.clone(),
                 replacement: format!("{} ", candidate.value),
             })
             .collect();
-        Ok((position - split.prefix.len(), candidates))
+        Ok((completions.start, candidates))
     }
 }

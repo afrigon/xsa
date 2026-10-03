@@ -1,5 +1,5 @@
 use tokio::sync::mpsc::UnboundedReceiver;
-use xsa_commands::router::{CommandExecution, CommandExecutor, CommandRouter};
+use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
 use xsa_proto::connection::Connection;
 use xsa_proto::messages::{ClientMessage, Role};
 use xsa_proto::session::ServerSession;
@@ -19,7 +19,7 @@ impl CommandExecutor for ServerUser {
     }
 }
 
-pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<CommandExecution>) -> anyhow::Result<()> {
+pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<CommandInvocation>) -> anyhow::Result<()> {
     let mut user = ServerUser {
         session: ServerSession::new(connection),
         exit_requested: false,
@@ -31,7 +31,7 @@ pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<Comm
         tokio::select! {
             event = user.session.receive() => router.handle_event(&event?, &user.session),
             invocation = invocations.recv(), if invocations_open && user.session.state().is_some() => match invocation {
-                Some(invocation) => router.execute(invocation, &mut user),
+                Some(invocation) => router.handle(invocation, &mut user),
                 None => invocations_open = false,
             },
         }
@@ -45,20 +45,20 @@ mod tests {
 
     use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
     use tokio::sync::oneshot;
-    use xsa_commands::router::Output;
+    use xsa_commands::router::{CommandExecution, Output};
 
     use super::*;
     use crate::{World, WorldOptions, start_local};
 
-    async fn invoke(invocations: &UnboundedSender<CommandExecution>, line: &str) -> Output {
+    async fn invoke(invocations: &UnboundedSender<CommandInvocation>, line: &str) -> Output {
         let (reply, receiver) = oneshot::channel();
         let words = xsa_commands::words::split(line).unwrap();
         invocations
-            .send(CommandExecution {
+            .send(CommandInvocation::Execute(CommandExecution {
                 words,
                 reply,
                 styled: false,
-            })
+            }))
             .unwrap();
         receiver.await.unwrap()
     }

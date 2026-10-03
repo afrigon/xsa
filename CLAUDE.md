@@ -226,7 +226,17 @@ it first. Deliberately avoided:
   degrees.
 - Both the game and the dedicated server read commands from stdin with a `>`
   prompt (readline-style editing and history, Tab completion); with stdin not
-  a terminal they read plain lines, so commands can be piped in.
+  a terminal they read plain lines, so commands can be piped in. Every
+  instance also listens for `xsa ipc [--instance <name>] <words…>` on a
+  socket in `$XDG_RUNTIME_DIR/xsa/` (named pipes on Windows); `xsa ipc --list`
+  shows the running instances and `xsa completion <shell>` prints the shell
+  completion script.
+- Completion runs through the `CommandRouter` like execution
+  (`CommandInvocation::Complete`): names and flags come from the command tree,
+  and values that depend on what is loaded come from
+  `CommandExecutor::completion_values` by `CompletionKind`. An argument opts in
+  with a `complete = …` completer in `command.rs`; adding a kind is a
+  `CompletionKind` variant plus its executor values.
   Ctrl-C clears the line being typed, or exits on an empty line.
 
 ## Controls

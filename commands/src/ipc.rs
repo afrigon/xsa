@@ -11,16 +11,19 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use xsa_proto::frame::{read_frame, write_frame};
 
-use crate::router::{CommandExecution, Output};
+use crate::completion::{CommandCompletion, Completions};
+use crate::router::{CommandExecution, CommandInvocation, Output};
 
 #[derive(Encode, Decode)]
-enum Request {
+enum IpcRequest {
     Execute { words: Vec<String> },
+    Complete { line: String, cursor: usize },
 }
 
 #[derive(Encode, Decode)]
-enum Response {
+enum IpcResponse {
     Output { text: String, succeeded: bool },
+    Completions { completions: Completions },
 }
 
 #[derive(Clone, Copy)]
@@ -54,7 +57,7 @@ impl Drop for IpcEndpoint {
 pub fn spawn(
     name: Option<String>,
     kind: InstanceKind,
-    invocations: UnboundedSender<CommandExecution>,
+    invocations: UnboundedSender<CommandInvocation>,
 ) -> anyhow::Result<IpcEndpoint> {
     let name = name.unwrap_or_else(|| kind.default_name());
     validate_name(&name)?;
@@ -73,20 +76,31 @@ pub fn spawn(
 }
 
 pub fn send(instance: Option<&str>, words: Vec<String>) -> anyhow::Result<Output> {
-    block_on(async {
-        let name = match instance {
-            Some(name) => name.to_string(),
-            None => only_instance().await?,
-        };
-        let mut stream = platform::connect(&name)
-            .await
-            .with_context(|| format!("no xsa instance named {name} is running"))?;
-        write_frame(&mut stream, &Request::Execute { words }).await?;
-        match read_frame(&mut stream).await? {
-            Some(Response::Output { text, succeeded }) => Ok(Output { text, succeeded }),
-            None => bail!("instance {name} closed the connection without answering"),
-        }
-    })
+    match block_on(request(instance, IpcRequest::Execute { words }))? {
+        IpcResponse::Output { text, succeeded } => Ok(Output { text, succeeded }),
+        IpcResponse::Completions { .. } => bail!("the instance answered a command with completions"),
+    }
+}
+
+pub fn complete(instance: Option<&str>, line: String, cursor: usize) -> anyhow::Result<Completions> {
+    match block_on(request(instance, IpcRequest::Complete { line, cursor }))? {
+        IpcResponse::Completions { completions } => Ok(completions),
+        IpcResponse::Output { .. } => bail!("the instance answered a completion with command output"),
+    }
+}
+
+async fn request(instance: Option<&str>, request: IpcRequest) -> anyhow::Result<IpcResponse> {
+    let name = match instance {
+        Some(name) => name.to_string(),
+        None => only_instance().await?,
+    };
+    let mut stream = platform::connect(&name)
+        .await
+        .with_context(|| format!("no xsa instance named {name} is running"))?;
+    write_frame(&mut stream, &request).await?;
+    read_frame(&mut stream)
+        .await?
+        .with_context(|| format!("instance {name} closed the connection without answering"))
 }
 
 pub fn list() -> anyhow::Result<Vec<String>> {
@@ -123,14 +137,19 @@ fn validate_name(name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle(mut stream: impl AsyncRead + AsyncWrite + Unpin, invocations: UnboundedSender<CommandExecution>) {
-    while let Ok(Some(request)) = read_frame::<Request>(&mut stream).await {
-        let output = match request {
-            Request::Execute { words } => execute(words, &invocations).await,
-        };
-        let response = Response::Output {
-            text: output.text,
-            succeeded: output.succeeded,
+async fn handle(mut stream: impl AsyncRead + AsyncWrite + Unpin, invocations: UnboundedSender<CommandInvocation>) {
+    while let Ok(Some(request)) = read_frame::<IpcRequest>(&mut stream).await {
+        let response = match request {
+            IpcRequest::Execute { words } => {
+                let output = execute(words, &invocations).await;
+                IpcResponse::Output {
+                    text: output.text,
+                    succeeded: output.succeeded,
+                }
+            }
+            IpcRequest::Complete { line, cursor } => IpcResponse::Completions {
+                completions: complete_here(line, cursor, &invocations).await,
+            },
         };
         if write_frame(&mut stream, &response).await.is_err() {
             return;
@@ -138,19 +157,28 @@ async fn handle(mut stream: impl AsyncRead + AsyncWrite + Unpin, invocations: Un
     }
 }
 
-async fn execute(words: Vec<String>, invocations: &UnboundedSender<CommandExecution>) -> Output {
+async fn execute(words: Vec<String>, invocations: &UnboundedSender<CommandInvocation>) -> Output {
     let (reply, receiver) = oneshot::channel();
-    let invocation = CommandExecution {
+    let invocation = CommandInvocation::Execute(CommandExecution {
         words,
         reply,
         styled: false,
-    };
+    });
     if invocations.send(invocation).is_err() {
         return Output::failure("the instance is shutting down");
     }
     receiver
         .await
         .unwrap_or_else(|_| Output::failure("the command was dropped before it finished"))
+}
+
+async fn complete_here(line: String, cursor: usize, invocations: &UnboundedSender<CommandInvocation>) -> Completions {
+    let (reply, receiver) = oneshot::channel();
+    let completion = CommandCompletion { line, cursor, reply };
+    if invocations.send(CommandInvocation::Complete(completion)).is_err() {
+        return Completions::default();
+    }
+    receiver.await.unwrap_or_default()
 }
 
 type Bound = std_mpsc::SyncSender<anyhow::Result<IpcEndpoint>>;
@@ -168,7 +196,7 @@ mod platform {
     use tokio::sync::mpsc::UnboundedSender;
 
     use super::{Bound, IpcEndpoint, handle};
-    use crate::router::CommandExecution;
+    use crate::router::CommandInvocation;
 
     const DIRECTORY_NAME: &str = "xsa";
     const SOCKET_EXTENSION: &str = "sock";
@@ -188,7 +216,7 @@ mod platform {
         directory().join(name).with_extension(SOCKET_EXTENSION)
     }
 
-    pub async fn serve(name: String, invocations: UnboundedSender<CommandExecution>, bound: Bound) {
+    pub async fn serve(name: String, invocations: UnboundedSender<CommandInvocation>, bound: Bound) {
         let listener = match bind(&name).await {
             Ok(listener) => listener,
             Err(err) => {
@@ -263,7 +291,7 @@ mod platform {
     use tokio::sync::mpsc::UnboundedSender;
 
     use super::{Bound, IpcEndpoint, handle};
-    use crate::router::CommandExecution;
+    use crate::router::CommandInvocation;
 
     const PIPE_DIRECTORY: &str = r"\\.\pipe\";
     const PIPE_PREFIX: &str = "xsa-";
@@ -272,7 +300,7 @@ mod platform {
         format!("{PIPE_DIRECTORY}{PIPE_PREFIX}{name}")
     }
 
-    pub async fn serve(name: String, invocations: UnboundedSender<CommandExecution>, bound: Bound) {
+    pub async fn serve(name: String, invocations: UnboundedSender<CommandInvocation>, bound: Bound) {
         let path = pipe_name(&name);
         let mut server = match ServerOptions::new()
             .first_pipe_instance(true)

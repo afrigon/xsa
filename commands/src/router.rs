@@ -10,6 +10,12 @@ use xsa_proto::session::{ServerSession, SessionState};
 #[cfg(feature = "client")]
 use crate::command::ClientCommand;
 use crate::command::{CommandLine, Route};
+use crate::completion::{self, CommandCompletion, CompletionCandidate, CompletionKind};
+
+pub enum CommandInvocation {
+    Execute(CommandExecution),
+    Complete(CommandCompletion),
+}
 
 pub struct CommandExecution {
     pub words: Vec<String>,
@@ -44,6 +50,10 @@ pub trait CommandExecutor {
 
     fn exit(&mut self);
 
+    fn completion_values(&self, _kind: CompletionKind) -> Vec<CompletionCandidate> {
+        Vec::new()
+    }
+
     #[cfg(feature = "client")]
     fn run_client(&mut self, _command: ClientCommand) -> anyhow::Result<String> {
         anyhow::bail!("this command is only available in the game client")
@@ -61,6 +71,18 @@ struct Pending {
 }
 
 impl CommandRouter {
+    pub fn handle(&mut self, invocation: CommandInvocation, executor: &mut impl CommandExecutor) {
+        match invocation {
+            CommandInvocation::Execute(execution) => self.execute(execution, executor),
+            CommandInvocation::Complete(completion) => {
+                let completions = completion::complete(&completion.line, completion.cursor, |kind| {
+                    executor.completion_values(kind)
+                });
+                let _ = completion.reply.send(completions);
+            }
+        }
+    }
+
     pub fn execute(&mut self, invocation: CommandExecution, executor: &mut impl CommandExecutor) {
         let words: Vec<&OsStr> = invocation.words.iter().map(OsStr::new).collect();
         let command = match CommandLine::parse_from(&words) {

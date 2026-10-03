@@ -152,11 +152,10 @@
   texture for the diffuse glow. Keeps the physically calibrated sky.
 - Commands, the remaining phases (the router, REPL, IPC and time and camera
   commands exist):
-  - Completion: values that depend on what is loaded (body ids first, later
-    vessels and parts) come from the `CommandExecutor` by `CompletionKind`;
-    Tab in the REPL, an IPC `Complete` request and shell completion for `xsa`
-    and `xsa ipc` (asking the instance, or the compiled tree when none runs)
-    all go through the `CommandRouter`.
+  - Shell completion at the root of `xsa` offers nothing (`xsa s<Tab>` falls
+    back to file names), while everything below a subcommand completes;
+    `usage::complete::candidates` returns no subcommand names for the outer
+    tree, unlike the in-game tree. Cause not found yet.
   - Config file (KDL in `$XDG_CONFIG_HOME/xsa/config.kdl`), then
     `config get|set|toggle <key>`: live changes, `--save` and `config save`
     persist, `debug.*` keys never persist. Keys: `render.tonemapper`

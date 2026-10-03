@@ -10,7 +10,8 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
 use xsa_commands::command::{CameraAction, CameraMode as CommandCameraMode, CameraTarget, ClientCommand};
-use xsa_commands::router::{CommandExecution, CommandExecutor, CommandRouter};
+use xsa_commands::completion::{CompletionCandidate, CompletionKind};
+use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
 use xsa_commands::target::Target;
 use xsa_core::packs::{Id, PackStack};
 use xsa_core::simulation::{Simulation, SimulationState};
@@ -76,7 +77,7 @@ pub struct App {
     error: Option<anyhow::Error>,
     session: ServerSession,
     router: CommandRouter,
-    invocations: UnboundedReceiver<CommandExecution>,
+    invocations: UnboundedReceiver<CommandInvocation>,
     exit_requested: bool,
     packs_directory: PathBuf,
     world: Option<World>,
@@ -93,7 +94,7 @@ pub struct App {
 impl App {
     pub fn new(
         session: ServerSession,
-        invocations: UnboundedReceiver<CommandExecution>,
+        invocations: UnboundedReceiver<CommandInvocation>,
         packs_directory: PathBuf,
     ) -> Self {
         Self {
@@ -179,7 +180,7 @@ impl App {
         }
         let mut router = std::mem::take(&mut self.router);
         while let Ok(invocation) = self.invocations.try_recv() {
-            router.execute(invocation, self);
+            router.handle(invocation, self);
         }
         self.router = router;
     }
@@ -532,6 +533,23 @@ impl CommandExecutor for App {
 
     fn exit(&mut self) {
         self.exit_requested = true;
+    }
+
+    fn completion_values(&self, kind: CompletionKind) -> Vec<CompletionCandidate> {
+        let Some(world) = &self.world else {
+            return Vec::new();
+        };
+        match kind {
+            CompletionKind::Body => world
+                .simulation
+                .bodies()
+                .iter()
+                .map(|body| CompletionCandidate {
+                    value: body.id.path.clone(),
+                    description: None,
+                })
+                .collect(),
+        }
     }
 
     fn run_client(&mut self, command: ClientCommand) -> anyhow::Result<String> {

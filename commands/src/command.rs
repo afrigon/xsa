@@ -4,7 +4,7 @@ use xsa_proto::messages::ClientMessage;
 use crate::duration::Duration;
 use crate::timestamp::Timestamp;
 #[cfg(feature = "client")]
-use crate::{distance::Distance, target::Target};
+use crate::{completion::complete_target, distance::Distance, target::Target};
 
 #[derive(Cli)]
 #[usage(bin = "", unknown_flags = "error", args_override_self = false)]
@@ -65,7 +65,10 @@ pub enum CameraAction {
     /// Orbit a body: a body id, next or previous
     Target(CameraTarget),
     /// Turn the debug camera towards a body
-    LookAt { target: Target },
+    LookAt {
+        #[usage(complete = complete_target)]
+        target: Target,
+    },
 }
 
 #[cfg(feature = "client")]
@@ -78,6 +81,7 @@ pub enum CameraMode {
 #[cfg(feature = "client")]
 #[derive(Args)]
 pub struct CameraTarget {
+    #[usage(complete = complete_target)]
     pub target: Target,
     #[usage(
         long,
