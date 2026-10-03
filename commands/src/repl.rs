@@ -1,9 +1,14 @@
 use std::io;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
-use rustyline::{Context, Editor, Helper, Highlighter, Hinter, Validator};
+use rustyline::{
+    Cmd, ConditionalEventHandler, Context, Editor, Event, EventContext, EventHandler, Helper, Highlighter, Hinter,
+    KeyEvent, RepeatCount, Validator,
+};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use usage::complete::{self, Shell};
@@ -13,6 +18,7 @@ use crate::dispatcher::{Invocation, Output};
 use crate::words;
 
 const PROMPT: &str = "> ";
+const QUIT: &str = "quit";
 // Completion splits a full command line, whose first word is the program.
 const PROGRAM_WORD: &str = "xsa ";
 
@@ -32,9 +38,17 @@ fn run(invocations: UnboundedSender<Invocation>) {
         }
     };
     editor.set_helper(Some(CommandCompleter));
+    let interrupted_empty_line = Arc::new(AtomicBool::new(false));
+    editor.bind_sequence(
+        KeyEvent::ctrl('C'),
+        EventHandler::Conditional(Box::new(InterruptHandler {
+            empty_line: interrupted_empty_line.clone(),
+        })),
+    );
     loop {
         let line = match editor.readline(PROMPT) {
             Ok(line) => line,
+            Err(ReadlineError::Interrupted) if interrupted_empty_line.load(Ordering::Relaxed) => QUIT.to_string(),
             Err(ReadlineError::Interrupted) => continue,
             Err(ReadlineError::Eof) => return,
             Err(err) => {
@@ -64,6 +78,18 @@ fn run(invocations: UnboundedSender<Invocation>) {
 
 fn print(output: &Output) {
     println!("{}", output.text.trim_end());
+}
+
+// Ctrl-C clears a line being typed, like readline; on an empty line it quits, like the signal it replaces.
+struct InterruptHandler {
+    empty_line: Arc<AtomicBool>,
+}
+
+impl ConditionalEventHandler for InterruptHandler {
+    fn handle(&self, _event: &Event, _count: RepeatCount, _positive: bool, context: &EventContext) -> Option<Cmd> {
+        self.empty_line.store(context.line().is_empty(), Ordering::Relaxed);
+        Some(Cmd::Interrupt)
+    }
 }
 
 #[derive(Helper, Hinter, Highlighter, Validator)]
