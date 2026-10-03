@@ -28,14 +28,16 @@ Everything runs through mise; tools (`rust`, `slang`, `xh`) are pinned in
 
 | Task | Does |
 | --- | --- |
-| `mise run dev` | Compile shaders, then run the game with an integrated server (debug build, validation layers on) |
-| `mise run dev -- --remote <host>:<port> --fingerprint <hash>` | Run the game against a dedicated server |
-| `mise run server` | Run the dedicated server (`-- --host <address> --port <port>`) |
-| `mise run build` | Build every crate |
+| `mise run client [--release]` | Compile shaders, then run the game with an integrated server (debug builds turn validation layers on) |
+| `mise run client -- --remote <host>:<port> --fingerprint <hash>` | Run the game against a dedicated server |
+| `mise run ipc -- <command>` | Send a command to a running instance (`xsa ipc`, `--instance <name>` when several run) |
+| `mise run server [--release]` | Run the server-only build as a dedicated server (`-- --host <address> --port <port>`) |
+| `mise run build [--release]` | Compile shaders, then build every crate with the client and server |
+| `mise run build-server [--release]` | Build the server-only `xsa` binary into `target/server` |
 | `mise run test` | Unit tests |
 | `mise run fmt` | Format (`rustfmt.toml`: 120 columns) |
-| `mise run lint` | Clippy with warnings as errors |
-| `mise run shaders` | Compile the base pack's Slang shaders to SPIR-V |
+| `mise run lint` | Clippy with warnings as errors, for the full build and the server-only build |
+| `mise run shaders` | Compile the base pack's Slang shaders to SPIR-V and validate it with `spirv-val` |
 | `mise run fetch-assets` | Download third-party source assets into `assets/` |
 | `mise run convert-skybox` | Build the `system-solar` skybox cube map from the star map EXR |
 
@@ -60,27 +62,31 @@ A Cargo workspace; each crate is a top-level directory.
 | Crate | Kind | Responsibility |
 | --- | --- | --- |
 | `core/` (`xsa-core`) | library | Pack loading (`packs/`: ids, manifests, the pack stack, KDL helpers, body/system/simulation definitions), the simulation (`simulation.rs`: placements, barycenters, spin), Keplerian orbits (`orbit.rs`), time (`time.rs`: seconds since J2000), coordinate frames (`frames.rs`); `tests/system_solar.rs` checks the real-sky accuracy of the solar system pack |
-| `proto/` (`xsa-proto`) | library | Client ↔ server protocol: `messages.rs` (`ClientMessage`, `ServerEvent`, wire structs, bitcode), `connection.rs` (`Connection`, `ClientLink`), `network.rs` (QUIC transport, server identity, fingerprint pinning) |
-| `server/` (`xsa-server`) | library + binary | `lib.rs`: `World` (loaded packs, simulation, time), the authoritative `Server` tick loop and `start_local` for the integrated server; `main.rs`: the dedicated server |
-| `client/` (`xsa`) | binary | The game: `app.rs` (window, frame loop, input polling, camera modes, joining a simulation), `content.rs` (reads pack resources: shaders, materials, skybox), `camera/`, `input.rs`, `mesh.rs`, `renderer/`, `vulkan/` |
+| `proto/` (`xsa-proto`) | library | Client ↔ server protocol: `messages.rs` (`ClientFrame`, `ClientMessage`, `ServerEvent`, wire structs, bitcode), `connection.rs` (`Connection`, `ClientLink`), `session.rs` (`ServerSession`: the client's end of a connection and its copy of server state), `network.rs` (QUIC transport, server identity, fingerprint pinning) |
+| `commands/` (`xsa-commands`) | library | Text commands: `command.rs` (the command tree and how each command routes), `router.rs` (`CommandRouter`, `CommandExecution`, the `CommandExecutor` trait), `repl.rs` (the stdin prompt), `ipc.rs` (`xsa ipc` sockets and named pipes), `terminal.rs` (restores the terminal mode on exit), `words.rs` (line splitting), value types (`duration.rs`, `distance.rs`, `target.rs`, `timestamp.rs`); client-only commands sit behind its `client` feature |
+| `server/` (`xsa-server`) | library | `lib.rs`: `World` (loaded packs, simulation, time, time rate), the authoritative `Server` tick loop and `start_local` for the integrated server; `dedicated.rs`: the dedicated server; `server_user.rs`: `ServerUser`, the dedicated server's own `CommandExecutor` |
+| `client/` (`xsa-client`) | library | The game: `app.rs` (window, frame loop, input polling, camera modes, joining a simulation; `App` is the client's `CommandExecutor`), `content.rs` (reads pack resources: shaders, materials, skybox), `camera/`, `input.rs`, `mesh.rs`, `renderer/`, `vulkan/` |
+| `xsa/` (`xsa`) | binary | The only game binary: `xsa client` runs the game, `xsa server` a dedicated server, `xsa ipc` sends commands to a running instance. Features `client` (default, enables `server`) and `server`; the server-only build has no client code |
 | `tools/` (`xsa-tools`) | binary | `convert-skybox`: equirectangular EXR → cube map DDS |
 
-Dependencies point one way: `core` ← `server` ← `client`, and `proto` ←
-`server`, `client`. `proto` does not depend on `core`: its wire structs are
-independent of simulation internals.
+Dependencies point one way: `core` ← `commands` ← `server` ← `client` ←
+`xsa`, and `proto` ← `commands`, `server`, `client`. `proto` does not depend
+on `core`: its wire structs are independent of simulation internals.
 
 **One simulation runner.** Local play starts the same `Server` the dedicated
 binary runs, on its own thread, connected through an in-process `Connection`;
 `--remote` swaps in a QUIC `Connection`. The client code is identical either
-way. The server owns simulation time. On `Join` it answers `Joined` with the
-simulation id, the pack list with versions and the time; the client loads the
-same packs locally (refusing a version mismatch) and computes every body's
-position from the orbits, so ticks carry only time. Between ticks the client
-advances time with its own clock.
+way. The server owns simulation time and its rate. On `Join` it answers
+`JoinAccepted` with the world state (simulation id, pack list with versions,
+time, rate, players); the client loads the same packs locally (refusing a
+version mismatch) and computes every body's position from the orbits, so ticks
+carry only time. Between ticks the client advances time with its own clock,
+scaled by the rate.
 
-Each frame, `App` runs `update` (poll the connection, poll input, compute the
-simulation state at the current time, update the camera) then `draw` (sync the
-scene, render). Window events only record input; `poll_input` acts on it.
+Each frame, `App` runs `update` (poll the connection, dispatch queued command
+invocations, poll input, compute the simulation state at the current time,
+update the camera) then `draw` (sync the scene, render). Window events only
+record input; `poll_input` acts on it.
 
 **Networking:** QUIC (`quinn`, `rustls` with the `ring` provider only) on UDP
 port 1969 by default. The dedicated server generates a self-signed identity on
@@ -107,6 +113,20 @@ frames on one bidirectional stream.
 
 - **Simulation state is plain data, separate from rendering, advanced at a
   fixed timestep.** Saves, debug-mode editing and time warp all depend on it.
+  The server ticks at `TICK_RATE_HERTZ` (60, in `core::time`); the time rate
+  scales how much simulation time a tick covers, never the tick rate. Each
+  tick advances time first, then applies client messages, so a change lands on
+  the time clients are extrapolating towards.
+- **One path for every action.** A change to server state is a dedicated
+  `ClientMessage`, sent through the client's `ServerSession`, whether it comes
+  from a command, the UI or gameplay. The server applies it, broadcasts the
+  resulting state event to every client, then sends `Reply` to the sender.
+  Text commands from every interface (REPL, IPC, in-game console, on client or
+  server) become a `CommandExecution` handled by the one `CommandRouter`:
+  client commands run on the `CommandExecutor`, server commands become
+  messages. The dedicated server's own REPL and IPC join as `Role::Server`
+  (`ServerUser`) and go through the same path, so behavior never depends on
+  how a command was issued.
 - **One scene at every scale.** Rendering must handle 1 m to interplanetary
   distances in a single frame; there is no separate map scene.
 - **The renderer never sees simulation types.** `App` owns the client's copy of
@@ -193,6 +213,33 @@ it first. Deliberately avoided:
   bindings where they arrive.
 - Constants over magic numbers, including binary format offsets and flags.
 
+## Commands
+
+- The command tree is `CommandLine` in `commands/src/command.rs`, declared with
+  usage-rs derives. `Command::route` decides where each command runs: on the
+  client host, as a server message, or answered from the session's state.
+- Adding a server command: a `ClientMessage` variant in `proto`, handling and
+  validation in `Server` (the server is the authority and denies with a
+  reason), the command and its route, and its output in
+  `router::describe`.
+- Command values: durations take `s`, `min`, `h` or `t` (ticks); distances take
+  `m`, `km`, `Mm` or `Gm` (case-sensitive), a bare number is km; angles are
+  degrees.
+- Both the game and the dedicated server read commands from stdin with a `>`
+  prompt (readline-style editing and history, Tab completion); with stdin not
+  a terminal they read plain lines, so commands can be piped in. Every
+  instance also listens for `xsa ipc [--instance <name>] <words…>` on a
+  socket in `$XDG_RUNTIME_DIR/xsa/` (named pipes on Windows); `xsa ipc --list`
+  shows the running instances and `xsa completion <shell>` prints the shell
+  completion script.
+- Completion runs through the `CommandRouter` like execution
+  (`CommandInvocation::Complete`): names and flags come from the command tree,
+  and values that depend on what is loaded come from
+  `CommandExecutor::completion_values` by `CompletionKind`. An argument opts in
+  with a `complete = …` completer in `command.rs`; adding a kind is a
+  `CompletionKind` variant plus its executor values.
+  Ctrl-C clears the line being typed, or exits on an empty line.
+
 ## Controls
 
 | Input | Action |
@@ -217,6 +264,8 @@ it first. Deliberately avoided:
   automatically in debug builds; their messages print to stderr. Treat any
   validation message as a bug. Messages mentioning `obs-vkcapture` come from
   that injected layer, not from this code.
+- `spirv-val`, used by `mise run shaders`, comes from the `spirv-tools`
+  system package: mise has no pinnable release of it.
 - On Wayland a window only appears once a frame has been presented — an
   invisible window means presentation is broken, not window creation.
 - Screenshots of the game window taken by an agent are unreliable: Hyprland

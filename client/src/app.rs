@@ -2,16 +2,21 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::{Context, bail, ensure};
-use glam::{DVec2, Vec3};
+use glam::{DVec2, DVec3, Vec3};
+use tokio::sync::mpsc::UnboundedReceiver;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
+use xsa_commands::command::{CameraAction, CameraMode as CommandCameraMode, CameraTarget, ClientCommand};
+use xsa_commands::completion::{CompletionCandidate, CompletionKind};
+use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
+use xsa_commands::target::Target;
 use xsa_core::packs::{Id, PackStack};
 use xsa_core::simulation::{Simulation, SimulationState};
-use xsa_proto::connection::Connection;
 use xsa_proto::messages::{ClientMessage, PackReference, ServerEvent};
+use xsa_proto::session::ServerSession;
 
 use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
@@ -29,6 +34,7 @@ const HORIZONTAL_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
 const DEBUG_CAMERA_SPEED: f64 = 2_000_000.0;
 const EXPOSURE_STEP_STOPS: f32 = 1.0 / 3.0;
 const BLOOM_STRENGTH_STEP_STOPS: f32 = 0.5;
+const METERS_PER_KILOMETER: f64 = 1_000.0;
 
 struct ShaderShortcut {
     key: KeyCode,
@@ -63,21 +69,16 @@ struct World {
     state: SimulationState,
     body_objects: Vec<ObjectHandle>,
     light_body: Option<usize>,
-    server_time: f64,
-    server_time_received: Instant,
-}
-
-impl World {
-    fn time(&self) -> f64 {
-        self.server_time + self.server_time_received.elapsed().as_secs_f64()
-    }
 }
 
 pub struct App {
     renderer: Option<Renderer>,
     window: Option<Window>,
     error: Option<anyhow::Error>,
-    connection: Connection,
+    session: ServerSession,
+    router: CommandRouter,
+    invocations: UnboundedReceiver<CommandInvocation>,
+    exit_requested: bool,
     packs_directory: PathBuf,
     world: Option<World>,
     skybox: Option<MaterialHandle>,
@@ -91,12 +92,19 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(connection: Connection, packs_directory: PathBuf) -> Self {
+    pub fn new(
+        session: ServerSession,
+        invocations: UnboundedReceiver<CommandInvocation>,
+        packs_directory: PathBuf,
+    ) -> Self {
         Self {
             renderer: None,
             window: None,
             error: None,
-            connection,
+            session,
+            router: CommandRouter::default(),
+            invocations,
+            exit_requested: false,
             packs_directory,
             world: None,
             skybox: None,
@@ -141,6 +149,7 @@ impl App {
 
     fn update(&mut self, delta_seconds: f64) -> anyhow::Result<()> {
         self.poll_connection()?;
+        self.poll_invocations();
         self.poll_input();
         self.update_simulation();
         self.update_camera(delta_seconds);
@@ -148,25 +157,32 @@ impl App {
     }
 
     fn poll_connection(&mut self) -> anyhow::Result<()> {
-        while let Some(event) = self.connection.poll()? {
+        while let Some(event) = self.session.poll()? {
+            self.router.handle_event(&event, &self.session);
             match event {
-                ServerEvent::Joined {
-                    simulation,
-                    packs,
-                    time,
-                } => self
-                    .join(&simulation, &packs, time)
-                    .with_context(|| format!("joining simulation {simulation}"))?,
+                ServerEvent::JoinAccepted { state } => self
+                    .join(&state.simulation, &state.packs, state.time)
+                    .with_context(|| format!("joining simulation {}", state.simulation))?,
                 ServerEvent::JoinDenied { reason } => bail!("the server refused to let us join: {reason}"),
-                ServerEvent::Tick { time } => {
-                    if let Some(world) = &mut self.world {
-                        world.server_time = time;
-                        world.server_time_received = Instant::now();
-                    }
-                }
+                ServerEvent::PlayerJoined { .. }
+                | ServerEvent::PlayerLeft { .. }
+                | ServerEvent::TimeChanged { .. }
+                | ServerEvent::Tick { .. }
+                | ServerEvent::Reply { .. } => {}
             }
         }
         Ok(())
+    }
+
+    fn poll_invocations(&mut self) {
+        if self.world.is_none() {
+            return;
+        }
+        let mut router = std::mem::take(&mut self.router);
+        while let Ok(invocation) = self.invocations.try_recv() {
+            router.handle(invocation, self);
+        }
+        self.router = router;
     }
 
     fn join(&mut self, simulation: &str, packs: &[PackReference], time: f64) -> anyhow::Result<()> {
@@ -254,8 +270,6 @@ impl App {
             state,
             body_objects,
             light_body,
-            server_time: time,
-            server_time_received: Instant::now(),
         });
         Ok(())
     }
@@ -343,9 +357,10 @@ impl App {
     }
 
     fn update_simulation(&mut self) {
-        if let Some(world) = &mut self.world {
-            let time = world.time();
-            world.simulation.state_at(time, &mut world.state);
+        if let Some(world) = &mut self.world
+            && let Some(state) = self.session.state()
+        {
+            world.simulation.state_at(state.time(), &mut world.state);
         }
     }
 
@@ -428,31 +443,142 @@ impl App {
     }
 
     fn toggle_camera_mode(&mut self) {
-        self.set_mouse_captured(false);
-        self.camera_mode = match self.camera_mode {
-            CameraMode::Orbit => {
-                if let Some(orbit_camera) = &self.orbit_camera {
-                    self.debug_camera.look_along(orbit_camera.yaw(), orbit_camera.pitch());
-                }
-                CameraMode::Debug
-            }
+        self.set_camera_mode(match self.camera_mode {
+            CameraMode::Orbit => CameraMode::Debug,
             CameraMode::Debug => CameraMode::Orbit,
-        };
+        });
+    }
+
+    fn set_camera_mode(&mut self, mode: CameraMode) {
+        if self.camera_mode == mode {
+            return;
+        }
+        self.set_mouse_captured(false);
+        if mode == CameraMode::Debug
+            && let Some(orbit_camera) = &self.orbit_camera
+        {
+            self.debug_camera.look_along(orbit_camera.yaw(), orbit_camera.pitch());
+        }
+        self.camera_mode = mode;
     }
 
     fn cycle_target(&mut self, step: isize) {
-        let Some(orbit_camera) = &mut self.orbit_camera else {
-            return;
-        };
-        let Some(world) = &self.world else {
-            return;
-        };
-        let body_count = world.simulation.bodies().len() as isize;
-        let target = (orbit_camera.target() as isize + step).rem_euclid(body_count) as usize;
-        let body = &world.simulation.bodies()[target];
-        orbit_camera.set_target(target, world.state.bodies[target].position, body.radius);
-        println!("target: {}", body.id);
+        let target = if step < 0 { Target::Previous } else { Target::Next };
+        match self.target_camera(CameraTarget {
+            target,
+            distance: None,
+            pitch: None,
+            yaw: None,
+        }) {
+            Ok(description) => println!("{description}"),
+            Err(err) => eprintln!("{err:#}"),
+        }
     }
+
+    fn target_camera(&mut self, request: CameraTarget) -> anyhow::Result<String> {
+        let world = self.world.as_ref().context("not joined to a simulation yet")?;
+        let orbit_camera = self.orbit_camera.as_mut().context("the simulation has no bodies")?;
+        let bodies = world.simulation.bodies();
+        let target = match &request.target {
+            Target::Next => (orbit_camera.target() + 1) % bodies.len(),
+            Target::Previous => (orbit_camera.target() + bodies.len() - 1) % bodies.len(),
+            Target::Body { id } => find_body(&world.simulation, id)?,
+        };
+        let body = &bodies[target];
+        if target != orbit_camera.target() {
+            orbit_camera.set_target(target, world.state.bodies[target].position, body.radius);
+        }
+        if let Some(distance) = request.distance {
+            orbit_camera.set_distance(distance.meters);
+        }
+        if let Some(pitch) = request.pitch {
+            orbit_camera.set_pitch(pitch.to_radians());
+        }
+        if let Some(yaw) = request.yaw {
+            orbit_camera.set_yaw(yaw.to_radians());
+        }
+        let description = format!(
+            "target: {}, distance {:.0} km, pitch {:.1}°, yaw {:.1}°",
+            body.id.path,
+            orbit_camera.distance() / METERS_PER_KILOMETER,
+            orbit_camera.pitch().to_degrees(),
+            orbit_camera.yaw().to_degrees()
+        );
+        self.set_camera_mode(CameraMode::Orbit);
+        Ok(description)
+    }
+
+    fn look_at(&mut self, target: &Target) -> anyhow::Result<String> {
+        ensure!(
+            self.camera_mode == CameraMode::Debug,
+            "look-at turns the debug camera; switch to it with `camera mode debug`"
+        );
+        let Target::Body { id } = target else {
+            bail!("look-at needs a body id");
+        };
+        let world = self.world.as_ref().context("not joined to a simulation yet")?;
+        let body = find_body(&world.simulation, id)?;
+        let direction = (world.state.bodies[body].position - self.camera.position).normalize_or_zero();
+        ensure!(direction != DVec3::ZERO, "the camera is at the center of {id}");
+        self.debug_camera
+            .look_along((-direction.x).atan2(direction.y), direction.z.asin());
+        Ok(format!("looking at {id}"))
+    }
+}
+
+impl CommandExecutor for App {
+    fn session(&mut self) -> &mut ServerSession {
+        &mut self.session
+    }
+
+    fn exit(&mut self) {
+        self.exit_requested = true;
+    }
+
+    fn completion_values(&self, kind: CompletionKind) -> Vec<CompletionCandidate> {
+        let Some(world) = &self.world else {
+            return Vec::new();
+        };
+        match kind {
+            CompletionKind::Body => world
+                .simulation
+                .bodies()
+                .iter()
+                .map(|body| CompletionCandidate {
+                    value: body.id.to_string(),
+                    description: None,
+                })
+                .collect(),
+        }
+    }
+
+    fn run_client(&mut self, command: ClientCommand) -> anyhow::Result<String> {
+        match command {
+            ClientCommand::Camera(CameraAction::Mode { mode }) => {
+                let description = match mode {
+                    CommandCameraMode::Target => {
+                        self.set_camera_mode(CameraMode::Orbit);
+                        "camera: target"
+                    }
+                    CommandCameraMode::Debug => {
+                        self.set_camera_mode(CameraMode::Debug);
+                        "camera: debug"
+                    }
+                };
+                Ok(description.to_string())
+            }
+            ClientCommand::Camera(CameraAction::Target(request)) => self.target_camera(request),
+            ClientCommand::Camera(CameraAction::LookAt { target }) => self.look_at(&target),
+        }
+    }
+}
+
+fn find_body(simulation: &Simulation, id: &str) -> anyhow::Result<usize> {
+    simulation
+        .bodies()
+        .iter()
+        .position(|body| body.id.path == id || body.id.to_string() == id)
+        .with_context(|| format!("no body {id} in {}", simulation.id()))
 }
 
 impl ApplicationHandler for App {
@@ -469,7 +595,7 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                let _ = self.connection.send(ClientMessage::Leave);
+                let _ = self.session.send(ClientMessage::Leave);
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {
@@ -484,6 +610,9 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if let Err(err) = self.redraw() {
                     self.error = Some(err);
+                    event_loop.exit();
+                } else if self.exit_requested {
+                    let _ = self.session.send(ClientMessage::Leave);
                     event_loop.exit();
                 }
             }

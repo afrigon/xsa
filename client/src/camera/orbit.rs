@@ -77,6 +77,22 @@ impl OrbitCamera {
         self.pitch
     }
 
+    pub fn distance(&self) -> f64 {
+        self.distance
+    }
+
+    pub fn set_distance(&mut self, distance: f64) {
+        self.distance = distance.min(MAXIMUM_DISTANCE);
+    }
+
+    pub fn set_pitch(&mut self, pitch: f64) {
+        self.pitch = pitch.clamp(-PITCH_LIMIT, PITCH_LIMIT);
+    }
+
+    pub fn set_yaw(&mut self, yaw: f64) {
+        self.yaw = yaw;
+    }
+
     pub fn set_target(&mut self, target: usize, target_position: DVec3, target_radius: f64) {
         self.target = target;
         self.distance = target_radius * FRAMING_DISTANCE_IN_RADII;

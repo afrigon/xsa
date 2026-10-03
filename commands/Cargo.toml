@@ -1,0 +1,23 @@
+[package]
+name = "xsa-commands"
+version.workspace = true
+edition.workspace = true
+
+[features]
+client = []
+
+[dependencies]
+anyhow.workspace = true
+bitcode = "0.6.9"
+rustyline = { version = "18.0.1", features = ["derive"] }
+shlex = "2.0.1"
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "sync"] }
+usage = { workspace = true, features = ["completions"] }
+xsa-core.workspace = true
+xsa-proto.workspace = true
+
+[target."cfg(unix)".dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["term"] }
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }

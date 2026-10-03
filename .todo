@@ -65,6 +65,28 @@
 - A remote client must have the server's packs installed with matching
   versions; streaming them is part of multiplayer.
 
+- Calendar durations: `time step` takes `s`, `min`, `h` and `t` only. Days,
+  weeks and years are calendar units relative to a home body, so `d`, `w` and
+  `y` need a calendar defined by the simulation: declared outright (Sol uses
+  86,400 s days and 365.25-day Julian years) or derived from a home body
+  (solar day from its rotation and orbital periods, year from its orbit).
+- Message permissions: any connected client, remote ones included, may change
+  the time rate, set or step time, and join as a console. Needs roles checked
+  by the server and rate limiting, since every accepted change is broadcast to
+  all clients.
+- Distances accept `m`, `km`, `Mm` and `Gm`; astronomical units (`au`) are not
+  supported.
+
+- Clock synchronization: a client's time is the last tick's server time plus
+  elapsed time × rate, so a remote client runs one-way latency × rate behind
+  the server (500 s at 10,000× with 50 ms). Undecided until vessel physics and
+  multiplayer exist; candidates: QUIC's smoothed RTT estimate with slewed
+  corrections, a fixed playback delay, or scheduling every time-critical
+  action at an absolute simulation time so the offset is display-only.
+- The Windows IPC path (named pipes in `commands/src/ipc.rs`) and terminal
+  restore (`commands/src/terminal.rs`) have never been compiled; no Windows
+  target is installed.
+
 # Next steps
 
 - Translation keys (undecided): explicit keys in files following
@@ -128,12 +150,28 @@
   or Tycho-2, or Gaia for millions) with physical brightness from their
   measured magnitudes, pinpoint sharp at any zoom, over a dimmer Milky Way
   texture for the diffuse glow. Keeps the physically calibrated sky.
-- In-game command parsing, then scenario files built on it: a scenario is a
-  list of commands (load a simulation, set time, target, camera angles and
-  distance, toggle render settings, take a screenshot to PNG) run in order,
-  then exit. Lets visual changes be inspected and compared reproducibly, and
-  doubles as visual regression tests. Screenshots are taken by the renderer
-  itself; external capture on Hyprland is unreliable.
+- Commands, the remaining phases (the router, REPL, IPC and time and camera
+  commands exist):
+  - Config file (KDL in `$XDG_CONFIG_HOME/xsa/config.kdl`), then
+    `config get|set|toggle <key>`: live changes, `--save` and `config save`
+    persist, `debug.*` keys never persist. Keys: `render.tonemapper`
+    (agx, agx-punchy, khronos-pbr-neutral, off), `render.stars`,
+    `render.bloom.enabled`, `render.bloom.strength`, `render.exposure.mode`
+    (manual, eye-adaptation), `render.exposure.ev100`,
+    `render.exposure.compensation`, `render.exposure.adaptation.dark-to-light`
+    and `.light-to-dark` (half-lives in seconds), `debug.shader`,
+    `debug.shading`, `debug.wireframe`, `bind.<category>.<action>`. The debug
+    keybinds become default binds running commands. `config get` on a prefix
+    such as `render.exposure` prints its subtree.
+  - Body categories in the body data (star, planet, dwarf-planet, moon,
+    asteroid, comet), then `camera target next|previous [category]` and
+    `camera target parent` (bodies need their parent body: the primary for a
+    barycenter's secondary, otherwise the nearest ancestor body).
+  - `camera snap [--region <x>,<y>:<width>x<height>] [--output <path>]
+    [--ui show|hide]`, captured by the renderer itself (external capture on
+    Hyprland is unreliable). Doubles as visual regression testing.
+  - `ui [<ui-id>] show|hide|toggle` once there is a UI; vessels, maneuvers,
+    resources, EVA, SAS and RCS commands with gameplay.
 - Rings as data: inner/outer radii and orientation in the system data
   (literature values; Sol's ring radii use an unknown unit), textures as
   resources.
