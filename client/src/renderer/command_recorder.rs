@@ -248,6 +248,64 @@ impl<'a> CommandRecorder<'a> {
         });
     }
 
+    pub fn present_to_transfer_source(&self, image: vk::Image) {
+        self.transition(&ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            new_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            source_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            source_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            destination_stage: vk::PipelineStageFlags2::COPY,
+            destination_access: vk::AccessFlags2::TRANSFER_READ,
+        });
+    }
+
+    pub fn transfer_source_to_present(&self, image: vk::Image) {
+        self.transition(&ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            new_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            source_stage: vk::PipelineStageFlags2::COPY,
+            source_access: vk::AccessFlags2::TRANSFER_READ,
+            destination_stage: vk::PipelineStageFlags2::NONE,
+            destination_access: vk::AccessFlags2::NONE,
+        });
+    }
+
+    pub fn copy_image_to_buffer(&self, image: vk::Image, extent: vk::Extent2D, buffer: &Buffer) {
+        let region = vk::BufferImageCopy::default()
+            .image_subresource(
+                vk::ImageSubresourceLayers::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .layer_count(1),
+            )
+            .image_extent(vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            });
+
+        unsafe {
+            self.device.handle().cmd_copy_image_to_buffer(
+                self.command_buffer,
+                image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                buffer.handle(),
+                &[region],
+            );
+        }
+
+        self.buffer_dependency(&BufferDependency {
+            buffer: buffer.handle(),
+            source_stage: vk::PipelineStageFlags2::COPY,
+            source_access: vk::AccessFlags2::TRANSFER_WRITE,
+            destination_stage: vk::PipelineStageFlags2::HOST,
+            destination_access: vk::AccessFlags2::HOST_READ,
+        });
+    }
+
     pub fn bloom_start(&self, image: vk::Image) {
         self.transition(&ImageTransition {
             image,

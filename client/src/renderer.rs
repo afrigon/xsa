@@ -1,4 +1,5 @@
 mod auto_exposure;
+mod captured_image;
 mod command_recorder;
 mod frame;
 mod frame_context;
@@ -14,6 +15,7 @@ mod texture;
 mod tonemapper;
 
 pub use auto_exposure::AutoExposure;
+pub use captured_image::CapturedImage;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
 pub use shader_binaries::ShaderBinaries;
@@ -29,7 +31,7 @@ use winit::window::Window;
 
 use crate::camera::Camera;
 use crate::config::{Config, DebugConfig, RenderConfig};
-use crate::vulkan::{Image, SAMPLED_LAYOUT, Swapchain};
+use crate::vulkan::{Buffer, Image, MemoryLocation, SAMPLED_LAYOUT, Swapchain};
 use auto_exposure::HISTOGRAM_BINS;
 use command_recorder::CommandRecorder;
 use frame::Frame;
@@ -37,12 +39,13 @@ use frame_context::FrameContext;
 use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData};
 use material::MaterialData;
-use passes::{BloomPass, ForwardPass, HistogramPass, TonemapPass};
+use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TonemapPass};
 use render_pass::RenderPass;
 use render_targets::RenderTargets;
 use texture::DdsImage;
 
 const FRAMES_IN_FLIGHT: usize = 2;
+const BYTES_PER_PIXEL: u64 = 4;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 // Background light from stars and zodiacal light, in lux.
 const STARLIGHT_ILLUMINANCE: f32 = 2e-4;
@@ -54,6 +57,7 @@ pub struct Renderer {
     render: RenderConfig,
     debug: DebugConfig,
     exposure: AutoExposure,
+    capture: Option<Buffer>,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     material_data: Vec<MaterialData>,
@@ -93,6 +97,7 @@ impl Renderer {
             Box::new(HistogramPass::new(&gpu, shaders)?),
             Box::new(bloom),
             Box::new(TonemapPass::new(&gpu, shaders, swapchain.format())?),
+            Box::new(CapturePass),
         ];
 
         Ok(Self {
@@ -100,6 +105,7 @@ impl Renderer {
             render: config.render.clone(),
             debug: config.debug.clone(),
             exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
+            capture: None,
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
@@ -199,6 +205,80 @@ impl Renderer {
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
 
         Ok(())
+    }
+
+    // Renders one frame now and blocks until its pixels are back on the CPU.
+    pub fn capture(&mut self, camera: &Camera) -> anyhow::Result<CapturedImage> {
+        anyhow::ensure!(
+            self.swapchain.supports_capture(),
+            "this display does not allow copying the rendered image"
+        );
+
+        if self.swapchain_outdated {
+            self.recreate_swapchain()?;
+        }
+
+        let extent = self.swapchain.extent();
+        let size = u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL;
+        let gpu = &mut self.gpu;
+        let buffer = Buffer::new(
+            &gpu.device,
+            &mut gpu.allocator,
+            "capture",
+            size,
+            vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuToCpu,
+        )?;
+        self.capture = Some(buffer);
+        let pixels = self.render_capture(camera, extent);
+        let mut buffer = self.capture.take().expect("the capture buffer was set above");
+        unsafe { buffer.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+
+        Ok(CapturedImage {
+            width: extent.width,
+            height: extent.height,
+            rgba: pixels?,
+        })
+    }
+
+    fn render_capture(&mut self, camera: &Camera, extent: vk::Extent2D) -> anyhow::Result<Vec<u8>> {
+        let frame = self.frame_index;
+        self.draw(camera)?;
+
+        // No image was acquired because the swapchain went out of date: recreate it and try once more.
+        if self.frame_index == frame && self.swapchain_outdated {
+            self.recreate_swapchain()?;
+            anyhow::ensure!(
+                self.swapchain.extent() == extent,
+                "the window changed size while capturing"
+            );
+            self.draw(camera)?;
+        }
+
+        anyhow::ensure!(
+            self.frame_index != frame,
+            "the window is not visible, nothing was rendered"
+        );
+
+        let device = self.gpu.device.handle();
+        unsafe { device.wait_for_fences(&[self.frames[frame].in_flight], true, u64::MAX) }?;
+        let mut pixels = vec![0_u8; (u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL) as usize];
+        self.capture
+            .as_ref()
+            .expect("the capture buffer is set while capturing")
+            .read(&mut pixels)?;
+
+        match self.swapchain.format() {
+            vk::Format::B8G8R8A8_SRGB | vk::Format::B8G8R8A8_UNORM => {
+                for pixel in pixels.chunks_exact_mut(BYTES_PER_PIXEL as usize) {
+                    pixel.swap(0, 2);
+                }
+            }
+            vk::Format::R8G8B8A8_SRGB | vk::Format::R8G8B8A8_UNORM => {}
+            format => anyhow::bail!("capturing a {format:?} swapchain is not supported"),
+        }
+
+        Ok(pixels)
     }
 
     fn update_exposure(&mut self) -> anyhow::Result<()> {
@@ -309,6 +389,8 @@ impl Renderer {
             descriptor_set: self.gpu.bindless.set(),
             output_image: self.swapchain.image(image_index),
             output_view: self.swapchain.image_view(image_index),
+            output_extent: self.swapchain.extent(),
+            capture: self.capture.as_ref(),
         };
 
         for pass in &mut self.passes {

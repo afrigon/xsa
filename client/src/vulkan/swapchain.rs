@@ -17,6 +17,7 @@ pub struct Swapchain {
     render_finished: Vec<vk::Semaphore>,
     extent: vk::Extent2D,
     format: vk::Format,
+    supports_capture: bool,
 }
 
 impl Swapchain {
@@ -59,6 +60,16 @@ impl Swapchain {
             capabilities.current_extent
         };
 
+        // Copying out of the presented image is what screenshots need; not every surface allows it.
+        let supports_capture = capabilities
+            .supported_usage_flags
+            .contains(vk::ImageUsageFlags::TRANSFER_SRC);
+        let usage = if supports_capture {
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC
+        } else {
+            vk::ImageUsageFlags::COLOR_ATTACHMENT
+        };
+
         let mut image_count = capabilities.min_image_count + 1;
 
         if capabilities.max_image_count > 0 {
@@ -72,7 +83,7 @@ impl Swapchain {
             .image_color_space(format.color_space)
             .image_extent(extent)
             .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_usage(usage)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(capabilities.current_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
@@ -111,6 +122,7 @@ impl Swapchain {
             render_finished,
             extent,
             format: format.format,
+            supports_capture,
         })
     }
 
@@ -140,6 +152,10 @@ impl Swapchain {
 
     pub fn format(&self) -> vk::Format {
         self.format
+    }
+
+    pub fn supports_capture(&self) -> bool {
+        self.supports_capture
     }
 
     pub unsafe fn destroy(&mut self, device: &Device) {

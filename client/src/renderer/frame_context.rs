@@ -6,7 +6,7 @@ use super::frame::Frame;
 use super::gpu_data::PushConstants;
 use super::render_targets::RenderTargets;
 use crate::config::{DebugConfig, RenderConfig};
-use crate::vulkan::GraphicsPipeline;
+use crate::vulkan::{Buffer, GraphicsPipeline};
 
 pub(super) struct FrameContext<'a> {
     pub recorder: CommandRecorder<'a>,
@@ -18,6 +18,8 @@ pub(super) struct FrameContext<'a> {
     pub descriptor_set: vk::DescriptorSet,
     pub output_image: vk::Image,
     pub output_view: vk::ImageView,
+    pub output_extent: vk::Extent2D,
+    pub capture: Option<&'a Buffer>,
 }
 
 impl FrameContext<'_> {
