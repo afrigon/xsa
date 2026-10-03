@@ -186,7 +186,7 @@ impl ClientWorld {
                 luminance: skybox.luminance,
             }))),
             Err(err) => {
-                eprintln!("skipping the skybox: {err:#}");
+                tracing::warn!("skipping the skybox: {err:#}");
                 Ok(None)
             }
         }

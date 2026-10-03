@@ -14,6 +14,7 @@ glam = "0.33.11"
 gpu-allocator = { version = "0.28.0", default-features = false, features = ["std", "vulkan"] }
 image = { version = "0.25.10", default-features = false, features = ["exr"] }
 tokio = "1.53.1"
+tracing = "0.1.44"
 usage = { version = "6.12.0", package = "usage-rs" }
 winit = "0.30.13"
 xsa-client = { path = "client" }

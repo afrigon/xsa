@@ -65,20 +65,20 @@ impl DedicatedServer {
 
                         match pending.establish().await {
                             Ok(link) => {
-                                println!("{remote} connected");
+                                tracing::info!("{remote} connected");
                                 let _ = new_clients.send(link);
                             }
-                            Err(err) => eprintln!("{remote} failed to connect: {err:#}"),
+                            Err(err) => tracing::warn!("{remote} failed to connect: {err:#}"),
                         }
                     });
                 }
                 _ = tokio::signal::ctrl_c() => {
-                    println!("shutting down");
+                    tracing::info!("shutting down");
                     break;
                 }
                 result = &mut server_user => {
                     result??;
-                    println!("shutting down");
+                    tracing::info!("shutting down");
                     break;
                 }
             }

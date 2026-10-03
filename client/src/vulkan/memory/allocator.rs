@@ -42,7 +42,7 @@ impl Allocator {
 
     pub(super) fn free(&mut self, allocation: Allocation) {
         if let Err(err) = self.allocator.free(allocation) {
-            eprintln!("freeing GPU memory: {err}");
+            tracing::error!("freeing GPU memory: {err}");
         }
     }
 }

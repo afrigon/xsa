@@ -40,6 +40,13 @@ unsafe extern "system" fn log_debug_message(
     _user_data: *mut c_void,
 ) -> vk::Bool32 {
     let message = unsafe { CStr::from_ptr((*callback_data).p_message) };
-    eprintln!("[vulkan {severity:?} {message_type:?}] {}", message.to_string_lossy());
+    let message = message.to_string_lossy();
+
+    if severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {
+        tracing::error!(target: "vulkan", "{message_type:?}: {message}");
+    } else {
+        tracing::warn!(target: "vulkan", "{message_type:?}: {message}");
+    }
+
     vk::FALSE
 }

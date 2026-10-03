@@ -1,7 +1,7 @@
 mod command_completer;
 mod interrupt_handler;
 
-use std::io;
+use std::io::{self, IsTerminal};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -11,6 +11,7 @@ use rustyline::{Editor, EventHandler, KeyEvent};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
+use crate::console_log::ConsoleLog;
 use crate::router::{CommandExecution, CommandInvocation};
 use crate::terminal::TerminalGuard;
 use crate::words;
@@ -38,10 +39,17 @@ impl Repl {
         let mut editor = match Editor::new() {
             Ok(editor) => editor,
             Err(err) => {
-                eprintln!("the console is unavailable: {err}");
+                tracing::error!("the console is unavailable: {err}");
                 return;
             }
         };
+
+        let interactive = io::stdin().is_terminal() && io::stdout().is_terminal();
+
+        if interactive && let Ok(printer) = editor.create_external_printer() {
+            ConsoleLog::attach(printer);
+        }
+
         editor.set_helper(Some(CommandCompleter {
             invocations: invocations.clone(),
         }));
@@ -58,10 +66,10 @@ impl Repl {
                 Ok(line) => line,
                 Err(ReadlineError::Interrupted) if interrupted_empty_line.load(Ordering::Relaxed) => EXIT.to_string(),
                 Err(ReadlineError::Interrupted) => continue,
-                Err(ReadlineError::Eof) => return,
+                Err(ReadlineError::Eof) => break,
                 Err(err) => {
-                    eprintln!("the console stopped: {err}");
-                    return;
+                    tracing::error!("the console stopped: {err}");
+                    break;
                 }
             };
             let words = match words::split(&line) {
@@ -81,7 +89,7 @@ impl Repl {
             });
 
             if invocations.send(invocation).is_err() {
-                return;
+                break;
             }
 
             match receiver.blocking_recv() {
@@ -89,5 +97,7 @@ impl Repl {
                 Err(_) => println!("the command was dropped before it finished"),
             }
         }
+
+        ConsoleLog::detach();
     }
 }

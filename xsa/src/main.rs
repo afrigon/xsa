@@ -7,11 +7,16 @@ mod client_arguments;
 mod command;
 mod completion_arguments;
 mod ipc_arguments;
+mod logging;
 mod server_arguments;
 mod world_arguments;
 
 use arguments::Arguments;
+use logging::Logging;
 
 fn main() -> anyhow::Result<()> {
-    Arguments::parse().command.run()
+    let arguments = Arguments::parse();
+    Logging::from_verbosity(arguments.verbose, arguments.quiet).install();
+
+    arguments.command.run()
 }

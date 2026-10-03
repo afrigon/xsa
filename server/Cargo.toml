@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync"] }
+tracing.workspace = true
 xsa-commands.workspace = true
 xsa-core.workspace = true
 xsa-packs.workspace = true

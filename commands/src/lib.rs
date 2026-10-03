@@ -1,5 +1,6 @@
 pub mod command;
 pub mod completion;
+pub mod console_log;
 pub mod ipc;
 pub mod repl;
 pub mod router;
