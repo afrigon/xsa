@@ -11,7 +11,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use xsa_proto::frame::{read_frame, write_frame};
 
-use crate::dispatcher::{Invocation, Output};
+use crate::router::{CommandExecution, Output};
 
 #[derive(Encode, Decode)]
 enum Request {
@@ -54,7 +54,7 @@ impl Drop for IpcEndpoint {
 pub fn spawn(
     name: Option<String>,
     kind: InstanceKind,
-    invocations: UnboundedSender<Invocation>,
+    invocations: UnboundedSender<CommandExecution>,
 ) -> anyhow::Result<IpcEndpoint> {
     let name = name.unwrap_or_else(|| kind.default_name());
     validate_name(&name)?;
@@ -123,7 +123,7 @@ fn validate_name(name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle(mut stream: impl AsyncRead + AsyncWrite + Unpin, invocations: UnboundedSender<Invocation>) {
+async fn handle(mut stream: impl AsyncRead + AsyncWrite + Unpin, invocations: UnboundedSender<CommandExecution>) {
     while let Ok(Some(request)) = read_frame::<Request>(&mut stream).await {
         let output = match request {
             Request::Execute { words } => execute(words, &invocations).await,
@@ -138,9 +138,9 @@ async fn handle(mut stream: impl AsyncRead + AsyncWrite + Unpin, invocations: Un
     }
 }
 
-async fn execute(words: Vec<String>, invocations: &UnboundedSender<Invocation>) -> Output {
+async fn execute(words: Vec<String>, invocations: &UnboundedSender<CommandExecution>) -> Output {
     let (reply, receiver) = oneshot::channel();
-    let invocation = Invocation {
+    let invocation = CommandExecution {
         words,
         reply,
         styled: false,
@@ -168,7 +168,7 @@ mod platform {
     use tokio::sync::mpsc::UnboundedSender;
 
     use super::{Bound, IpcEndpoint, handle};
-    use crate::dispatcher::Invocation;
+    use crate::router::CommandExecution;
 
     const DIRECTORY_NAME: &str = "xsa";
     const SOCKET_EXTENSION: &str = "sock";
@@ -188,7 +188,7 @@ mod platform {
         directory().join(name).with_extension(SOCKET_EXTENSION)
     }
 
-    pub async fn serve(name: String, invocations: UnboundedSender<Invocation>, bound: Bound) {
+    pub async fn serve(name: String, invocations: UnboundedSender<CommandExecution>, bound: Bound) {
         let listener = match bind(&name).await {
             Ok(listener) => listener,
             Err(err) => {
@@ -263,7 +263,7 @@ mod platform {
     use tokio::sync::mpsc::UnboundedSender;
 
     use super::{Bound, IpcEndpoint, handle};
-    use crate::dispatcher::Invocation;
+    use crate::router::CommandExecution;
 
     const PIPE_DIRECTORY: &str = r"\\.\pipe\";
     const PIPE_PREFIX: &str = "xsa-";
@@ -272,7 +272,7 @@ mod platform {
         format!("{PIPE_DIRECTORY}{PIPE_PREFIX}{name}")
     }
 
-    pub async fn serve(name: String, invocations: UnboundedSender<Invocation>, bound: Bound) {
+    pub async fn serve(name: String, invocations: UnboundedSender<CommandExecution>, bound: Bound) {
         let path = pipe_name(&name);
         let mut server = match ServerOptions::new()
             .first_pipe_instance(true)

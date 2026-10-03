@@ -14,7 +14,7 @@ use tokio::sync::oneshot;
 use usage::complete::{self, Shell};
 
 use crate::command::CommandLine;
-use crate::dispatcher::{Invocation, Output};
+use crate::router::{CommandExecution, Output};
 use crate::terminal::TerminalGuard;
 use crate::words;
 
@@ -27,7 +27,7 @@ pub struct Repl {
     _terminal: Option<TerminalGuard>,
 }
 
-pub fn spawn(invocations: UnboundedSender<Invocation>) -> io::Result<Repl> {
+pub fn spawn(invocations: UnboundedSender<CommandExecution>) -> io::Result<Repl> {
     let terminal = TerminalGuard::capture();
     thread::Builder::new()
         .name("repl".into())
@@ -35,7 +35,7 @@ pub fn spawn(invocations: UnboundedSender<Invocation>) -> io::Result<Repl> {
     Ok(Repl { _terminal: terminal })
 }
 
-fn run(invocations: UnboundedSender<Invocation>) {
+fn run(invocations: UnboundedSender<CommandExecution>) {
     let mut editor = match Editor::new() {
         Ok(editor) => editor,
         Err(err) => {
@@ -73,7 +73,7 @@ fn run(invocations: UnboundedSender<Invocation>) {
         let _ = editor.add_history_entry(line);
         let (reply, receiver) = oneshot::channel();
         if invocations
-            .send(Invocation {
+            .send(CommandExecution {
                 words,
                 reply,
                 styled: true,

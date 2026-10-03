@@ -77,6 +77,16 @@
 - Distances accept `m`, `km`, `Mm` and `Gm`; astronomical units (`au`) are not
   supported.
 
+- Clock synchronization: a client's time is the last tick's server time plus
+  elapsed time × rate, so a remote client runs one-way latency × rate behind
+  the server (500 s at 10,000× with 50 ms). Undecided until vessel physics and
+  multiplayer exist; candidates: QUIC's smoothed RTT estimate with slewed
+  corrections, a fixed playback delay, or scheduling every time-critical
+  action at an absolute simulation time so the offset is display-only.
+- The Windows IPC path (named pipes in `commands/src/ipc.rs`) and terminal
+  restore (`commands/src/terminal.rs`) have never been compiled; no Windows
+  target is installed.
+
 # Next steps
 
 - Translation keys (undecided): explicit keys in files following
@@ -140,18 +150,13 @@
   or Tycho-2, or Gaia for millions) with physical brightness from their
   measured magnitudes, pinpoint sharp at any zoom, over a dimmer Milky Way
   texture for the diffuse glow. Keeps the physically calibrated sky.
-- Commands, the remaining phases (the dispatcher, REPL and time and camera
+- Commands, the remaining phases (the router, REPL, IPC and time and camera
   commands exist):
-  - IPC: every process opens a Unix socket in `$XDG_RUNTIME_DIR/xsa/` named
-    `client-<pid>`, `server-<pid>` or `--instance <name>` (named pipes on
-    Windows). `xsa ipc [--instance <name>] <words…>` passes the words
-    unparsed to the instance, whose dispatcher parses them, prints the output
-    and exits non-zero on failure. Several live instances and no
-    `--instance` (or `XSA_INSTANCE`) is an error listing them; stale sockets
-    are removed. The protocol has `Execute` and `Complete` requests; shell
-    completion for `xsa ipc` comes from the compiled command tree, asking the
-    instance only for loaded values such as body ids. Lets agents and
-    tool-assisted runs drive the game and take screenshots reproducibly.
+  - Completion: values that depend on what is loaded (body ids first, later
+    vessels and parts) come from the `CommandExecutor` by `CompletionKind`;
+    Tab in the REPL, an IPC `Complete` request and shell completion for `xsa`
+    and `xsa ipc` (asking the instance, or the compiled tree when none runs)
+    all go through the `CommandRouter`.
   - Config file (KDL in `$XDG_CONFIG_HOME/xsa/config.kdl`), then
     `config get|set|toggle <key>`: live changes, `--save` and `config save`
     persist, `debug.*` keys never persist. Keys: `render.tonemapper`

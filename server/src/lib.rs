@@ -1,5 +1,5 @@
-mod console;
 pub mod dedicated;
+mod server_user;
 
 use std::path::PathBuf;
 use std::thread;

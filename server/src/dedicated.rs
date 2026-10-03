@@ -9,7 +9,7 @@ use xsa_commands::repl;
 use xsa_proto::connection::Connection;
 use xsa_proto::network::{self, Identity};
 
-use crate::{Server, World, WorldOptions, console};
+use crate::{Server, World, WorldOptions, server_user};
 
 pub struct DedicatedOptions {
     pub instance: Option<String>,
@@ -41,7 +41,7 @@ pub async fn run(options: DedicatedOptions) -> anyhow::Result<()> {
     let (invocation_sender, invocations) = unbounded_channel();
     let _endpoint = ipc::spawn(options.instance, InstanceKind::Server, invocation_sender.clone())?;
     let _repl = repl::spawn(invocation_sender)?;
-    let mut console = tokio::spawn(console::run(console_connection, invocations));
+    let mut console = tokio::spawn(server_user::run(console_connection, invocations));
 
     loop {
         tokio::select! {

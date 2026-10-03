@@ -62,9 +62,9 @@ A Cargo workspace; each crate is a top-level directory.
 | --- | --- | --- |
 | `core/` (`xsa-core`) | library | Pack loading (`packs/`: ids, manifests, the pack stack, KDL helpers, body/system/simulation definitions), the simulation (`simulation.rs`: placements, barycenters, spin), Keplerian orbits (`orbit.rs`), time (`time.rs`: seconds since J2000), coordinate frames (`frames.rs`); `tests/system_solar.rs` checks the real-sky accuracy of the solar system pack |
 | `proto/` (`xsa-proto`) | library | Client ↔ server protocol: `messages.rs` (`ClientFrame`, `ClientMessage`, `ServerEvent`, wire structs, bitcode), `connection.rs` (`Connection`, `ClientLink`), `session.rs` (`ServerSession`: the client's end of a connection and its copy of server state), `network.rs` (QUIC transport, server identity, fingerprint pinning) |
-| `commands/` (`xsa-commands`) | library | Text commands: `command.rs` (the command tree and how each command routes), `dispatcher.rs` (`Dispatcher`, `Invocation`, `CommandHost`), `repl.rs` (stdin console), `words.rs` (line splitting), value types (`duration.rs`, `distance.rs`, `target.rs`, `timestamp.rs`); client-only commands sit behind its `client` feature |
-| `server/` (`xsa-server`) | library | `lib.rs`: `World` (loaded packs, simulation, time, time rate), the authoritative `Server` tick loop and `start_local` for the integrated server; `dedicated.rs`: the dedicated server; `console.rs`: its headless `CommandHost` |
-| `client/` (`xsa-client`) | library | The game: `app.rs` (window, frame loop, input polling, camera modes, joining a simulation, the client `CommandHost`), `content.rs` (reads pack resources: shaders, materials, skybox), `camera/`, `input.rs`, `mesh.rs`, `renderer/`, `vulkan/` |
+| `commands/` (`xsa-commands`) | library | Text commands: `command.rs` (the command tree and how each command routes), `router.rs` (`CommandRouter`, `CommandExecution`, the `CommandExecutor` trait), `repl.rs` (the stdin prompt), `ipc.rs` (`xsa ipc` sockets and named pipes), `terminal.rs` (restores the terminal mode on exit), `words.rs` (line splitting), value types (`duration.rs`, `distance.rs`, `target.rs`, `timestamp.rs`); client-only commands sit behind its `client` feature |
+| `server/` (`xsa-server`) | library | `lib.rs`: `World` (loaded packs, simulation, time, time rate), the authoritative `Server` tick loop and `start_local` for the integrated server; `dedicated.rs`: the dedicated server; `server_user.rs`: `ServerUser`, the dedicated server's own `CommandExecutor` |
+| `client/` (`xsa-client`) | library | The game: `app.rs` (window, frame loop, input polling, camera modes, joining a simulation; `App` is the client's `CommandExecutor`), `content.rs` (reads pack resources: shaders, materials, skybox), `camera/`, `input.rs`, `mesh.rs`, `renderer/`, `vulkan/` |
 | `xsa/` (`xsa`) | binary | The only game binary: `xsa` / `xsa client` runs the game, `xsa server` a dedicated server. Features `client` (default, enables `server`) and `server`; the server-only build has no client code |
 | `tools/` (`xsa-tools`) | binary | `convert-skybox`: equirectangular EXR → cube map DDS |
 
@@ -121,8 +121,9 @@ frames on one bidirectional stream.
   from a command, the UI or gameplay. The server applies it, broadcasts the
   resulting state event to every client, then sends `Reply` to the sender.
   Text commands from every interface (REPL, IPC, in-game console, on client or
-  server) become an `Invocation` handled by the one `Dispatcher`: client
-  commands run on the `CommandHost`, server commands become messages. The
+  server) become a `CommandExecution` handled by the one `CommandRouter`:
+  client commands run on the `CommandExecutor`, server commands become
+  messages. The
   dedicated server's own REPL and IPC join as a console client and go through
   the same path, so behavior never depends on how a command was issued.
 - **One scene at every scale.** Rendering must handle 1 m to interplanetary
@@ -219,7 +220,7 @@ it first. Deliberately avoided:
 - Adding a server command: a `ClientMessage` variant in `proto`, handling and
   validation in `Server` (the server is the authority and denies with a
   reason), the command and its route, and its output in
-  `dispatcher::describe`.
+  `router::describe`.
 - Command values: durations take `s`, `min`, `h` or `t` (ticks); distances take
   `m`, `km`, `Mm` or `Gm` (case-sensitive), a bare number is km; angles are
   degrees.

@@ -11,7 +11,7 @@ use xsa_proto::session::{ServerSession, SessionState};
 use crate::command::ClientCommand;
 use crate::command::{CommandLine, Route};
 
-pub struct Invocation {
+pub struct CommandExecution {
     pub words: Vec<String>,
     pub reply: oneshot::Sender<Output>,
     pub styled: bool,
@@ -39,7 +39,7 @@ impl Output {
     }
 }
 
-pub trait CommandHost {
+pub trait CommandExecutor {
     fn session(&mut self) -> &mut ServerSession;
 
     fn exit(&mut self);
@@ -51,7 +51,7 @@ pub trait CommandHost {
 }
 
 #[derive(Default)]
-pub struct Dispatcher {
+pub struct CommandRouter {
     pending: HashMap<MessageId, Pending>,
 }
 
@@ -60,8 +60,8 @@ struct Pending {
     reply: oneshot::Sender<Output>,
 }
 
-impl Dispatcher {
-    pub fn dispatch(&mut self, invocation: Invocation, host: &mut impl CommandHost) {
+impl CommandRouter {
+    pub fn execute(&mut self, invocation: CommandExecution, executor: &mut impl CommandExecutor) {
         let words: Vec<&OsStr> = invocation.words.iter().map(OsStr::new).collect();
         let command = match CommandLine::parse_from(&words) {
             Ok(line) => line.command,
@@ -74,11 +74,11 @@ impl Dispatcher {
         };
         let output = match command.route() {
             #[cfg(feature = "client")]
-            Route::Client(command) => match host.run_client(command) {
+            Route::Client(command) => match executor.run_client(command) {
                 Ok(text) => Output::success(text),
                 Err(err) => Output::failure(format!("{err:#}")),
             },
-            Route::Server(message) => match host.session().send(message.clone()) {
+            Route::Server(message) => match executor.session().send(message.clone()) {
                 Ok(id) => {
                     self.pending.insert(
                         id,
@@ -91,9 +91,9 @@ impl Dispatcher {
                 }
                 Err(err) => Output::failure(format!("{err:#}")),
             },
-            Route::ShowTime => describe_time(host.session().state()),
+            Route::ShowTime => describe_time(executor.session().state()),
             Route::Exit => {
-                host.exit();
+                executor.exit();
                 Output::success("exiting")
             }
         };
@@ -153,12 +153,12 @@ mod tests {
 
     use super::*;
 
-    struct FakeHost {
+    struct FakeExecutor {
         session: ServerSession,
         exited: bool,
     }
 
-    impl CommandHost for FakeHost {
+    impl CommandExecutor for FakeExecutor {
         fn session(&mut self) -> &mut ServerSession {
             &mut self.session
         }
@@ -169,24 +169,24 @@ mod tests {
     }
 
     struct Harness {
-        host: FakeHost,
+        executor: FakeExecutor,
         link: ClientLink,
-        dispatcher: Dispatcher,
+        router: CommandRouter,
     }
 
     impl Harness {
         fn joined() -> Self {
             let (connection, link) = Connection::local();
             let mut harness = Self {
-                host: FakeHost {
+                executor: FakeExecutor {
                     session: ServerSession::new(connection),
                     exited: false,
                 },
                 link,
-                dispatcher: Dispatcher::default(),
+                router: CommandRouter::default(),
             };
             harness
-                .host
+                .executor
                 .session
                 .send(ClientMessage::Join { role: Role::Console })
                 .unwrap();
@@ -205,21 +205,21 @@ mod tests {
 
         fn deliver(&mut self, event: ServerEvent) {
             self.link.events.send(event).unwrap();
-            while let Some(event) = self.host.session.poll().unwrap() {
-                self.dispatcher.handle_event(&event, &self.host.session);
+            while let Some(event) = self.executor.session.poll().unwrap() {
+                self.router.handle_event(&event, &self.executor.session);
             }
         }
 
         fn invoke(&mut self, line: &str) -> oneshot::Receiver<Output> {
             let (reply, receiver) = oneshot::channel();
             let words = crate::words::split(line).unwrap();
-            self.dispatcher.dispatch(
-                Invocation {
+            self.router.execute(
+                CommandExecution {
                     words,
                     reply,
                     styled: false,
                 },
-                &mut self.host,
+                &mut self.executor,
             );
             receiver
         }
@@ -309,9 +309,9 @@ mod tests {
     }
 
     #[test]
-    fn exit_asks_the_host_to_exit() {
+    fn exit_asks_the_executor_to_exit() {
         let mut harness = Harness::joined();
         harness.invoke("exit");
-        assert!(harness.host.exited);
+        assert!(harness.executor.exited);
     }
 }

@@ -10,7 +10,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
 use xsa_commands::command::{CameraAction, CameraMode as CommandCameraMode, CameraTarget, ClientCommand};
-use xsa_commands::dispatcher::{CommandHost, Dispatcher, Invocation};
+use xsa_commands::router::{CommandExecution, CommandExecutor, CommandRouter};
 use xsa_commands::target::Target;
 use xsa_core::packs::{Id, PackStack};
 use xsa_core::simulation::{Simulation, SimulationState};
@@ -75,8 +75,8 @@ pub struct App {
     window: Option<Window>,
     error: Option<anyhow::Error>,
     session: ServerSession,
-    dispatcher: Dispatcher,
-    invocations: UnboundedReceiver<Invocation>,
+    router: CommandRouter,
+    invocations: UnboundedReceiver<CommandExecution>,
     exit_requested: bool,
     packs_directory: PathBuf,
     world: Option<World>,
@@ -91,13 +91,17 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(session: ServerSession, invocations: UnboundedReceiver<Invocation>, packs_directory: PathBuf) -> Self {
+    pub fn new(
+        session: ServerSession,
+        invocations: UnboundedReceiver<CommandExecution>,
+        packs_directory: PathBuf,
+    ) -> Self {
         Self {
             renderer: None,
             window: None,
             error: None,
             session,
-            dispatcher: Dispatcher::default(),
+            router: CommandRouter::default(),
             invocations,
             exit_requested: false,
             packs_directory,
@@ -153,7 +157,7 @@ impl App {
 
     fn poll_connection(&mut self) -> anyhow::Result<()> {
         while let Some(event) = self.session.poll()? {
-            self.dispatcher.handle_event(&event, &self.session);
+            self.router.handle_event(&event, &self.session);
             match event {
                 ServerEvent::JoinAccepted { state } => self
                     .join(&state.simulation, &state.packs, state.time)
@@ -173,11 +177,11 @@ impl App {
         if self.world.is_none() {
             return;
         }
-        let mut dispatcher = std::mem::take(&mut self.dispatcher);
+        let mut router = std::mem::take(&mut self.router);
         while let Ok(invocation) = self.invocations.try_recv() {
-            dispatcher.dispatch(invocation, self);
+            router.execute(invocation, self);
         }
-        self.dispatcher = dispatcher;
+        self.router = router;
     }
 
     fn join(&mut self, simulation: &str, packs: &[PackReference], time: f64) -> anyhow::Result<()> {
@@ -521,7 +525,7 @@ impl App {
     }
 }
 
-impl CommandHost for App {
+impl CommandExecutor for App {
     fn session(&mut self) -> &mut ServerSession {
         &mut self.session
     }

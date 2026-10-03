@@ -1,15 +1,15 @@
 use tokio::sync::mpsc::UnboundedReceiver;
-use xsa_commands::dispatcher::{CommandHost, Dispatcher, Invocation};
+use xsa_commands::router::{CommandExecution, CommandExecutor, CommandRouter};
 use xsa_proto::connection::Connection;
 use xsa_proto::messages::{ClientMessage, Role};
 use xsa_proto::session::ServerSession;
 
-struct ConsoleHost {
+struct ServerUser {
     session: ServerSession,
     exit_requested: bool,
 }
 
-impl CommandHost for ConsoleHost {
+impl CommandExecutor for ServerUser {
     fn session(&mut self) -> &mut ServerSession {
         &mut self.session
     }
@@ -19,19 +19,19 @@ impl CommandHost for ConsoleHost {
     }
 }
 
-pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<Invocation>) -> anyhow::Result<()> {
-    let mut host = ConsoleHost {
+pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<CommandExecution>) -> anyhow::Result<()> {
+    let mut user = ServerUser {
         session: ServerSession::new(connection),
         exit_requested: false,
     };
-    host.session.send(ClientMessage::Join { role: Role::Console })?;
-    let mut dispatcher = Dispatcher::default();
+    user.session.send(ClientMessage::Join { role: Role::Console })?;
+    let mut router = CommandRouter::default();
     let mut invocations_open = true;
-    while !host.exit_requested {
+    while !user.exit_requested {
         tokio::select! {
-            event = host.session.receive() => dispatcher.handle_event(&event?, &host.session),
-            invocation = invocations.recv(), if invocations_open && host.session.state().is_some() => match invocation {
-                Some(invocation) => dispatcher.dispatch(invocation, &mut host),
+            event = user.session.receive() => router.handle_event(&event?, &user.session),
+            invocation = invocations.recv(), if invocations_open && user.session.state().is_some() => match invocation {
+                Some(invocation) => router.execute(invocation, &mut user),
                 None => invocations_open = false,
             },
         }
@@ -45,16 +45,16 @@ mod tests {
 
     use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
     use tokio::sync::oneshot;
-    use xsa_commands::dispatcher::Output;
+    use xsa_commands::router::Output;
 
     use super::*;
     use crate::{World, WorldOptions, start_local};
 
-    async fn invoke(invocations: &UnboundedSender<Invocation>, line: &str) -> Output {
+    async fn invoke(invocations: &UnboundedSender<CommandExecution>, line: &str) -> Output {
         let (reply, receiver) = oneshot::channel();
         let words = xsa_commands::words::split(line).unwrap();
         invocations
-            .send(Invocation {
+            .send(CommandExecution {
                 words,
                 reply,
                 styled: false,
