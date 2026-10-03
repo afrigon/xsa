@@ -2736,6 +2736,7 @@ dependencies = [
  "ring",
  "rustls",
  "tokio",
+ "xsa-units",
 ]
 
 [[package]]
@@ -2765,6 +2766,7 @@ name = "xsa-units"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bitcode",
 ]
 
 [[package]]

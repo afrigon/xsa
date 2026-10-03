@@ -1,6 +1,10 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+use bitcode::{Decode, Encode};
+
+use crate::SimulationDuration;
+
+#[derive(Encode, Decode, Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct TimeRate {
     pub multiplier: f64,
 }
@@ -11,6 +15,12 @@ impl TimeRate {
 
     pub fn is_paused(self) -> bool {
         self.multiplier == 0.0
+    }
+
+    pub fn scale(self, real: SimulationDuration) -> SimulationDuration {
+        SimulationDuration {
+            seconds: real.seconds * self.multiplier,
+        }
     }
 
     pub fn is_valid(self) -> bool {

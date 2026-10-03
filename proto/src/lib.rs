@@ -1,5 +1,6 @@
 pub mod connection;
-pub mod frame;
-pub mod messages;
+pub mod event;
+pub mod frame_stream;
+pub mod message;
 pub mod network;
 pub mod session;

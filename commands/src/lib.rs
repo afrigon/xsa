@@ -1,13 +1,8 @@
 pub mod command;
 pub mod completion;
-#[cfg(feature = "client")]
-pub mod distance;
-pub mod duration;
 pub mod ipc;
 pub mod repl;
 pub mod router;
-#[cfg(feature = "client")]
-pub mod target;
 pub mod terminal;
-pub mod timestamp;
+pub mod value;
 pub mod words;

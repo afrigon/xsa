@@ -3,9 +3,10 @@ use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, ensure};
+use bitcode::{Decode, Encode};
 
-use crate::SECONDS_PER_DAY;
 use crate::civil_date::CivilDate;
+use crate::{SECONDS_PER_DAY, SimulationDuration};
 
 const UNIX_EPOCH_SECONDS_SINCE_J2000: f64 = -946_728_000.0;
 const SECONDS_PER_HOUR: f64 = 3_600.0;
@@ -14,7 +15,7 @@ const MILLISECONDS_PER_SECOND: i64 = 1_000;
 
 // Seconds since J2000.0 (2000-01-01T12:00:00Z). UTC is treated as the simulation's time scale; the TT/UTC offset of
 // about a minute is ignored.
-#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd)]
+#[derive(Encode, Decode, Debug, Clone, Copy, Default, PartialEq, PartialOrd)]
 pub struct SimulationTime {
     pub seconds: f64,
 }
@@ -36,10 +37,14 @@ impl SimulationTime {
         self.seconds - earlier.seconds
     }
 
-    pub fn advanced_by(self, seconds: f64) -> SimulationTime {
+    pub fn advanced_by(self, duration: SimulationDuration) -> SimulationTime {
         SimulationTime {
-            seconds: self.seconds + seconds,
+            seconds: self.seconds + duration.seconds,
         }
+    }
+
+    pub fn is_valid(self) -> bool {
+        self.seconds.is_finite()
     }
 
     fn from_seconds_since_unix_epoch(seconds: f64) -> SimulationTime {

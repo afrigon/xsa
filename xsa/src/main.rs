@@ -8,9 +8,9 @@ use anyhow::Context;
 use usage::complete::Shell;
 use usage::spec::{Candidate, CompleteCtx};
 use usage::{Args, Cli, Subcommands};
-use xsa_commands::{completion, ipc};
-use xsa_server::WorldOptions;
-use xsa_server::dedicated::{self, DedicatedOptions};
+use xsa_commands::completion::Completions;
+use xsa_commands::ipc::IpcClient;
+use xsa_server::{DedicatedOptions, DedicatedServer, WorldOptions};
 
 #[derive(Cli)]
 #[usage(
@@ -141,13 +141,14 @@ fn main() -> anyhow::Result<()> {
     match Arguments::parse().command {
         #[cfg(feature = "client")]
         Command::Client(arguments) => run_client(arguments),
-        Command::Server(arguments) => dedicated::run(DedicatedOptions {
+        Command::Server(arguments) => DedicatedServer::new(DedicatedOptions {
             instance: arguments.instance,
             host: arguments.host,
             port: arguments.port,
             identity: arguments.identity,
             world: arguments.world.into_options(),
-        }),
+        })
+        .run(),
         Command::Ipc(arguments) => run_ipc(arguments),
         Command::Completion(arguments) => {
             let shell = Shell::from_name(&arguments.shell).context("unsupported shell")?;
@@ -158,7 +159,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn complete_instances<Partial>(_partial: &Partial, _context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
-    ipc::list()
+    IpcClient::list()
         .unwrap_or_default()
         .into_iter()
         .map(Candidate::new)
@@ -182,8 +183,9 @@ fn complete_ipc_words<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) ->
         line.push(' ');
     }
     line.push_str(context.prefix);
-    let completions = ipc::complete(instance.as_deref(), line.clone(), line.len())
-        .unwrap_or_else(|_| completion::complete(&line, line.len(), |_| Vec::new()));
+    let completions = IpcClient::new(instance)
+        .complete(line.clone(), line.len())
+        .unwrap_or_else(|_| Completions::compute(&line, line.len(), |_| Vec::new()));
     completions
         .candidates
         .into_iter()
@@ -196,13 +198,13 @@ fn complete_ipc_words<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) ->
 
 fn run_ipc(arguments: IpcArguments) -> anyhow::Result<()> {
     if arguments.list {
-        for instance in ipc::list()? {
+        for instance in IpcClient::list()? {
             println!("{instance}");
         }
         return Ok(());
     }
     anyhow::ensure!(!arguments.words.is_empty(), "give a command to send, or --list");
-    let output = ipc::send(arguments.instance.as_deref(), arguments.words)?;
+    let output = IpcClient::new(arguments.instance).send(arguments.words)?;
     println!("{}", output.text.trim_end());
     if !output.succeeded {
         std::process::exit(1);

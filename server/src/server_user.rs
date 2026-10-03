@@ -1,10 +1,10 @@
 use tokio::sync::mpsc::UnboundedReceiver;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
 use xsa_proto::connection::Connection;
-use xsa_proto::messages::{ClientMessage, Role};
+use xsa_proto::message::{ClientMessage, Join, Role};
 use xsa_proto::session::ServerSession;
 
-struct ServerUser {
+pub(crate) struct ServerUser {
     session: ServerSession,
     exit_requested: bool,
 }
@@ -19,24 +19,29 @@ impl CommandExecutor for ServerUser {
     }
 }
 
-pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<CommandInvocation>) -> anyhow::Result<()> {
-    let mut user = ServerUser {
-        session: ServerSession::new(connection),
-        exit_requested: false,
-    };
-    user.session.send(ClientMessage::Join { role: Role::Server })?;
-    let mut router = CommandRouter::default();
-    let mut invocations_open = true;
-    while !user.exit_requested {
-        tokio::select! {
-            event = user.session.receive() => router.handle_event(&event?, &user.session),
-            invocation = invocations.recv(), if invocations_open && user.session.state().is_some() => match invocation {
-                Some(invocation) => router.handle(invocation, &mut user),
-                None => invocations_open = false,
-            },
+impl ServerUser {
+    pub async fn run(
+        connection: Connection,
+        mut invocations: UnboundedReceiver<CommandInvocation>,
+    ) -> anyhow::Result<()> {
+        let mut user = ServerUser {
+            session: ServerSession::new(connection),
+            exit_requested: false,
+        };
+        user.session.send(ClientMessage::Join(Join { role: Role::Server }))?;
+        let mut router = CommandRouter::default();
+        let mut invocations_open = true;
+        while !user.exit_requested {
+            tokio::select! {
+                event = user.session.receive() => router.handle_event(&event?, &user.session),
+                invocation = invocations.recv(), if invocations_open && user.session.state().is_some() => match invocation {
+                    Some(invocation) => router.handle(invocation, &mut user),
+                    None => invocations_open = false,
+                },
+            }
         }
+        Ok(())
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -48,7 +53,7 @@ mod tests {
     use xsa_commands::router::{CommandExecution, Output};
 
     use super::*;
-    use crate::{World, WorldOptions, start_local};
+    use crate::{Server, World, WorldOptions};
 
     async fn invoke(invocations: &UnboundedSender<CommandInvocation>, line: &str) -> Output {
         let (reply, receiver) = oneshot::channel();
@@ -71,9 +76,9 @@ mod tests {
             simulation: None,
         })
         .unwrap();
-        let connection = start_local(world).unwrap();
+        let connection = Server::start_local(world).unwrap();
         let (invocations, receiver) = unbounded_channel();
-        let server_user = tokio::spawn(run(connection, receiver));
+        let server_user = tokio::spawn(ServerUser::run(connection, receiver));
 
         let rate = invoke(&invocations, "time rate 5").await;
         assert!(rate.succeeded && rate.text.contains("rate 5×"), "{rate:?}");

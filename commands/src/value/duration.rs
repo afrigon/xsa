@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use xsa_units::TICK_RATE_HERTZ;
+use xsa_units::SimulationDuration;
 
 struct TimeUnit {
     suffix: &'static str,
@@ -29,10 +29,10 @@ pub enum Duration {
 }
 
 impl Duration {
-    pub fn seconds(self) -> f64 {
+    pub fn duration(self) -> SimulationDuration {
         match self {
-            Duration::Seconds { seconds } => seconds,
-            Duration::Ticks { ticks } => ticks as f64 / TICK_RATE_HERTZ,
+            Duration::Seconds { seconds } => SimulationDuration { seconds },
+            Duration::Ticks { ticks } => SimulationDuration::from_ticks(ticks),
         }
     }
 }
@@ -62,21 +62,27 @@ impl FromStr for Duration {
 
 #[cfg(test)]
 mod tests {
+    use xsa_units::TICK_RATE_HERTZ;
+
     use super::*;
+
+    fn seconds(text: &str) -> f64 {
+        text.parse::<Duration>().unwrap().duration().seconds
+    }
 
     #[test]
     fn units_convert_to_seconds() {
-        assert_eq!("10s".parse::<Duration>().unwrap().seconds(), 10.0);
-        assert_eq!("1.5min".parse::<Duration>().unwrap().seconds(), 90.0);
-        assert_eq!("2h".parse::<Duration>().unwrap().seconds(), 7_200.0);
-        assert_eq!("1e3s".parse::<Duration>().unwrap().seconds(), 1_000.0);
+        assert_eq!(seconds("10s"), 10.0);
+        assert_eq!(seconds("1.5min"), 90.0);
+        assert_eq!(seconds("2h"), 7_200.0);
+        assert_eq!(seconds("1e3s"), 1_000.0);
     }
 
     #[test]
     fn ticks_follow_the_tick_rate() {
         let duration: Duration = "60t".parse().unwrap();
         assert_eq!(duration, Duration::Ticks { ticks: 60 });
-        assert_eq!(duration.seconds(), 60.0 / TICK_RATE_HERTZ);
+        assert_eq!(duration.duration().seconds, 60.0 / TICK_RATE_HERTZ);
     }
 
     #[test]

@@ -1,7 +1,9 @@
 mod civil_date;
+mod simulation_duration;
 mod simulation_time;
 mod time_rate;
 
+pub use simulation_duration::SimulationDuration;
 pub use simulation_time::SimulationTime;
 pub use time_rate::TimeRate;
 

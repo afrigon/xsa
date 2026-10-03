@@ -8,7 +8,7 @@ client = []
 
 [dependencies]
 anyhow.workspace = true
-bitcode = "0.6.9"
+bitcode.workspace = true
 rustyline = { version = "18.0.1", features = ["derive"] }
 shlex = "2.0.1"
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "sync"] }
