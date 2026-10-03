@@ -50,3 +50,23 @@ them into `assets/`, next to their license or credit file.
 - **License:** MIT, Copyright (c) 2022 Niako
 - **Local copy:** ported into `data/base/base/resources/shaders/common/hapke.slang`;
   the license text ships with the base pack in `data/base/LICENSE`
+
+## Inter 4.1
+
+- **Source:** [rsms/inter](https://github.com/rsms/inter/releases/tag/v4.1) —
+  `Inter-4.1.zip`, `InterVariable.ttf`
+- **License:** SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project
+  Authors; no Reserved Font Name
+- **Local copy:** placed by hand at
+  `data/base/base/resources/fonts/inter/inter-variable.ttf`; the license text
+  ships with the base pack in `data/base/LICENSE`
+
+## JetBrains Mono 2.304
+
+- **Source:** [JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304) —
+  `JetBrainsMono-2.304.zip`, `fonts/variable/JetBrainsMono[wght].ttf`
+- **License:** SIL Open Font License 1.1, Copyright 2020 The JetBrains Mono
+  Project Authors; no Reserved Font Name
+- **Local copy:** placed by hand at
+  `data/base/base/resources/fonts/jetbrains-mono/jetbrains-mono-variable.ttf`;
+  the license text ships with the base pack in `data/base/LICENSE`

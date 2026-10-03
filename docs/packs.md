@@ -34,6 +34,7 @@ data/<pack>/
       materials/                            shader and its parameters
       shaders/                              SPIR-V shaders (base only, see below)
       textures/  models/  sounds/  fonts/   shared assets, organized freely
+      theme/                                design system: colors, roles, typefaces, text styles
       lang/                                 localization files (reserved)
 ```
 
@@ -284,16 +285,97 @@ exactly as stored; whether a texture is sRGB or linear comes from how it is
 used. Folders are organized by subject for people; a texture's purpose is
 declared by whatever references it.
 
+### Fonts — `<namespace>/resources/fonts/`
+
+TrueType files, preferably variable fonts (one file covering every weight).
+A font is a plain asset referenced by id (`inter/inter-variable`); what it is
+used for is declared by the typefaces that list it. The base pack's fonts are
+not downloaded by any task: place them by hand from the sources listed in
+`LICENSES.md`.
+
+### Theme — `base/resources/theme/`
+
+The interface's design system. Every file is read from the `base` namespace
+and can be overridden by another pack like any other file. Color roles,
+typefaces and text styles are open sets keyed by id: a pack adds its own
+(`my-pack:highlight`), and the base game uses them only where they override a
+base file.
+
+**Colors** — `theme/colors/<hue>.kdl`: one hue of the palette, every tint from
+100 (lightest) to 1000 (darkest) as an sRGB color.
+
+```kdl
+tint 100 "#FFF7D6"
+tint 200 "#F8E6A0"
+// … through 1000
+```
+
+A color is referenced as a hue and a tint: `"yellow" 500`. Colors are opaque;
+transparency comes from the interface's opacity, never from the palette.
+
+**Themed colors.** Every color the interface uses has a variant per color
+scheme, chosen at runtime by the interface's environment: `light`, `dark`,
+`light-increased-contrast` and `dark-increased-contrast`. Writing only a color
+sets `light`, and the rest are derived: `dark` is the mirrored tint (100 ↔
+1000, 500 ↔ 600), `light-increased-contrast` is one tint lighter and
+`dark-increased-contrast` one tint darker than `dark`. A block sets variants
+explicitly; `light` is required.
+
+```kdl
+default {
+    light "gray" 100
+    dark "gray" 800
+}
+```
+
+**Color roles** — `theme/color-roles/<role>.kdl`: the colors for one meaning
+(`warning`, `critical`, …). `emphasis` and `muted` are required;
+`foreground` and `border-emphasis` default to `emphasis`, `border-muted` to
+`muted`.
+
+```kdl
+emphasis "yellow" 500
+muted "yellow" 100
+border-emphasis "yellow" 600
+border-muted "yellow" 200
+```
+
+**Surfaces** — `theme/surfaces/`: the colors shared by every role.
+`foreground.kdl` sets `default`, `muted`, `on-emphasis`, `disabled` and
+`link`; `background.kdl` sets `default`, `emphasis`, `muted`, `disabled` and
+`inverse`; `border.kdl` sets `default`, `emphasis`, `muted` and `disabled`.
+
+**Typefaces** — `theme/typefaces/<typeface>.kdl`: the font files of one
+typeface, by role rather than by family, so a pack changes the interface's
+font by overriding one file. The base pack defines `text` and `code`
+(monospace).
+
+```kdl
+font "inter/inter-variable"
+```
+
+**Text styles** — `theme/text-styles/<style>.kdl`: a typeface with its size
+(logical pixels, before the interface scale), weight (100–900), and optional
+`letter-spacing` (em), `case` (`upper` or `lower`) and OpenType `features`.
+
+```kdl
+typeface "text"
+size 15
+weight 500
+features "tnum" "zero"
+```
+
 ## Formats
 
 - **Definitions:** KDL v2.
 - **Textures:** DDS, never re-encoded at load, so no quality is lost.
+- **Fonts:** TrueType (`.ttf`).
 - **3D models:** glTF 2.0 where a source offers it; other formats as needed by
   the models available.
 
 ## Not part of the first version
 
-Parts, custom shaders, effects (plumes, explosions, particles), sounds, fonts,
+Parts, custom shaders, effects (plumes, explosions, particles), sounds,
 localization and UI layouts. Their directories are reserved so packs can grow
 into them without a format change.
 
