@@ -80,7 +80,7 @@ impl BloomPass {
 
 impl RenderPass for BloomPass {
     fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
-        if !frame.settings.bloom_enabled {
+        if !frame.render.bloom.enabled {
             return Ok(());
         }
 

@@ -25,6 +25,7 @@ use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
 
 use crate::camera::CameraMode;
+use crate::config::Config;
 use crate::input::Input;
 use crate::renderer::{Renderer, ShaderBinaries};
 use camera_controller::CameraController;
@@ -48,6 +49,7 @@ pub struct App {
     input: Input,
     cameras: CameraController,
     keybinds: Keybinds,
+    config: Config,
     mouse_captured: bool,
     last_frame: Option<Instant>,
 }
@@ -71,6 +73,7 @@ impl App {
             input: Input::default(),
             cameras: CameraController::new(),
             keybinds: Keybinds,
+            config: Config::default(),
             mouse_captured: false,
             last_frame: None,
         }
@@ -84,7 +87,7 @@ impl App {
         let window = event_loop.create_window(App::window_attributes())?;
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
         let shaders = ShaderBinaries::load(&base)?;
-        self.renderer = Some(Renderer::new(&window, &shaders)?);
+        self.renderer = Some(Renderer::new(&window, &shaders, &self.config)?);
         window.request_redraw();
         self.window = Some(window);
 
@@ -159,6 +162,7 @@ impl App {
         let world = ClientWorld::load(&self.packs_directory, state, renderer)?;
         self.cameras.focus(&world);
         self.world = Some(world);
+        self.apply_config();
 
         Ok(())
     }
@@ -182,10 +186,24 @@ impl App {
             self.set_mouse_captured(captured);
         }
 
-        if let Some(renderer) = &mut self.renderer {
-            let skybox = self.world.as_ref().and_then(ClientWorld::skybox);
-            self.keybinds.poll(&self.input, renderer, skybox);
+        let supports_wireframe = self.renderer.as_ref().is_some_and(Renderer::supports_wireframe);
+
+        if self
+            .keybinds
+            .poll_config_changes(&self.input, &mut self.config, supports_wireframe)
+        {
+            self.apply_config();
         }
+    }
+
+    fn apply_config(&mut self) {
+        let Some(renderer) = &mut self.renderer else {
+            return;
+        };
+
+        renderer.configure(&self.config.render, &self.config.debug);
+        let skybox = self.world.as_ref().and_then(ClientWorld::skybox);
+        renderer.scene_mut().skybox = if self.config.render.stars { skybox } else { None };
     }
 
     fn draw(&mut self) -> anyhow::Result<()> {

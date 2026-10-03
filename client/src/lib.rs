@@ -1,6 +1,7 @@
 mod app;
 mod camera;
 mod client_options;
+mod config;
 mod game_client;
 mod input;
 mod mesh;
