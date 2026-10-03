@@ -31,6 +31,7 @@ impl ServerUser {
         user.session.send(ClientMessage::Join(Join { role: Role::Server }))?;
         let mut router = CommandRouter::default();
         let mut invocations_open = true;
+
         while !user.exit_requested {
             tokio::select! {
                 event = user.session.receive() => router.handle_event(&event?, &user.session),
@@ -40,6 +41,7 @@ impl ServerUser {
                 },
             }
         }
+
         Ok(())
     }
 }

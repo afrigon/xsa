@@ -22,9 +22,11 @@ impl PackStack {
     pub fn load(directory: &Path, pack_ids: &[String]) -> anyhow::Result<PackStack> {
         let mut manifests: Vec<Manifest> = Vec::new();
         let mut files = HashMap::new();
+
         for pack_id in pack_ids {
             let pack_directory = directory.join(pack_id);
             let manifest = Manifest::read(&pack_directory, pack_id)?;
+
             for dependency in &manifest.dependencies {
                 let Some(loaded) = manifests.iter().find(|loaded| loaded.id == dependency.pack) else {
                     bail!(
@@ -32,6 +34,7 @@ impl PackStack {
                         dependency.pack
                     );
                 };
+
                 if !dependency.requirement.matches(&loaded.version) {
                     bail!(
                         "pack {pack_id} needs {} {}, but {} is loaded",
@@ -41,9 +44,11 @@ impl PackStack {
                     );
                 }
             }
+
             PackStack::index_pack(&pack_directory, &mut files)?;
             manifests.push(manifest);
         }
+
         Ok(PackStack { manifests, files })
     }
 
@@ -101,14 +106,17 @@ impl PackStack {
     fn index_pack(pack_directory: &Path, files: &mut HashMap<String, PathBuf>) -> anyhow::Result<()> {
         for entry in fs::read_dir(pack_directory).with_context(|| format!("reading {}", pack_directory.display()))? {
             let namespace_directory = entry?.path();
+
             if !namespace_directory.is_dir() {
                 continue;
             }
+
             let namespace = namespace_directory
                 .file_name()
                 .expect("directory entries have a name")
                 .to_string_lossy()
                 .into_owned();
+
             for section in [DATA_DIRECTORY, RESOURCES_DIRECTORY] {
                 let section_directory = namespace_directory.join(section);
                 PackStack::index_directory(
@@ -119,6 +127,7 @@ impl PackStack {
                 )?;
             }
         }
+
         Ok(())
     }
 
@@ -131,12 +140,15 @@ impl PackStack {
         if !directory.is_dir() {
             return Ok(());
         }
+
         for entry in fs::read_dir(directory).with_context(|| format!("reading {}", directory.display()))? {
             let path = entry?.path();
+
             if path.is_dir() {
                 PackStack::index_directory(section_directory, &path, key_prefix, files)?;
                 continue;
             }
+
             let relative = path
                 .strip_prefix(section_directory)
                 .expect("indexed files are inside their section");
@@ -147,6 +159,7 @@ impl PackStack {
                 .join("/");
             files.insert(format!("{key_prefix}/{relative}"), path);
         }
+
         Ok(())
     }
 }

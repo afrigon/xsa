@@ -30,14 +30,18 @@ impl IpcArguments {
             for instance in IpcClient::list()? {
                 println!("{instance}");
             }
+
             return Ok(());
         }
+
         anyhow::ensure!(!self.words.is_empty(), "give a command to send, or --list");
         let output = IpcClient::new(self.instance).send(self.words)?;
         println!("{}", output.text.trim_end());
+
         if !output.succeeded {
             std::process::exit(1);
         }
+
         Ok(())
     }
 }
@@ -56,6 +60,7 @@ fn complete_ipc_words<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) ->
     let mut instance = std::env::var("XSA_INSTANCE").ok();
     let mut words = Vec::new();
     let mut given = context.command_words.iter();
+
     while let Some(word) = given.next() {
         match word.as_str() {
             "--instance" if words.is_empty() => instance = given.next().cloned(),
@@ -63,10 +68,13 @@ fn complete_ipc_words<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) ->
             word => words.push(word.to_string()),
         }
     }
+
     let mut line = shlex::try_join(words.iter().map(String::as_str)).unwrap_or_default();
+
     if !line.is_empty() {
         line.push(' ');
     }
+
     line.push_str(context.prefix);
     let completions = IpcClient::new(instance)
         .complete(line.clone(), line.len())

@@ -29,10 +29,12 @@ pub async fn serve(name: String, invocations: UnboundedSender<CommandInvocation>
         }
     };
     let _ = bound.send(Ok(IpcEndpoint {}));
+
     loop {
         if server.connect().await.is_err() {
             return;
         }
+
         let connected = server;
         server = match ServerOptions::new().create(&path) {
             Ok(server) => server,

@@ -66,14 +66,17 @@ fn eccentric_anomaly(mean_anomaly: f64, eccentricity: f64) -> f64 {
     } else {
         PI
     };
+
     for _ in 0..KEPLER_MAXIMUM_ITERATIONS {
         let correction = (eccentric_anomaly - eccentricity * eccentric_anomaly.sin() - mean_anomaly)
             / (1.0 - eccentricity * eccentric_anomaly.cos());
         eccentric_anomaly -= correction;
+
         if correction.abs() < KEPLER_TOLERANCE {
             break;
         }
     }
+
     eccentric_anomaly
 }
 

@@ -64,11 +64,13 @@ impl AutoExposure {
 
     pub fn toggle(&mut self) -> bool {
         self.enabled = !self.enabled;
+
         if self.enabled {
             self.ev100 = self.manual_ev100;
         } else {
             self.manual_ev100 = self.ev100;
         }
+
         self.enabled
     }
 
@@ -85,9 +87,11 @@ impl AutoExposure {
         let now = Instant::now();
         let elapsed = self.last_update.map(|last| now.duration_since(last).as_secs_f32());
         self.last_update = Some(now);
+
         if !self.enabled {
             return;
         }
+
         let target = Metering::from_histogram(histogram).target_ev100() - self.compensation;
         self.ev100 = match elapsed {
             Some(seconds) => AutoExposure::adapt(self.ev100, target, seconds),

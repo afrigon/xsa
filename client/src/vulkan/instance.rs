@@ -28,6 +28,7 @@ impl Instance {
             .map(|name| name.as_ptr())
             .collect();
         let mut layers = Vec::new();
+
         if validation {
             extensions.push(debug_utils::NAME.as_ptr());
             layers.push(VALIDATION_LAYER.as_ptr());
@@ -47,9 +48,11 @@ impl Instance {
             instance,
             debug_messenger: None,
         };
+
         if validation {
             vulkan.debug_messenger = Some(DebugMessenger::new(&vulkan.entry, &vulkan.instance)?);
         }
+
         Ok(vulkan)
     }
 
@@ -79,6 +82,7 @@ impl Drop for Instance {
             if let Some(debug_messenger) = &self.debug_messenger {
                 debug_messenger.destroy();
             }
+
             self.instance.destroy_instance(None);
         }
     }

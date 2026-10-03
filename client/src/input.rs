@@ -22,11 +22,13 @@ impl Input {
         let PhysicalKey::Code(key) = event.physical_key else {
             return;
         };
+
         match event.state {
             ElementState::Pressed => {
                 if !event.repeat {
                     self.pressed_keys.insert(key);
                 }
+
                 self.held_keys.insert(key);
             }
             ElementState::Released => {

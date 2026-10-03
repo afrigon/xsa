@@ -64,6 +64,7 @@ fn moon_is_beside_the_sun_at_the_january_2026_new_moon() {
 #[test]
 fn moon_stays_within_its_real_distance_range() {
     let simulation = load();
+
     for day in 1..=28 {
         let positions = positions_at(&simulation, &format!("2026-02-{day:02}T00:00:00Z"));
         let distance = positions.moon.distance(positions.earth) / 1000.0;
@@ -159,6 +160,7 @@ fn bodies_match_horizons_on_2026_10_01() {
         };
         state.body(simulation.find_body(&id).unwrap()).position
     };
+
     for reference in &HORIZONS_2026_10_01 {
         let actual = position(reference.body) - position(reference.parent);
         let expected = glam::DVec3::from_array(reference.kilometers) * 1000.0;

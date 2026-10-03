@@ -70,10 +70,12 @@ impl Image {
 
     pub unsafe fn destroy(&mut self, device: &Device, allocator: &mut Allocator) {
         let device = device.handle();
+
         unsafe {
             device.destroy_image_view(self.view, None);
             device.destroy_image(self.image, None);
         }
+
         if let Some(allocation) = self.allocation.take() {
             allocator.free(allocation);
         }

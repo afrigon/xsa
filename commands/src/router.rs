@@ -171,6 +171,7 @@ mod tests {
 
         fn deliver(&mut self, event: ServerEvent) {
             self.link.events.send(event).unwrap();
+
             while let Some(event) = self.executor.session.poll().unwrap() {
                 self.router.handle_event(&event, &self.executor.session);
             }
@@ -267,6 +268,7 @@ mod tests {
                 }),
             },
         ];
+
         for case in cases {
             harness.invoke(case.line);
             assert_eq!(harness.sent().message, case.message, "{}", case.line);

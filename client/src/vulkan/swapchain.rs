@@ -60,6 +60,7 @@ impl Swapchain {
         };
 
         let mut image_count = capabilities.min_image_count + 1;
+
         if capabilities.max_image_count > 0 {
             image_count = image_count.min(capabilities.max_image_count);
         }
@@ -86,6 +87,7 @@ impl Swapchain {
 
         let mut image_views = Vec::with_capacity(images.len());
         let mut render_finished = Vec::with_capacity(images.len());
+
         for &image in &images {
             let view_info = vk::ImageViewCreateInfo::default()
                 .image(image)
@@ -142,13 +144,16 @@ impl Swapchain {
 
     pub unsafe fn destroy(&mut self, device: &Device) {
         let device = device.handle();
+
         unsafe {
             for &semaphore in &self.render_finished {
                 device.destroy_semaphore(semaphore, None);
             }
+
             for &image_view in &self.image_views {
                 device.destroy_image_view(image_view, None);
             }
+
             self.loader.destroy_swapchain(self.swapchain, None);
         }
     }

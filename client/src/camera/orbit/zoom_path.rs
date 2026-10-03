@@ -24,6 +24,7 @@ impl ZoomPath {
             shape: ZoomPathShape::ZoomOnly,
             length: (end.distance / start.distance).ln() / curvature,
         };
+
         if travel >= f64::EPSILON * start.distance {
             let squares = end.distance * end.distance - start.distance * start.distance;
             let pan = curvature_squared * curvature_squared * travel * travel;
@@ -34,11 +35,13 @@ impl ZoomPath {
             path.shape = ZoomPathShape::Arc { start_angle, travel };
             path.length = (end_angle - start_angle) / curvature;
         }
+
         path
     }
 
     pub fn at(&self, progress: f64) -> ViewPoint {
         let position = progress * self.length;
+
         match self.shape {
             ZoomPathShape::ZoomOnly => ViewPoint {
                 focus: self.start.focus + self.offset * progress,

@@ -56,6 +56,7 @@ impl Mesh {
 
         for face in CUBE_FACES {
             let first_vertex = vertices.len() as u32;
+
             for row in 0..points_per_side {
                 for column in 0..points_per_side {
                     let u = column as f32 / subdivisions as f32 * 2.0 - 1.0;
@@ -67,6 +68,7 @@ impl Mesh {
                     });
                 }
             }
+
             for row in 0..subdivisions {
                 for column in 0..subdivisions {
                     let corner = first_vertex + row * points_per_side + column;

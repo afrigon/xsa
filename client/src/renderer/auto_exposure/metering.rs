@@ -15,9 +15,11 @@ impl Metering {
     pub fn from_histogram(histogram: &[u32]) -> Metering {
         let total: u64 = histogram.iter().map(|&count| u64::from(count)).sum();
         let mut metering = Metering::default();
+
         if total == 0 {
             return metering;
         }
+
         let first_lit = (1..HISTOGRAM_BINS)
             .find(|&bin| Metering::bin_luminance(bin) >= LIT_FLOOR_LUMINANCE)
             .unwrap_or(HISTOGRAM_BINS);
@@ -33,6 +35,7 @@ impl Metering {
 
         let lit: u64 = histogram[lit_bins.clone()].iter().map(|&count| u64::from(count)).sum();
         let lit_fraction = lit as f32 / total as f32;
+
         if lit == 0 || lit_fraction < HIGHLIGHT_MINIMUM_LIT_FRACTION {
             return metering;
         }
@@ -50,6 +53,7 @@ impl Metering {
                 .sum();
             metering.average = Some((weighted_log / lit as f64).exp2() as f32);
         }
+
         metering
     }
 
@@ -96,6 +100,7 @@ mod tests {
 
     fn histogram(pixels: &[Pixels]) -> Vec<u32> {
         let mut bins = vec![0; HISTOGRAM_BINS];
+
         for group in pixels {
             let bin = if group.luminance > 0.0 {
                 bin_of(group.luminance)
@@ -104,6 +109,7 @@ mod tests {
             };
             bins[bin] += group.count;
         }
+
         bins
     }
 

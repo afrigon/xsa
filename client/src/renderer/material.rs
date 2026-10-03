@@ -68,6 +68,7 @@ impl Material {
             },
         };
         let index = |texture: Option<TextureHandle>| texture.map_or(NO_TEXTURE, TextureHandle::index);
+
         match *self {
             Material::Lit { base_color } => data.color = base_color.extend(1.0),
             Material::Planet {
@@ -81,6 +82,7 @@ impl Material {
                 data.normal_texture = index(normal);
                 data.emissive_texture = index(emissive);
                 data.luminance = emissive_luminance;
+
                 if let Some(hapke) = hapke {
                     data.hapke = HapkeData {
                         scatter_texture: hapke.scatter.index(),
@@ -105,6 +107,7 @@ impl Material {
                 data.luminance = luminance;
             }
         }
+
         data
     }
 }

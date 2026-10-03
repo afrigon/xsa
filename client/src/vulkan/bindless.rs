@@ -232,6 +232,7 @@ impl BindlessTextures {
 
     pub unsafe fn destroy(&mut self, device: &Device) {
         let device = device.handle();
+
         unsafe {
             device.destroy_descriptor_pool(self.pool, None);
             device.destroy_descriptor_set_layout(self.layout, None);

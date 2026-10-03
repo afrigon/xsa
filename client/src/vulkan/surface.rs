@@ -48,6 +48,7 @@ impl Surface {
                     .display(display.display.as_ptr())
                     .surface(window.surface.as_ptr());
                 let loader = khr::wayland_surface::Instance::new(entry, instance);
+
                 unsafe { loader.create_wayland_surface(&create_info, None) }
             }
             RawWindowHandle::Xlib(window) => {
@@ -61,6 +62,7 @@ impl Surface {
                     .dpy(connection.as_ptr())
                     .window(window.window);
                 let loader = khr::xlib_surface::Instance::new(entry, instance);
+
                 unsafe { loader.create_xlib_surface(&create_info, None) }
             }
             RawWindowHandle::Xcb(window) => {
@@ -74,6 +76,7 @@ impl Surface {
                     .connection(connection.as_ptr())
                     .window(window.window.get());
                 let loader = khr::xcb_surface::Instance::new(entry, instance);
+
                 unsafe { loader.create_xcb_surface(&create_info, None) }
             }
             RawWindowHandle::Win32(window) => {
@@ -81,6 +84,7 @@ impl Surface {
                     .hwnd(window.hwnd.get())
                     .hinstance(window.hinstance.map_or(0, |hinstance| hinstance.get()));
                 let loader = khr::win32_surface::Instance::new(entry, instance);
+
                 unsafe { loader.create_win32_surface(&create_info, None) }
             }
             other => bail!("unsupported window system: {other:?}"),

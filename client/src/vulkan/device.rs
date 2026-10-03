@@ -30,9 +30,11 @@ impl Device {
             .queue_priorities(&queue_priorities)];
         let supports_polygon_mode = Device::supports_dynamic_polygon_mode(instance.handle(), physical_device)?;
         let mut extensions = vec![khr::swapchain::NAME.as_ptr()];
+
         if supports_polygon_mode {
             extensions.push(ext::extended_dynamic_state3::NAME.as_ptr());
         }
+
         let features = vk::PhysicalDeviceFeatures::default()
             .fill_mode_non_solid(true)
             .geometry_shader(true)
@@ -58,9 +60,11 @@ impl Device {
             .push_next(&mut vulkan_11_features)
             .push_next(&mut vulkan_12_features)
             .push_next(&mut vulkan_13_features);
+
         if supports_polygon_mode {
             create_info = create_info.push_next(&mut extended_dynamic_state3_features);
         }
+
         let device = unsafe { instance.handle().create_device(physical_device, &create_info, None) }
             .context("creating the Vulkan device")?;
         let queue = unsafe { device.get_device_queue(queue_family, 0) };
@@ -112,9 +116,11 @@ impl Device {
         let has_extension = extensions
             .iter()
             .any(|extension| extension.extension_name_as_c_str() == Ok(ext::extended_dynamic_state3::NAME));
+
         if !has_extension {
             return Ok(false);
         }
+
         let mut extended_dynamic_state3_features = vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT::default();
         let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut extended_dynamic_state3_features);
         unsafe { instance.get_physical_device_features2(physical_device, &mut features) };

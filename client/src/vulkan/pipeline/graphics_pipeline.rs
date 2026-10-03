@@ -32,6 +32,7 @@ impl GraphicsPipeline {
 
     pub unsafe fn destroy(&mut self, device: &Device) {
         let device = device.handle();
+
         unsafe {
             device.destroy_pipeline(self.pipeline, None);
             device.destroy_pipeline_layout(self.layout, None);
@@ -48,9 +49,11 @@ impl GraphicsPipeline {
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .size(description.push_constant_size)];
         let mut layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(description.descriptor_set_layouts);
+
         if description.push_constant_size > 0 {
             layout_info = layout_info.push_constant_ranges(&push_constant_ranges);
         }
+
         let layout = unsafe { device.create_pipeline_layout(&layout_info, None) }?;
 
         let stages = [
@@ -89,9 +92,11 @@ impl GraphicsPipeline {
             .alpha_blend_op(vk::BlendOp::ADD)];
         let color_blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
         let mut dynamic_states = vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+
         if dynamic_polygon_mode {
             dynamic_states.push(vk::DynamicState::POLYGON_MODE_EXT);
         }
+
         let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
         let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(description.depth_format.is_some())
@@ -115,6 +120,7 @@ impl GraphicsPipeline {
             .layout(layout)
             .push_next(&mut rendering);
         let pipelines = unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None) };
+
         match pipelines {
             Ok(pipelines) => Ok(GraphicsPipeline {
                 pipeline: pipelines[0],

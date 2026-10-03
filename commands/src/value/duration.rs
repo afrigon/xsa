@@ -42,18 +42,22 @@ impl FromStr for Duration {
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         let invalid = || format!("{text:?} is not a duration like 10s, 5min, 2h or 60t (ticks)");
+
         if let Some(ticks) = text.strip_suffix('t') {
             let ticks = ticks.parse().map_err(|_| invalid())?;
             return Ok(Duration::Ticks { ticks });
         }
+
         let unit = TIME_UNITS
             .iter()
             .find(|unit| text.ends_with(unit.suffix))
             .ok_or_else(invalid)?;
         let value: f64 = text[..text.len() - unit.suffix.len()].parse().map_err(|_| invalid())?;
+
         if !value.is_finite() {
             return Err(invalid());
         }
+
         Ok(Duration::Seconds {
             seconds: value * unit.seconds,
         })

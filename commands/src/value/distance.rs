@@ -41,9 +41,11 @@ impl FromStr for Distance {
         let number = unit.map_or(text, |unit| &text[..text.len() - unit.suffix.len()]);
         let scale = unit.map_or(METERS_PER_KILOMETER, |unit| unit.meters);
         let value: f64 = number.parse().map_err(|_| invalid())?;
+
         if !(value.is_finite() && value > 0.0) {
             return Err(invalid());
         }
+
         Ok(Distance { meters: value * scale })
     }
 }

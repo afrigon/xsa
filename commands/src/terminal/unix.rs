@@ -10,9 +10,11 @@ pub struct SavedMode {
 
 pub fn capture() -> Option<SavedMode> {
     let stdin = io::stdin();
+
     if !stdin.is_terminal() {
         return None;
     }
+
     termios::tcgetattr(&stdin).ok().map(|termios| SavedMode { termios })
 }
 

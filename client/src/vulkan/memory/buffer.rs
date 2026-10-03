@@ -100,6 +100,7 @@ impl Buffer {
 
     pub unsafe fn destroy(&mut self, device: &Device, allocator: &mut Allocator) {
         unsafe { device.handle().destroy_buffer(self.buffer, None) };
+
         if let Some(allocation) = self.allocation.take() {
             allocator.free(allocation);
         }

@@ -118,6 +118,7 @@ impl OrbitCamera {
             self.yaw -= mouse_delta.x * MOUSE_SENSITIVITY;
             self.pitch = (self.pitch - mouse_delta.y * MOUSE_SENSITIVITY).clamp(-PITCH_LIMIT, PITCH_LIMIT);
         }
+
         self.distance = (self.distance / ZOOM_FACTOR_PER_SCROLL_STEP.powf(input.scroll_steps()))
             .clamp(target.radius + MINIMUM_ALTITUDE, MAXIMUM_DISTANCE);
 
@@ -138,6 +139,7 @@ impl OrbitCamera {
                 distance: self.distance,
             },
         };
+
         if self
             .transition
             .as_ref()

@@ -41,6 +41,7 @@ impl ComputePipeline {
         let create_info = vk::ComputePipelineCreateInfo::default().stage(stage).layout(layout);
         let pipelines = unsafe { device.create_compute_pipelines(vk::PipelineCache::null(), &[create_info], None) };
         unsafe { device.destroy_shader_module(module, None) };
+
         match pipelines {
             Ok(pipelines) => Ok(Self {
                 pipeline: pipelines[0],
@@ -63,6 +64,7 @@ impl ComputePipeline {
 
     pub unsafe fn destroy(&mut self, device: &Device) {
         let device = device.handle();
+
         unsafe {
             device.destroy_pipeline(self.pipeline, None);
             device.destroy_pipeline_layout(self.layout, None);
