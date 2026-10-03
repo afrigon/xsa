@@ -53,7 +53,13 @@ mod tests {
     async fn invoke(invocations: &UnboundedSender<Invocation>, line: &str) -> Output {
         let (reply, receiver) = oneshot::channel();
         let words = xsa_commands::words::split(line).unwrap();
-        invocations.send(Invocation { words, reply }).unwrap();
+        invocations
+            .send(Invocation {
+                words,
+                reply,
+                styled: false,
+            })
+            .unwrap();
         receiver.await.unwrap()
     }
 

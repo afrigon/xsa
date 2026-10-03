@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::ffi::OsString;
+use std::ffi::OsStr;
 
 use tokio::sync::oneshot;
-use usage::embedded::Outcome as ParseOutcome;
+use usage::help::Style;
 use xsa_core::time;
 use xsa_proto::messages::{ClientMessage, MessageId, Outcome, ServerEvent};
 use xsa_proto::session::{ServerSession, SessionState};
@@ -14,6 +14,7 @@ use crate::command::{CommandLine, Route};
 pub struct Invocation {
     pub words: Vec<String>,
     pub reply: oneshot::Sender<Output>,
+    pub styled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,14 +62,13 @@ struct Pending {
 
 impl Dispatcher {
     pub fn dispatch(&mut self, invocation: Invocation, host: &mut impl CommandHost) {
-        let words: Vec<OsString> = invocation.words.iter().map(OsString::from).collect();
-        let command = match CommandLine::embedded_outcome(&words) {
-            ParseOutcome::Parsed(line) => line.command,
-            ParseOutcome::Exit(exit) => {
-                let _ = invocation.reply.send(Output {
-                    text: exit.text,
-                    succeeded: exit.code == 0,
-                });
+        let words: Vec<&OsStr> = invocation.words.iter().map(OsStr::new).collect();
+        let command = match CommandLine::parse_from(&words) {
+            Ok(line) => line.command,
+            Err(error) => {
+                let _ = invocation
+                    .reply
+                    .send(render_parse_error(&words, &error, invocation.styled));
                 return;
             }
         };
@@ -112,6 +112,17 @@ impl Dispatcher {
             Outcome::Denied { reason } => Output::failure(reason.clone()),
         };
         let _ = pending.reply.send(output);
+    }
+}
+
+fn render_parse_error(words: &[&OsStr], error: &usage::Error<'static, '_>, styled: bool) -> Output {
+    let style = if styled { Style::auto() } else { Style::PLAIN };
+    match error {
+        usage::Error::Help { cmd, long } => {
+            Output::success(CommandLine::render_help_styled(cmd, *long, style).unwrap_or_default())
+        }
+        error if styled => Output::failure(CommandLine::render_failure(words, error)),
+        error => Output::failure(usage::render_failure_plain(CommandLine::spec(), words, error)),
     }
 }
 
@@ -202,7 +213,14 @@ mod tests {
         fn invoke(&mut self, line: &str) -> oneshot::Receiver<Output> {
             let (reply, receiver) = oneshot::channel();
             let words = crate::words::split(line).unwrap();
-            self.dispatcher.dispatch(Invocation { words, reply }, &mut self.host);
+            self.dispatcher.dispatch(
+                Invocation {
+                    words,
+                    reply,
+                    styled: false,
+                },
+                &mut self.host,
+            );
             receiver
         }
 

@@ -11,5 +11,6 @@ server = ["dep:xsa-server"]
 [dependencies]
 anyhow.workspace = true
 usage.workspace = true
+xsa-commands.workspace = true
 xsa-client = { workspace = true, optional = true }
 xsa-server = { workspace = true, optional = true }

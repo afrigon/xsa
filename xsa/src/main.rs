@@ -5,6 +5,7 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 
 use usage::{Args, Cli, Subcommands};
+use xsa_commands::ipc;
 use xsa_server::WorldOptions;
 use xsa_server::dedicated::{self, DedicatedOptions};
 
@@ -32,6 +33,27 @@ enum Command {
     Client(ClientArguments),
     /// Run a dedicated server
     Server(ServerArguments),
+    /// Send a command to a running xsa instance, e.g. xsa ipc time rate 100
+    Ipc(IpcArguments),
+}
+
+#[derive(Args)]
+struct IpcArguments {
+    #[usage(
+        long,
+        env = "XSA_INSTANCE",
+        help = "Instance to send to; required when several are running"
+    )]
+    instance: Option<String>,
+    #[usage(long, help = "List the running instances")]
+    list: bool,
+    #[usage(
+        arg,
+        trailing_var_arg,
+        allow_hyphen_values,
+        help = "The command, as typed at the console"
+    )]
+    words: Vec<String>,
 }
 
 #[derive(Args)]
@@ -56,6 +78,8 @@ struct WorldArguments {
 #[cfg(feature = "client")]
 #[derive(Args)]
 struct ClientArguments {
+    #[usage(long, help = "Name for xsa ipc --instance; defaults to client-<pid>")]
+    instance: Option<String>,
     #[usage(
         long,
         env_fallback("USER", "USERNAME"),
@@ -81,6 +105,8 @@ struct ClientArguments {
 
 #[derive(Args)]
 struct ServerArguments {
+    #[usage(long, help = "Name for xsa ipc --instance; defaults to server-<pid>")]
+    instance: Option<String>,
     #[usage(long, default = "::1", help = "Address to listen on")]
     host: IpAddr,
     #[usage(long, default = "1969", help = "UDP port to listen on")]
@@ -106,12 +132,30 @@ fn main() -> anyhow::Result<()> {
         #[cfg(feature = "client")]
         Command::Client(arguments) => run_client(arguments),
         Command::Server(arguments) => dedicated::run(DedicatedOptions {
+            instance: arguments.instance,
             host: arguments.host,
             port: arguments.port,
             identity: arguments.identity,
             world: arguments.world.into_options(),
         }),
+        Command::Ipc(arguments) => run_ipc(arguments),
     }
+}
+
+fn run_ipc(arguments: IpcArguments) -> anyhow::Result<()> {
+    if arguments.list {
+        for instance in ipc::list()? {
+            println!("{instance}");
+        }
+        return Ok(());
+    }
+    anyhow::ensure!(!arguments.words.is_empty(), "give a command to send, or --list");
+    let output = ipc::send(arguments.instance.as_deref(), arguments.words)?;
+    println!("{}", output.text.trim_end());
+    if !output.succeeded {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 #[cfg(feature = "client")]
@@ -126,6 +170,7 @@ fn run_client(arguments: ClientArguments) -> anyhow::Result<()> {
         None => None,
     };
     xsa_client::run(xsa_client::ClientOptions {
+        instance: arguments.instance,
         player: arguments.player,
         remote,
         world: arguments.world.into_options(),

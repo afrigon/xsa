@@ -9,6 +9,7 @@ mod vulkan;
 
 use tokio::sync::mpsc::unbounded_channel;
 use winit::event_loop::EventLoop;
+use xsa_commands::ipc::{self, InstanceKind};
 use xsa_commands::repl;
 use xsa_proto::messages::{ClientMessage, Role};
 use xsa_proto::network;
@@ -21,6 +22,7 @@ pub struct RemoteServer {
 }
 
 pub struct ClientOptions {
+    pub instance: Option<String>,
     pub player: String,
     pub remote: Option<RemoteServer>,
     pub world: WorldOptions,
@@ -38,6 +40,7 @@ pub fn run(options: ClientOptions) -> anyhow::Result<()> {
     })?;
 
     let (invocation_sender, invocations) = unbounded_channel();
+    let _endpoint = ipc::spawn(options.instance, InstanceKind::Client, invocation_sender.clone())?;
     repl::spawn(invocation_sender)?;
     let event_loop = EventLoop::new()?;
     let mut app = app::App::new(session, invocations, packs_directory);

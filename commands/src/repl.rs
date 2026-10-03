@@ -66,7 +66,14 @@ fn run(invocations: UnboundedSender<Invocation>) {
         };
         let _ = editor.add_history_entry(line);
         let (reply, receiver) = oneshot::channel();
-        if invocations.send(Invocation { words, reply }).is_err() {
+        if invocations
+            .send(Invocation {
+                words,
+                reply,
+                styled: true,
+            })
+            .is_err()
+        {
             return;
         }
         match receiver.blocking_recv() {

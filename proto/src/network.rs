@@ -16,14 +16,13 @@ use rustls::{DigitallySignedStruct, SignatureScheme};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::connection::{ClientLink, Connection};
+use crate::frame::{read_frame, write_frame};
 
 const APPLICATION_PROTOCOL: &[u8] = b"xsa/1";
 const SERVER_NAME: &str = "xsa";
 const CERTIFICATE_FILE: &str = "certificate.der";
 const PRIVATE_KEY_FILE: &str = "private-key.der";
 const FINGERPRINT_BYTES: usize = 32;
-const FRAME_LENGTH_BYTES: usize = 4;
-const MAXIMUM_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 type Fingerprint = [u8; FINGERPRINT_BYTES];
 
@@ -217,32 +216,6 @@ async fn pump<Outgoing: Encode, Incoming: DecodeOwned>(
         result = writer => result,
         result = reader => result,
     }
-}
-
-async fn write_frame<T: Encode>(stream: &mut SendStream, value: &T) -> anyhow::Result<()> {
-    let payload = bitcode::encode(value);
-    ensure!(
-        payload.len() <= MAXIMUM_FRAME_BYTES,
-        "a {} byte frame is too large",
-        payload.len()
-    );
-    stream.write_all(&(payload.len() as u32).to_le_bytes()).await?;
-    stream.write_all(&payload).await?;
-    Ok(())
-}
-
-async fn read_frame<T: DecodeOwned>(stream: &mut RecvStream) -> anyhow::Result<Option<T>> {
-    let mut length = [0; FRAME_LENGTH_BYTES];
-    match stream.read_exact(&mut length).await {
-        Ok(()) => {}
-        Err(quinn::ReadExactError::FinishedEarly(0)) => return Ok(None),
-        Err(err) => return Err(err.into()),
-    }
-    let length = u32::from_le_bytes(length) as usize;
-    ensure!(length <= MAXIMUM_FRAME_BYTES, "a {length} byte frame is too large");
-    let mut payload = vec![0; length];
-    stream.read_exact(&mut payload).await?;
-    Ok(Some(bitcode::decode(&payload)?))
 }
 
 #[derive(Debug)]

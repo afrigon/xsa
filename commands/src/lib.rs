@@ -3,6 +3,7 @@ pub mod dispatcher;
 #[cfg(feature = "client")]
 pub mod distance;
 pub mod duration;
+pub mod ipc;
 pub mod repl;
 #[cfg(feature = "client")]
 pub mod target;

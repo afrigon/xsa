@@ -4,6 +4,7 @@ use std::thread;
 
 use anyhow::anyhow;
 use tokio::sync::mpsc::unbounded_channel;
+use xsa_commands::ipc::{self, InstanceKind};
 use xsa_commands::repl;
 use xsa_proto::connection::Connection;
 use xsa_proto::network::{self, Identity};
@@ -11,6 +12,7 @@ use xsa_proto::network::{self, Identity};
 use crate::{Server, World, WorldOptions, console};
 
 pub struct DedicatedOptions {
+    pub instance: Option<String>,
     pub host: IpAddr,
     pub port: u16,
     pub identity: PathBuf,
@@ -37,6 +39,7 @@ pub async fn run(options: DedicatedOptions) -> anyhow::Result<()> {
         .send(console_link)
         .map_err(|_| anyhow!("the simulation thread stopped"))?;
     let (invocation_sender, invocations) = unbounded_channel();
+    let _endpoint = ipc::spawn(options.instance, InstanceKind::Server, invocation_sender.clone())?;
     repl::spawn(invocation_sender)?;
     let mut console = tokio::spawn(console::run(console_connection, invocations));
 

@@ -2664,6 +2664,7 @@ dependencies = [
  "anyhow",
  "usage-rs",
  "xsa-client",
+ "xsa-commands",
  "xsa-server",
 ]
 
@@ -2688,6 +2689,7 @@ name = "xsa-commands"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bitcode",
  "rustyline",
  "shlex",
  "tokio",
