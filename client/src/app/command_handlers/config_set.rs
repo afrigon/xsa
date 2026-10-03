@@ -1,9 +1,9 @@
 use xsa_commands::command::ConfigSetCommand;
 
 use crate::app::App;
-use crate::app::client_command_handler::ClientCommandHandler;
+use crate::app::immediate_command_handler::ImmediateCommandHandler;
 
-impl ClientCommandHandler for ConfigSetCommand {
+impl ImmediateCommandHandler for ConfigSetCommand {
     fn run(self, app: &mut App) -> anyhow::Result<String> {
         app.config_document.set(&self.key, &self.value)?;
 

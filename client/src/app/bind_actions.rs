@@ -12,38 +12,35 @@ use crate::renderer::Shader;
 
 impl App {
     pub(super) fn run_bind_action(&mut self, action: BindAction) {
-        let result = match action {
+        let progress = match action {
             BindAction::CameraDebugToggle => {
                 let mode = match self.cameras.toggled_mode() {
                     CameraMode::Orbit => CommandCameraMode::Target,
                     CameraMode::Debug => CommandCameraMode::Debug,
                 };
-                CameraModeCommand { mode }.run(self)
+                CameraModeCommand { mode }.start(self)
             }
-            BindAction::CameraTargetNext => App::target(Target::Next).run(self),
-            BindAction::CameraTargetPrevious => App::target(Target::Previous).run(self),
+            BindAction::CameraTargetNext => App::target(Target::Next).start(self),
+            BindAction::CameraTargetPrevious => App::target(Target::Previous).start(self),
             BindAction::CameraReleaseMouse => {
                 self.set_mouse_captured(false);
 
                 return;
             }
-            BindAction::RenderStarsToggle => App::toggle(RenderDocument::STARS).run(self),
-            BindAction::RenderTonemapperNext => App::toggle(RenderDocument::TONEMAPPER).run(self),
-            BindAction::RenderExposureModeToggle => App::toggle(ExposureDocument::MODE).run(self),
-            BindAction::RenderBloomToggle => App::toggle(BloomDocument::ENABLED).run(self),
-            BindAction::DebugShadingNext => App::toggle(DebugDocument::SHADING).run(self),
-            BindAction::DebugWireframeToggle => App::toggle(DebugDocument::WIREFRAME).run(self),
-            BindAction::DebugShaderLit => App::shader(None).run(self),
-            BindAction::DebugShaderNormals => App::shader(Some(Shader::Normals)).run(self),
-            BindAction::DebugShaderDepth => App::shader(Some(Shader::Depth)).run(self),
-            BindAction::DebugShaderTriangles => App::shader(Some(Shader::Triangles)).run(self),
-            BindAction::DebugShaderLighting => App::shader(Some(Shader::Lighting)).run(self),
+            BindAction::RenderStarsToggle => App::toggle(RenderDocument::STARS).start(self),
+            BindAction::RenderTonemapperNext => App::toggle(RenderDocument::TONEMAPPER).start(self),
+            BindAction::RenderExposureModeToggle => App::toggle(ExposureDocument::MODE).start(self),
+            BindAction::RenderBloomToggle => App::toggle(BloomDocument::ENABLED).start(self),
+            BindAction::DebugShadingNext => App::toggle(DebugDocument::SHADING).start(self),
+            BindAction::DebugWireframeToggle => App::toggle(DebugDocument::WIREFRAME).start(self),
+            BindAction::DebugShaderLit => App::shader(None).start(self),
+            BindAction::DebugShaderNormals => App::shader(Some(Shader::Normals)).start(self),
+            BindAction::DebugShaderDepth => App::shader(Some(Shader::Depth)).start(self),
+            BindAction::DebugShaderTriangles => App::shader(Some(Shader::Triangles)).start(self),
+            BindAction::DebugShaderLighting => App::shader(Some(Shader::Lighting)).start(self),
         };
 
-        match result {
-            Ok(description) => tracing::info!("{description}"),
-            Err(err) => tracing::warn!("{err:#}"),
-        }
+        self.follow(progress, None);
     }
 
     fn target(target: Target) -> CameraTargetCommand {

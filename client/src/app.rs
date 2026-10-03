@@ -4,7 +4,12 @@ mod camera_controller;
 mod client_command_handler;
 mod client_world;
 mod command_handlers;
+mod command_progress;
+mod command_task;
+mod immediate_command_handler;
+mod running_task;
 mod snapshot;
+mod task_status;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -18,7 +23,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
 use xsa_commands::command::ClientCommand;
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
-use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
+use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter};
 use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
@@ -32,6 +37,9 @@ use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
+use command_progress::CommandProgress;
+use running_task::RunningTask;
+use task_status::TaskStatus;
 
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
@@ -44,6 +52,7 @@ pub struct App {
     router: CommandRouter,
     invocations: UnboundedReceiver<CommandInvocation>,
     exit_requested: bool,
+    tasks: Vec<RunningTask>,
     packs_directory: PathBuf,
     world: Option<ClientWorld>,
     input: Input,
@@ -69,6 +78,7 @@ impl App {
             router: CommandRouter::default(),
             invocations,
             exit_requested: false,
+            tasks: Vec::new(),
             packs_directory,
             world: None,
             input: Input::default(),
@@ -102,6 +112,7 @@ impl App {
 
         self.update(delta_seconds)?;
         self.draw()?;
+        self.poll_tasks();
         self.input.end_frame();
 
         if let Some(window) = &self.window {
@@ -256,6 +267,49 @@ impl App {
         }
     }
 
+    fn follow(&mut self, progress: CommandProgress, reply: Option<CommandReply>) {
+        match progress {
+            CommandProgress::Done(result) => App::finish(result, reply),
+            CommandProgress::Running(task) => self.tasks.push(RunningTask { task, reply }),
+        }
+    }
+
+    fn finish(result: anyhow::Result<String>, reply: Option<CommandReply>) {
+        if let Some(reply) = reply {
+            reply.send(result);
+
+            return;
+        }
+
+        match result {
+            Ok(description) => tracing::info!("{description}"),
+            Err(err) => tracing::warn!("{err:#}"),
+        }
+    }
+
+    fn poll_tasks(&mut self) {
+        let mut waiting = Vec::new();
+
+        for mut running in std::mem::take(&mut self.tasks) {
+            match running.task.poll(self) {
+                TaskStatus::Pending => waiting.push(running),
+                TaskStatus::Done(result) => App::finish(result, running.reply),
+            }
+        }
+
+        waiting.append(&mut self.tasks);
+        self.tasks = waiting;
+    }
+
+    fn shut_down(&mut self, event_loop: &ActiveEventLoop) {
+        for running in std::mem::take(&mut self.tasks) {
+            App::finish(Err(anyhow::anyhow!("the game is exiting")), running.reply);
+        }
+
+        let _ = self.session.send(ClientMessage::Leave(Leave));
+        event_loop.exit();
+    }
+
     fn window_attributes() -> WindowAttributes {
         let attributes = Window::default_attributes().with_title(APP_ID);
         #[cfg(all(unix, not(target_vendor = "apple")))]
@@ -298,18 +352,20 @@ impl CommandExecutor for App {
         }
     }
 
-    fn run_client(&mut self, command: ClientCommand) -> anyhow::Result<String> {
-        match command {
-            ClientCommand::CameraMode(command) => command.run(self),
-            ClientCommand::CameraTarget(command) => command.run(self),
-            ClientCommand::CameraLookAt(command) => command.run(self),
-            ClientCommand::CameraSnap(command) => command.run(self),
-            ClientCommand::ConfigGet(command) => command.run(self),
-            ClientCommand::ConfigSet(command) => command.run(self),
-            ClientCommand::ConfigToggle(command) => command.run(self),
-            ClientCommand::ConfigSave(command) => command.run(self),
-            ClientCommand::ConfigReload(command) => command.run(self),
-        }
+    fn run_client(&mut self, command: ClientCommand, reply: CommandReply) {
+        let progress = match command {
+            ClientCommand::CameraMode(command) => command.start(self),
+            ClientCommand::CameraTarget(command) => command.start(self),
+            ClientCommand::CameraLookAt(command) => command.start(self),
+            ClientCommand::CameraSnap(command) => command.start(self),
+            ClientCommand::ConfigGet(command) => command.start(self),
+            ClientCommand::ConfigSet(command) => command.start(self),
+            ClientCommand::ConfigToggle(command) => command.start(self),
+            ClientCommand::ConfigSave(command) => command.start(self),
+            ClientCommand::ConfigReload(command) => command.start(self),
+        };
+
+        self.follow(progress, Some(reply));
     }
 }
 
@@ -327,10 +383,7 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => {
-                let _ = self.session.send(ClientMessage::Leave(Leave));
-                event_loop.exit();
-            }
+            WindowEvent::CloseRequested => self.shut_down(event_loop),
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size);
@@ -343,10 +396,9 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if let Err(err) = self.redraw() {
                     self.error = Some(err);
-                    event_loop.exit();
+                    self.shut_down(event_loop);
                 } else if self.exit_requested {
-                    let _ = self.session.send(ClientMessage::Leave(Leave));
-                    event_loop.exit();
+                    self.shut_down(event_loop);
                 }
             }
             _ => {}

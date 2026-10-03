@@ -1,9 +1,9 @@
 use xsa_commands::command::ConfigToggleCommand;
 
 use crate::app::App;
-use crate::app::client_command_handler::ClientCommandHandler;
+use crate::app::immediate_command_handler::ImmediateCommandHandler;
 
-impl ClientCommandHandler for ConfigToggleCommand {
+impl ImmediateCommandHandler for ConfigToggleCommand {
     fn run(self, app: &mut App) -> anyhow::Result<String> {
         app.config_document.toggle(&self.key)?;
 

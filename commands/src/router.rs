@@ -1,11 +1,15 @@
 mod command_execution;
 mod command_executor;
 mod command_invocation;
+#[cfg(feature = "client")]
+mod command_reply;
 mod output;
 
 pub use command_execution::CommandExecution;
 pub use command_executor::CommandExecutor;
 pub use command_invocation::CommandInvocation;
+#[cfg(feature = "client")]
+pub use command_reply::CommandReply;
 pub use output::Output;
 
 use std::collections::HashMap;
@@ -88,10 +92,11 @@ impl CommandRouter {
     fn run(&mut self, route: Route, reply: oneshot::Sender<Output>, executor: &mut impl CommandExecutor) {
         let output = match route {
             #[cfg(feature = "client")]
-            Route::Client(command) => match executor.run_client(command) {
-                Ok(text) => Output::success(text),
-                Err(err) => Output::failure(format!("{err:#}")),
-            },
+            Route::Client(command) => {
+                executor.run_client(command, CommandReply::new(reply));
+
+                return;
+            }
             Route::Server(command) => match executor.session().send(command.message()) {
                 Ok(id) => {
                     let pending = Pending { command, reply };
