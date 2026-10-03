@@ -248,11 +248,11 @@ impl<'a> CommandRecorder<'a> {
         });
     }
 
-    pub fn present_to_transfer_source(&self, image: vk::Image) {
+    pub fn color_attachment_to_transfer_source(&self, image: vk::Image) {
         self.transition(&ImageTransition {
             image,
             aspect: vk::ImageAspectFlags::COLOR,
-            old_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            old_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             new_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             source_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
             source_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
@@ -261,16 +261,16 @@ impl<'a> CommandRecorder<'a> {
         });
     }
 
-    pub fn transfer_source_to_present(&self, image: vk::Image) {
+    pub fn transfer_source_to_color_attachment(&self, image: vk::Image) {
         self.transition(&ImageTransition {
             image,
             aspect: vk::ImageAspectFlags::COLOR,
             old_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            new_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            new_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             source_stage: vk::PipelineStageFlags2::COPY,
-            source_access: vk::AccessFlags2::TRANSFER_READ,
-            destination_stage: vk::PipelineStageFlags2::NONE,
-            destination_access: vk::AccessFlags2::NONE,
+            source_access: vk::AccessFlags2::NONE,
+            destination_stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            destination_access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         });
     }
 

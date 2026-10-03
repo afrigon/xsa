@@ -393,10 +393,13 @@ impl Renderer {
             capture: self.capture.as_ref(),
         };
 
+        context.recorder.to_color_attachment(context.output_image);
+
         for pass in &mut self.passes {
             pass.record(&context)?;
         }
 
+        context.recorder.to_present(context.output_image);
         unsafe { device.end_command_buffer(frame.command_buffer) }?;
 
         Ok(())
