@@ -144,11 +144,8 @@ impl App {
     }
 
     fn poll_invocations(&mut self) {
-        if self.world.is_none() {
-            return;
-        }
-
         let mut router = std::mem::take(&mut self.router);
+        router.resume(self);
 
         while let Ok(invocation) = self.invocations.try_recv() {
             router.handle(invocation, self);
@@ -240,7 +237,7 @@ impl App {
 
         match command.run(self) {
             Ok(description) => println!("{description}"),
-            Err(err) => eprintln!("{err:#}"),
+            Err(err) => tracing::warn!("{err:#}"),
         }
     }
 

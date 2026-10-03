@@ -94,7 +94,7 @@ impl Repl {
 
             match receiver.blocking_recv() {
                 Ok(output) => println!("{}", output.text.trim_end()),
-                Err(_) => println!("the command was dropped before it finished"),
+                Err(_) => tracing::warn!("the command was dropped before it finished"),
             }
         }
 

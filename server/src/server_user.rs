@@ -34,8 +34,11 @@ impl ServerUser {
 
         while !user.exit_requested {
             tokio::select! {
-                event = user.session.receive() => router.handle_event(&event?, &user.session),
-                invocation = invocations.recv(), if invocations_open && user.session.state().is_some() => match invocation {
+                event = user.session.receive() => {
+                    router.handle_event(&event?, &user.session);
+                    router.resume(&mut user);
+                }
+                invocation = invocations.recv(), if invocations_open => match invocation {
                     Some(invocation) => router.handle(invocation, &mut user),
                     None => invocations_open = false,
                 },
