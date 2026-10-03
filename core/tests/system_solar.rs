@@ -13,7 +13,7 @@ struct Positions {
 }
 
 fn load() -> Simulation {
-    let packs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../packs");
+    let packs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../data");
     let stack = PackStack::load(&packs, &["base".to_string(), "system-solar".to_string()]).unwrap();
     Simulation::load(&stack, &Id::parse("system-solar:sol", "base").unwrap()).unwrap()
 }

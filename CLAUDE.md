@@ -120,7 +120,7 @@ and `proto` ← `commands`, `server`, `client`. `proto` does not depend on `core
 
 ## Shaders
 
-- Slang, in `packs/base/base/resources/shaders/`, compiled offline to SPIR-V by
+- Slang, in `data/base/base/resources/shaders/`, compiled offline to SPIR-V by
   `mise run shaders` with `-matrix-layout-column-major` (matches glam). The
   game loads them from the pack and never embeds a shader compiler.
 - One top-level file per shader, entry points `vertexMain` and
@@ -145,7 +145,7 @@ and `proto` ← `commands`, `server`, `client`. `proto` does not depend on `core
 - Add a crate only when writing the code ourselves is unreasonable, and justify
   it first. Deliberately avoided: `ash-window` (surfaces are created by hand)
   and runtime shader compilers.
-- Game content lives in `packs/`. Text files are committed; binaries (`.dds`,
+- Game content lives in `data/`. Text files are committed; binaries (`.dds`,
   `.spv`) are git-ignored and produced by tasks. `assets/` holds git-ignored
   third-party source downloads.
 - Every third-party asset is listed in `LICENSES.md` with source, author and

@@ -1,7 +1,7 @@
 // Hapke reflectance for particulate surfaces (regolith, frost), equation numbers from Hapke, "Theory of Reflectance
 // and Emittance Spectroscopy" (2nd edition, 2012). hapkeSol and the helpers it shares are ported from the
 // Custom/HapkeScaled shader of CharonSSS/AdvancedPQSTools (MIT, Copyright (c) 2022 Niako; Hapke shaders by
-// ballisticfox), see packs/base/LICENSE.
+// ballisticfox), see data/base/LICENSE.
 
 static const float hapkePi = 3.14159265358979;
 

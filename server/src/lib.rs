@@ -327,7 +327,7 @@ mod tests {
     impl Harness {
         fn new() -> Self {
             let world = World::load(&WorldOptions {
-                packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../packs")),
+                packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../data")),
                 packs: vec!["base".to_string(), "system-solar".to_string()],
                 simulation: None,
             })

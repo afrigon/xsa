@@ -12,7 +12,7 @@ them into `assets/`, next to their license or credit file.
 - **License:** NASA media usage guidelines — free to use, credit requested
 - **Local copy:** source in `assets/deep-star-maps/`, credit in
   `assets/deep-star-maps/CREDIT.txt`; the converted cube map
-  `packs/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds`
+  `data/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds`
   is a derived work under the same terms
 
 ## Solar system data
@@ -29,7 +29,7 @@ them into `assets/`, next to their license or credit file.
 - **License:** US government work, public domain; values are facts and
   carry no license
 - **Local copy:** the values are written into
-  `packs/system-solar/system-solar/data/`
+  `data/system-solar/system-solar/data/`
 
 ## Sol 0.9.5 (body textures)
 
@@ -41,12 +41,12 @@ them into `assets/`, next to their license or credit file.
   textures under the same license
 - **Local copy:** archives in `assets/sol/archives/`, extracted to
   `assets/sol/extracted/`; the license text and attribution ship with the pack
-  in `packs/system-solar/LICENSE`
+  in `data/system-solar/LICENSE`
 
 ## AdvancedPQSTools (Hapke shader code)
 
 - **Source:** [CharonSSS/AdvancedPQSTools](https://github.com/CharonSSS/AdvancedPQSTools),
   `Shaders/Hapke/HapkeScaledFunctions.cginc` (Hapke shaders by ballisticfox)
 - **License:** MIT, Copyright (c) 2022 Niako
-- **Local copy:** ported into `packs/base/base/resources/shaders/common/hapke.slang`;
-  the license text ships with the base pack in `packs/base/LICENSE`
+- **Local copy:** ported into `data/base/base/resources/shaders/common/hapke.slang`;
+  the license text ships with the base pack in `data/base/LICENSE`

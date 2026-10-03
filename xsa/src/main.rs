@@ -68,7 +68,7 @@ struct IpcArguments {
 
 #[derive(Args)]
 struct WorldArguments {
-    #[usage(long, default = "packs", help = "Directory containing the installed packs")]
+    #[usage(long, default = "data", help = "Directory containing the installed packs")]
     packs_directory: PathBuf,
     #[usage(
         long,
