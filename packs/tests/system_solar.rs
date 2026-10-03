@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use xsa_core::simulation::{BodyId, Simulation, SimulationState};
+use xsa_core::simulation::{BodyCategory, BodyId, Simulation, SimulationState};
 use xsa_packs::{Id, PackStack, SimulationDefinition};
 use xsa_units::SimulationTime;
 
@@ -170,6 +170,74 @@ fn bodies_match_horizons_on_2026_10_01() {
             error_degrees < reference.tolerance_degrees && distance_error < 0.01,
             "{}: {error_degrees}° and {distance_error} relative distance away from Horizons",
             reference.body
+        );
+    }
+}
+
+fn body_id(path: &str) -> BodyId {
+    BodyId {
+        value: format!("system-solar:{path}"),
+    }
+}
+
+fn parent_path(simulation: &Simulation, path: &str) -> Option<String> {
+    let body = simulation.body(simulation.find_body(&body_id(path)).unwrap());
+
+    body.parent.map(|parent| simulation.body(parent).id.value.clone())
+}
+
+struct ParentCase {
+    body: &'static str,
+    parent: &'static str,
+}
+
+#[test]
+fn bodies_know_the_body_they_orbit() {
+    let simulation = load();
+    assert_eq!(parent_path(&simulation, "sol"), None);
+    let cases = [
+        ParentCase {
+            body: "earth",
+            parent: "sol",
+        },
+        ParentCase {
+            body: "luna",
+            parent: "earth",
+        },
+        ParentCase {
+            body: "phobos",
+            parent: "mars",
+        },
+        ParentCase {
+            body: "charon",
+            parent: "pluto",
+        },
+        ParentCase {
+            body: "nix",
+            parent: "pluto",
+        },
+        ParentCase {
+            body: "dactyl",
+            parent: "ida",
+        },
+    ];
+
+    for case in cases {
+        let expected = format!("system-solar:{}", case.parent);
+        assert_eq!(parent_path(&simulation, case.body), Some(expected), "{}", case.body);
+    }
+}
+
+#[test]
+fn every_star_and_only_stars_are_in_the_star_category() {
+    let simulation = load();
+
+    for body in simulation.bodies() {
+        assert_eq!(
+            body.category == BodyCategory::Star,
+            body.star.is_some(),
+            "{}",
+            body.id.value
         );
     }
 }
