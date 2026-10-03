@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "proto", "commands", "server", "client", "xsa", "tools"]
+members = ["units", "core", "proto", "commands", "server", "client", "xsa", "tools"]
 
 [workspace.package]
 version = "0.0.1"
@@ -20,3 +20,4 @@ xsa-commands = { path = "commands" }
 xsa-core = { path = "core" }
 xsa-proto = { path = "proto" }
 xsa-server = { path = "server" }
+xsa-units = { path = "units" }
