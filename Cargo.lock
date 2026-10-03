@@ -2814,6 +2814,7 @@ dependencies = [
  "tracing",
  "usage-rs",
  "windows-sys 0.61.2",
+ "xsa-core",
  "xsa-packs",
  "xsa-proto",
  "xsa-units",

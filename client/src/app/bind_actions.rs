@@ -49,6 +49,7 @@ impl App {
     fn target(target: Target) -> CameraTargetCommand {
         CameraTargetCommand {
             target,
+            category: None,
             distance: None,
             pitch: None,
             yaw: None,

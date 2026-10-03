@@ -1,4 +1,5 @@
 mod bind_actions;
+mod body_step;
 mod camera_controller;
 mod client_command_handler;
 mod client_world;

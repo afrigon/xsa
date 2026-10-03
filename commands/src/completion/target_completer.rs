@@ -15,6 +15,7 @@ pub(crate) fn complete_target<Partial>(_partial: &Partial, context: &CompleteCtx
     let mut candidates = vec![
         Candidate::described("next", "the next body"),
         Candidate::described("previous", "the previous body"),
+        Candidate::described("parent", "the body the target orbits"),
     ];
     let mut namespaces = Vec::new();
 

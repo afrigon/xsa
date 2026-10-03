@@ -1,13 +1,20 @@
 use usage::Args;
 
 use crate::command::{ClientCommand, Routable, Route};
-use crate::completion::complete_target;
+use xsa_core::simulation::BodyCategory;
+
+use crate::completion::{complete_body_category, complete_target};
 use crate::value::{Distance, Target};
 
 #[derive(Args)]
 pub struct CameraTargetCommand {
     #[usage(complete = complete_target)]
     pub target: Target,
+    #[usage(
+        complete = complete_body_category,
+        help = "With next or previous, only stop at bodies of this category, e.g. moon"
+    )]
+    pub category: Option<BodyCategory>,
     #[usage(
         long,
         help = "Distance from the body's center, e.g. 200km (m, km, Mm, Gm; a bare number is km)"

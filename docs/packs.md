@@ -88,12 +88,16 @@ Properties intrinsic to a body, valid in any system. SI units; angles in
 degrees.
 
 ```kdl
+category "planet"
 radius 6371000
 gravitational-parameter 3.986004418e14
 rotation-period 86164.0905
 axial-tilt 23.4392811
 ```
 
+- **`category`**: `star`, `planet`, `dwarf-planet`, `moon`, `asteroid` or
+  `comet`. A body is a `star` exactly when it has `luminosity` and
+  `effective-temperature`.
 - **`radius`** (m): mean radius.
 - **`gravitational-parameter`** (m³/s²): μ = G·M, which is measured far more
   precisely than the mass itself.

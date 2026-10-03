@@ -7,7 +7,7 @@ use crate::command::{Routable, Route};
 pub enum CameraAction {
     /// Switch between the target camera and the debug fly camera
     Mode(CameraModeCommand),
-    /// Orbit a body: a body id, next or previous
+    /// Orbit a body: a body id, next, previous or parent
     Target(CameraTargetCommand),
     /// Turn the debug camera towards a body
     LookAt(CameraLookAtCommand),

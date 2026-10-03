@@ -14,6 +14,7 @@ shlex = "2.0.1"
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "sync"] }
 tracing.workspace = true
 usage = { workspace = true, features = ["completions"] }
+xsa-core.workspace = true
 xsa-packs.workspace = true
 xsa-proto.workspace = true
 xsa-units.workspace = true
