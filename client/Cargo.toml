@@ -12,5 +12,7 @@ tokio = { workspace = true, features = ["sync"] }
 winit.workspace = true
 xsa-commands = { workspace = true, features = ["client"] }
 xsa-core.workspace = true
+xsa-packs.workspace = true
 xsa-proto.workspace = true
 xsa-server.workspace = true
+xsa-units.workspace = true

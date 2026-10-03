@@ -39,12 +39,16 @@ game prints no validation messages.
 
 ## Crates
 
-Dependencies point one way: `core` ← `commands` ← `server` ← `client` ← `xsa`,
-and `proto` ← `commands`, `server`, `client`. `proto` does not depend on `core`.
+Each crate is a top-level directory; `data/` holds the game content (packs).
+Dependencies point one way: `units` ← `core` ← `packs` ← `commands` ← `server`
+← `client` ← `xsa`, and `proto` ← `commands`, `server`, `client`. `core` never
+touches files or KDL, and `proto` does not depend on `core` or `packs`.
 
 | Crate | Responsibility |
 | --- | --- |
-| `core` | Packs, the simulation, orbits, time, coordinate frames |
+| `units` | Plain value types shared by every crate: simulation time, time rate |
+| `core` | The pure simulation: orbits, coordinate frames, bodies and their state |
+| `packs` | Pack loading (see `docs/packs.md`): reads KDL content into `core` types and plain definitions |
 | `proto` | Client ↔ server protocol: messages, events, connections, QUIC transport |
 | `commands` | Text commands: the command tree, routing, REPL, IPC, completion |
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |

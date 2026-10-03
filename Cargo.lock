@@ -2681,8 +2681,10 @@ dependencies = [
  "winit",
  "xsa-commands",
  "xsa-core",
+ "xsa-packs",
  "xsa-proto",
  "xsa-server",
+ "xsa-units",
 ]
 
 [[package]]
@@ -2697,8 +2699,9 @@ dependencies = [
  "tokio",
  "usage-rs",
  "windows-sys 0.61.2",
- "xsa-core",
+ "xsa-packs",
  "xsa-proto",
+ "xsa-units",
 ]
 
 [[package]]
@@ -2707,8 +2710,19 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "glam",
+ "xsa-units",
+]
+
+[[package]]
+name = "xsa-packs"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "glam",
  "kdl",
  "semver",
+ "xsa-core",
+ "xsa-units",
 ]
 
 [[package]]
@@ -2732,7 +2746,9 @@ dependencies = [
  "tokio",
  "xsa-commands",
  "xsa-core",
+ "xsa-packs",
  "xsa-proto",
+ "xsa-units",
 ]
 
 [[package]]

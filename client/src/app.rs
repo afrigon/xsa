@@ -13,15 +13,16 @@ use xsa_commands::command::{CameraAction, CameraMode as CommandCameraMode, Camer
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
 use xsa_commands::target::Target;
-use xsa_core::packs::{Id, PackStack};
-use xsa_core::simulation::{Simulation, SimulationState};
+use xsa_core::simulation::{BodyId, Simulation, SimulationState};
+use xsa_packs::{Id, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition};
 use xsa_proto::messages::{ClientMessage, PackReference, ServerEvent};
 use xsa_proto::session::ServerSession;
+use xsa_units::SimulationTime;
 
 use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
 use crate::camera::{Camera, CameraMode};
-use crate::content::{self, MaterialDefinition};
+use crate::content;
 use crate::input::Input;
 use crate::lighting::{self, StarLight};
 use crate::renderer::{
@@ -65,10 +66,23 @@ const SHADER_SHORTCUTS: [ShaderShortcut; 5] = [
 ];
 
 struct World {
+    simulation_id: Id,
     simulation: Simulation,
     state: SimulationState,
     body_objects: Vec<ObjectHandle>,
     light_body: Option<usize>,
+}
+
+impl World {
+    fn find_body(&self, text: &str) -> anyhow::Result<usize> {
+        let id = BodyId::from(&Id::parse(text, &self.simulation_id.namespace)?);
+        let index = self
+            .simulation
+            .find_body(&id)
+            .with_context(|| format!("no body {id} in {}", self.simulation_id))?;
+
+        Ok(index.value)
+    }
 }
 
 pub struct App {
@@ -200,7 +214,7 @@ impl App {
         }
 
         let simulation_id = Id::parse(simulation, BASE_PACK)?;
-        let simulation = Simulation::load(&stack, &simulation_id)?;
+        let simulation = stack.load_data::<SimulationDefinition>(&simulation_id)?.build(&stack)?;
         let star_lights: Vec<Option<StarLight>> = simulation
             .bodies()
             .iter()
@@ -211,13 +225,13 @@ impl App {
             .iter()
             .zip(&star_lights)
             .map(|(body, star_light)| {
-                let definition = content::load_body_material(&stack, &body.id)?;
+                let definition = MaterialDefinition::load_for_body(&stack, &Id::parse(&body.id.value, BASE_PACK)?)?;
                 create_material(renderer, &body.id, definition, star_light.as_ref())
                     .with_context(|| format!("loading the material of {}", body.id))
             })
             .collect::<anyhow::Result<Vec<Material>>>()?;
         let mut state = SimulationState::default();
-        simulation.state_at(time, &mut state);
+        simulation.state_at(SimulationTime { seconds: time }, &mut state);
 
         let scene = renderer.scene_mut();
         let body_objects = simulation
@@ -243,10 +257,11 @@ impl App {
         }
         let target = simulation
             .spawn()
+            .map(|index| index.value)
             .or_else(|| star_lights.iter().position(Option::is_none))
             .unwrap_or(0);
 
-        self.skybox = match content::load_skybox(&stack, &simulation_id)? {
+        self.skybox = match SkyboxDefinition::load(&stack, &simulation_id)? {
             Some(skybox) => match renderer.load_cube_map("skybox", &skybox.texture) {
                 Ok(cube_map) => Some(renderer.scene_mut().add_material(Material::Skybox {
                     cube_map,
@@ -266,6 +281,7 @@ impl App {
             self.orbit_camera = Some(OrbitCamera::new(target, body.radius));
         }
         self.world = Some(World {
+            simulation_id,
             simulation,
             state,
             body_objects,
@@ -360,7 +376,9 @@ impl App {
         if let Some(world) = &mut self.world
             && let Some(state) = self.session.state()
         {
-            world.simulation.state_at(state.time(), &mut world.state);
+            world
+                .simulation
+                .state_at(SimulationTime { seconds: state.time() }, &mut world.state);
         }
     }
 
@@ -482,7 +500,7 @@ impl App {
         let target = match &request.target {
             Target::Next => (orbit_camera.target() + 1) % bodies.len(),
             Target::Previous => (orbit_camera.target() + bodies.len() - 1) % bodies.len(),
-            Target::Body { id } => find_body(&world.simulation, id)?,
+            Target::Body { id } => world.find_body(id)?,
         };
         let body = &bodies[target];
         if target != orbit_camera.target() {
@@ -499,7 +517,7 @@ impl App {
         }
         let description = format!(
             "target: {}, distance {:.0} km, pitch {:.1}°, yaw {:.1}°",
-            body.id.path,
+            body.id,
             orbit_camera.distance() / METERS_PER_KILOMETER,
             orbit_camera.pitch().to_degrees(),
             orbit_camera.yaw().to_degrees()
@@ -517,7 +535,7 @@ impl App {
             bail!("look-at needs a body id");
         };
         let world = self.world.as_ref().context("not joined to a simulation yet")?;
-        let body = find_body(&world.simulation, id)?;
+        let body = world.find_body(id)?;
         let direction = (world.state.bodies[body].position - self.camera.position).normalize_or_zero();
         ensure!(direction != DVec3::ZERO, "the camera is at the center of {id}");
         self.debug_camera
@@ -571,14 +589,6 @@ impl CommandExecutor for App {
             ClientCommand::Camera(CameraAction::LookAt { target }) => self.look_at(&target),
         }
     }
-}
-
-fn find_body(simulation: &Simulation, id: &str) -> anyhow::Result<usize> {
-    simulation
-        .bodies()
-        .iter()
-        .position(|body| body.id.path == id || body.id.to_string() == id)
-        .with_context(|| format!("no body {id} in {}", simulation.id()))
 }
 
 impl ApplicationHandler for App {
@@ -654,7 +664,7 @@ fn print_exposure(renderer: &Renderer) {
 
 fn create_material(
     renderer: &mut Renderer,
-    body: &Id,
+    body: &BodyId,
     definition: MaterialDefinition,
     star_light: Option<&StarLight>,
 ) -> anyhow::Result<Material> {

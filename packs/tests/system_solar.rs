@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use xsa_core::packs::{Id, PackStack};
-use xsa_core::simulation::{Simulation, SimulationState};
-use xsa_core::time;
+use xsa_core::simulation::{BodyId, Simulation, SimulationState};
+use xsa_packs::{Id, PackStack, SimulationDefinition};
+use xsa_units::SimulationTime;
 
 const ASTRONOMICAL_UNIT: f64 = 1.495_978_707e11;
 
@@ -15,15 +15,19 @@ struct Positions {
 fn load() -> Simulation {
     let packs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../data");
     let stack = PackStack::load(&packs, &["base".to_string(), "system-solar".to_string()]).unwrap();
-    Simulation::load(&stack, &Id::parse("system-solar:sol", "base").unwrap()).unwrap()
+    let id = Id::parse("system-solar:sol", "base").unwrap();
+    let definition = stack.load_data::<SimulationDefinition>(&id).unwrap();
+    definition.build(&stack).unwrap()
 }
 
 fn positions_at(simulation: &Simulation, timestamp: &str) -> Positions {
     let mut state = SimulationState::default();
-    simulation.state_at(time::parse_timestamp(timestamp).unwrap(), &mut state);
+    simulation.state_at(timestamp.parse::<SimulationTime>().unwrap(), &mut state);
     let position = |id: &str| {
-        let index = simulation.bodies().iter().position(|body| body.id.path == id).unwrap();
-        state.bodies[index].position
+        let id = BodyId {
+            value: format!("system-solar:{id}"),
+        };
+        state.body(simulation.find_body(&id).unwrap()).position
     };
     Positions {
         sun: position("sol"),
@@ -148,10 +152,12 @@ const HORIZONS_2026_10_01: [Reference; 11] = [
 fn bodies_match_horizons_on_2026_10_01() {
     let simulation = load();
     let mut state = SimulationState::default();
-    simulation.state_at(time::parse_timestamp("2026-10-01T00:00:00Z").unwrap(), &mut state);
+    simulation.state_at("2026-10-01T00:00:00Z".parse::<SimulationTime>().unwrap(), &mut state);
     let position = |id: &str| {
-        let index = simulation.bodies().iter().position(|body| body.id.path == id).unwrap();
-        state.bodies[index].position
+        let id = BodyId {
+            value: format!("system-solar:{id}"),
+        };
+        state.body(simulation.find_body(&id).unwrap()).position
     };
     for reference in &HORIZONS_2026_10_01 {
         let actual = position(reference.body) - position(reference.parent);

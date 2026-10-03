@@ -12,7 +12,7 @@ use rustyline::{
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
-use xsa_core::packs::id::NAMESPACE_SEPARATOR;
+use xsa_packs::NAMESPACE_SEPARATOR;
 
 use crate::completion::CommandCompletion;
 use crate::router::{CommandExecution, CommandInvocation, Output};

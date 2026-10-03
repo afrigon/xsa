@@ -8,4 +8,6 @@ anyhow.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync"] }
 xsa-commands.workspace = true
 xsa-core.workspace = true
+xsa-packs.workspace = true
 xsa-proto.workspace = true
+xsa-units.workspace = true

@@ -7,7 +7,7 @@ use usage::complete::{self, Shell};
 #[cfg(feature = "client")]
 use usage::spec::{Candidate, CompleteCtx};
 #[cfg(feature = "client")]
-use xsa_core::packs::id::NAMESPACE_SEPARATOR;
+use xsa_packs::NAMESPACE_SEPARATOR;
 
 use crate::command::CommandLine;
 

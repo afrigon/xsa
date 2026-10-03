@@ -4,12 +4,14 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 
-use super::id::Id;
-use super::manifest::Manifest;
+use crate::{Document, Id, Manifest, PackData, ParseContext};
+
+pub const DOCUMENT_EXTENSION: &str = "kdl";
 
 const DATA_DIRECTORY: &str = "data";
 const RESOURCES_DIRECTORY: &str = "resources";
-const DATA_EXTENSION: &str = "kdl";
+const TEXTURES: &str = "textures";
+const TEXTURE_EXTENSION: &str = "dds";
 
 pub struct PackStack {
     manifests: Vec<Manifest>,
@@ -39,7 +41,7 @@ impl PackStack {
                     );
                 }
             }
-            index_pack(&pack_directory, &mut files)?;
+            PackStack::index_pack(&pack_directory, &mut files)?;
             manifests.push(manifest);
         }
         Ok(PackStack { manifests, files })
@@ -49,16 +51,28 @@ impl PackStack {
         &self.manifests
     }
 
+    pub fn load_data<T: PackData>(&self, id: &Id) -> anyhow::Result<T> {
+        let path = self.data(T::KIND, id)?;
+        let document = Document::read(path)?;
+        let context = ParseContext { stack: self, id };
+
+        T::parse(&document, &context).with_context(|| format!("{}", path.display()))
+    }
+
     pub fn data(&self, kind: &str, id: &Id) -> anyhow::Result<&Path> {
-        self.find(DATA_DIRECTORY, kind, id, DATA_EXTENSION)
+        self.find(DATA_DIRECTORY, kind, id, DOCUMENT_EXTENSION)
     }
 
     pub fn resource(&self, kind: &str, id: &Id, extension: &str) -> anyhow::Result<&Path> {
         self.find(RESOURCES_DIRECTORY, kind, id, extension)
     }
 
+    pub fn texture(&self, id: &Id) -> anyhow::Result<&Path> {
+        self.resource(TEXTURES, id, TEXTURE_EXTENSION)
+    }
+
     pub fn data_ids(&self, kind: &str) -> Vec<Id> {
-        let suffix = format!(".{DATA_EXTENSION}");
+        let suffix = format!(".{DOCUMENT_EXTENSION}");
         let mut ids: Vec<Id> = self
             .files
             .keys()
@@ -83,56 +97,56 @@ impl PackStack {
             .map(PathBuf::as_path)
             .with_context(|| format!("no loaded pack provides {kind} {id} ({key})"))
     }
-}
 
-fn index_pack(pack_directory: &Path, files: &mut HashMap<String, PathBuf>) -> anyhow::Result<()> {
-    for entry in fs::read_dir(pack_directory).with_context(|| format!("reading {}", pack_directory.display()))? {
-        let namespace_directory = entry?.path();
-        if !namespace_directory.is_dir() {
-            continue;
+    fn index_pack(pack_directory: &Path, files: &mut HashMap<String, PathBuf>) -> anyhow::Result<()> {
+        for entry in fs::read_dir(pack_directory).with_context(|| format!("reading {}", pack_directory.display()))? {
+            let namespace_directory = entry?.path();
+            if !namespace_directory.is_dir() {
+                continue;
+            }
+            let namespace = namespace_directory
+                .file_name()
+                .expect("directory entries have a name")
+                .to_string_lossy()
+                .into_owned();
+            for section in [DATA_DIRECTORY, RESOURCES_DIRECTORY] {
+                let section_directory = namespace_directory.join(section);
+                PackStack::index_directory(
+                    &section_directory,
+                    &section_directory,
+                    &format!("{section}/{namespace}"),
+                    files,
+                )?;
+            }
         }
-        let namespace = namespace_directory
-            .file_name()
-            .expect("directory entries have a name")
-            .to_string_lossy()
-            .into_owned();
-        for section in [DATA_DIRECTORY, RESOURCES_DIRECTORY] {
-            let section_directory = namespace_directory.join(section);
-            index_directory(
-                &section_directory,
-                &section_directory,
-                &format!("{section}/{namespace}"),
-                files,
-            )?;
-        }
+        Ok(())
     }
-    Ok(())
-}
 
-fn index_directory(
-    section_directory: &Path,
-    directory: &Path,
-    key_prefix: &str,
-    files: &mut HashMap<String, PathBuf>,
-) -> anyhow::Result<()> {
-    if !directory.is_dir() {
-        return Ok(());
-    }
-    for entry in fs::read_dir(directory).with_context(|| format!("reading {}", directory.display()))? {
-        let path = entry?.path();
-        if path.is_dir() {
-            index_directory(section_directory, &path, key_prefix, files)?;
-            continue;
+    fn index_directory(
+        section_directory: &Path,
+        directory: &Path,
+        key_prefix: &str,
+        files: &mut HashMap<String, PathBuf>,
+    ) -> anyhow::Result<()> {
+        if !directory.is_dir() {
+            return Ok(());
         }
-        let relative = path
-            .strip_prefix(section_directory)
-            .expect("indexed files are inside their section");
-        let relative = relative
-            .components()
-            .map(|component| component.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
-        files.insert(format!("{key_prefix}/{relative}"), path);
+        for entry in fs::read_dir(directory).with_context(|| format!("reading {}", directory.display()))? {
+            let path = entry?.path();
+            if path.is_dir() {
+                PackStack::index_directory(section_directory, &path, key_prefix, files)?;
+                continue;
+            }
+            let relative = path
+                .strip_prefix(section_directory)
+                .expect("indexed files are inside their section");
+            let relative = relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            files.insert(format!("{key_prefix}/{relative}"), path);
+        }
+        Ok(())
     }
-    Ok(())
 }

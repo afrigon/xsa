@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use xsa_core::time::TICK_RATE_HERTZ;
+use xsa_units::TICK_RATE_HERTZ;
 
 struct TimeUnit {
     suffix: &'static str,

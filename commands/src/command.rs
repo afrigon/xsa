@@ -112,7 +112,9 @@ impl Command {
         match self {
             Command::Time(TimeCommand { action: None }) => Route::ShowTime,
             Command::Time(TimeCommand { action: Some(action) }) => Route::Server(match action {
-                TimeAction::Set { time } => ClientMessage::SetTime { time: time.time },
+                TimeAction::Set { time } => ClientMessage::SetTime {
+                    time: time.time.seconds,
+                },
                 TimeAction::Rate { multiplier } => ClientMessage::SetTimeRate { rate: multiplier },
                 TimeAction::Pause => ClientMessage::SetTimeRate { rate: 0.0 },
                 TimeAction::Resume => ClientMessage::SetTimeRate { rate: 1.0 },

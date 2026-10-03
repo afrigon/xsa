@@ -8,14 +8,13 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, bail};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-use xsa_core::packs::data::SIMULATIONS;
-use xsa_core::packs::{Id, PackStack};
 use xsa_core::simulation::Simulation;
-use xsa_core::time::{self, TICK_RATE_HERTZ};
+use xsa_packs::{Id, PackData, PackStack, SimulationDefinition};
 use xsa_proto::connection::{ClientLink, Connection};
 use xsa_proto::messages::{
     ClientFrame, ClientMessage, Outcome, PackReference, Player, PlayerId, Role, ServerEvent, WorldState,
 };
+use xsa_units::{SimulationTime, TICK_RATE_HERTZ};
 
 pub struct WorldOptions {
     pub packs_directory: PathBuf,
@@ -24,6 +23,7 @@ pub struct WorldOptions {
 }
 
 pub struct World {
+    simulation_id: Id,
     simulation: Simulation,
     packs: Vec<PackReference>,
     time: f64,
@@ -37,8 +37,10 @@ impl World {
             Some(id) => Id::parse(id, "base")?,
             None => only_simulation(&stack)?,
         };
-        let simulation =
-            Simulation::load(&stack, &simulation_id).with_context(|| format!("loading simulation {simulation_id}"))?;
+        let simulation = stack
+            .load_data::<SimulationDefinition>(&simulation_id)
+            .and_then(|definition| definition.build(&stack))
+            .with_context(|| format!("loading simulation {simulation_id}"))?;
         let packs = stack
             .manifests()
             .iter()
@@ -48,11 +50,16 @@ impl World {
             })
             .collect();
         Ok(World {
+            simulation_id,
             simulation,
             packs,
-            time: time::now()?,
+            time: SimulationTime::now()?.seconds,
             rate: 1.0,
         })
+    }
+
+    pub fn simulation_id(&self) -> &Id {
+        &self.simulation_id
     }
 
     pub fn simulation(&self) -> &Simulation {
@@ -61,7 +68,7 @@ impl World {
 }
 
 fn only_simulation(stack: &PackStack) -> anyhow::Result<Id> {
-    let mut simulations = stack.data_ids(SIMULATIONS);
+    let mut simulations = stack.data_ids(SimulationDefinition::KIND);
     match simulations.len() {
         0 => bail!("no star system is installed: add a pack that defines a simulation"),
         1 => Ok(simulations.remove(0)),
@@ -233,7 +240,7 @@ impl Server {
         };
         self.clients[client].membership = Some(membership);
         let state = WorldState {
-            simulation: self.world.simulation.id().to_string(),
+            simulation: self.world.simulation_id.to_string(),
             packs: self.world.packs.clone(),
             time: self.world.time,
             rate: self.world.rate,

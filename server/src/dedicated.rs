@@ -22,7 +22,7 @@ pub struct DedicatedOptions {
 #[tokio::main]
 pub async fn run(options: DedicatedOptions) -> anyhow::Result<()> {
     let world = World::load(&options.world)?;
-    println!("simulation {}", world.simulation().id());
+    println!("simulation {}", world.simulation_id());
     let identity = Identity::load_or_generate(&options.identity)?;
     let address = SocketAddr::new(options.host, options.port);
     let listener = network::listen(&identity, address)?;

@@ -1,3 +1,7 @@
+mod element_rates;
+
+pub use element_rates::ElementRates;
+
 use std::f64::consts::{PI, TAU};
 
 use glam::{DQuat, DVec3};
@@ -5,15 +9,6 @@ use glam::{DQuat, DVec3};
 const KEPLER_TOLERANCE: f64 = 1e-15;
 const KEPLER_MAXIMUM_ITERATIONS: usize = 32;
 const HIGH_ECCENTRICITY: f64 = 0.8;
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ElementRates {
-    pub semi_major_axis: f64,
-    pub eccentricity: f64,
-    pub inclination: f64,
-    pub ascending_node: f64,
-    pub periapsis: f64,
-}
 
 #[derive(Clone, Copy, Debug)]
 pub struct OrbitalElements {

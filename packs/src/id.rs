@@ -1,6 +1,7 @@
 use std::fmt;
 
 use anyhow::ensure;
+use xsa_core::simulation::BodyId;
 
 pub const NAMESPACE_SEPARATOR: char = ':';
 
@@ -33,6 +34,12 @@ impl Id {
 impl fmt::Display for Id {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}{NAMESPACE_SEPARATOR}{}", self.namespace, self.path)
+    }
+}
+
+impl From<&Id> for BodyId {
+    fn from(id: &Id) -> BodyId {
+        BodyId { value: id.to_string() }
     }
 }
 

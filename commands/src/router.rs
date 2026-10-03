@@ -3,9 +3,9 @@ use std::ffi::OsStr;
 
 use tokio::sync::oneshot;
 use usage::help::Style;
-use xsa_core::time;
 use xsa_proto::messages::{ClientMessage, MessageId, Outcome, ServerEvent};
 use xsa_proto::session::{ServerSession, SessionState};
+use xsa_units::{SimulationTime, TimeRate};
 
 #[cfg(feature = "client")]
 use crate::command::ClientCommand;
@@ -161,11 +161,11 @@ fn describe_time(state: Option<&SessionState>) -> Output {
     let Some(state) = state else {
         return Output::failure("not joined to a simulation yet");
     };
-    let rate = match state.rate() {
-        0.0 => "paused".to_string(),
-        rate => format!("rate {rate}×"),
+    let time = SimulationTime { seconds: state.time() };
+    let rate = TimeRate {
+        multiplier: state.rate(),
     };
-    Output::success(format!("time: {}, {rate}", time::format_timestamp(state.time())))
+    Output::success(format!("time: {time}, {rate}"))
 }
 
 #[cfg(test)]
