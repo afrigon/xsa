@@ -1,15 +1,15 @@
 use usage::spec::{Candidate, CompleteCtx};
 use xsa_packs::NAMESPACE_SEPARATOR;
 
-use super::{CompletionCandidate, CompletionKind, VALUES};
+use super::{CompletionCandidate, CompletionKind};
 
 // Body values are full ids; until a namespace is typed, offer short paths and the namespaces themselves.
 // usage-rs calls completers as plain functions.
 pub(crate) fn complete_target<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
-    let bodies = known(CompletionKind::Body);
+    let bodies = CompletionCandidate::known(CompletionKind::Body);
 
     if context.prefix.contains(NAMESPACE_SEPARATOR) {
-        return bodies.iter().map(candidate).collect();
+        return bodies.iter().map(CompletionCandidate::to_candidate).collect();
     }
 
     let mut candidates = vec![
@@ -22,10 +22,14 @@ pub(crate) fn complete_target<Partial>(_partial: &Partial, context: &CompleteCtx
         let Some((namespace, path)) = body.value.split_once(NAMESPACE_SEPARATOR) else {
             continue;
         };
-        candidates.push(candidate(&CompletionCandidate {
-            value: path.to_string(),
-            description: body.description.clone(),
-        }));
+        candidates.push(
+            CompletionCandidate {
+                value: path.to_string(),
+                description: body.description.clone(),
+                scope: None,
+            }
+            .to_candidate(),
+        );
 
         let namespace = format!("{namespace}{NAMESPACE_SEPARATOR}");
 
@@ -41,15 +45,4 @@ pub(crate) fn complete_target<Partial>(_partial: &Partial, context: &CompleteCtx
     );
 
     candidates
-}
-
-fn known(kind: CompletionKind) -> Vec<CompletionCandidate> {
-    VALUES.with_borrow(|known| known.get(&kind).cloned().unwrap_or_default())
-}
-
-fn candidate(value: &CompletionCandidate) -> Candidate<'static> {
-    match &value.description {
-        Some(description) => Candidate::described(value.value.clone(), description.clone()),
-        None => Candidate::new(value.value.clone()),
-    }
 }

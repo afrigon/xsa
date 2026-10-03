@@ -1,3 +1,3 @@
 mod config;
 
-pub use config::ConfigDocument;
+pub use config::{ConfigDocument, ConfigKey};

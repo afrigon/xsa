@@ -35,6 +35,7 @@ impl Completions {
             .map(|candidate| CompletionCandidate {
                 value: candidate.value,
                 description: candidate.description.map(|description| description.into_owned()),
+                scope: None,
             })
             .collect();
         VALUES.with_borrow_mut(HashMap::clear);
@@ -51,13 +52,7 @@ mod tests {
     use super::*;
 
     fn values(text: &[&str]) -> impl Fn(CompletionKind) -> Vec<CompletionCandidate> {
-        let values: Vec<CompletionCandidate> = text
-            .iter()
-            .map(|value| CompletionCandidate {
-                value: value.to_string(),
-                description: None,
-            })
-            .collect();
+        let values: Vec<CompletionCandidate> = text.iter().map(|value| CompletionCandidate::new(*value)).collect();
 
         move |_| values.clone()
     }

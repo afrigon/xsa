@@ -26,7 +26,7 @@ use xsa_proto::session::ServerSession;
 
 use crate::camera::CameraMode;
 use crate::config::Config;
-use crate::document::ConfigDocument;
+use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{Renderer, ShaderBinaries};
 use camera_controller::CameraController;
@@ -200,6 +200,25 @@ impl App {
         }
     }
 
+    fn reconfigure(&mut self) {
+        self.config = self.config_document.config();
+        self.apply_config();
+    }
+
+    fn apply_config_change(&mut self, key: &str, save: bool) -> anyhow::Result<String> {
+        self.reconfigure();
+        let mut description = format!("{key} {}", self.config_document.get(key)?);
+
+        if save && ConfigKey::find(key).is_some_and(|key| !key.persisted) {
+            description.push_str(" (debug settings are never saved)");
+        } else if save {
+            self.config_document.save()?;
+            description.push_str(&format!(" (saved to {})", self.config_document.path().display()));
+        }
+
+        Ok(description)
+    }
+
     fn apply_config(&mut self) {
         let Some(renderer) = &mut self.renderer else {
             return;
@@ -282,12 +301,26 @@ impl CommandExecutor for App {
     }
 
     fn completion_values(&self, kind: CompletionKind) -> Vec<CompletionCandidate> {
-        let Some(world) = &self.world else {
-            return Vec::new();
-        };
-
         match kind {
-            CompletionKind::Body => world.body_candidates(),
+            CompletionKind::Body => self
+                .world
+                .as_ref()
+                .map(ClientWorld::body_candidates)
+                .unwrap_or_default(),
+            CompletionKind::ConfigKey => ConfigKey::ALL
+                .iter()
+                .map(|key| CompletionCandidate::new(key.path))
+                .collect(),
+            CompletionKind::ConfigValue => ConfigKey::ALL
+                .iter()
+                .flat_map(|key| {
+                    key.kind.values().into_iter().map(|value| CompletionCandidate {
+                        value: value.to_string(),
+                        description: None,
+                        scope: Some(key.path.to_string()),
+                    })
+                })
+                .collect(),
         }
     }
 
@@ -296,6 +329,11 @@ impl CommandExecutor for App {
             ClientCommand::CameraMode(command) => command.run(self),
             ClientCommand::CameraTarget(command) => command.run(self),
             ClientCommand::CameraLookAt(command) => command.run(self),
+            ClientCommand::ConfigGet(command) => command.run(self),
+            ClientCommand::ConfigSet(command) => command.run(self),
+            ClientCommand::ConfigToggle(command) => command.run(self),
+            ClientCommand::ConfigSave(command) => command.run(self),
+            ClientCommand::ConfigReload(command) => command.run(self),
         }
     }
 }

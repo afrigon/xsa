@@ -273,6 +273,21 @@ mod tests {
     }
 
     #[test]
+    fn a_repeated_block_is_read_last_wins() {
+        let file = TestFile::new(
+            "repeated",
+            Some("render { stars #false; exposure { compensation 1 } }\nrender { exposure { compensation 1.5 } }\n"),
+        );
+        let mut document = ConfigDocument::load(file.path()).unwrap();
+        let config = document.config();
+        assert!(!config.render.stars);
+        assert_eq!(config.render.exposure.compensation, 1.5);
+
+        document.set("render.exposure.compensation", "0").unwrap();
+        assert_eq!(document.config().render.exposure.compensation, 0.0);
+    }
+
+    #[test]
     fn invalid_values_fall_back_to_the_default() {
         let file = TestFile::new("invalid", Some("render { tonemapper \"sepia\"; stars 3 }\n"));
         let config = ConfigDocument::load(file.path()).unwrap().config();

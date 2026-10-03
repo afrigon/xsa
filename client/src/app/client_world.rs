@@ -144,10 +144,7 @@ impl ClientWorld {
     pub fn body_candidates(&self) -> Vec<CompletionCandidate> {
         self.bodies()
             .iter()
-            .map(|body| CompletionCandidate {
-                value: body.id.to_string(),
-                description: None,
-            })
+            .map(|body| CompletionCandidate::new(body.id.to_string()))
             .collect()
     }
 

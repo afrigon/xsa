@@ -17,20 +17,9 @@ impl ConfigLayer {
     }
 
     pub fn get(&self, path: &str) -> Option<&KdlValue> {
-        let mut segments = path.split(PATH_SEPARATOR).peekable();
-        let mut document = &self.document;
+        let segments: Vec<&str> = path.split(PATH_SEPARATOR).collect();
 
-        while let Some(segment) = segments.next() {
-            let node = document.get(segment)?;
-
-            if segments.peek().is_none() {
-                return node.entries().first().map(KdlEntry::value);
-            }
-
-            document = node.children()?;
-        }
-
-        None
+        ConfigLayer::get_in(&self.document, &segments)
     }
 
     // Only the value's own node changes, and only newly created nodes are formatted, so comments and layout
@@ -74,13 +63,14 @@ impl ConfigLayer {
         let mut document = &mut self.document;
 
         for segment in parents {
-            let Some(children) = document.get_mut(segment).and_then(|node| node.children_mut().as_mut()) else {
+            let Some(children) = ConfigLayer::last_mut(document, segment).and_then(|node| node.children_mut().as_mut())
+            else {
                 return;
             };
             document = children;
         }
 
-        if let Some(node) = document.get_mut(last) {
+        if let Some(node) = ConfigLayer::last_mut(document, last) {
             node.autoformat_config(&FormatConfig::builder().indent_level(parents.len()).build());
         }
     }
@@ -97,8 +87,26 @@ impl ConfigLayer {
         paths
     }
 
+    // A name can repeat in KDL; like most config formats, the last one wins.
+    fn get_in<'a>(document: &'a KdlDocument, segments: &[&str]) -> Option<&'a KdlValue> {
+        let (first, rest) = segments.split_first()?;
+
+        document
+            .nodes()
+            .iter()
+            .rev()
+            .filter(|node| node.name().value() == *first)
+            .find_map(|node| {
+                if rest.is_empty() {
+                    node.entries().first().map(KdlEntry::value)
+                } else {
+                    node.children().and_then(|children| ConfigLayer::get_in(children, rest))
+                }
+            })
+    }
+
     fn child<'a>(document: &'a mut KdlDocument, name: &str) -> &'a mut KdlNode {
-        let index = match document.nodes().iter().position(|node| node.name().value() == name) {
+        let index = match document.nodes().iter().rposition(|node| node.name().value() == name) {
             Some(index) => index,
             None => {
                 document.nodes_mut().push(KdlNode::new(name));
@@ -109,6 +117,14 @@ impl ConfigLayer {
         &mut document.nodes_mut()[index]
     }
 
+    fn last_mut<'a>(document: &'a mut KdlDocument, name: &str) -> Option<&'a mut KdlNode> {
+        document
+            .nodes_mut()
+            .iter_mut()
+            .rev()
+            .find(|node| node.name().value() == name)
+    }
+
     // Returns whether the document is empty afterwards, so emptied parent nodes go too.
     fn remove_from(document: &mut KdlDocument, segments: &[&str]) -> bool {
         let Some((first, rest)) = segments.split_first() else {
@@ -117,11 +133,20 @@ impl ConfigLayer {
 
         if rest.is_empty() {
             document.nodes_mut().retain(|node| node.name().value() != *first);
-        } else if let Some(node) = document.get_mut(first)
-            && let Some(children) = node.children_mut()
-            && ConfigLayer::remove_from(children, rest)
-        {
-            document.nodes_mut().retain(|node| node.name().value() != *first);
+        } else {
+            for node in document
+                .nodes_mut()
+                .iter_mut()
+                .filter(|node| node.name().value() == *first)
+            {
+                if let Some(children) = node.children_mut() {
+                    ConfigLayer::remove_from(children, rest);
+                }
+            }
+
+            document.nodes_mut().retain(|node| {
+                node.name().value() != *first || node.children().is_some_and(|children| !children.nodes().is_empty())
+            });
         }
 
         document.nodes().is_empty()

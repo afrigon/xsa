@@ -70,6 +70,8 @@ impl ConfigValueKind {
     pub fn text(value: &KdlValue) -> String {
         match value {
             KdlValue::String(text) => text.clone(),
+            KdlValue::Bool(true) => TRUE_WORDS[0].to_string(),
+            KdlValue::Bool(false) => FALSE_WORDS[0].to_string(),
             other => other.to_string(),
         }
     }

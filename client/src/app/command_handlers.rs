@@ -1,3 +1,8 @@
 mod camera_look_at;
 mod camera_mode;
 mod camera_target;
+mod config_get;
+mod config_reload;
+mod config_save;
+mod config_set;
+mod config_toggle;
