@@ -158,11 +158,10 @@
   texture for the diffuse glow. Keeps the physically calibrated sky.
 - Commands, the remaining phases (the router, REPL, IPC and time and camera
   commands exist):
-  - `camera snap --ui show|hide` once there is a UI: hiding it needs the
-    tonemap pass to write into its own image before the UI is composited,
-    and the snap to copy from that image instead of the presented one.
-  - `ui [<ui-id>] show|hide|toggle` once there is a UI; vessels, maneuvers,
-    resources, EVA, SAS and RCS commands with gameplay.
+  - `ui [<ui-id>] show|hide|toggle` once there is a UI; a snap without the
+    UI is `ui hide`, `camera snap`, `ui show`, so the snap itself never
+    takes a UI option. Vessels, maneuvers, resources, EVA, SAS and RCS
+    commands with gameplay.
 - Rings as data: inner/outer radii and orientation in the system data
   (literature values; Sol's ring radii use an unknown unit), textures as
   resources.
