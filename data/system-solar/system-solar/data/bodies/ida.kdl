@@ -1,3 +1,4 @@
+category "asteroid"
 radius 16000
 gravitational-parameter 2750000
 rotation-period 16681.0752

@@ -1,8 +1,10 @@
 mod bind_actions;
+mod body_step;
 mod camera_controller;
 mod client_command_handler;
 mod client_world;
 mod command_handlers;
+mod snapshot;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -26,7 +28,7 @@ use crate::camera::CameraMode;
 use crate::config::Config;
 use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
-use crate::renderer::{Renderer, ShaderBinaries};
+use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -205,6 +207,16 @@ impl App {
         renderer.scene_mut().skybox = if self.config.render.stars { skybox } else { None };
     }
 
+    fn capture(&mut self) -> anyhow::Result<CapturedImage> {
+        let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
+
+        if let Some(world) = &self.world {
+            world.sync(renderer);
+        }
+
+        renderer.capture(self.cameras.camera())
+    }
+
     fn draw(&mut self) -> anyhow::Result<()> {
         let Some(renderer) = &mut self.renderer else {
             return Ok(());
@@ -291,6 +303,7 @@ impl CommandExecutor for App {
             ClientCommand::CameraMode(command) => command.run(self),
             ClientCommand::CameraTarget(command) => command.run(self),
             ClientCommand::CameraLookAt(command) => command.run(self),
+            ClientCommand::CameraSnap(command) => command.run(self),
             ClientCommand::ConfigGet(command) => command.run(self),
             ClientCommand::ConfigSet(command) => command.run(self),
             ClientCommand::ConfigToggle(command) => command.run(self),

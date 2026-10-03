@@ -14,7 +14,8 @@ mod time;
 
 #[cfg(feature = "client")]
 pub use camera::{
-    CameraAction, CameraCommand, CameraLookAtCommand, CameraMode, CameraModeCommand, CameraTargetCommand,
+    CameraAction, CameraCommand, CameraLookAtCommand, CameraMode, CameraModeCommand, CameraSnapCommand,
+    CameraTargetCommand,
 };
 #[cfg(feature = "client")]
 pub use client_command::ClientCommand;

@@ -1,5 +1,6 @@
 mod barycenter_node;
 mod body;
+mod body_category;
 mod body_description;
 mod body_id;
 mod body_index;
@@ -18,6 +19,7 @@ mod system_tree;
 
 pub use barycenter_node::BarycenterNode;
 pub use body::Body;
+pub use body_category::BodyCategory;
 pub use body_description::BodyDescription;
 pub use body_id::BodyId;
 pub use body_index::BodyIndex;
@@ -59,7 +61,7 @@ impl Simulation {
                 rotations: Vec::new(),
             },
         };
-        builder.add_node(&system.root, None, 0.0)?;
+        builder.add_node(&system.root, None, None, 0.0)?;
 
         let mut simulation = builder.simulation;
 

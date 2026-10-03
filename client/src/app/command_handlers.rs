@@ -1,5 +1,6 @@
 mod camera_look_at;
 mod camera_mode;
+mod camera_snap;
 mod camera_target;
 mod config_get;
 mod config_reload;

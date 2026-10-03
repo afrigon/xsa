@@ -4,7 +4,7 @@ use super::motion::Motion;
 use super::offset::Offset;
 use super::placement::Placement;
 use super::rotation::Rotation;
-use super::{BarycenterNode, Body, BodyNode, Simulation, SystemNode};
+use super::{BarycenterNode, Body, BodyIndex, BodyNode, Simulation, SystemNode};
 
 pub(super) struct Builder {
     pub simulation: Simulation,
@@ -15,12 +15,13 @@ impl Builder {
         &mut self,
         node: &SystemNode,
         parent: Option<usize>,
+        parent_body: Option<BodyIndex>,
         parent_gravitational_parameter: f64,
     ) -> anyhow::Result<()> {
         match node {
-            SystemNode::Body(body) => self.add_orbiting_body(body, parent, parent_gravitational_parameter),
+            SystemNode::Body(body) => self.add_orbiting_body(body, parent, parent_body, parent_gravitational_parameter),
             SystemNode::Barycenter(barycenter) => {
-                self.add_barycenter(barycenter, parent, parent_gravitational_parameter)
+                self.add_barycenter(barycenter, parent, parent_body, parent_gravitational_parameter)
             }
         }
     }
@@ -29,6 +30,7 @@ impl Builder {
         &mut self,
         node: &BodyNode,
         parent: Option<usize>,
+        parent_body: Option<BodyIndex>,
         parent_gravitational_parameter: f64,
     ) -> anyhow::Result<()> {
         let offset = match parent {
@@ -47,14 +49,16 @@ impl Builder {
             }),
         };
         let reference = offset.motion();
+        self.add_body(node, parent, parent_body, offset, reference)?;
 
-        self.add_body(node, parent, offset, reference)
+        Ok(())
     }
 
     fn add_barycenter(
         &mut self,
         node: &BarycenterNode,
         parent: Option<usize>,
+        parent_body: Option<BodyIndex>,
         parent_gravitational_parameter: f64,
     ) -> anyhow::Result<()> {
         let primary_gravitational_parameter = node.primary.body.gravitational_parameter;
@@ -91,9 +95,10 @@ impl Builder {
         };
         let primary_factor = -secondary_gravitational_parameter / pair_gravitational_parameter;
         let secondary_factor = primary_gravitational_parameter / pair_gravitational_parameter;
-        self.add_body(
+        let primary = self.add_body(
             &node.primary,
             Some(barycenter),
+            parent_body,
             Offset::Share {
                 motion: relative,
                 factor: primary_factor,
@@ -103,6 +108,7 @@ impl Builder {
         self.add_body(
             &node.secondary,
             Some(barycenter),
+            Some(primary),
             Offset::Share {
                 motion: relative,
                 factor: secondary_factor,
@@ -111,7 +117,7 @@ impl Builder {
         )?;
 
         for child in &node.children {
-            self.add_node(child, Some(barycenter), pair_gravitational_parameter)?;
+            self.add_node(child, Some(barycenter), Some(primary), pair_gravitational_parameter)?;
         }
 
         Ok(())
@@ -121,9 +127,10 @@ impl Builder {
         &mut self,
         node: &BodyNode,
         parent: Option<usize>,
+        parent_body: Option<BodyIndex>,
         offset: Offset,
         reference: Option<Motion>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<BodyIndex> {
         let body = &node.body;
         ensure!(
             !node.spin.tidally_locked || reference.is_some(),
@@ -140,17 +147,22 @@ impl Builder {
             axial_tilt: body.axial_tilt,
             period: body.rotation_period,
         });
+        let index = BodyIndex {
+            value: self.simulation.bodies.len(),
+        };
         self.simulation.bodies.push(Body {
             id: body.id.clone(),
+            category: body.category,
+            parent: parent_body,
             radius: body.radius,
             gravitational_parameter: body.gravitational_parameter,
             star: body.star,
         });
 
         for child in &node.children {
-            self.add_node(child, Some(placement), body.gravitational_parameter)?;
+            self.add_node(child, Some(placement), Some(index), body.gravitational_parameter)?;
         }
 
-        Ok(())
+        Ok(index)
     }
 }

@@ -1,13 +1,14 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, ensure};
+use anyhow::{Context, bail, ensure};
 use glam::{DVec3, Vec3};
 use xsa_commands::completion::CompletionCandidate;
-use xsa_core::simulation::{Body, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
+use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
 use xsa_packs::{Id, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition};
 use xsa_proto::event::WorldState;
 use xsa_units::SimulationTime;
 
+use super::body_step::BodyStep;
 use crate::renderer::{ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject};
 use crate::star_light::StarLight;
 
@@ -144,8 +145,37 @@ impl ClientWorld {
     pub fn body_candidates(&self) -> Vec<CompletionCandidate> {
         self.bodies()
             .iter()
-            .map(|body| CompletionCandidate::new(body.id.to_string()))
+            .map(|body| CompletionCandidate {
+                value: body.id.to_string(),
+                description: Some(body.category.name().to_string()),
+                scope: None,
+            })
             .collect()
+    }
+
+    // Wraps around the system; with a category, bodies of other categories are skipped.
+    pub fn step_body(
+        &self,
+        current: BodyIndex,
+        step: BodyStep,
+        category: Option<BodyCategory>,
+    ) -> anyhow::Result<BodyIndex> {
+        let count = self.bodies().len();
+        let mut index = current;
+
+        for _ in 0..count {
+            index = match step {
+                BodyStep::Next => index.next(count),
+                BodyStep::Previous => index.previous(count),
+            };
+
+            if category.is_none_or(|category| self.body(index).category == category) {
+                return Ok(index);
+            }
+        }
+
+        let category = category.map_or("body".to_string(), |category| category.to_string());
+        bail!("no {category} in {}", self.simulation_id)
     }
 
     pub fn advance(&mut self, time: SimulationTime) {

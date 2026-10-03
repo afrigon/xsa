@@ -152,13 +152,9 @@
   texture for the diffuse glow. Keeps the physically calibrated sky.
 - Commands, the remaining phases (the router, REPL, IPC and time and camera
   commands exist):
-  - Body categories in the body data (star, planet, dwarf-planet, moon,
-    asteroid, comet), then `camera target next|previous [category]` and
-    `camera target parent` (bodies need their parent body: the primary for a
-    barycenter's secondary, otherwise the nearest ancestor body).
-  - `camera snap [--region <x>,<y>:<width>x<height>] [--output <path>]
-    [--ui show|hide]`, captured by the renderer itself (external capture on
-    Hyprland is unreliable). Doubles as visual regression testing.
+  - `camera snap --ui show|hide` once there is a UI: hiding it needs the
+    tonemap pass to write into its own image before the UI is composited,
+    and the snap to copy from that image instead of the presented one.
   - `ui [<ui-id>] show|hide|toggle` once there is a UI; vessels, maneuvers,
     resources, EVA, SAS and RCS commands with gameplay.
 - Rings as data: inner/outer radii and orientation in the system data

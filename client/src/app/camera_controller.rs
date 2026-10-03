@@ -4,6 +4,7 @@ use winit::event::MouseButton;
 use xsa_commands::command::CameraTargetCommand;
 use xsa_commands::value::Target;
 
+use super::body_step::BodyStep;
 use super::client_world::ClientWorld;
 use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
@@ -95,10 +96,20 @@ impl CameraController {
 
     pub fn target(&mut self, command: &CameraTargetCommand, world: &ClientWorld) -> anyhow::Result<String> {
         let orbit = self.orbit.as_mut().context("the simulation has no bodies")?;
-        let body_count = world.bodies().len();
+        let current = orbit.target();
+        let steps = matches!(command.target, Target::Next | Target::Previous);
+        ensure!(
+            steps || command.category.is_none(),
+            "a category only applies to next and previous"
+        );
+
         let target = match &command.target {
-            Target::Next => orbit.target().next(body_count),
-            Target::Previous => orbit.target().previous(body_count),
+            Target::Next => world.step_body(current, BodyStep::Next, command.category)?,
+            Target::Previous => world.step_body(current, BodyStep::Previous, command.category)?,
+            Target::Parent => world
+                .body(current)
+                .parent
+                .with_context(|| format!("{} orbits nothing", world.body(current).id))?,
             Target::Body { id } => world.find_body(id)?,
         };
         let body = world.body(target);
