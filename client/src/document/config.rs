@@ -1,4 +1,5 @@
 mod adaptation_document;
+mod bind_document;
 mod bloom_document;
 mod config_choice;
 mod config_key;
@@ -8,22 +9,24 @@ mod config_values;
 mod debug_document;
 mod exposure_document;
 mod exposure_mode_choice;
+mod key_chord_name;
 mod render_document;
 mod shader_choice;
 mod shading_model_choice;
 mod tonemapper_choice;
 
+pub use bloom_document::BloomDocument;
+pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;
 pub use config_value_kind::ConfigValueKind;
+pub use debug_document::DebugDocument;
+pub use exposure_document::ExposureDocument;
+pub use render_document::RenderDocument;
 
 use adaptation_document::AdaptationDocument;
-use bloom_document::BloomDocument;
-use config_choice::ConfigChoice;
+use bind_document::BindDocument;
 use config_layer::ConfigLayer;
 use config_values::ConfigValues;
-use debug_document::DebugDocument;
-use exposure_document::ExposureDocument;
-use render_document::RenderDocument;
 
 use std::env;
 use std::fs;
@@ -61,6 +64,7 @@ impl ConfigDocument {
         let mut defaults = ConfigLayer::default();
         let config = Config::default();
         RenderDocument::write(&config.render, &mut defaults);
+        BindDocument::write(&config.bind, &mut defaults);
         DebugDocument::write(&config.debug, &mut defaults);
         let mut document = ConfigDocument {
             path,
@@ -103,6 +107,7 @@ impl ConfigDocument {
 
         Config {
             render: RenderDocument::read(&values).into_config(&defaults.render),
+            bind: BindDocument::read(&values).into_config(&defaults.bind),
             debug: DebugDocument::read(&values).into_config(&defaults.debug),
         }
     }
@@ -114,10 +119,10 @@ impl ConfigDocument {
         }
 
         let prefix = format!("{path}.");
-        let lines: Vec<String> = ConfigKey::ALL
-            .iter()
+        let lines: Vec<String> = ConfigKey::all()
+            .into_iter()
             .filter(|key| path.is_empty() || key.path.starts_with(&prefix))
-            .map(|key| format!("{} {}", key.path, ConfigValueKind::text(self.value(*key))))
+            .map(|key| format!("{} {}", key.path, ConfigValueKind::text(self.value(key))))
             .collect();
 
         if lines.is_empty() {
@@ -285,6 +290,33 @@ mod tests {
 
         document.set("render.exposure.compensation", "0").unwrap();
         assert_eq!(document.config().render.exposure.compensation, 0.0);
+    }
+
+    #[test]
+    fn binds_with_symbol_keys_survive_a_save() {
+        let file = TestFile::new("binds", None);
+        let mut document = ConfigDocument::load(file.path()).unwrap();
+        let binds = [
+            "bind.render.stars-toggle",
+            "bind.render.bloom-toggle",
+            "bind.debug.shader-lit",
+            "bind.debug.shader-normals",
+            "bind.debug.shader-depth",
+        ];
+        let keys = ["\\", "=", "[", "9", "ctrl+'"];
+
+        for (bind, key) in binds.iter().zip(keys) {
+            document.set(bind, key).unwrap();
+        }
+
+        document.save().unwrap();
+        let reloaded = ConfigDocument::load(file.path()).unwrap();
+
+        for (bind, key) in binds.iter().zip(keys) {
+            assert_eq!(reloaded.get(bind).unwrap(), key, "{}", file.contents());
+        }
+
+        assert_eq!(reloaded.config().bind, document.config().bind);
     }
 
     #[test]

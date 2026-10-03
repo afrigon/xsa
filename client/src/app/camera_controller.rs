@@ -35,10 +35,6 @@ impl CameraController {
         &self.camera
     }
 
-    pub fn mode(&self) -> CameraMode {
-        self.mode
-    }
-
     pub fn focus(&mut self, world: &ClientWorld) {
         self.orbit = world
             .initial_target()

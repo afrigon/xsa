@@ -52,7 +52,7 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 | `proto` | Client ↔ server protocol: messages, events, connections, QUIC transport |
 | `commands` | Text commands: the command tree, routing, REPL, IPC, completion |
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
-| `client` | The game: app, camera, input, renderer, Vulkan |
+| `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
 | `tools` | Offline asset tools (`convert-skybox`) |
 
@@ -121,7 +121,6 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
   plus typed parameters in a per-frame GPU buffer.
 - Every rendering feature is explained before it is implemented: what it is,
   why the renderer needs it, how it fits the pipeline.
-- Every post-processing effect has a toggle key, listed under Controls.
 - **Object lifetime:** `Instance`, `Surface`, `Device` and `Allocator` are
   destroyed by `Drop`, in `GpuContext`'s field order. Everything created from the
   device has an explicit `unsafe fn destroy`, called once the GPU is done with
@@ -160,23 +159,41 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 - Every third-party asset is listed in `LICENSES.md` with source, author and
   terms, with its license file next to its download.
 
+## Config
+
+- The client's settings live in `$XDG_CONFIG_HOME/xsa/config.kdl` (falling back
+  to `~/.config/xsa/config.kdl`), read at startup and by `config reload`.
+  Dotted keys are nested nodes: `render.bloom.strength` is
+  `render { bloom { strength 0.05 } }`. A repeated block is read last-wins.
+- Two models: `client/src/document/config/` holds the document models (KDL,
+  key paths, text values, every `ConfigKey`), `client/src/config/` the runtime
+  `Config` the renderer and input read. Converting a document into the runtime
+  model fills in the defaults, all of which live in `config/default_config.rs`.
+- `config set|toggle` edit the document and rebuild `Config`; `--save` and
+  `config save` write the file non-destructively (comments and layout kept,
+  defaults removed rather than written). `debug.*` is never saved.
+- Binds are `bind.<category>.<action>` keys holding a key chord (`f4`,
+  `shift+tab`, `` ` ``). Each action runs a typed action directly (the same
+  command structs the text commands parse into), never command text.
+
 ## Controls
 
-| Input | Action |
-| --- | --- |
-| Right-drag | Orbit the target (game camera) |
-| Scroll | Zoom (game camera) / speed (debug camera) |
-| Tab / Shift+Tab | Next / previous target |
-| F1 | Toggle the debug fly camera (WASD, Space/Shift, mouse look; click to capture, Escape to release) |
-| F2 | Toggle the skybox |
-| F3 | Cycle the tonemapper: AgX, AgX Punchy, Khronos PBR Neutral, off (clipped) |
-| F4 | Toggle auto-exposure (off: manual EV100) |
-| F5 | Toggle bloom |
-| F7 | Cycle planet shading: Hapke as Sol renders it, textbook Hapke, Lambert |
-| `[` / `]` | Bloom strength down / up by half a stop |
-| `-` / `=` | Darker / brighter by 1/3 stop (exposure compensation, or EV100 in manual mode) |
-| 1–5 | Shader override: lit, normals, depth, triangles, lighting |
-| \` | Wireframe |
+Right-drag orbits the target, scroll zooms (debug camera: speed), and the
+debug camera flies with WASD, Space/Shift and mouse look (click to capture).
+The default binds:
+
+| Key | Bind | Action |
+| --- | --- | --- |
+| F1 | `camera.debug-toggle` | Toggle the debug fly camera |
+| Tab / Shift+Tab | `camera.target-next` / `target-previous` | Next / previous target |
+| Escape | `camera.release-mouse` | Release the mouse |
+| F2 | `render.stars-toggle` | Toggle the skybox |
+| F3 | `render.tonemapper-next` | Cycle the tonemapper: AgX, AgX Punchy, Khronos PBR Neutral, off |
+| F4 | `render.exposure-mode-toggle` | Eye adaptation / manual EV100 |
+| F5 | `render.bloom-toggle` | Toggle bloom |
+| F7 | `debug.shading-next` | Cycle planet shading: Hapke (Sol), textbook Hapke, Lambert |
+| \` | `debug.wireframe-toggle` | Wireframe |
+| 1–5 | `debug.shader-lit` … `shader-lighting` | Shader override: lit, normals, depth, triangles, lighting |
 
 ## Gotchas
 

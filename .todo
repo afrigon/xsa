@@ -152,17 +152,6 @@
   texture for the diffuse glow. Keeps the physically calibrated sky.
 - Commands, the remaining phases (the router, REPL, IPC and time and camera
   commands exist):
-  - Config file (KDL in `$XDG_CONFIG_HOME/xsa/config.kdl`), then
-    `config get|set|toggle <key>`: live changes, `--save` and `config save`
-    persist, `debug.*` keys never persist. Keys: `render.tonemapper`
-    (agx, agx-punchy, khronos-pbr-neutral, off), `render.stars`,
-    `render.bloom.enabled`, `render.bloom.strength`, `render.exposure.mode`
-    (manual, eye-adaptation), `render.exposure.ev100`,
-    `render.exposure.compensation`, `render.exposure.adaptation.dark-to-light`
-    and `.light-to-dark` (half-lives in seconds), `debug.shader`,
-    `debug.shading`, `debug.wireframe`, `bind.<category>.<action>`. The debug
-    keybinds become default binds running commands. `config get` on a prefix
-    such as `render.exposure` prints its subtree.
   - Body categories in the body data (star, planet, dwarf-planet, moon,
     asteroid, comet), then `camera target next|previous [category]` and
     `camera target parent` (bodies need their parent body: the primary for a

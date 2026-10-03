@@ -1,8 +1,8 @@
+mod bind_actions;
 mod camera_controller;
 mod client_command_handler;
 mod client_world;
 mod command_handlers;
-mod keybinds;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -13,12 +13,10 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::KeyCode;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
-use xsa_commands::command::{CameraTargetCommand, ClientCommand};
+use xsa_commands::command::ClientCommand;
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
-use xsa_commands::value::Target;
 use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
@@ -32,7 +30,6 @@ use crate::renderer::{Renderer, ShaderBinaries};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
-use keybinds::Keybinds;
 
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
@@ -49,7 +46,6 @@ pub struct App {
     world: Option<ClientWorld>,
     input: Input,
     cameras: CameraController,
-    keybinds: Keybinds,
     config_document: ConfigDocument,
     config: Config,
     mouse_captured: bool,
@@ -75,7 +71,6 @@ impl App {
             world: None,
             input: Input::default(),
             cameras: CameraController::new(),
-            keybinds: Keybinds,
             config: config_document.config(),
             config_document,
             mouse_captured: false,
@@ -172,31 +167,12 @@ impl App {
     }
 
     fn poll_input(&mut self) {
-        if self.input.was_pressed(KeyCode::Escape) {
-            self.set_mouse_captured(false);
-        }
-
-        if self.input.was_pressed(KeyCode::F1) {
-            self.set_camera_mode(self.cameras.toggled_mode());
-            println!("camera: {}", self.cameras.mode().name());
-        }
-
-        if self.cameras.mode() == CameraMode::Orbit && self.input.was_pressed(KeyCode::Tab) {
-            let backwards = self.input.is_held(KeyCode::ShiftLeft) || self.input.is_held(KeyCode::ShiftRight);
-            self.cycle_target(if backwards { Target::Previous } else { Target::Next });
+        for action in self.config.bind.triggered(&self.input) {
+            self.run_bind_action(action);
         }
 
         if let Some(captured) = self.cameras.wants_mouse_capture(&self.input) {
             self.set_mouse_captured(captured);
-        }
-
-        let supports_wireframe = self.renderer.as_ref().is_some_and(Renderer::supports_wireframe);
-
-        if self
-            .keybinds
-            .poll_config_changes(&self.input, &mut self.config, supports_wireframe)
-        {
-            self.apply_config();
         }
     }
 
@@ -268,20 +244,6 @@ impl App {
         }
     }
 
-    fn cycle_target(&mut self, target: Target) {
-        let command = CameraTargetCommand {
-            target,
-            distance: None,
-            pitch: None,
-            yaw: None,
-        };
-
-        match command.run(self) {
-            Ok(description) => println!("{description}"),
-            Err(err) => tracing::warn!("{err:#}"),
-        }
-    }
-
     fn window_attributes() -> WindowAttributes {
         let attributes = Window::default_attributes().with_title(APP_ID);
         #[cfg(all(unix, not(target_vendor = "apple")))]
@@ -307,12 +269,12 @@ impl CommandExecutor for App {
                 .as_ref()
                 .map(ClientWorld::body_candidates)
                 .unwrap_or_default(),
-            CompletionKind::ConfigKey => ConfigKey::ALL
-                .iter()
+            CompletionKind::ConfigKey => ConfigKey::all()
+                .into_iter()
                 .map(|key| CompletionCandidate::new(key.path))
                 .collect(),
-            CompletionKind::ConfigValue => ConfigKey::ALL
-                .iter()
+            CompletionKind::ConfigValue => ConfigKey::all()
+                .into_iter()
                 .flat_map(|key| {
                     key.kind.values().into_iter().map(|value| CompletionCandidate {
                         value: value.to_string(),

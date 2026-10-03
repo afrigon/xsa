@@ -1,6 +1,8 @@
 use anyhow::{Context, bail};
 use kdl::KdlValue;
 
+use crate::config::KeyChord;
+
 const TRUE_WORDS: [&str; 2] = ["true", "on"];
 const FALSE_WORDS: [&str; 2] = ["false", "off"];
 
@@ -9,6 +11,7 @@ pub enum ConfigValueKind {
     Bool,
     Number,
     Choice { names: fn() -> Vec<&'static str> },
+    KeyChord,
 }
 
 impl ConfigValueKind {
@@ -33,6 +36,12 @@ impl ConfigValueKind {
             }
             ConfigValueKind::Choice { names } if names().contains(&text) => Ok(KdlValue::String(text.to_string())),
             ConfigValueKind::Choice { names } => bail!("{text:?} is not one of {}", names().join(", ")),
+            ConfigValueKind::KeyChord => {
+                let chord = KeyChord::from_config_name(text)
+                    .with_context(|| format!("{text:?} is not a key like f4, tab, shift+tab or `"))?;
+
+                Ok(KdlValue::String(chord.config_name()))
+            }
         }
     }
 
@@ -41,12 +50,17 @@ impl ConfigValueKind {
             ConfigValueKind::Bool => vec![TRUE_WORDS[0], FALSE_WORDS[0]],
             ConfigValueKind::Number => Vec::new(),
             ConfigValueKind::Choice { names } => names(),
+            ConfigValueKind::KeyChord => KeyChord::key_names(),
         }
     }
 
     pub fn same(self, first: &KdlValue, second: &KdlValue) -> bool {
         match self {
             ConfigValueKind::Number => ConfigValueKind::as_f32(first) == ConfigValueKind::as_f32(second),
+            ConfigValueKind::KeyChord => {
+                ConfigValueKind::as_chord(first).is_some()
+                    && ConfigValueKind::as_chord(first) == ConfigValueKind::as_chord(second)
+            }
             ConfigValueKind::Bool | ConfigValueKind::Choice { .. } => first == second,
         }
     }
@@ -54,7 +68,7 @@ impl ConfigValueKind {
     pub fn toggled(self, current: &KdlValue) -> anyhow::Result<KdlValue> {
         match self {
             ConfigValueKind::Bool => Ok(KdlValue::Bool(!current.as_bool().unwrap_or(false))),
-            ConfigValueKind::Number => bail!("only on/off and choice settings toggle"),
+            ConfigValueKind::Number | ConfigValueKind::KeyChord => bail!("only on/off and choice settings toggle"),
             ConfigValueKind::Choice { names } => {
                 let names = names();
                 let index = names
@@ -74,6 +88,10 @@ impl ConfigValueKind {
             KdlValue::Bool(false) => FALSE_WORDS[0].to_string(),
             other => other.to_string(),
         }
+    }
+
+    fn as_chord(value: &KdlValue) -> Option<KeyChord> {
+        value.as_string().and_then(KeyChord::from_config_name)
     }
 
     fn as_f32(value: &KdlValue) -> Option<f32> {

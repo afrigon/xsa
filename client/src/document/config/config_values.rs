@@ -1,6 +1,7 @@
 use kdl::KdlValue;
 
 use super::{ConfigChoice, ConfigKey, ConfigLayer};
+use crate::config::KeyChord;
 
 pub struct ConfigValues<'a> {
     // Earlier layers take precedence.
@@ -31,6 +32,14 @@ impl ConfigValues<'_> {
     pub fn choice<T: ConfigChoice>(&self, key: ConfigKey) -> Option<T> {
         let value = self.value(key)?;
         let parsed = value.as_string().and_then(T::from_config_name);
+        ConfigValues::warn_if_invalid(key, value, parsed.is_some());
+
+        parsed
+    }
+
+    pub fn key_chord(&self, key: ConfigKey) -> Option<KeyChord> {
+        let value = self.value(key)?;
+        let parsed = value.as_string().and_then(KeyChord::from_config_name);
         ConfigValues::warn_if_invalid(key, value, parsed.is_some());
 
         parsed

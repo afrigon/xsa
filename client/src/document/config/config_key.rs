@@ -1,4 +1,6 @@
-use super::{AdaptationDocument, BloomDocument, ConfigValueKind, DebugDocument, ExposureDocument, RenderDocument};
+use super::{
+    AdaptationDocument, BindDocument, BloomDocument, ConfigValueKind, DebugDocument, ExposureDocument, RenderDocument,
+};
 
 #[derive(Clone, Copy)]
 pub struct ConfigKey {
@@ -8,7 +10,7 @@ pub struct ConfigKey {
 }
 
 impl ConfigKey {
-    pub const ALL: &[ConfigKey] = &[
+    const SETTINGS: &[ConfigKey] = &[
         RenderDocument::TONEMAPPER,
         RenderDocument::STARS,
         BloomDocument::ENABLED,
@@ -23,8 +25,15 @@ impl ConfigKey {
         DebugDocument::WIREFRAME,
     ];
 
+    pub fn all() -> Vec<ConfigKey> {
+        let mut keys = ConfigKey::SETTINGS.to_vec();
+        keys.extend(BindDocument::keys());
+
+        keys
+    }
+
     pub fn find(path: &str) -> Option<ConfigKey> {
-        ConfigKey::ALL.iter().copied().find(|key| key.path == path)
+        ConfigKey::all().into_iter().find(|key| key.path == path)
     }
 
     pub const fn saved(path: &'static str, kind: ConfigValueKind) -> ConfigKey {
