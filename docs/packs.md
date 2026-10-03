@@ -95,9 +95,10 @@ rotation-period 86164.0905
 axial-tilt 23.4392811
 ```
 
-- **`category`**: `star`, `planet`, `dwarf-planet`, `moon`, `asteroid` or
-  `comet`. A body is a `star` exactly when it has `luminosity` and
-  `effective-temperature`.
+- **`category`**: what the body is in its system: `star`, `brown-dwarf`,
+  `white-dwarf`, `neutron-star`, `black-hole`, `planet`, `dwarf-planet`,
+  `moon`, `asteroid` or `comet`. Set by hand, never derived from the body's
+  parameters: light comes from `luminosity`, whatever the category.
 - **`radius`** (m): mean radius.
 - **`gravitational-parameter`** (m³/s²): μ = G·M, which is measured far more
   precisely than the mass itself.

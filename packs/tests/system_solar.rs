@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use xsa_core::simulation::{BodyCategory, BodyId, Simulation, SimulationState};
+use xsa_core::simulation::{BodyId, Simulation, SimulationState};
 use xsa_packs::{Id, PackStack, SimulationDefinition};
 use xsa_units::SimulationTime;
 
@@ -225,19 +225,5 @@ fn bodies_know_the_body_they_orbit() {
     for case in cases {
         let expected = format!("system-solar:{}", case.parent);
         assert_eq!(parent_path(&simulation, case.body), Some(expected), "{}", case.body);
-    }
-}
-
-#[test]
-fn every_star_and_only_stars_are_in_the_star_category() {
-    let simulation = load();
-
-    for body in simulation.bodies() {
-        assert_eq!(
-            body.category == BodyCategory::Star,
-            body.star.is_some(),
-            "{}",
-            body.id.value
-        );
     }
 }

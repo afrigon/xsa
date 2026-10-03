@@ -4,6 +4,10 @@ use std::str::FromStr;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum BodyCategory {
     Star,
+    BrownDwarf,
+    WhiteDwarf,
+    NeutronStar,
+    BlackHole,
     Planet,
     DwarfPlanet,
     Moon,
@@ -12,8 +16,12 @@ pub enum BodyCategory {
 }
 
 impl BodyCategory {
-    pub const ALL: [BodyCategory; 6] = [
+    pub const ALL: [BodyCategory; 10] = [
         BodyCategory::Star,
+        BodyCategory::BrownDwarf,
+        BodyCategory::WhiteDwarf,
+        BodyCategory::NeutronStar,
+        BodyCategory::BlackHole,
         BodyCategory::Planet,
         BodyCategory::DwarfPlanet,
         BodyCategory::Moon,
@@ -24,6 +32,10 @@ impl BodyCategory {
     pub fn name(self) -> &'static str {
         match self {
             BodyCategory::Star => "star",
+            BodyCategory::BrownDwarf => "brown-dwarf",
+            BodyCategory::WhiteDwarf => "white-dwarf",
+            BodyCategory::NeutronStar => "neutron-star",
+            BodyCategory::BlackHole => "black-hole",
             BodyCategory::Planet => "planet",
             BodyCategory::DwarfPlanet => "dwarf-planet",
             BodyCategory::Moon => "moon",

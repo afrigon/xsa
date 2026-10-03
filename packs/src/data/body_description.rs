@@ -13,10 +13,6 @@ impl PackData for BodyDescription {
             .parse()
             .map_err(|err: String| anyhow!(err))?;
         let star = parse_star(document)?;
-        ensure!(
-            (category == BodyCategory::Star) == star.is_some(),
-            "a body is a star exactly when it has `luminosity` and `effective-temperature`"
-        );
 
         Ok(BodyDescription {
             id: context.id.into(),
