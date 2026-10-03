@@ -48,30 +48,25 @@ done
 """
 
 [tasks.client]
-description = "Run the game with an integrated server; pass xsa flags after --, e.g. -- --remote [::1]:1969 --fingerprint <hash>"
+description = "Run the game with an integrated server; --release first for an optimized build, then xsa arguments after --, e.g. -- --remote [::1]:1969 --fingerprint <hash>"
 depends = ["shaders"]
-usage = '''
-flag "--release" help="Build with optimizations"
-arg "[arguments]..." help="Arguments for xsa" double_dash="automatic"
-'''
+# No usage spec: mise would take --help meant for xsa as a request for this task's help.
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-eval "arguments=(${usage_arguments:-})"
-cargo run -p xsa ${usage_release:+--release} -- "${arguments[@]}"
+release=()
+if [[ "${1:-}" == "--release" ]]; then release=(--release); shift; fi
+cargo run -p xsa "${release[@]}" -- "$@"
 """
 
 [tasks.server]
-description = "Run the server-only build as a dedicated server; pass flags after --, e.g. -- --host :: --port 1969"
-usage = '''
-flag "--release" help="Build with optimizations"
-arg "[arguments]..." help="Arguments for xsa server" double_dash="automatic"
-'''
+description = "Run the server-only build as a dedicated server; --release first for an optimized build, then xsa server arguments after --, e.g. -- --host :: --port 1969"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-eval "arguments=(${usage_arguments:-})"
-cargo run -p xsa --no-default-features --features server --target-dir {{vars.server_target_directory}} ${usage_release:+--release} -- server "${arguments[@]}"
+release=()
+if [[ "${1:-}" == "--release" ]]; then release=(--release); shift; fi
+cargo run -p xsa --no-default-features --features server --target-dir {{vars.server_target_directory}} "${release[@]}" -- server "$@"
 """
 
 [tasks.fetch-assets]
