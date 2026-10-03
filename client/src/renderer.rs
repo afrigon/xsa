@@ -45,7 +45,7 @@ use render_targets::RenderTargets;
 use texture::DdsImage;
 
 const FRAMES_IN_FLIGHT: usize = 2;
-const BYTES_PER_PIXEL: u64 = 4;
+const BYTES_PER_PIXEL: usize = 4;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 // Background light from stars and zodiacal light, in lux.
 const STARLIGHT_ILLUMINANCE: f32 = 2e-4;
@@ -219,7 +219,7 @@ impl Renderer {
         }
 
         let extent = self.swapchain.extent();
-        let size = u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL;
+        let size = u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL as u64;
         let gpu = &mut self.gpu;
         let buffer = Buffer::new(
             &gpu.device,
@@ -262,7 +262,7 @@ impl Renderer {
 
         let device = self.gpu.device.handle();
         unsafe { device.wait_for_fences(&[self.frames[frame].in_flight], true, u64::MAX) }?;
-        let mut pixels = vec![0_u8; (u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL) as usize];
+        let mut pixels = vec![0_u8; extent.width as usize * extent.height as usize * BYTES_PER_PIXEL];
         self.capture
             .as_ref()
             .expect("the capture buffer is set while capturing")
@@ -270,7 +270,7 @@ impl Renderer {
 
         match self.swapchain.format() {
             vk::Format::B8G8R8A8_SRGB | vk::Format::B8G8R8A8_UNORM => {
-                for pixel in pixels.chunks_exact_mut(BYTES_PER_PIXEL as usize) {
+                for pixel in pixels.as_chunks_mut::<BYTES_PER_PIXEL>().0 {
                     pixel.swap(0, 2);
                 }
             }
