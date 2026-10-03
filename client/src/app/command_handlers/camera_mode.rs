@@ -1,10 +1,10 @@
 use xsa_commands::command::{CameraMode as CommandCameraMode, CameraModeCommand};
 
 use crate::app::App;
-use crate::app::client_command_handler::ClientCommandHandler;
+use crate::app::immediate_command_handler::ImmediateCommandHandler;
 use crate::camera::CameraMode;
 
-impl ClientCommandHandler for CameraModeCommand {
+impl ImmediateCommandHandler for CameraModeCommand {
     fn run(self, app: &mut App) -> anyhow::Result<String> {
         let description = match self.mode {
             CommandCameraMode::Target => {

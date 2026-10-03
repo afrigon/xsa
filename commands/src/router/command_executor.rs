@@ -3,6 +3,8 @@ use xsa_proto::session::ServerSession;
 #[cfg(feature = "client")]
 use crate::command::ClientCommand;
 use crate::completion::{CompletionCandidate, CompletionKind};
+#[cfg(feature = "client")]
+use crate::router::CommandReply;
 
 pub trait CommandExecutor {
     fn session(&mut self) -> &mut ServerSession;
@@ -13,8 +15,11 @@ pub trait CommandExecutor {
         Vec::new()
     }
 
+    // The executor replies when the command finishes, which may be frames later.
     #[cfg(feature = "client")]
-    fn run_client(&mut self, _command: ClientCommand) -> anyhow::Result<String> {
-        anyhow::bail!("this command is only available in the game client")
+    fn run_client(&mut self, _command: ClientCommand, reply: CommandReply) {
+        reply.send(Err(anyhow::anyhow!(
+            "this command is only available in the game client"
+        )));
     }
 }

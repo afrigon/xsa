@@ -144,9 +144,14 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 
 - Durations take `s`, `min`, `h` or `t` (ticks); distances take `m`, `km`,
   `Mm` or `Gm` (case-sensitive), a bare number is km; angles are degrees.
-- `camera snap [--output <path>] [--region x,y:widthxheight]` renders a frame,
-  copies the presented image back from the GPU and writes a PNG before it
-  replies, so the game pauses while it encodes. Without `--output` it goes to
+- Client commands may span frames: a handler returns `CommandProgress::Done`
+  or a `CommandTask` that `App` polls once per frame after drawing, replying
+  when it finishes. Commands that finish at once implement
+  `ImmediateCommandHandler`; binds start tasks too, logging their result.
+- `camera snap [--output <path>] [--region x,y:widthxheight] [--delay 5s]`
+  waits the delay in real time while the game keeps rendering, then renders a
+  frame, copies the presented image back from the GPU and writes a PNG before
+  it replies (the game pauses while it encodes). Without `--output` it goes to
   `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
