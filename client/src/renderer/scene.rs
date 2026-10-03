@@ -1,25 +1,14 @@
-use glam::{DQuat, DVec3, Vec3};
+mod material_handle;
+mod object_handle;
+mod scene_object;
+
+pub use material_handle::MaterialHandle;
+pub use object_handle::ObjectHandle;
+pub use scene_object::SceneObject;
+
+use glam::{DVec3, Vec3};
 
 use super::Material;
-
-#[derive(Clone, Copy)]
-pub struct ObjectHandle(usize);
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct MaterialHandle(usize);
-
-impl MaterialHandle {
-    pub fn index(self) -> usize {
-        self.0
-    }
-}
-
-pub struct SceneObject {
-    pub position: DVec3,
-    pub orientation: DQuat,
-    pub scale: f64,
-    pub material: MaterialHandle,
-}
 
 #[derive(Default)]
 pub struct Scene {
@@ -33,11 +22,13 @@ pub struct Scene {
 impl Scene {
     pub fn add(&mut self, object: SceneObject) -> ObjectHandle {
         self.objects.push(object);
-        ObjectHandle(self.objects.len() - 1)
+        ObjectHandle {
+            index: self.objects.len() - 1,
+        }
     }
 
     pub fn object_mut(&mut self, handle: ObjectHandle) -> &mut SceneObject {
-        &mut self.objects[handle.0]
+        &mut self.objects[handle.index]
     }
 
     pub fn objects(&self) -> &[SceneObject] {
@@ -46,11 +37,13 @@ impl Scene {
 
     pub fn add_material(&mut self, material: Material) -> MaterialHandle {
         self.materials.push(material);
-        MaterialHandle(self.materials.len() - 1)
+        MaterialHandle {
+            index: self.materials.len() - 1,
+        }
     }
 
     pub fn material(&self, handle: MaterialHandle) -> &Material {
-        &self.materials[handle.0]
+        &self.materials[handle.index]
     }
 
     pub fn materials(&self) -> &[Material] {

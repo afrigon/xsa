@@ -8,13 +8,16 @@ client = []
 
 [dependencies]
 anyhow.workspace = true
-bitcode = "0.6.9"
+bitcode.workspace = true
 rustyline = { version = "18.0.1", features = ["derive"] }
 shlex = "2.0.1"
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "sync"] }
+tracing.workspace = true
 usage = { workspace = true, features = ["completions"] }
-xsa-core.workspace = true
+xsa-packs.workspace = true
 xsa-proto.workspace = true
+xsa-units.workspace = true
+
 
 [target."cfg(unix)".dependencies]
 nix = { version = "0.31.3", default-features = false, features = ["term"] }

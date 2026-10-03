@@ -1,7 +1,7 @@
 use ash::vk;
 
 use super::MATERIAL_CAPACITY;
-use super::exposure::HISTOGRAM_BINS;
+use super::auto_exposure::HISTOGRAM_BINS;
 use super::gpu_data::{FrameData, ObjectData};
 use super::material::MaterialData;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
@@ -20,9 +20,9 @@ pub(super) struct Frame {
 
 impl Frame {
     pub fn new(device: &Device, allocator: &mut Allocator, object_capacity: usize) -> anyhow::Result<Self> {
-        let frame_data = create_shader_buffer(device, allocator, "frame data", size_of::<FrameData>())?;
-        let objects = create_object_buffer(device, allocator, object_capacity)?;
-        let materials = create_shader_buffer(
+        let frame_data = Frame::create_shader_buffer(device, allocator, "frame data", size_of::<FrameData>())?;
+        let objects = Frame::create_object_buffer(device, allocator, object_capacity)?;
+        let materials = Frame::create_shader_buffer(
             device,
             allocator,
             "material data",
@@ -78,23 +78,24 @@ impl Frame {
             device.destroy_command_pool(self.command_pool, None);
         }
     }
-}
 
-pub(super) fn create_object_buffer(
-    device: &Device,
-    allocator: &mut Allocator,
-    capacity: usize,
-) -> anyhow::Result<Buffer> {
-    create_shader_buffer(device, allocator, "object data", capacity * size_of::<ObjectData>())
-}
+    pub fn create_object_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(device, allocator, "object data", capacity * size_of::<ObjectData>())
+    }
 
-fn create_shader_buffer(device: &Device, allocator: &mut Allocator, name: &str, size: usize) -> anyhow::Result<Buffer> {
-    Buffer::new(
-        device,
-        allocator,
-        name,
-        size as u64,
-        vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        MemoryLocation::CpuToGpu,
-    )
+    fn create_shader_buffer(
+        device: &Device,
+        allocator: &mut Allocator,
+        name: &str,
+        size: usize,
+    ) -> anyhow::Result<Buffer> {
+        Buffer::new(
+            device,
+            allocator,
+            name,
+            size as u64,
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            MemoryLocation::CpuToGpu,
+        )
+    }
 }

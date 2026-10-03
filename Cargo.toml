@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "proto", "commands", "server", "client", "xsa", "tools"]
+members = ["units", "core", "packs", "proto", "commands", "server", "client", "xsa", "tools"]
 
 [workspace.package]
 version = "0.0.1"
@@ -9,14 +9,18 @@ edition = "2024"
 [workspace.dependencies]
 anyhow = "1.0.104"
 ash = "0.38.0"
+bitcode = "0.6.9"
 glam = "0.33.11"
 gpu-allocator = { version = "0.28.0", default-features = false, features = ["std", "vulkan"] }
 image = { version = "0.25.10", default-features = false, features = ["exr"] }
 tokio = "1.53.1"
+tracing = "0.1.44"
 usage = { version = "6.12.0", package = "usage-rs" }
 winit = "0.30.13"
 xsa-client = { path = "client" }
 xsa-commands = { path = "commands" }
 xsa-core = { path = "core" }
+xsa-packs = { path = "packs" }
 xsa-proto = { path = "proto" }
 xsa-server = { path = "server" }
+xsa-units = { path = "units" }

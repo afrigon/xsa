@@ -1,75 +1,39 @@
+mod camera_controller;
+mod client_command_handler;
+mod client_world;
+mod command_handlers;
+mod keybinds;
+
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{Context, bail, ensure};
-use glam::{DVec2, DVec3, Vec3};
+use anyhow::{Context, bail};
+use glam::DVec2;
 use tokio::sync::mpsc::UnboundedReceiver;
 use winit::application::ApplicationHandler;
-use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
-use xsa_commands::command::{CameraAction, CameraMode as CommandCameraMode, CameraTarget, ClientCommand};
+use xsa_commands::command::{CameraTargetCommand, ClientCommand};
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
-use xsa_commands::target::Target;
-use xsa_core::packs::{Id, PackStack};
-use xsa_core::simulation::{Simulation, SimulationState};
-use xsa_proto::messages::{ClientMessage, PackReference, ServerEvent};
+use xsa_commands::value::Target;
+use xsa_packs::PackStack;
+use xsa_proto::event::{ServerEvent, WorldState};
+use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
 
-use crate::camera::debug::DebugCamera;
-use crate::camera::orbit::{OrbitCamera, OrbitTarget};
-use crate::camera::{Camera, CameraMode};
-use crate::content::{self, MaterialDefinition};
+use crate::camera::CameraMode;
 use crate::input::Input;
-use crate::lighting::{self, StarLight};
-use crate::renderer::{
-    ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader,
-};
+use crate::renderer::{Renderer, ShaderBinaries};
+use camera_controller::CameraController;
+use client_command_handler::ClientCommandHandler;
+use client_world::ClientWorld;
+use keybinds::Keybinds;
 
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
-const HORIZONTAL_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
-const DEBUG_CAMERA_SPEED: f64 = 2_000_000.0;
-const EXPOSURE_STEP_STOPS: f32 = 1.0 / 3.0;
-const BLOOM_STRENGTH_STEP_STOPS: f32 = 0.5;
-const METERS_PER_KILOMETER: f64 = 1_000.0;
-
-struct ShaderShortcut {
-    key: KeyCode,
-    shader: Option<Shader>,
-}
-
-const SHADER_SHORTCUTS: [ShaderShortcut; 5] = [
-    ShaderShortcut {
-        key: KeyCode::Digit1,
-        shader: None,
-    },
-    ShaderShortcut {
-        key: KeyCode::Digit2,
-        shader: Some(Shader::Normals),
-    },
-    ShaderShortcut {
-        key: KeyCode::Digit3,
-        shader: Some(Shader::Depth),
-    },
-    ShaderShortcut {
-        key: KeyCode::Digit4,
-        shader: Some(Shader::Triangles),
-    },
-    ShaderShortcut {
-        key: KeyCode::Digit5,
-        shader: Some(Shader::Lighting),
-    },
-];
-
-struct World {
-    simulation: Simulation,
-    state: SimulationState,
-    body_objects: Vec<ObjectHandle>,
-    light_body: Option<usize>,
-}
 
 pub struct App {
     renderer: Option<Renderer>,
@@ -80,13 +44,10 @@ pub struct App {
     invocations: UnboundedReceiver<CommandInvocation>,
     exit_requested: bool,
     packs_directory: PathBuf,
-    world: Option<World>,
-    skybox: Option<MaterialHandle>,
+    world: Option<ClientWorld>,
     input: Input,
-    camera: Camera,
-    camera_mode: CameraMode,
-    orbit_camera: Option<OrbitCamera>,
-    debug_camera: DebugCamera,
+    cameras: CameraController,
+    keybinds: Keybinds,
     mouse_captured: bool,
     last_frame: Option<Instant>,
 }
@@ -107,12 +68,9 @@ impl App {
             exit_requested: false,
             packs_directory,
             world: None,
-            skybox: None,
             input: Input::default(),
-            camera: Camera::new(HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians()),
-            camera_mode: CameraMode::Orbit,
-            orbit_camera: None,
-            debug_camera: DebugCamera::new(DEBUG_CAMERA_SPEED),
+            cameras: CameraController::new(),
+            keybinds: Keybinds,
             mouse_captured: false,
             last_frame: None,
         }
@@ -123,12 +81,13 @@ impl App {
     }
 
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> anyhow::Result<()> {
-        let window = event_loop.create_window(window_attributes())?;
+        let window = event_loop.create_window(App::window_attributes())?;
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
-        let shaders = content::load_shaders(&base)?;
+        let shaders = ShaderBinaries::load(&base)?;
         self.renderer = Some(Renderer::new(&window, &shaders)?);
         window.request_redraw();
         self.window = Some(window);
+
         Ok(())
     }
 
@@ -144,6 +103,7 @@ impl App {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
+
         Ok(())
     }
 
@@ -151,26 +111,35 @@ impl App {
         self.poll_connection()?;
         self.poll_invocations();
         self.poll_input();
-        self.update_simulation();
-        self.update_camera(delta_seconds);
+
+        if let Some(world) = &mut self.world {
+            if let Some(state) = self.session.state() {
+                world.advance(state.time());
+            }
+
+            self.cameras.update(world, &self.input, delta_seconds);
+        }
+
         Ok(())
     }
 
     fn poll_connection(&mut self) -> anyhow::Result<()> {
         while let Some(event) = self.session.poll()? {
             self.router.handle_event(&event, &self.session);
+
             match event {
-                ServerEvent::JoinAccepted { state } => self
-                    .join(&state.simulation, &state.packs, state.time)
-                    .with_context(|| format!("joining simulation {}", state.simulation))?,
-                ServerEvent::JoinDenied { reason } => bail!("the server refused to let us join: {reason}"),
-                ServerEvent::PlayerJoined { .. }
-                | ServerEvent::PlayerLeft { .. }
-                | ServerEvent::TimeChanged { .. }
-                | ServerEvent::Tick { .. }
-                | ServerEvent::Reply { .. } => {}
+                ServerEvent::JoinAccepted(accepted) => self
+                    .join(&accepted.state)
+                    .with_context(|| format!("joining simulation {}", accepted.state.simulation))?,
+                ServerEvent::JoinDenied(denied) => bail!("the server refused to let us join: {}", denied.reason),
+                ServerEvent::PlayerJoined(_)
+                | ServerEvent::PlayerLeft(_)
+                | ServerEvent::TimeChanged(_)
+                | ServerEvent::Tick(_)
+                | ServerEvent::Reply(_) => {}
             }
         }
+
         Ok(())
     }
 
@@ -178,99 +147,22 @@ impl App {
         if self.world.is_none() {
             return;
         }
+
         let mut router = std::mem::take(&mut self.router);
+
         while let Ok(invocation) = self.invocations.try_recv() {
             router.handle(invocation, self);
         }
+
         self.router = router;
     }
 
-    fn join(&mut self, simulation: &str, packs: &[PackReference], time: f64) -> anyhow::Result<()> {
+    fn join(&mut self, state: &WorldState) -> anyhow::Result<()> {
         let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
-        let pack_ids: Vec<String> = packs.iter().map(|pack| pack.id.clone()).collect();
-        let stack = PackStack::load(&self.packs_directory, &pack_ids)?;
-        for (expected, installed) in packs.iter().zip(stack.manifests()) {
-            ensure!(
-                installed.version.to_string() == expected.version,
-                "the server uses {} {}, but {} is installed",
-                expected.id,
-                expected.version,
-                installed.version
-            );
-        }
+        let world = ClientWorld::load(&self.packs_directory, state, renderer)?;
+        self.cameras.focus(&world);
+        self.world = Some(world);
 
-        let simulation_id = Id::parse(simulation, BASE_PACK)?;
-        let simulation = Simulation::load(&stack, &simulation_id)?;
-        let star_lights: Vec<Option<StarLight>> = simulation
-            .bodies()
-            .iter()
-            .map(|body| body.star.map(|star| lighting::star_light(&star, body.radius)))
-            .collect();
-        let materials = simulation
-            .bodies()
-            .iter()
-            .zip(&star_lights)
-            .map(|(body, star_light)| {
-                let definition = content::load_body_material(&stack, &body.id)?;
-                create_material(renderer, &body.id, definition, star_light.as_ref())
-                    .with_context(|| format!("loading the material of {}", body.id))
-            })
-            .collect::<anyhow::Result<Vec<Material>>>()?;
-        let mut state = SimulationState::default();
-        simulation.state_at(time, &mut state);
-
-        let scene = renderer.scene_mut();
-        let body_objects = simulation
-            .bodies()
-            .iter()
-            .zip(&materials)
-            .zip(&state.bodies)
-            .map(|((body, material), body_state)| {
-                let material = scene.add_material(*material);
-                scene.add(SceneObject {
-                    position: body_state.position,
-                    orientation: body_state.orientation,
-                    scale: body.radius,
-                    material,
-                })
-            })
-            .collect();
-        let light_body = star_lights.iter().position(Option::is_some);
-        if let Some(index) = light_body
-            && let Some(star_light) = &star_lights[index]
-        {
-            scene.sun_intensity = star_light.color * star_light.luminous_intensity as f32;
-        }
-        let target = simulation
-            .spawn()
-            .or_else(|| star_lights.iter().position(Option::is_none))
-            .unwrap_or(0);
-
-        self.skybox = match content::load_skybox(&stack, &simulation_id)? {
-            Some(skybox) => match renderer.load_cube_map("skybox", &skybox.texture) {
-                Ok(cube_map) => Some(renderer.scene_mut().add_material(Material::Skybox {
-                    cube_map,
-                    orientation: skybox.orientation,
-                    luminance: skybox.luminance,
-                })),
-                Err(err) => {
-                    eprintln!("skipping the skybox: {err:#}");
-                    None
-                }
-            },
-            None => None,
-        };
-        renderer.scene_mut().skybox = self.skybox;
-
-        if let Some(body) = simulation.bodies().get(target) {
-            self.orbit_camera = Some(OrbitCamera::new(target, body.radius));
-        }
-        self.world = Some(World {
-            simulation,
-            state,
-            body_objects,
-            light_body,
-        });
         Ok(())
     }
 
@@ -278,251 +170,86 @@ impl App {
         if self.input.was_pressed(KeyCode::Escape) {
             self.set_mouse_captured(false);
         }
+
         if self.input.was_pressed(KeyCode::F1) {
-            self.toggle_camera_mode();
-            println!("camera: {}", self.camera_mode.name());
+            self.set_camera_mode(self.cameras.toggled_mode());
+            println!("camera: {}", self.cameras.mode().name());
         }
-        if self.camera_mode == CameraMode::Orbit && self.input.was_pressed(KeyCode::Tab) {
+
+        if self.cameras.mode() == CameraMode::Orbit && self.input.was_pressed(KeyCode::Tab) {
             let backwards = self.input.is_held(KeyCode::ShiftLeft) || self.input.is_held(KeyCode::ShiftRight);
-            self.cycle_target(if backwards { -1 } else { 1 });
+            self.cycle_target(if backwards { Target::Previous } else { Target::Next });
         }
-        self.poll_mouse_capture();
-        self.poll_render_settings();
-    }
 
-    fn poll_mouse_capture(&mut self) {
-        match self.camera_mode {
-            CameraMode::Debug if self.input.was_button_pressed(MouseButton::Left) => self.set_mouse_captured(true),
-            CameraMode::Orbit if self.input.was_button_pressed(MouseButton::Right) => self.set_mouse_captured(true),
-            CameraMode::Orbit if self.input.was_button_released(MouseButton::Right) => self.set_mouse_captured(false),
-            _ => {}
+        if let Some(captured) = self.cameras.wants_mouse_capture(&self.input) {
+            self.set_mouse_captured(captured);
         }
-    }
 
-    fn poll_render_settings(&mut self) {
-        let Some(renderer) = &mut self.renderer else {
-            return;
-        };
-        for shortcut in &SHADER_SHORTCUTS {
-            if self.input.was_pressed(shortcut.key) {
-                renderer.set_shader_override(shortcut.shader);
-                println!("view: {}", shortcut.shader.map_or("shaded", Shader::path));
-            }
+        if let Some(renderer) = &mut self.renderer {
+            let skybox = self.world.as_ref().and_then(ClientWorld::skybox);
+            self.keybinds.poll(&self.input, renderer, skybox);
         }
-        if self.input.was_pressed(KeyCode::Backquote) {
-            match renderer.toggle_wireframe() {
-                Some(enabled) => println!("wireframe: {}", on_off(enabled)),
-                None => println!("wireframe: unsupported by this device"),
-            }
-        }
-        if self.input.was_pressed(KeyCode::F2) {
-            let scene = renderer.scene_mut();
-            scene.skybox = if scene.skybox.is_some() { None } else { self.skybox };
-            println!("skybox: {}", on_off(scene.skybox.is_some()));
-        }
-        if self.input.was_pressed(KeyCode::Minus) {
-            renderer.adjust_exposure(-EXPOSURE_STEP_STOPS);
-            print_exposure(renderer);
-        }
-        if self.input.was_pressed(KeyCode::Equal) {
-            renderer.adjust_exposure(EXPOSURE_STEP_STOPS);
-            print_exposure(renderer);
-        }
-        if self.input.was_pressed(KeyCode::F4) {
-            renderer.toggle_auto_exposure();
-            print_exposure(renderer);
-        }
-        if self.input.was_pressed(KeyCode::F5) {
-            let enabled = renderer.toggle_bloom();
-            println!("bloom: {}", on_off(enabled));
-        }
-        if self.input.was_pressed(KeyCode::BracketLeft) {
-            println!(
-                "bloom strength: {:.4}",
-                renderer.adjust_bloom_strength(-BLOOM_STRENGTH_STEP_STOPS)
-            );
-        }
-        if self.input.was_pressed(KeyCode::BracketRight) {
-            println!(
-                "bloom strength: {:.4}",
-                renderer.adjust_bloom_strength(BLOOM_STRENGTH_STEP_STOPS)
-            );
-        }
-        if self.input.was_pressed(KeyCode::F7) {
-            println!("shading: {}", renderer.cycle_shading_model().name());
-        }
-        if self.input.was_pressed(KeyCode::F3) {
-            println!("tonemapper: {}", renderer.cycle_tonemapper().name());
-        }
-    }
-
-    fn update_simulation(&mut self) {
-        if let Some(world) = &mut self.world
-            && let Some(state) = self.session.state()
-        {
-            world.simulation.state_at(state.time(), &mut world.state);
-        }
-    }
-
-    fn update_camera(&mut self, delta_seconds: f64) {
-        let Some(world) = &self.world else {
-            return;
-        };
-        match self.camera_mode {
-            CameraMode::Orbit => {
-                if let Some(orbit_camera) = &mut self.orbit_camera {
-                    let target = orbit_camera.target();
-                    let target = OrbitTarget {
-                        position: world.state.bodies[target].position,
-                        radius: world.simulation.bodies()[target].radius,
-                    };
-                    orbit_camera.update(&mut self.camera, &self.input, target, delta_seconds);
-                }
-            }
-            CameraMode::Debug => self.debug_camera.update(&mut self.camera, &self.input, delta_seconds),
-        }
-        let nearest_surface_distance = world
-            .simulation
-            .bodies()
-            .iter()
-            .zip(&world.state.bodies)
-            .map(|(body, state)| state.position.distance(self.camera.position) - body.radius)
-            .fold(f64::INFINITY, f64::min);
-        self.camera.fit_near_plane(nearest_surface_distance);
     }
 
     fn draw(&mut self) -> anyhow::Result<()> {
-        self.sync_scene();
-        match &mut self.renderer {
-            Some(renderer) => renderer.draw(&self.camera),
-            None => Ok(()),
-        }
-    }
-
-    fn sync_scene(&mut self) {
         let Some(renderer) = &mut self.renderer else {
-            return;
+            return Ok(());
         };
-        let Some(world) = &self.world else {
-            return;
-        };
-        let scene = renderer.scene_mut();
-        for ((body, state), &handle) in world
-            .simulation
-            .bodies()
-            .iter()
-            .zip(&world.state.bodies)
-            .zip(&world.body_objects)
-        {
-            let object = scene.object_mut(handle);
-            object.position = state.position;
-            object.orientation = state.orientation;
-            object.scale = body.radius;
+
+        if let Some(world) = &self.world {
+            world.sync(renderer);
         }
-        if let Some(light_body) = world.light_body {
-            scene.sun_position = world.state.bodies[light_body].position;
-        }
+
+        renderer.draw(self.cameras.camera())
     }
 
     fn set_mouse_captured(&mut self, captured: bool) {
         let Some(window) = &self.window else {
             return;
         };
+
         if captured {
             let grabbed = window
                 .set_cursor_grab(CursorGrabMode::Locked)
                 .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined));
+
             if grabbed.is_err() {
                 return;
             }
         } else {
             let _ = window.set_cursor_grab(CursorGrabMode::None);
         }
+
         window.set_cursor_visible(!captured);
         self.mouse_captured = captured;
     }
 
-    fn toggle_camera_mode(&mut self) {
-        self.set_camera_mode(match self.camera_mode {
-            CameraMode::Orbit => CameraMode::Debug,
-            CameraMode::Debug => CameraMode::Orbit,
-        });
-    }
-
     fn set_camera_mode(&mut self, mode: CameraMode) {
-        if self.camera_mode == mode {
-            return;
+        if self.cameras.set_mode(mode) {
+            self.set_mouse_captured(false);
         }
-        self.set_mouse_captured(false);
-        if mode == CameraMode::Debug
-            && let Some(orbit_camera) = &self.orbit_camera
-        {
-            self.debug_camera.look_along(orbit_camera.yaw(), orbit_camera.pitch());
-        }
-        self.camera_mode = mode;
     }
 
-    fn cycle_target(&mut self, step: isize) {
-        let target = if step < 0 { Target::Previous } else { Target::Next };
-        match self.target_camera(CameraTarget {
+    fn cycle_target(&mut self, target: Target) {
+        let command = CameraTargetCommand {
             target,
             distance: None,
             pitch: None,
             yaw: None,
-        }) {
+        };
+
+        match command.run(self) {
             Ok(description) => println!("{description}"),
             Err(err) => eprintln!("{err:#}"),
         }
     }
 
-    fn target_camera(&mut self, request: CameraTarget) -> anyhow::Result<String> {
-        let world = self.world.as_ref().context("not joined to a simulation yet")?;
-        let orbit_camera = self.orbit_camera.as_mut().context("the simulation has no bodies")?;
-        let bodies = world.simulation.bodies();
-        let target = match &request.target {
-            Target::Next => (orbit_camera.target() + 1) % bodies.len(),
-            Target::Previous => (orbit_camera.target() + bodies.len() - 1) % bodies.len(),
-            Target::Body { id } => find_body(&world.simulation, id)?,
-        };
-        let body = &bodies[target];
-        if target != orbit_camera.target() {
-            orbit_camera.set_target(target, world.state.bodies[target].position, body.radius);
-        }
-        if let Some(distance) = request.distance {
-            orbit_camera.set_distance(distance.meters);
-        }
-        if let Some(pitch) = request.pitch {
-            orbit_camera.set_pitch(pitch.to_radians());
-        }
-        if let Some(yaw) = request.yaw {
-            orbit_camera.set_yaw(yaw.to_radians());
-        }
-        let description = format!(
-            "target: {}, distance {:.0} km, pitch {:.1}°, yaw {:.1}°",
-            body.id.path,
-            orbit_camera.distance() / METERS_PER_KILOMETER,
-            orbit_camera.pitch().to_degrees(),
-            orbit_camera.yaw().to_degrees()
-        );
-        self.set_camera_mode(CameraMode::Orbit);
-        Ok(description)
-    }
+    fn window_attributes() -> WindowAttributes {
+        let attributes = Window::default_attributes().with_title(APP_ID);
+        #[cfg(all(unix, not(target_vendor = "apple")))]
+        let attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, APP_ID, APP_ID);
 
-    fn look_at(&mut self, target: &Target) -> anyhow::Result<String> {
-        ensure!(
-            self.camera_mode == CameraMode::Debug,
-            "look-at turns the debug camera; switch to it with `camera mode debug`"
-        );
-        let Target::Body { id } = target else {
-            bail!("look-at needs a body id");
-        };
-        let world = self.world.as_ref().context("not joined to a simulation yet")?;
-        let body = find_body(&world.simulation, id)?;
-        let direction = (world.state.bodies[body].position - self.camera.position).normalize_or_zero();
-        ensure!(direction != DVec3::ZERO, "the camera is at the center of {id}");
-        self.debug_camera
-            .look_along((-direction.x).atan2(direction.y), direction.z.asin());
-        Ok(format!("looking at {id}"))
+        attributes
     }
 }
 
@@ -539,46 +266,19 @@ impl CommandExecutor for App {
         let Some(world) = &self.world else {
             return Vec::new();
         };
+
         match kind {
-            CompletionKind::Body => world
-                .simulation
-                .bodies()
-                .iter()
-                .map(|body| CompletionCandidate {
-                    value: body.id.to_string(),
-                    description: None,
-                })
-                .collect(),
+            CompletionKind::Body => world.body_candidates(),
         }
     }
 
     fn run_client(&mut self, command: ClientCommand) -> anyhow::Result<String> {
         match command {
-            ClientCommand::Camera(CameraAction::Mode { mode }) => {
-                let description = match mode {
-                    CommandCameraMode::Target => {
-                        self.set_camera_mode(CameraMode::Orbit);
-                        "camera: target"
-                    }
-                    CommandCameraMode::Debug => {
-                        self.set_camera_mode(CameraMode::Debug);
-                        "camera: debug"
-                    }
-                };
-                Ok(description.to_string())
-            }
-            ClientCommand::Camera(CameraAction::Target(request)) => self.target_camera(request),
-            ClientCommand::Camera(CameraAction::LookAt { target }) => self.look_at(&target),
+            ClientCommand::CameraMode(command) => command.run(self),
+            ClientCommand::CameraTarget(command) => command.run(self),
+            ClientCommand::CameraLookAt(command) => command.run(self),
         }
     }
-}
-
-fn find_body(simulation: &Simulation, id: &str) -> anyhow::Result<usize> {
-    simulation
-        .bodies()
-        .iter()
-        .position(|body| body.id.path == id || body.id.to_string() == id)
-        .with_context(|| format!("no body {id} in {}", simulation.id()))
 }
 
 impl ApplicationHandler for App {
@@ -586,6 +286,7 @@ impl ApplicationHandler for App {
         if self.window.is_some() {
             return;
         }
+
         if let Err(err) = self.initialize(event_loop) {
             self.error = Some(err);
             event_loop.exit();
@@ -595,7 +296,7 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                let _ = self.session.send(ClientMessage::Leave);
+                let _ = self.session.send(ClientMessage::Leave(Leave));
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {
@@ -612,7 +313,7 @@ impl ApplicationHandler for App {
                     self.error = Some(err);
                     event_loop.exit();
                 } else if self.exit_requested {
-                    let _ = self.session.send(ClientMessage::Leave);
+                    let _ = self.session.send(ClientMessage::Leave(Leave));
                     event_loop.exit();
                 }
             }
@@ -627,81 +328,4 @@ impl ApplicationHandler for App {
             self.input.handle_mouse_motion(DVec2::from(delta));
         }
     }
-}
-
-fn window_attributes() -> WindowAttributes {
-    let attributes = Window::default_attributes().with_title(APP_ID);
-    #[cfg(all(unix, not(target_vendor = "apple")))]
-    let attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, APP_ID, APP_ID);
-    attributes
-}
-
-fn on_off(enabled: bool) -> &'static str {
-    if enabled { "on" } else { "off" }
-}
-
-fn print_exposure(renderer: &Renderer) {
-    if renderer.auto_exposure_enabled() {
-        println!(
-            "exposure: auto, EV100 {:.2}, compensation {:+.2}",
-            renderer.exposure_ev100(),
-            renderer.exposure_compensation()
-        );
-    } else {
-        println!("exposure: manual, EV100 {:.2}", renderer.exposure_ev100());
-    }
-}
-
-fn create_material(
-    renderer: &mut Renderer,
-    body: &Id,
-    definition: MaterialDefinition,
-    star_light: Option<&StarLight>,
-) -> anyhow::Result<Material> {
-    Ok(match definition {
-        MaterialDefinition::Lit { base_color } => Material::Lit { base_color },
-        MaterialDefinition::Emissive { color, luminance } => {
-            let luminance = match star_light {
-                Some(star_light) => star_light.color * star_light.surface_luminance as f32,
-                None => Vec3::splat(luminance.context("an emissive material needs a `luminance` in cd/m²")?),
-            };
-            Material::Emissive {
-                luminance: color * luminance,
-            }
-        }
-        MaterialDefinition::Planet {
-            color,
-            normal,
-            emissive,
-            emissive_luminance,
-            hapke,
-        } => {
-            let mut load = |kind: &str, path: &PathBuf, color_space| {
-                renderer.load_texture(&format!("{body} {kind}"), path, color_space)
-            };
-            Material::Planet {
-                color: load("color", &color, ColorSpace::Srgb)?,
-                normal: normal
-                    .map(|path| load("normal", &path, ColorSpace::Linear))
-                    .transpose()?,
-                emissive: emissive
-                    .map(|path| load("emissive", &path, ColorSpace::Srgb))
-                    .transpose()?,
-                emissive_luminance,
-                hapke: hapke
-                    .map(|hapke| -> anyhow::Result<HapkeParameters> {
-                        Ok(HapkeParameters {
-                            scatter: load("scatter", &hapke.scatter, ColorSpace::Linear)?,
-                            surge: load("surge", &hapke.surge, ColorSpace::Linear)?,
-                            porosity: hapke.porosity,
-                            roughness: hapke.roughness_degrees.to_radians(),
-                            blend: hapke.blend,
-                            light_boost: hapke.light_boost,
-                            gamma_boost: hapke.gamma_boost,
-                        })
-                    })
-                    .transpose()?,
-            }
-        }
-    })
 }

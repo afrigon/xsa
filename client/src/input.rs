@@ -22,11 +22,13 @@ impl Input {
         let PhysicalKey::Code(key) = event.physical_key else {
             return;
         };
+
         match event.state {
             ElementState::Pressed => {
                 if !event.repeat {
                     self.pressed_keys.insert(key);
                 }
+
                 self.held_keys.insert(key);
             }
             ElementState::Released => {
@@ -61,6 +63,12 @@ impl Input {
 
     pub fn is_held(&self, key: KeyCode) -> bool {
         self.held_keys.contains(&key)
+    }
+
+    pub fn axis(&self, positive: KeyCode, negative: KeyCode) -> f64 {
+        let value = |key| if self.is_held(key) { 1.0 } else { 0.0 };
+
+        value(positive) - value(negative)
     }
 
     pub fn is_button_held(&self, button: MouseButton) -> bool {

@@ -39,16 +39,11 @@ impl DebugCamera {
         let heading = DQuat::from_rotation_z(self.yaw);
         let forward = heading * DVec3::Y;
         let right = heading * DVec3::X;
-        let direction = forward * key_axis(input, KeyCode::KeyW, KeyCode::KeyS)
-            + right * key_axis(input, KeyCode::KeyD, KeyCode::KeyA)
-            + DVec3::Z * key_axis(input, KeyCode::Space, KeyCode::ShiftLeft);
+        let direction = forward * input.axis(KeyCode::KeyW, KeyCode::KeyS)
+            + right * input.axis(KeyCode::KeyD, KeyCode::KeyA)
+            + DVec3::Z * input.axis(KeyCode::Space, KeyCode::ShiftLeft);
 
         camera.position += direction.normalize_or_zero() * self.speed * delta_seconds;
         camera.orientation = heading * DQuat::from_rotation_x(self.pitch);
     }
-}
-
-fn key_axis(input: &Input, positive: KeyCode, negative: KeyCode) -> f64 {
-    let value = |key| if input.is_held(key) { 1.0 } else { 0.0 };
-    value(positive) - value(negative)
 }

@@ -3,10 +3,10 @@
 Everything that defines what exists in the game and how it looks — bodies,
 star systems, simulations, parts, materials, textures, sounds, text — comes
 from packs: directories of KDL files and assets, modeled on Minecraft's data
-and resource packs. `packs/base` holds only what the game itself needs
+and resource packs. `data/base` holds only what the game itself needs
 (built-in shaders, later default textures and UI) and defines no star system.
 Star systems ship as their own packs — the real solar system is
-`packs/system-solar` — and custom systems, reskins and mods are packs layered
+`data/system-solar` — and custom systems, reskins and mods are packs layered
 on top. With no system installed, the game refuses to start a simulation.
 
 Packs are parsed and resolved once, at load time, into typed data with
@@ -19,7 +19,7 @@ A pack contains **namespace folders**, each holding its own `data/` and
 folder for another namespace only to override that pack's content.
 
 ```
-packs/<pack>/
+data/<pack>/
   pack.kdl                                  manifest
   LICENSE                                   terms of third-party content, if any
   <namespace>/
@@ -64,7 +64,7 @@ dependencies {
 
 An id is `namespace:path`, where the path is the file's location inside the
 folder for its kind, without the extension:
-`packs/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds`
+`data/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds`
 is the texture `system-solar:skyboxes/deep-star-maps`. The kind comes from
 where a reference is used — a `material` reference looks in `materials/`, a
 skybox `texture` in `textures/` — so ids never repeat it. Inside a file, a

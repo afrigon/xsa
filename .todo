@@ -114,7 +114,7 @@
 - Real solar system at scale: bodies generated from real physical and orbital
   parameters. The general shape must be right; fine detail may be procedural.
 - Planet textures from Sol (RSS-Reborn, CC BY-NC-SA 4.0, license shipped in
-  `packs/system-solar/LICENSE`). Keep the texture pipeline source-agnostic so
+  `data/system-solar/LICENSE`). Keep the texture pipeline source-agnostic so
   they can be swapped for NASA-derived data before any commercial release.
   Used: Color (alpha is a water mask on Earth), Normal, Height, Emissive (Io),
   Scatter and Surge (Hapke parameters), VertexHeight (terrain, goes to
