@@ -40,7 +40,7 @@ pub async fn run(options: DedicatedOptions) -> anyhow::Result<()> {
         .map_err(|_| anyhow!("the simulation thread stopped"))?;
     let (invocation_sender, invocations) = unbounded_channel();
     let _endpoint = ipc::spawn(options.instance, InstanceKind::Server, invocation_sender.clone())?;
-    repl::spawn(invocation_sender)?;
+    let _repl = repl::spawn(invocation_sender)?;
     let mut console = tokio::spawn(console::run(console_connection, invocations));
 
     loop {

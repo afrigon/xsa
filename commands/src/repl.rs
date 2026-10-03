@@ -15,6 +15,7 @@ use usage::complete::{self, Shell};
 
 use crate::command::CommandLine;
 use crate::dispatcher::{Invocation, Output};
+use crate::terminal::TerminalGuard;
 use crate::words;
 
 const PROMPT: &str = "> ";
@@ -22,11 +23,16 @@ const EXIT: &str = "exit";
 // Completion splits a full command line, whose first word is the program.
 const PROGRAM_WORD: &str = "xsa ";
 
-pub fn spawn(invocations: UnboundedSender<Invocation>) -> io::Result<()> {
+pub struct Repl {
+    _terminal: Option<TerminalGuard>,
+}
+
+pub fn spawn(invocations: UnboundedSender<Invocation>) -> io::Result<Repl> {
+    let terminal = TerminalGuard::capture();
     thread::Builder::new()
         .name("repl".into())
         .spawn(move || run(invocations))?;
-    Ok(())
+    Ok(Repl { _terminal: terminal })
 }
 
 fn run(invocations: UnboundedSender<Invocation>) {

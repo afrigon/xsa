@@ -2690,10 +2690,12 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "bitcode",
+ "nix",
  "rustyline",
  "shlex",
  "tokio",
  "usage-rs",
+ "windows-sys 0.61.2",
  "xsa-core",
  "xsa-proto",
 ]

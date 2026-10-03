@@ -7,5 +7,6 @@ pub mod ipc;
 pub mod repl;
 #[cfg(feature = "client")]
 pub mod target;
+pub mod terminal;
 pub mod timestamp;
 pub mod words;

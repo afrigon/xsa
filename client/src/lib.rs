@@ -41,7 +41,7 @@ pub fn run(options: ClientOptions) -> anyhow::Result<()> {
 
     let (invocation_sender, invocations) = unbounded_channel();
     let _endpoint = ipc::spawn(options.instance, InstanceKind::Client, invocation_sender.clone())?;
-    repl::spawn(invocation_sender)?;
+    let _repl = repl::spawn(invocation_sender)?;
     let event_loop = EventLoop::new()?;
     let mut app = app::App::new(session, invocations, packs_directory);
     event_loop.run_app(&mut app)?;
