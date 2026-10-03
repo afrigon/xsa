@@ -5,7 +5,7 @@ use crate::command::{Routable, Route};
 
 #[derive(Subcommands)]
 pub enum TimeAction {
-    /// Jump to a UTC date and time, e.g. 2026-10-02T12:00:00Z
+    /// Jump to a UTC date and time, e.g. 2026-10-02T12:00:00Z, or now
     Set(TimeSetCommand),
     /// Run the simulation at a multiple of real time; 0 pauses
     Rate(TimeRateCommand),

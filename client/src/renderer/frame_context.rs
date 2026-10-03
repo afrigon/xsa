@@ -1,17 +1,19 @@
 use ash::vk;
 
+use super::Scene;
 use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
 use super::gpu_data::PushConstants;
 use super::render_targets::RenderTargets;
-use super::{RenderSettings, Scene};
+use crate::config::{DebugConfig, RenderConfig};
 use crate::vulkan::GraphicsPipeline;
 
 pub(super) struct FrameContext<'a> {
     pub recorder: CommandRecorder<'a>,
     pub frame: &'a Frame,
     pub targets: &'a RenderTargets,
-    pub settings: &'a RenderSettings,
+    pub render: &'a RenderConfig,
+    pub debug: &'a DebugConfig,
     pub scene: &'a Scene,
     pub descriptor_set: vk::DescriptorSet,
     pub output_image: vk::Image,

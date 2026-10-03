@@ -7,7 +7,6 @@ mod gpu_data;
 mod material;
 mod passes;
 mod render_pass;
-mod render_settings;
 mod render_targets;
 mod scene;
 mod shader_binaries;
@@ -16,7 +15,6 @@ mod tonemapper;
 
 pub use auto_exposure::AutoExposure;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
-pub use render_settings::RenderSettings;
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
@@ -30,6 +28,7 @@ use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 use crate::camera::Camera;
+use crate::config::{Config, DebugConfig, RenderConfig};
 use crate::vulkan::{Image, SAMPLED_LAYOUT, Swapchain};
 use auto_exposure::HISTOGRAM_BINS;
 use command_recorder::CommandRecorder;
@@ -52,7 +51,8 @@ const MATERIAL_CAPACITY: usize = 256;
 
 pub struct Renderer {
     scene: Scene,
-    settings: RenderSettings,
+    render: RenderConfig,
+    debug: DebugConfig,
     exposure: AutoExposure,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
@@ -72,7 +72,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &Window, shaders: &ShaderBinaries) -> anyhow::Result<Self> {
+    pub fn new(window: &Window, shaders: &ShaderBinaries, config: &Config) -> anyhow::Result<Self> {
         let mut gpu = GpuContext::new(window)?;
         let window_extent = Renderer::extent_of(window.inner_size());
         let swapchain = Swapchain::new(
@@ -97,8 +97,9 @@ impl Renderer {
 
         Ok(Self {
             scene: Scene::default(),
-            settings: RenderSettings::default(),
-            exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
+            render: config.render.clone(),
+            debug: config.debug.clone(),
+            exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
@@ -121,24 +122,20 @@ impl Renderer {
         &mut self.scene
     }
 
-    pub fn settings_mut(&mut self) -> &mut RenderSettings {
-        &mut self.settings
+    pub fn configure(&mut self, render: &RenderConfig, debug: &DebugConfig) {
+        self.render = render.clone();
+        self.debug = debug.clone();
+        self.exposure.configure(&render.exposure);
+
+        if debug.wireframe && !self.supports_wireframe() {
+            tracing::warn!("wireframe is unsupported by this device");
+            self.debug.wireframe = false;
+        }
     }
 
-    pub fn exposure(&self) -> &AutoExposure {
-        &self.exposure
-    }
-
-    pub fn exposure_mut(&mut self) -> &mut AutoExposure {
-        &mut self.exposure
-    }
-
-    // None when the device cannot switch polygon modes dynamically.
-    pub fn toggle_wireframe(&mut self) -> Option<bool> {
-        self.gpu.device.extended_dynamic_state3()?;
-        self.settings.wireframe = !self.settings.wireframe;
-
-        Some(self.settings.wireframe)
+    // Wireframe needs the polygon mode to be dynamic state.
+    pub fn supports_wireframe(&self) -> bool {
+        self.gpu.device.extended_dynamic_state3().is_some()
     }
 
     pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
@@ -256,11 +253,11 @@ impl Renderer {
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             exposure: self.exposure.exposure(),
             hdr_texture: self.targets.hdr_texture,
-            tonemapper: self.settings.tonemapper.shader_id(),
+            tonemapper: self.render.tonemapper.shader_id(),
             starlight_illuminance: STARLIGHT_ILLUMINANCE,
             bloom_texture: self.bloom_texture,
-            bloom_strength: self.settings.effective_bloom_strength(),
-            shading_model: self.settings.shading_model.shader_id(),
+            bloom_strength: self.render.bloom.effective_strength(),
+            shading_model: self.debug.shading_model.shader_id(),
             padding: [0; 3],
         };
 
@@ -306,7 +303,8 @@ impl Renderer {
             recorder: CommandRecorder::new(&self.gpu.device, frame.command_buffer),
             frame,
             targets: &self.targets,
-            settings: &self.settings,
+            render: &self.render,
+            debug: &self.debug,
             scene: &self.scene,
             descriptor_set: self.gpu.bindless.set(),
             output_image: self.swapchain.image(image_index),

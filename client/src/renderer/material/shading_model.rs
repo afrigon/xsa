@@ -6,22 +6,6 @@ pub enum ShadingModel {
 }
 
 impl ShadingModel {
-    pub fn next(self) -> ShadingModel {
-        match self {
-            ShadingModel::HapkeSol => ShadingModel::HapkeTextbook,
-            ShadingModel::HapkeTextbook => ShadingModel::Lambert,
-            ShadingModel::Lambert => ShadingModel::HapkeSol,
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            ShadingModel::HapkeSol => "Hapke (Sol)",
-            ShadingModel::HapkeTextbook => "Hapke (textbook)",
-            ShadingModel::Lambert => "Lambert",
-        }
-    }
-
     // Matches the shading model constants in planet.slang.
     pub(in crate::renderer) fn shader_id(self) -> u32 {
         match self {

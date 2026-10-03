@@ -56,7 +56,7 @@ impl ForwardPass {
 
     fn record_objects(&self, frame: &FrameContext) {
         let recorder = &frame.recorder;
-        recorder.set_wireframe(frame.settings.wireframe);
+        recorder.set_wireframe(frame.debug.wireframe);
         recorder.bind_mesh(&self.vertex_buffer, &self.index_buffer);
 
         for shader in Shader::ALL.iter().copied().filter(|shader| *shader != Shader::Skybox) {
@@ -65,7 +65,7 @@ impl ForwardPass {
 
             for (object_index, object) in frame.scene.objects().iter().enumerate() {
                 let object_shader = frame
-                    .settings
+                    .debug
                     .shader_override
                     .unwrap_or(frame.scene.material(object.material).shader());
 

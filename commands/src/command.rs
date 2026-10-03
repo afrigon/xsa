@@ -3,6 +3,8 @@ mod camera;
 #[cfg(feature = "client")]
 mod client_command;
 mod command_line;
+#[cfg(feature = "client")]
+mod config;
 mod exit;
 mod routable;
 mod route;
@@ -17,6 +19,11 @@ pub use camera::{
 #[cfg(feature = "client")]
 pub use client_command::ClientCommand;
 pub use command_line::CommandLine;
+#[cfg(feature = "client")]
+pub use config::{
+    ConfigAction, ConfigCommand, ConfigGetCommand, ConfigReloadCommand, ConfigSaveCommand, ConfigSetCommand,
+    ConfigToggleCommand,
+};
 pub use exit::ExitCommand;
 pub use routable::Routable;
 pub use route::Route;
@@ -35,6 +42,9 @@ pub enum Command {
     #[cfg(feature = "client")]
     /// Control the camera
     Camera(CameraCommand),
+    #[cfg(feature = "client")]
+    /// Show, change, save or reload the game's settings
+    Config(ConfigCommand),
     /// Exit
     Exit(ExitCommand),
 }
@@ -45,6 +55,8 @@ impl Routable for Command {
             Command::Time(command) => command.route(),
             #[cfg(feature = "client")]
             Command::Camera(command) => command.route(),
+            #[cfg(feature = "client")]
+            Command::Config(command) => command.route(),
             Command::Exit(command) => command.route(),
         }
     }

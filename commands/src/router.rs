@@ -23,10 +23,16 @@ use crate::completion::Completions;
 #[derive(Default)]
 pub struct CommandRouter {
     pending: HashMap<MessageId, Pending>,
+    waiting_for_join: Vec<Waiting>,
 }
 
 struct Pending {
     command: Box<dyn ServerCommand>,
+    reply: oneshot::Sender<Output>,
+}
+
+struct Waiting {
+    route: Route,
     reply: oneshot::Sender<Output>,
 }
 
@@ -54,7 +60,33 @@ impl CommandRouter {
                 return;
             }
         };
-        let output = match command.route() {
+        let route = command.route();
+        let joined = executor.session().state().is_some();
+
+        if !joined && !matches!(route, Route::Exit) {
+            self.waiting_for_join.push(Waiting {
+                route,
+                reply: invocation.reply,
+            });
+
+            return;
+        }
+
+        self.run(route, invocation.reply, executor);
+    }
+
+    pub fn resume(&mut self, executor: &mut impl CommandExecutor) {
+        if executor.session().state().is_none() {
+            return;
+        }
+
+        for waiting in std::mem::take(&mut self.waiting_for_join) {
+            self.run(waiting.route, waiting.reply, executor);
+        }
+    }
+
+    fn run(&mut self, route: Route, reply: oneshot::Sender<Output>, executor: &mut impl CommandExecutor) {
+        let output = match route {
             #[cfg(feature = "client")]
             Route::Client(command) => match executor.run_client(command) {
                 Ok(text) => Output::success(text),
@@ -62,10 +94,7 @@ impl CommandRouter {
             },
             Route::Server(command) => match executor.session().send(command.message()) {
                 Ok(id) => {
-                    let pending = Pending {
-                        command,
-                        reply: invocation.reply,
-                    };
+                    let pending = Pending { command, reply };
                     self.pending.insert(id, pending);
 
                     return;
@@ -79,7 +108,7 @@ impl CommandRouter {
             }
         };
 
-        let _ = invocation.reply.send(output);
+        let _ = reply.send(output);
     }
 
     pub fn handle_event(&mut self, event: &ServerEvent, session: &ServerSession) {
@@ -141,16 +170,20 @@ mod tests {
     }
 
     impl Harness {
-        fn joined() -> Self {
+        fn unjoined() -> Self {
             let local = Connection::local();
-            let mut harness = Self {
+            Self {
                 executor: FakeExecutor {
                     session: ServerSession::new(local.connection),
                     exited: false,
                 },
                 link: local.link,
                 router: CommandRouter::default(),
-            };
+            }
+        }
+
+        fn joined() -> Self {
+            let mut harness = Harness::unjoined();
             harness
                 .executor
                 .session
@@ -282,6 +315,28 @@ mod tests {
         assert!(!error.succeeded && error.text.contains("fast"), "{error:?}");
         let help = harness.invoke("time --help").try_recv().unwrap();
         assert!(help.succeeded && help.text.contains("rate"), "{help:?}");
+    }
+
+    #[test]
+    fn commands_wait_for_the_join_but_exit_does_not() {
+        let mut harness = Harness::unjoined();
+        let mut time = harness.invoke("time");
+        assert!(time.try_recv().is_err());
+
+        harness.invoke("exit");
+        assert!(harness.executor.exited);
+
+        harness.deliver(ServerEvent::JoinAccepted(JoinAccepted {
+            state: WorldState {
+                simulation: "system-solar:sol".to_string(),
+                packs: Vec::new(),
+                time: SimulationTime::J2000,
+                rate: TimeRate::PAUSED,
+                players: Vec::new(),
+            },
+        }));
+        harness.router.resume(&mut harness.executor);
+        assert!(time.try_recv().unwrap().succeeded);
     }
 
     #[test]

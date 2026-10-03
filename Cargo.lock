@@ -2789,6 +2789,7 @@ dependencies = [
  "ash",
  "glam",
  "gpu-allocator",
+ "kdl",
  "tokio",
  "tracing",
  "winit",

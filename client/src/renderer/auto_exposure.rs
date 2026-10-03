@@ -4,6 +4,8 @@ use std::time::Instant;
 
 use metering::Metering;
 
+use crate::config::{ExposureConfig, ExposureMode};
+
 // Must match histogram.slang.
 pub(in crate::renderer) const HISTOGRAM_BINS: usize = 256;
 const MINIMUM_LOG2_LUMINANCE: f32 = -16.0;
@@ -20,8 +22,6 @@ const HIGHLIGHT_MINIMUM_LIT_FRACTION: f32 = 1e-4;
 const HIGHLIGHT_PERCENTILE_FRACTION: f32 = 0.01;
 const MINIMUM_EV100: f32 = -6.0;
 const MAXIMUM_EV100: f32 = 20.0;
-const BRIGHTENING_HALF_LIFE_SECONDS: f32 = 0.1;
-const DARKENING_HALF_LIFE_SECONDS: f32 = 1.5;
 // ISO 100 and the reflected-light meter calibration constant K = 12.5.
 const METER_SENSITIVITY: f32 = 100.0 / 12.5;
 // Exposed value of lit highlights: just under AgX's white point (about 2.9).
@@ -32,54 +32,28 @@ const SENSOR_DYNAMIC_RANGE_STOPS: f32 = 14.0;
 const EXPOSURE_SCALE: f32 = 1.2;
 
 pub struct AutoExposure {
-    enabled: bool,
-    ev100: f32,
-    manual_ev100: f32,
-    compensation: f32,
+    config: ExposureConfig,
+    metered_ev100: f32,
     last_update: Option<Instant>,
 }
 
 impl AutoExposure {
-    pub fn new(initial_ev100: f32) -> Self {
+    pub fn new(config: ExposureConfig, initial_ev100: f32) -> Self {
         Self {
-            enabled: true,
-            ev100: initial_ev100,
-            manual_ev100: initial_ev100,
-            compensation: 0.0,
+            config,
+            metered_ev100: initial_ev100,
             last_update: None,
         }
     }
 
+    pub fn configure(&mut self, config: &ExposureConfig) {
+        self.config = config.clone();
+    }
+
     pub fn ev100(&self) -> f32 {
-        if self.enabled { self.ev100 } else { self.manual_ev100 }
-    }
-
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    pub fn compensation(&self) -> f32 {
-        self.compensation
-    }
-
-    pub fn toggle(&mut self) -> bool {
-        self.enabled = !self.enabled;
-
-        if self.enabled {
-            self.ev100 = self.manual_ev100;
-        } else {
-            self.manual_ev100 = self.ev100;
-        }
-
-        self.enabled
-    }
-
-    // Brightens the image by `stops`: shifts the compensation in auto mode, the exposure itself in manual mode.
-    pub fn adjust(&mut self, stops: f32) {
-        if self.enabled {
-            self.compensation += stops;
-        } else {
-            self.manual_ev100 -= stops;
+        match self.config.mode {
+            ExposureMode::EyeAdaptation => self.metered_ev100,
+            ExposureMode::Manual => self.config.ev100,
         }
     }
 
@@ -88,13 +62,13 @@ impl AutoExposure {
         let elapsed = self.last_update.map(|last| now.duration_since(last).as_secs_f32());
         self.last_update = Some(now);
 
-        if !self.enabled {
+        if self.config.mode == ExposureMode::Manual {
             return;
         }
 
-        let target = Metering::from_histogram(histogram).target_ev100() - self.compensation;
-        self.ev100 = match elapsed {
-            Some(seconds) => AutoExposure::adapt(self.ev100, target, seconds),
+        let target = Metering::from_histogram(histogram).target_ev100() - self.config.compensation;
+        self.metered_ev100 = match elapsed {
+            Some(seconds) => self.adapt(self.metered_ev100, target, seconds),
             None => target,
         };
     }
@@ -104,11 +78,13 @@ impl AutoExposure {
         1.0 / (EXPOSURE_SCALE * self.ev100().exp2())
     }
 
-    fn adapt(current: f32, target: f32, seconds: f32) -> f32 {
+    // A higher target EV100 means the scene got brighter.
+    fn adapt(&self, current: f32, target: f32, seconds: f32) -> f32 {
+        let adaptation = &self.config.adaptation;
         let half_life = if target > current {
-            BRIGHTENING_HALF_LIFE_SECONDS
+            adaptation.dark_to_light_half_life_seconds
         } else {
-            DARKENING_HALF_LIFE_SECONDS
+            adaptation.light_to_dark_half_life_seconds
         };
         current + (target - current) * (1.0 - 0.5_f32.powf(seconds / half_life))
     }
@@ -117,11 +93,15 @@ impl AutoExposure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
 
     #[test]
     fn adaptation_closes_half_the_gap_in_one_half_life() {
-        let brighter = AutoExposure::adapt(0.0, 10.0, BRIGHTENING_HALF_LIFE_SECONDS);
-        let darker = AutoExposure::adapt(10.0, 0.0, DARKENING_HALF_LIFE_SECONDS);
+        let config = Config::default().render.exposure;
+        let adaptation = config.adaptation.clone();
+        let exposure = AutoExposure::new(config, 0.0);
+        let brighter = exposure.adapt(0.0, 10.0, adaptation.dark_to_light_half_life_seconds);
+        let darker = exposure.adapt(10.0, 0.0, adaptation.light_to_dark_half_life_seconds);
         assert!((brighter - 5.0).abs() < 1e-4 && (darker - 5.0).abs() < 1e-4);
     }
 }
