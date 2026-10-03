@@ -23,7 +23,7 @@ pub enum ClientMessage {
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
 pub enum Role {
     Player { name: String },
-    Console,
+    Server,
 }
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]

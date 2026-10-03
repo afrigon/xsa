@@ -24,7 +24,7 @@ pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<Comm
         session: ServerSession::new(connection),
         exit_requested: false,
     };
-    user.session.send(ClientMessage::Join { role: Role::Console })?;
+    user.session.send(ClientMessage::Join { role: Role::Server })?;
     let mut router = CommandRouter::default();
     let mut invocations_open = true;
     while !user.exit_requested {
@@ -64,7 +64,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn console_commands_reach_the_server_and_report_back() {
+    async fn server_user_commands_reach_the_server_and_report_back() {
         let world = World::load(&WorldOptions {
             packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../packs")),
             packs: vec!["base".to_string(), "system-solar".to_string()],
@@ -73,7 +73,7 @@ mod tests {
         .unwrap();
         let connection = start_local(world).unwrap();
         let (invocations, receiver) = unbounded_channel();
-        let console = tokio::spawn(run(connection, receiver));
+        let server_user = tokio::spawn(run(connection, receiver));
 
         let rate = invoke(&invocations, "time rate 5").await;
         assert!(rate.succeeded && rate.text.contains("rate 5×"), "{rate:?}");
@@ -87,6 +87,6 @@ mod tests {
         assert!(!camera.succeeded, "{camera:?}");
 
         invoke(&invocations, "exit").await;
-        console.await.unwrap().unwrap();
+        server_user.await.unwrap().unwrap();
     }
 }

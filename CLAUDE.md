@@ -123,9 +123,9 @@ frames on one bidirectional stream.
   Text commands from every interface (REPL, IPC, in-game console, on client or
   server) become a `CommandExecution` handled by the one `CommandRouter`:
   client commands run on the `CommandExecutor`, server commands become
-  messages. The
-  dedicated server's own REPL and IPC join as a console client and go through
-  the same path, so behavior never depends on how a command was issued.
+  messages. The dedicated server's own REPL and IPC join as `Role::Server`
+  (`ServerUser`) and go through the same path, so behavior never depends on
+  how a command was issued.
 - **One scene at every scale.** Rendering must handle 1 m to interplanetary
   distances in a single frame; there is no separate map scene.
 - **The renderer never sees simulation types.** `App` owns the client's copy of

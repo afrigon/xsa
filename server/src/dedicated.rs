@@ -34,14 +34,14 @@ pub async fn run(options: DedicatedOptions) -> anyhow::Result<()> {
         .name("simulation".into())
         .spawn(move || Server::new(world, receiver).run())?;
 
-    let (console_connection, console_link) = Connection::local();
+    let (server_user_connection, server_user_link) = Connection::local();
     new_clients
-        .send(console_link)
+        .send(server_user_link)
         .map_err(|_| anyhow!("the simulation thread stopped"))?;
     let (invocation_sender, invocations) = unbounded_channel();
     let _endpoint = ipc::spawn(options.instance, InstanceKind::Server, invocation_sender.clone())?;
     let _repl = repl::spawn(invocation_sender)?;
-    let mut console = tokio::spawn(server_user::run(console_connection, invocations));
+    let mut server_user = tokio::spawn(server_user::run(server_user_connection, invocations));
 
     loop {
         tokio::select! {
@@ -65,7 +65,7 @@ pub async fn run(options: DedicatedOptions) -> anyhow::Result<()> {
                 println!("shutting down");
                 break;
             }
-            result = &mut console => {
+            result = &mut server_user => {
                 result??;
                 println!("shutting down");
                 break;

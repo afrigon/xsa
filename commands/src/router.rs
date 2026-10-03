@@ -210,7 +210,7 @@ mod tests {
             harness
                 .executor
                 .session
-                .send(ClientMessage::Join { role: Role::Console })
+                .send(ClientMessage::Join { role: Role::Server })
                 .unwrap();
             harness.link.messages.try_recv().unwrap();
             harness.deliver(ServerEvent::JoinAccepted {

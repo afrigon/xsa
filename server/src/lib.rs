@@ -90,7 +90,7 @@ struct Client {
 
 enum Membership {
     Player { player: Player },
-    Console,
+    Server,
 }
 
 impl Server {
@@ -225,11 +225,11 @@ impl Server {
                 self.next_player += 1;
                 Membership::Player { player }
             }
-            Role::Console => Membership::Console,
+            Role::Server => Membership::Server,
         };
         let joined_player = match &membership {
             Membership::Player { player } => Some(player.clone()),
-            Membership::Console => None,
+            Membership::Server => None,
         };
         self.clients[client].membership = Some(membership);
         let state = WorldState {
@@ -394,17 +394,17 @@ mod tests {
     #[test]
     fn a_time_change_is_broadcast_before_the_reply() {
         let mut harness = Harness::new();
-        let mut console = harness.connect();
+        let mut server_user = harness.connect();
         let mut observer = harness.connect();
-        harness.send(&console, ClientMessage::Join { role: Role::Console });
+        harness.send(&server_user, ClientMessage::Join { role: Role::Server });
         harness.send(&observer, player("ada"));
-        drain(&mut console);
+        drain(&mut server_user);
         drain(&mut observer);
 
-        let id = harness.send(&console, ClientMessage::SetTimeRate { rate: 100.0 });
+        let id = harness.send(&server_user, ClientMessage::SetTimeRate { rate: 100.0 });
         let time = harness.server.world.time;
         assert_eq!(
-            drain(&mut console),
+            drain(&mut server_user),
             vec![
                 ServerEvent::TimeChanged { time, rate: 100.0 },
                 ServerEvent::Reply {
@@ -423,7 +423,7 @@ mod tests {
     fn stepping_advances_time_by_the_step() {
         let mut harness = Harness::new();
         let connection = harness.connect();
-        harness.send(&connection, ClientMessage::Join { role: Role::Console });
+        harness.send(&connection, ClientMessage::Join { role: Role::Server });
         let before = harness.server.world.time;
         harness.send(&connection, ClientMessage::StepTime { seconds: 10.0 });
         assert_eq!(harness.server.world.time, before + 10.0);
@@ -433,7 +433,7 @@ mod tests {
     fn a_paused_world_does_not_advance() {
         let mut harness = Harness::new();
         let connection = harness.connect();
-        harness.send(&connection, ClientMessage::Join { role: Role::Console });
+        harness.send(&connection, ClientMessage::Join { role: Role::Server });
         harness.send(&connection, ClientMessage::SetTimeRate { rate: 0.0 });
         let before = harness.server.world.time;
         harness.server.advance(1.0);
@@ -444,7 +444,7 @@ mod tests {
     fn invalid_values_are_denied_without_changing_the_world() {
         let mut harness = Harness::new();
         let mut connection = harness.connect();
-        harness.send(&connection, ClientMessage::Join { role: Role::Console });
+        harness.send(&connection, ClientMessage::Join { role: Role::Server });
         drain(&mut connection);
         for message in [
             ClientMessage::SetTimeRate { rate: -1.0 },
@@ -487,11 +487,11 @@ mod tests {
         let mut harness = Harness::new();
         let mut first = harness.connect();
         let second = harness.connect();
-        let console = harness.connect();
+        let server_user = harness.connect();
         harness.send(&first, player("ada"));
         drain(&mut first);
 
-        harness.send(&console, ClientMessage::Join { role: Role::Console });
+        harness.send(&server_user, ClientMessage::Join { role: Role::Server });
         assert!(drain(&mut first).is_empty());
 
         harness.send(&second, player("grace"));
