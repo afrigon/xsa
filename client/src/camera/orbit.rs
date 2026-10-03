@@ -10,6 +10,7 @@ use std::f64::consts::{FRAC_PI_2, SQRT_2};
 
 use glam::{DQuat, DVec3};
 use winit::event::MouseButton;
+use xsa_core::simulation::BodyIndex;
 
 use super::Camera;
 use crate::input::Input;
@@ -32,7 +33,7 @@ const DIRECT_CURVATURE: f64 = 0.5;
 pub struct OrbitCamera {
     pub smooth_transitions: bool,
     pub arc_transitions: bool,
-    target: usize,
+    target: BodyIndex,
     distance: f64,
     yaw: f64,
     pitch: f64,
@@ -41,7 +42,7 @@ pub struct OrbitCamera {
 }
 
 impl OrbitCamera {
-    pub fn new(target: usize, target_radius: f64) -> Self {
+    pub fn new(target: BodyIndex, target_radius: f64) -> Self {
         let distance = target_radius * FRAMING_DISTANCE_IN_RADII;
         Self {
             smooth_transitions: true,
@@ -58,7 +59,7 @@ impl OrbitCamera {
         }
     }
 
-    pub fn target(&self) -> usize {
+    pub fn target(&self) -> BodyIndex {
         self.target
     }
 
@@ -86,7 +87,7 @@ impl OrbitCamera {
         self.yaw = yaw;
     }
 
-    pub fn set_target(&mut self, target: usize, target_position: DVec3, target_radius: f64) {
+    pub fn set_target(&mut self, target: BodyIndex, target_position: DVec3, target_radius: f64) {
         self.target = target;
         self.distance = target_radius * FRAMING_DISTANCE_IN_RADII;
         let end = ViewPoint {

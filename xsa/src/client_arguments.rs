@@ -1,5 +1,6 @@
 use anyhow::Context;
 use usage::Args;
+use xsa_client::{ClientOptions, GameClient, RemoteServer};
 
 use crate::world_arguments::WorldArguments;
 
@@ -33,17 +34,18 @@ pub struct ClientArguments {
 impl ClientArguments {
     pub fn run(self) -> anyhow::Result<()> {
         let remote = match self.remote {
-            Some(address) => Some(xsa_client::RemoteServer {
+            Some(address) => Some(RemoteServer {
                 address,
                 fingerprint: self.fingerprint.context("--remote requires --fingerprint")?,
             }),
             None => None,
         };
-        xsa_client::run(xsa_client::ClientOptions {
+        GameClient::new(ClientOptions {
             instance: self.instance,
             player: self.player,
             remote,
             world: self.world.into_options(),
         })
+        .run()
     }
 }
