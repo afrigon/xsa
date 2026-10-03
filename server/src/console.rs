@@ -6,7 +6,7 @@ use xsa_proto::session::ServerSession;
 
 struct ConsoleHost {
     session: ServerSession,
-    quit_requested: bool,
+    exit_requested: bool,
 }
 
 impl CommandHost for ConsoleHost {
@@ -14,20 +14,20 @@ impl CommandHost for ConsoleHost {
         &mut self.session
     }
 
-    fn quit(&mut self) {
-        self.quit_requested = true;
+    fn exit(&mut self) {
+        self.exit_requested = true;
     }
 }
 
 pub async fn run(connection: Connection, mut invocations: UnboundedReceiver<Invocation>) -> anyhow::Result<()> {
     let mut host = ConsoleHost {
         session: ServerSession::new(connection),
-        quit_requested: false,
+        exit_requested: false,
     };
     host.session.send(ClientMessage::Join { role: Role::Console })?;
     let mut dispatcher = Dispatcher::default();
     let mut invocations_open = true;
-    while !host.quit_requested {
+    while !host.exit_requested {
         tokio::select! {
             event = host.session.receive() => dispatcher.handle_event(&event?, &host.session),
             invocation = invocations.recv(), if invocations_open && host.session.state().is_some() => match invocation {
@@ -80,7 +80,7 @@ mod tests {
         let camera = invoke(&invocations, "camera mode debug").await;
         assert!(!camera.succeeded, "{camera:?}");
 
-        invoke(&invocations, "quit").await;
+        invoke(&invocations, "exit").await;
         console.await.unwrap().unwrap();
     }
 }

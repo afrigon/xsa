@@ -77,7 +77,7 @@ pub struct App {
     session: ServerSession,
     dispatcher: Dispatcher,
     invocations: UnboundedReceiver<Invocation>,
-    quit_requested: bool,
+    exit_requested: bool,
     packs_directory: PathBuf,
     world: Option<World>,
     skybox: Option<MaterialHandle>,
@@ -99,7 +99,7 @@ impl App {
             session,
             dispatcher: Dispatcher::default(),
             invocations,
-            quit_requested: false,
+            exit_requested: false,
             packs_directory,
             world: None,
             skybox: None,
@@ -526,8 +526,8 @@ impl CommandHost for App {
         &mut self.session
     }
 
-    fn quit(&mut self) {
-        self.quit_requested = true;
+    fn exit(&mut self) {
+        self.exit_requested = true;
     }
 
     fn run_client(&mut self, command: ClientCommand) -> anyhow::Result<String> {
@@ -589,7 +589,7 @@ impl ApplicationHandler for App {
                 if let Err(err) = self.redraw() {
                     self.error = Some(err);
                     event_loop.exit();
-                } else if self.quit_requested {
+                } else if self.exit_requested {
                     let _ = self.session.send(ClientMessage::Leave);
                     event_loop.exit();
                 }

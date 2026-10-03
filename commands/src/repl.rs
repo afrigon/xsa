@@ -18,7 +18,7 @@ use crate::dispatcher::{Invocation, Output};
 use crate::words;
 
 const PROMPT: &str = "> ";
-const QUIT: &str = "quit";
+const EXIT: &str = "exit";
 // Completion splits a full command line, whose first word is the program.
 const PROGRAM_WORD: &str = "xsa ";
 
@@ -48,7 +48,7 @@ fn run(invocations: UnboundedSender<Invocation>) {
     loop {
         let line = match editor.readline(PROMPT) {
             Ok(line) => line,
-            Err(ReadlineError::Interrupted) if interrupted_empty_line.load(Ordering::Relaxed) => QUIT.to_string(),
+            Err(ReadlineError::Interrupted) if interrupted_empty_line.load(Ordering::Relaxed) => EXIT.to_string(),
             Err(ReadlineError::Interrupted) => continue,
             Err(ReadlineError::Eof) => return,
             Err(err) => {
@@ -80,7 +80,7 @@ fn print(output: &Output) {
     println!("{}", output.text.trim_end());
 }
 
-// Ctrl-C clears a line being typed, like readline; on an empty line it quits, like the signal it replaces.
+// Ctrl-C clears a line being typed, like readline; on an empty line it exits, like the signal it replaces.
 struct InterruptHandler {
     empty_line: Arc<AtomicBool>,
 }

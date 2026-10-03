@@ -226,7 +226,7 @@ it first. Deliberately avoided:
 - Both the game and the dedicated server read commands from stdin with a `>`
   prompt (readline-style editing and history, Tab completion); with stdin not
   a terminal they read plain lines, so commands can be piped in.
-  Ctrl-C clears the line being typed, or quits on an empty line.
+  Ctrl-C clears the line being typed, or exits on an empty line.
 
 ## Controls
 

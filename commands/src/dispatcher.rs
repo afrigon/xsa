@@ -41,7 +41,7 @@ impl Output {
 pub trait CommandHost {
     fn session(&mut self) -> &mut ServerSession;
 
-    fn quit(&mut self);
+    fn exit(&mut self);
 
     #[cfg(feature = "client")]
     fn run_client(&mut self, _command: ClientCommand) -> anyhow::Result<String> {
@@ -92,9 +92,9 @@ impl Dispatcher {
                 Err(err) => Output::failure(format!("{err:#}")),
             },
             Route::ShowTime => describe_time(host.session().state()),
-            Route::Quit => {
-                host.quit();
-                Output::success("quitting")
+            Route::Exit => {
+                host.exit();
+                Output::success("exiting")
             }
         };
         let _ = invocation.reply.send(output);
@@ -144,7 +144,7 @@ mod tests {
 
     struct FakeHost {
         session: ServerSession,
-        quit: bool,
+        exited: bool,
     }
 
     impl CommandHost for FakeHost {
@@ -152,8 +152,8 @@ mod tests {
             &mut self.session
         }
 
-        fn quit(&mut self) {
-            self.quit = true;
+        fn exit(&mut self) {
+            self.exited = true;
         }
     }
 
@@ -169,7 +169,7 @@ mod tests {
             let mut harness = Self {
                 host: FakeHost {
                     session: ServerSession::new(connection),
-                    quit: false,
+                    exited: false,
                 },
                 link,
                 dispatcher: Dispatcher::default(),
@@ -291,9 +291,9 @@ mod tests {
     }
 
     #[test]
-    fn quit_asks_the_host_to_quit() {
+    fn exit_asks_the_host_to_exit() {
         let mut harness = Harness::joined();
-        harness.invoke("quit");
-        assert!(harness.host.quit);
+        harness.invoke("exit");
+        assert!(harness.host.exited);
     }
 }

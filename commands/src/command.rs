@@ -20,8 +20,8 @@ pub enum Command {
     #[cfg(feature = "client")]
     /// Control the camera
     Camera(CameraCommand),
-    /// Quit
-    Quit,
+    /// Exit
+    Exit,
 }
 
 #[derive(Args)]
@@ -100,7 +100,7 @@ pub enum Route {
     Client(ClientCommand),
     Server(ClientMessage),
     ShowTime,
-    Quit,
+    Exit,
 }
 
 impl Command {
@@ -118,7 +118,7 @@ impl Command {
             }),
             #[cfg(feature = "client")]
             Command::Camera(CameraCommand { action }) => Route::Client(ClientCommand::Camera(action)),
-            Command::Quit => Route::Quit,
+            Command::Exit => Route::Exit,
         }
     }
 }
