@@ -170,16 +170,20 @@ mod tests {
     }
 
     impl Harness {
-        fn joined() -> Self {
+        fn unjoined() -> Self {
             let local = Connection::local();
-            let mut harness = Self {
+            Self {
                 executor: FakeExecutor {
                     session: ServerSession::new(local.connection),
                     exited: false,
                 },
                 link: local.link,
                 router: CommandRouter::default(),
-            };
+            }
+        }
+
+        fn joined() -> Self {
+            let mut harness = Harness::unjoined();
             harness
                 .executor
                 .session
@@ -315,40 +319,23 @@ mod tests {
 
     #[test]
     fn commands_wait_for_the_join_but_exit_does_not() {
-        let local = Connection::local();
-        let mut executor = FakeExecutor {
-            session: ServerSession::new(local.connection),
-            exited: false,
-        };
-        let mut router = CommandRouter::default();
-        let mut invoke = |line: &str, router: &mut CommandRouter, executor: &mut FakeExecutor| {
-            let (reply, receiver) = oneshot::channel();
-            let words = crate::words::split(line).unwrap();
-            let styled = false;
-            router.execute(CommandExecution { words, reply, styled }, executor);
-            receiver
-        };
-
-        let mut time = invoke("time", &mut router, &mut executor);
+        let mut harness = Harness::unjoined();
+        let mut time = harness.invoke("time");
         assert!(time.try_recv().is_err());
-        invoke("exit", &mut router, &mut executor);
-        assert!(executor.exited);
 
-        local
-            .link
-            .events
-            .send(ServerEvent::JoinAccepted(JoinAccepted {
-                state: WorldState {
-                    simulation: "system-solar:sol".to_string(),
-                    packs: Vec::new(),
-                    time: SimulationTime::J2000,
-                    rate: TimeRate::PAUSED,
-                    players: Vec::new(),
-                },
-            }))
-            .unwrap();
-        executor.session.poll().unwrap();
-        router.resume(&mut executor);
+        harness.invoke("exit");
+        assert!(harness.executor.exited);
+
+        harness.deliver(ServerEvent::JoinAccepted(JoinAccepted {
+            state: WorldState {
+                simulation: "system-solar:sol".to_string(),
+                packs: Vec::new(),
+                time: SimulationTime::J2000,
+                rate: TimeRate::PAUSED,
+                players: Vec::new(),
+            },
+        }));
+        harness.router.resume(&mut harness.executor);
         assert!(time.try_recv().unwrap().succeeded);
     }
 
