@@ -25,9 +25,8 @@ use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
 
 use crate::camera::CameraMode;
-use crate::content;
 use crate::input::Input;
-use crate::renderer::Renderer;
+use crate::renderer::{Renderer, ShaderBinaries};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -84,7 +83,7 @@ impl App {
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> anyhow::Result<()> {
         let window = event_loop.create_window(App::window_attributes())?;
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
-        let shaders = content::load_shaders(&base)?;
+        let shaders = ShaderBinaries::load(&base)?;
         self.renderer = Some(Renderer::new(&window, &shaders)?);
         window.request_redraw();
         self.window = Some(window);

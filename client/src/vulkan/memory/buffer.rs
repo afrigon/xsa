@@ -42,6 +42,26 @@ impl Buffer {
         })
     }
 
+    pub fn with_data<T: Copy>(
+        device: &Device,
+        allocator: &mut Allocator,
+        name: &str,
+        usage: vk::BufferUsageFlags,
+        data: &[T],
+    ) -> anyhow::Result<Self> {
+        let mut buffer = Buffer::new(
+            device,
+            allocator,
+            name,
+            size_of_val(data) as u64,
+            usage,
+            MemoryLocation::CpuToGpu,
+        )?;
+        buffer.write(data)?;
+
+        Ok(buffer)
+    }
+
     pub fn handle(&self) -> vk::Buffer {
         self.buffer
     }

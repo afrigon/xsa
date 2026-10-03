@@ -40,7 +40,7 @@ impl Keybinds {
     pub fn poll(&self, input: &Input, renderer: &mut Renderer, skybox: Option<MaterialHandle>) {
         for shortcut in &SHADER_SHORTCUTS {
             if input.was_pressed(shortcut.key) {
-                renderer.set_shader_override(shortcut.shader);
+                renderer.settings_mut().shader_override = shortcut.shader;
                 println!("view: {}", shortcut.shader.map_or("shaded", Shader::path));
             }
         }
@@ -59,45 +59,47 @@ impl Keybinds {
         }
 
         if input.was_pressed(KeyCode::Minus) {
-            renderer.adjust_exposure(-EXPOSURE_STEP_STOPS);
+            renderer.exposure_mut().adjust(-EXPOSURE_STEP_STOPS);
             Keybinds::print_exposure(renderer);
         }
 
         if input.was_pressed(KeyCode::Equal) {
-            renderer.adjust_exposure(EXPOSURE_STEP_STOPS);
+            renderer.exposure_mut().adjust(EXPOSURE_STEP_STOPS);
             Keybinds::print_exposure(renderer);
         }
 
         if input.was_pressed(KeyCode::F4) {
-            renderer.toggle_auto_exposure();
+            renderer.exposure_mut().toggle();
             Keybinds::print_exposure(renderer);
         }
 
         if input.was_pressed(KeyCode::F5) {
-            let enabled = renderer.toggle_bloom();
+            let enabled = renderer.settings_mut().toggle_bloom();
             println!("bloom: {}", Keybinds::on_off(enabled));
         }
 
         if input.was_pressed(KeyCode::BracketLeft) {
             println!(
                 "bloom strength: {:.4}",
-                renderer.adjust_bloom_strength(-BLOOM_STRENGTH_STEP_STOPS)
+                renderer
+                    .settings_mut()
+                    .adjust_bloom_strength(-BLOOM_STRENGTH_STEP_STOPS)
             );
         }
 
         if input.was_pressed(KeyCode::BracketRight) {
             println!(
                 "bloom strength: {:.4}",
-                renderer.adjust_bloom_strength(BLOOM_STRENGTH_STEP_STOPS)
+                renderer.settings_mut().adjust_bloom_strength(BLOOM_STRENGTH_STEP_STOPS)
             );
         }
 
         if input.was_pressed(KeyCode::F7) {
-            println!("shading: {}", renderer.cycle_shading_model().name());
+            println!("shading: {}", renderer.settings_mut().cycle_shading_model().name());
         }
 
         if input.was_pressed(KeyCode::F3) {
-            println!("tonemapper: {}", renderer.cycle_tonemapper().name());
+            println!("tonemapper: {}", renderer.settings_mut().cycle_tonemapper().name());
         }
     }
 
@@ -106,14 +108,16 @@ impl Keybinds {
     }
 
     fn print_exposure(renderer: &Renderer) {
-        if renderer.auto_exposure_enabled() {
+        let exposure = renderer.exposure();
+
+        if exposure.enabled() {
             println!(
                 "exposure: auto, EV100 {:.2}, compensation {:+.2}",
-                renderer.exposure_ev100(),
-                renderer.exposure_compensation()
+                exposure.ev100(),
+                exposure.compensation()
             );
         } else {
-            println!("exposure: manual, EV100 {:.2}", renderer.exposure_ev100());
+            println!("exposure: manual, EV100 {:.2}", exposure.ev100());
         }
     }
 }
