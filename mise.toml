@@ -56,7 +56,17 @@ run = """
 set -euo pipefail
 release=()
 if [[ "${1:-}" == "--release" ]]; then release=(--release); shift; fi
-cargo run -p xsa "${release[@]}" -- "$@"
+cargo run -p xsa "${release[@]}" -- client "$@"
+"""
+
+[tasks.ipc]
+description = "Send a command to a running instance; --release first to use the optimized build, e.g. mise run ipc -- camera target mars"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+release=()
+if [[ "${1:-}" == "--release" ]]; then release=(--release); shift; fi
+cargo run -q -p xsa "${release[@]}" -- ipc "$@"
 """
 
 [tasks.server]

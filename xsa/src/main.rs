@@ -21,10 +21,6 @@ use xsa_server::dedicated::{self, DedicatedOptions};
     unknown_flags = "error",
     args_override_self = false
 )]
-#[cfg_attr(
-    feature = "client",
-    usage(default_subcommand = "client", default_subcommand_flags, default_subcommand_on_empty)
-)]
 struct Arguments {
     #[usage(subcommand)]
     command: Command,

@@ -30,6 +30,7 @@ Everything runs through mise; tools (`rust`, `slang`, `xh`) are pinned in
 | --- | --- |
 | `mise run client [--release]` | Compile shaders, then run the game with an integrated server (debug builds turn validation layers on) |
 | `mise run client -- --remote <host>:<port> --fingerprint <hash>` | Run the game against a dedicated server |
+| `mise run ipc -- <command>` | Send a command to a running instance (`xsa ipc`, `--instance <name>` when several run) |
 | `mise run server [--release]` | Run the server-only build as a dedicated server (`-- --host <address> --port <port>`) |
 | `mise run build [--release]` | Compile shaders, then build every crate with the client and server |
 | `mise run build-server [--release]` | Build the server-only `xsa` binary into `target/server` |
@@ -65,7 +66,7 @@ A Cargo workspace; each crate is a top-level directory.
 | `commands/` (`xsa-commands`) | library | Text commands: `command.rs` (the command tree and how each command routes), `router.rs` (`CommandRouter`, `CommandExecution`, the `CommandExecutor` trait), `repl.rs` (the stdin prompt), `ipc.rs` (`xsa ipc` sockets and named pipes), `terminal.rs` (restores the terminal mode on exit), `words.rs` (line splitting), value types (`duration.rs`, `distance.rs`, `target.rs`, `timestamp.rs`); client-only commands sit behind its `client` feature |
 | `server/` (`xsa-server`) | library | `lib.rs`: `World` (loaded packs, simulation, time, time rate), the authoritative `Server` tick loop and `start_local` for the integrated server; `dedicated.rs`: the dedicated server; `server_user.rs`: `ServerUser`, the dedicated server's own `CommandExecutor` |
 | `client/` (`xsa-client`) | library | The game: `app.rs` (window, frame loop, input polling, camera modes, joining a simulation; `App` is the client's `CommandExecutor`), `content.rs` (reads pack resources: shaders, materials, skybox), `camera/`, `input.rs`, `mesh.rs`, `renderer/`, `vulkan/` |
-| `xsa/` (`xsa`) | binary | The only game binary: `xsa` / `xsa client` runs the game, `xsa server` a dedicated server. Features `client` (default, enables `server`) and `server`; the server-only build has no client code |
+| `xsa/` (`xsa`) | binary | The only game binary: `xsa client` runs the game, `xsa server` a dedicated server, `xsa ipc` sends commands to a running instance. Features `client` (default, enables `server`) and `server`; the server-only build has no client code |
 | `tools/` (`xsa-tools`) | binary | `convert-skybox`: equirectangular EXR → cube map DDS |
 
 Dependencies point one way: `core` ← `commands` ← `server` ← `client` ←
