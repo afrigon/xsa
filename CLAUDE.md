@@ -81,6 +81,9 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 - **Networking:** QUIC on UDP 1969. The dedicated server generates a
   self-signed identity in `.xsa/server/` and prints its fingerprint; clients
   pin it with `--fingerprint` (the SSH model).
+- **Logging:** diagnostics go through `tracing`: WARN by default, `-v` / `-vv` /
+  `-vvv` / `-q` to change it, `RUST_LOG` to filter per crate
+  (`RUST_LOG=xsa_client=debug`).
 
 ## Coordinates, units and precision
 
@@ -110,6 +113,8 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
   HDR targets and tonemapping. Volumetrics (atmosphere via Hillaire's LUTs,
   clouds, plumes, explosions) are ray-marched passes reading depth, cleaned up
   by temporal anti-aliasing and upscaling.
+- **Passes:** each render pass implements `RenderPass`, owns its pipelines and
+  resources, and is recorded in the renderer's pass order.
 - **Few pipelines:** bindless resources and dynamic state over per-material
   pipelines; a `VkPipelineCache` persisted to disk.
 - **Materials are typed:** a `Shader` is a program, a `Material` is a shader
@@ -118,7 +123,7 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
   why the renderer needs it, how it fits the pipeline.
 - Every post-processing effect has a toggle key, listed under Controls.
 - **Object lifetime:** `Instance`, `Surface`, `Device` and `Allocator` are
-  destroyed by `Drop`, in `Renderer`'s field order. Everything created from the
+  destroyed by `Drop`, in `GpuContext`'s field order. Everything created from the
   device has an explicit `unsafe fn destroy`, called once the GPU is done with
   it — the shape a deletion queue needs.
 
@@ -129,8 +134,8 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
   game loads them from the pack and never embeds a shader compiler.
 - One top-level file per shader, entry points `vertexMain` and
   `fragmentMain`. Shared code lives in `shaders/common/` and is only imported.
-- A material shader is registered in the `shaders!` list in the client's
-  material module.
+- A material shader is registered in the renderer's `shaders!` list, which
+  generates the `Shader` enum.
 - **Struct layouts must match between Slang and Rust.** Rust size assertions
   can't see Slang's layout: after changing a shared struct, check `Offset` and
   `ArrayStride` in `spirv-dis` output. glam's `Mat4` forces 16-byte alignment,
@@ -176,7 +181,7 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 ## Gotchas
 
 - Validation layers (`vulkan-validation-layers`) are enabled in debug builds and
-  print to stderr; any validation message is a bug. Messages mentioning
+  logged under the `vulkan` target; any validation message is a bug. Messages mentioning
   `obs-vkcapture` come from that injected layer.
 - `spirv-val` comes from the `spirv-tools` system package (no pinnable mise
   release).
