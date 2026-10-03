@@ -26,6 +26,7 @@ use xsa_proto::session::ServerSession;
 
 use crate::camera::CameraMode;
 use crate::config::Config;
+use crate::document::ConfigDocument;
 use crate::input::Input;
 use crate::renderer::{Renderer, ShaderBinaries};
 use camera_controller::CameraController;
@@ -49,6 +50,7 @@ pub struct App {
     input: Input,
     cameras: CameraController,
     keybinds: Keybinds,
+    config_document: ConfigDocument,
     config: Config,
     mouse_captured: bool,
     last_frame: Option<Instant>,
@@ -59,6 +61,7 @@ impl App {
         session: ServerSession,
         invocations: UnboundedReceiver<CommandInvocation>,
         packs_directory: PathBuf,
+        config_document: ConfigDocument,
     ) -> Self {
         Self {
             renderer: None,
@@ -73,7 +76,8 @@ impl App {
             input: Input::default(),
             cameras: CameraController::new(),
             keybinds: Keybinds,
-            config: Config::default(),
+            config: config_document.config(),
+            config_document,
             mouse_captured: false,
             last_frame: None,
         }

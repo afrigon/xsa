@@ -8,6 +8,7 @@ anyhow.workspace = true
 ash.workspace = true
 glam.workspace = true
 gpu-allocator.workspace = true
+kdl = "6.7.1"
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 winit.workspace = true

@@ -9,6 +9,7 @@ use xsa_server::{Server, World};
 
 use crate::ClientOptions;
 use crate::app::App;
+use crate::document::ConfigDocument;
 
 pub struct GameClient {
     options: ClientOptions,
@@ -21,6 +22,7 @@ impl GameClient {
 
     pub fn run(self) -> anyhow::Result<()> {
         let packs_directory = self.options.world.packs_directory.clone();
+        let config = ConfigDocument::load(ConfigDocument::default_path()?)?;
         let connection = match self.options.remote {
             Some(remote) => Connection::remote(&remote.address, &remote.fingerprint)?,
             None => Server::start_local(World::load(&self.options.world)?)?,
@@ -36,7 +38,7 @@ impl GameClient {
         let _endpoint = IpcEndpoint::spawn(self.options.instance, InstanceKind::Client, invocation_sender.clone())?;
         let _repl = Repl::spawn(invocation_sender)?;
         let event_loop = EventLoop::new()?;
-        let mut app = App::new(session, invocations, packs_directory);
+        let mut app = App::new(session, invocations, packs_directory, config);
         event_loop.run_app(&mut app)?;
 
         app.into_result()
