@@ -63,6 +63,12 @@ impl Input {
         self.held_keys.contains(&key)
     }
 
+    pub fn axis(&self, positive: KeyCode, negative: KeyCode) -> f64 {
+        let value = |key| if self.is_held(key) { 1.0 } else { 0.0 };
+
+        value(positive) - value(negative)
+    }
+
     pub fn is_button_held(&self, button: MouseButton) -> bool {
         self.held_buttons.contains(&button)
     }

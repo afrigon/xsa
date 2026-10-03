@@ -34,7 +34,7 @@ use material::MaterialData;
 use pipelines::Pipelines;
 
 use crate::camera::Camera;
-use crate::mesh;
+use crate::mesh::Mesh;
 use crate::vulkan::{
     Allocator, BindlessTextures, Buffer, Device, GraphicsPipeline, Image, ImageDescription, Instance, MemoryLocation,
     SAMPLED_LAYOUT, Surface, Swapchain,
@@ -140,7 +140,7 @@ impl Renderer {
             .map(|_| Frame::new(&device, &mut allocator, INITIAL_OBJECT_CAPACITY))
             .collect::<anyhow::Result<_>>()?;
 
-        let sphere = mesh::cube_sphere(1.0, SPHERE_SUBDIVISIONS);
+        let sphere = Mesh::cube_sphere(1.0, SPHERE_SUBDIVISIONS);
         let vertex_buffer = upload(
             &device,
             &mut allocator,

@@ -28,10 +28,10 @@ use crate::camera::orbit::{OrbitCamera, OrbitTarget};
 use crate::camera::{Camera, CameraMode};
 use crate::content;
 use crate::input::Input;
-use crate::lighting::{self, StarLight};
 use crate::renderer::{
     ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Shader,
 };
+use crate::star_light::StarLight;
 use client_command_handler::ClientCommandHandler;
 
 const APP_ID: &str = "xsa";
@@ -225,7 +225,7 @@ impl App {
         let star_lights: Vec<Option<StarLight>> = simulation
             .bodies()
             .iter()
-            .map(|body| body.star.map(|star| lighting::star_light(&star, body.radius)))
+            .map(|body| body.star.map(|star| StarLight::of_star(&star, body.radius)))
             .collect();
         let materials = simulation
             .bodies()

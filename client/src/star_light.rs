@@ -21,16 +21,18 @@ pub struct StarLight {
     pub surface_luminance: f64,
 }
 
-pub fn star_light(star: &Star, radius: f64) -> StarLight {
-    let spectrum = integrate_blackbody(star.effective_temperature);
-    let radiance = STEFAN_BOLTZMANN * star.effective_temperature.powi(4) / PI;
-    let luminous_efficacy = MAXIMUM_LUMINOUS_EFFICACY * spectrum.y / radiance;
-    let luminous_flux = star.luminosity * luminous_efficacy;
-    let surface_area = 4.0 * PI * radius * radius;
-    StarLight {
-        color: linear_srgb_from_xyz(spectrum / spectrum.y).max(DVec3::ZERO).as_vec3(),
-        luminous_intensity: luminous_flux / (4.0 * PI),
-        surface_luminance: luminous_flux / surface_area / PI,
+impl StarLight {
+    pub fn of_star(star: &Star, radius: f64) -> StarLight {
+        let spectrum = integrate_blackbody(star.effective_temperature);
+        let radiance = STEFAN_BOLTZMANN * star.effective_temperature.powi(4) / PI;
+        let luminous_efficacy = MAXIMUM_LUMINOUS_EFFICACY * spectrum.y / radiance;
+        let luminous_flux = star.luminosity * luminous_efficacy;
+        let surface_area = 4.0 * PI * radius * radius;
+        StarLight {
+            color: linear_srgb_from_xyz(spectrum / spectrum.y).max(DVec3::ZERO).as_vec3(),
+            luminous_intensity: luminous_flux / (4.0 * PI),
+            surface_luminance: luminous_flux / surface_area / PI,
+        }
     }
 }
 
@@ -83,20 +85,20 @@ mod tests {
 
     #[test]
     fn sunlight_at_one_astronomical_unit_is_about_128_kilolux() {
-        let light = star_light(&SUN, SUN_RADIUS);
+        let light = StarLight::of_star(&SUN, SUN_RADIUS);
         let illuminance = light.luminous_intensity / ASTRONOMICAL_UNIT.powi(2);
         assert!((illuminance - 128_000.0).abs() < 5_000.0, "{illuminance} lux");
     }
 
     #[test]
     fn sun_disk_luminance_is_about_two_billion_nits() {
-        let luminance = star_light(&SUN, SUN_RADIUS).surface_luminance;
+        let luminance = StarLight::of_star(&SUN, SUN_RADIUS).surface_luminance;
         assert!((1.6e9..2.2e9).contains(&luminance), "{luminance} cd/m²");
     }
 
     #[test]
     fn sunlight_is_a_slightly_warm_white() {
-        let color = star_light(&SUN, SUN_RADIUS).color;
+        let color = StarLight::of_star(&SUN, SUN_RADIUS).color;
         assert!(color.x > color.z && color.z > 0.8 * color.x, "{color}");
     }
 }
