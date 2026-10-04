@@ -1,8 +1,12 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::{NodeIdentity, ProposalKey};
-use crate::{DrawList, LayoutContext, NodeLayout, Rect, Size, SizeProposal, SubviewEntry, UpdateContext};
+use crate::state::StateSlots;
+use crate::{
+    Context, DrawList, Environment, LayoutContext, NodeLayout, Rect, Size, SizeProposal, SubviewEntry, UpdateContext,
+};
 
 // The part of a view that outlives a frame. Each frame the update pass matches the new views with last frame's
 // nodes; a node whose inputs or children changed is marked changed and forgets its measured sizes, so layout
@@ -12,6 +16,7 @@ pub struct Node {
     layout: Option<Box<dyn NodeLayout>>,
     children: Vec<Node>,
     sizes: HashMap<ProposalKey, Size>,
+    states: Rc<StateSlots>,
     changed: bool,
 }
 
@@ -22,12 +27,18 @@ impl Node {
             layout: None,
             children: Vec::new(),
             sizes: HashMap::new(),
+            states: Rc::default(),
             changed: true,
         }
     }
 
     pub(crate) fn view_type(&self) -> TypeId {
         self.identity.view_type
+    }
+
+    // The context the node's view builds its body with; its state lives as long as the node.
+    pub fn context(&self, environment: &Environment) -> Context {
+        Context::new(environment.clone(), self.states.clone())
     }
 
     // The node's layout, created on first use.

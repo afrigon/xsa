@@ -19,7 +19,9 @@ impl<Content: View, Modifier: ViewModifier> View for ModifiedContent<Content, Mo
     }
 
     fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
-        let body = self.modifier.body(ModifierContent::new(), &context.context());
+        let body = self
+            .modifier
+            .body(ModifierContent::new(), &node.context(&context.environment));
         node.layout_mut(|| PassthroughLayout);
         node.update_children(
             &[SubviewEntry::new(&body)],

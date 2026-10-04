@@ -91,7 +91,7 @@ difference here.
 - Upgrade path: skip the bodies whose inputs did not change, as SwiftUI's
   attribute graph does, once re-running every body shows up in profiles.
 
-## State (planned)
+## State
 
 - `context.state(|| initial)` returns a `State<T>` stored in the view's node,
   keyed by call site (`#[track_caller]`), so an `if` around one call does
@@ -99,7 +99,8 @@ difference here.
 - `state.binding()` gives a `Binding<T>`, a cheap cloneable handle that a
   child view stores to read and write the parent's state, like `$value`.
   Bindings to app data are built from get and set functions.
-- Then events with hit-testing, `Button`, `ScrollView` and `List`.
+- State changes need no invalidation of their own: every body re-runs each
+  frame and reads the new value, and the leaves see their inputs change.
 
 ## Navigation (planned)
 

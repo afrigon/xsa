@@ -14,7 +14,7 @@ pub trait View: 'static {
     fn body(&self, context: &Context) -> impl View;
 
     fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
-        let body = self.body(&context.context());
+        let body = self.body(&node.context(&context.environment));
         node.layout_mut(|| PassthroughLayout);
         node.update_children(&[SubviewEntry::new(&body)], context)
     }
