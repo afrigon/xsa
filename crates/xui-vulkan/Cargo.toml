@@ -1,0 +1,9 @@
+[package]
+name = "xui-vulkan"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ash.workspace = true
+xui.workspace = true

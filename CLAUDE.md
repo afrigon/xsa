@@ -43,8 +43,9 @@ Each crate is a directory under `crates/`; `data/` holds the game content (packs
 Dependencies point one way: `units` ← `core` ← `packs` ← `commands` ← `server`
 ← `client` ← `xsa`, and `proto` ← `commands`, `server`, `client`. `core` never
 touches files or KDL, and `proto` does not depend on `core` or `packs`.
-`xui` depends on no xsa crate: it is a UI framework incubated here to become
-its own repository (`xui-rs`), and the game uses it like any external library.
+`xui` and `xui-vulkan` depend on no xsa crate: they are a UI framework
+incubated here to become its own repository (`xui-rs`), and the game uses them
+like any external library.
 
 | Crate | Responsibility |
 | --- | --- |
@@ -58,6 +59,7 @@ its own repository (`xui-rs`), and the game uses it like any external library.
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
 | `tools` | Offline asset tools (`convert-skybox`) |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, layout, environment, text shaping, glyph atlas; outputs draw lists |
+| `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, given raw Vulkan handles |
 
 ## Architecture
 
@@ -133,7 +135,10 @@ its own repository (`xui-rs`), and the game uses it like any external library.
 
 - Slang, in `data/base/base/resources/shaders/`, compiled offline to SPIR-V by
   `mise run shaders` with `-matrix-layout-column-major` (matches glam). The
-  game loads them from the pack and never embeds a shader compiler.
+  game loads them from the pack and never embeds a shader compiler. The one
+  exception is `xui-vulkan`, a library: its shader lives in
+  `crates/xui-vulkan/shaders/`, is compiled by the same task and is embedded
+  in the crate.
 - One top-level file per shader, entry points `vertexMain` and
   `fragmentMain`. Shared code lives in `shaders/common/` and is only imported.
 - A material shader is registered in the renderer's `shaders!` list, which

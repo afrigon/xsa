@@ -2,6 +2,9 @@
 /assets
 /.xsa
 
+# Compiled by the shaders task.
+/crates/xui-vulkan/shaders/*.spv
+
 # Pack binaries come from tasks or pack releases; only pack text files are committed.
 /data/**/*.spv
 /data/**/*.dds
