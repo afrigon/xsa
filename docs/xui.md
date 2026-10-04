@@ -102,6 +102,25 @@ difference here.
 - State changes need no invalidation of their own: every body re-runs each
   frame and reads the new value, and the leaves see their inputs change.
 
+## Input
+
+- xui knows no windowing library. The app converts its windowing events into
+  xui's `PointerEvent`s (moved, pressed, released, left, at a position in
+  physical pixels) and calls `Interface::handle_event`, which returns whether
+  a view used the event, so the app keeps it from what lies under the
+  interface.
+- Events are hit-tested against the layout of the last render: each node
+  remembers where it was placed, and the event is offered from the topmost
+  view down (later `ZStack` children first, children before their parent),
+  telling lower views when a view above already took it.
+- Interactive views keep their state in their node: a `Button` tracks hover
+  and press there, and its style reads them on the next render. A button
+  fires on a primary release inside it after a press that started in it;
+  releasing outside cancels, as on iOS.
+- `ButtonStyle` mirrors SwiftUI's: `body` builds on the label for the current
+  `ButtonConfiguration` (`is_hovered`, `is_pressed`). `.button_style(style)`
+  sets it through the environment for every button inside.
+
 ## Navigation (planned)
 
 - Navigation is state, as in SwiftUI: a value says which screen shows, and
@@ -146,7 +165,9 @@ difference here.
 - **Scenes and navigation:**
   - xsa owns the navigation state: a top-level scene (main menu, in game)
     plus a `NavigationStack` path for menus, so Config opens from both the
-    main menu and an in-game pause menu, and Escape or Back pops.
+    main menu and an in-game pause menu. Going back is decided per screen,
+    mostly as a Back button's action; Escape opens the pause menu in game
+    and does nothing in menus.
   - Navigating is an action like any other: a typed command dispatched
     through the command executor, whether a `Button`, a key bind, the
     console or IPC triggered it. A `NavigationStack` binding's `set`
@@ -160,6 +181,12 @@ difference here.
   - The config panel edits settings by building the typed config command
     objects and running them through the executor, never by formatting
     command text to parse.
+- `App` offers pointer events to the interface first; what the interface
+  uses never reaches the camera or the binds, and while the camera holds the
+  mouse captured the interface sees nothing. Cursor moves are coalesced: the
+  interface sees at most one move per frame, with the latest position, before
+  it is updated; presses, releases and leaving the window are offered at
+  once. Keyboard input stays with the binds until text fields exist.
 - The renderer's `UserInterfacePass` runs after tonemapping and before
   capture, so `camera snap` includes the interface. A snap without it is
   `ui hide`, `camera snap`, `ui show`.

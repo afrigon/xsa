@@ -8,6 +8,7 @@ mod command_progress;
 mod command_task;
 mod frame_rate;
 mod immediate_command_handler;
+mod pointer_input;
 mod running_task;
 mod snapshot;
 mod task_status;
@@ -31,8 +32,8 @@ use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
 use xui::{
-    Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, ScaleFactorKey, Size, View,
-    ZStack,
+    Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, Point, ScaleFactorKey, Size,
+    View, ZStack,
 };
 
 use crate::camera::CameraMode;
@@ -69,6 +70,8 @@ pub struct App {
     config_document: ConfigDocument,
     config: Config,
     mouse_captured: bool,
+    cursor: Point,
+    pointer_moved: bool,
     last_frame: Option<Instant>,
     interface: Interface,
     theme: Option<Rc<Theme>>,
@@ -98,6 +101,8 @@ impl App {
             config: config_document.config(),
             config_document,
             mouse_captured: false,
+            cursor: Point::default(),
+            pointer_moved: false,
             last_frame: None,
             interface: Interface::new(),
             theme: None,
@@ -126,6 +131,7 @@ impl App {
         let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
         self.last_frame = Some(now);
         self.frame_rate.record(delta_seconds);
+        self.offer_pointer_move();
 
         self.update(delta_seconds)?;
         self.draw()?;
@@ -445,7 +451,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Focused(false) => self.input.clear(),
             WindowEvent::KeyboardInput { event, .. } => self.input.handle_key(&event),
-            WindowEvent::MouseInput { state, button, .. } => self.input.handle_mouse_button(button, state),
+            WindowEvent::MouseInput { state, button, .. } => self.handle_mouse_button(button, state),
+            WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(position),
+            WindowEvent::CursorLeft { .. } => self.handle_cursor_left(),
             WindowEvent::MouseWheel { delta, .. } => self.input.handle_scroll(delta),
             WindowEvent::RedrawRequested => {
                 if let Err(err) = self.redraw() {
