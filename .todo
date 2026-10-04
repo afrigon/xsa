@@ -107,12 +107,11 @@
   past a fixed capacity.
 - Handle types (ObjectHandle, MaterialHandle, CubeMapHandle) use a named
   `index` field instead of tuple structs.
-- Theme text styles beyond `title`, each added when a view first needs it:
-  `display` (main menu, 48/600), `heading` (sections, 17/600), `body`
-  (paragraphs, 15/400), `label` (controls, 13/500), `caption` (secondary,
-  11/400), `overline` (category tags, 11/600, uppercase, +0.08 em),
-  `telemetry` (instrument readouts, `text` typeface 15/500 with `tnum` and
-  `zero`) and `code` (console, `code` typeface 13/400).
+- Theme text styles beyond `title` and `telemetry`, each added when a view
+  first needs it: `display` (main menu, 48/600), `heading` (sections,
+  17/600), `body` (paragraphs, 15/400), `label` (controls, 13/500), `caption`
+  (secondary, 11/400), `overline` (category tags, 11/600, uppercase, +0.08 em)
+  and `code` (console, `code` typeface 13/400).
 - xui environment: typed custom keys so the theme reaches views through the
   environment (color role, text style), plus increased contrast and a
   UI-scale setting that multiplies every size. `TextCase` from text styles is

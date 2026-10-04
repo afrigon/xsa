@@ -3,6 +3,7 @@ mod captured_image;
 mod command_recorder;
 mod frame;
 mod frame_context;
+mod frame_statistics;
 mod gpu_context;
 mod gpu_data;
 mod material;
@@ -16,12 +17,14 @@ mod tonemapper;
 
 pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
+pub use frame_statistics::FrameStatistics;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
 
+use std::cell::Cell;
 use std::path::Path;
 
 use ash::vk;
@@ -60,6 +63,7 @@ pub struct Renderer {
     exposure: AutoExposure,
     capture: Option<Buffer>,
     user_interface: DrawList,
+    statistics: FrameStatistics,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     material_data: Vec<MaterialData>,
@@ -110,6 +114,7 @@ impl Renderer {
             exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
             capture: None,
             user_interface: DrawList::default(),
+            statistics: FrameStatistics::default(),
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
@@ -130,6 +135,10 @@ impl Renderer {
 
     pub fn scene_mut(&mut self) -> &mut Scene {
         &mut self.scene
+    }
+
+    pub fn statistics(&self) -> FrameStatistics {
+        self.statistics
     }
 
     // Atlas updates no frame has recorded yet carry over, or their glyphs would stay blank.
@@ -405,6 +414,7 @@ impl Renderer {
             output_extent: self.swapchain.extent(),
             capture: self.capture.as_ref(),
             user_interface: &self.user_interface,
+            triangles: Cell::new(0),
         };
 
         context.recorder.to_color_attachment(context.output_image);
@@ -415,6 +425,9 @@ impl Renderer {
 
         context.recorder.to_present(context.output_image);
         unsafe { device.end_command_buffer(frame.command_buffer) }?;
+        self.statistics = FrameStatistics {
+            triangles: context.triangles.get(),
+        };
         self.user_interface.atlas_updates.clear();
 
         Ok(())

@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use ash::vk;
 use xui::DrawList;
 
@@ -23,6 +25,7 @@ pub(super) struct FrameContext<'a> {
     pub output_extent: vk::Extent2D,
     pub capture: Option<&'a Buffer>,
     pub user_interface: &'a DrawList,
+    pub triangles: Cell<u64>,
 }
 
 impl FrameContext<'_> {
