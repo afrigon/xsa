@@ -101,6 +101,17 @@ difference here.
   Bindings to app data are built from get and set functions.
 - Then events with hit-testing, `Button`, `ScrollView` and `List`.
 
+## Navigation (planned)
+
+- Navigation is state, as in SwiftUI: a value says which screen shows, and
+  xui provides the mechanisms to react to it, never the screens.
+- `NavigationStack` mirrors SwiftUI's: a root view, a path of routes bound
+  through a `Binding`, and a function building the view for each route.
+  Back pops the path.
+- The path can live in the app rather than in xui state. Its binding's `set`
+  then decides what changing it means, which lets an app route navigation
+  through its own actions.
+
 ## Text
 
 - parley shapes text and swash rasterizes glyphs, from fonts registered as
@@ -131,6 +142,23 @@ difference here.
   `<Feature><Name>View` (`DebugOverlayView`, `HudTargetView`).
 - `App` builds one root environment per frame (scale factor, color scheme,
   theme, default foreground) and renders a single root view.
+- **Scenes and navigation:**
+  - xsa owns the navigation state: a top-level scene (main menu, in game)
+    plus a `NavigationStack` path for menus, so Config opens from both the
+    main menu and an in-game pause menu, and Escape or Back pops.
+  - Navigating is an action like any other: a typed command dispatched
+    through the command executor, whether a `Button`, a key bind, the
+    console or IPC triggered it. A `NavigationStack` binding's `set`
+    dispatches that command instead of writing the state directly.
+  - The 3D world renders full-screen, owned by the game, and the interface
+    is an overlay drawn on top. A view that contains 3D (a part preview, a
+    minimap) would be a viewport primitive showing a render-target texture.
+  - The main menu is itself a simulation, its 3D scene showing behind the
+    menu. Play loads the save, eventually while the camera zooms into the
+    starting area.
+  - The config panel edits settings by building the typed config command
+    objects and running them through the executor, never by formatting
+    command text to parse.
 - The renderer's `UserInterfacePass` runs after tonemapping and before
   capture, so `camera snap` includes the interface. A snap without it is
   `ui hide`, `camera snap`, `ui show`.
