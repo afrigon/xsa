@@ -1,4 +1,4 @@
-use xui::{Alignment, Context, EdgeInsets, HorizontalAlignment, Text, VStack, View};
+use xui::{Alignment, Context, DismissKey, EdgeInsets, HorizontalAlignment, Text, VStack, View};
 
 use crate::ui::{MenuButtonView, ThemedView};
 
@@ -9,12 +9,13 @@ const SPACING: f32 = 16.0;
 pub struct ConfigView;
 
 impl View for ConfigView {
-    fn body(&self, _context: &Context) -> impl View {
+    fn body(&self, context: &Context) -> impl View {
         let fill = Some(f32::INFINITY);
+        let dismiss = context.environment().get::<DismissKey>();
 
         VStack::new((
             Text::new("OPTIONS").text_style("title"),
-            MenuButtonView::new("BACK", |actions| actions.pop()),
+            MenuButtonView::new("BACK", dismiss),
         ))
         .alignment(HorizontalAlignment::Leading)
         .spacing(SPACING)

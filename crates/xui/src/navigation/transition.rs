@@ -1,6 +1,6 @@
 use super::{TransitionAppearance, TransitionRole};
 
-// An animated change between two screens. `progress` runs from 0 to 1 over `duration` seconds, linearly; a
+// An animated change between two view controllers. `progress` runs from 0 to 1 over `duration` seconds, linearly; a
 // transition eases it as it likes.
 pub trait Transition: 'static {
     fn duration(&self) -> f32;

@@ -10,9 +10,9 @@ mod frame_rate;
 mod immediate_command_handler;
 mod pointer_input;
 mod running_task;
-mod screens;
 mod snapshot;
 mod task_status;
+mod view_controllers;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -27,7 +27,7 @@ use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
-use xsa_commands::command::{ClientCommand, Overlay, Screen};
+use xsa_commands::command::{ClientCommand, Overlay, ViewControllerId};
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
 use xsa_packs::PackStack;
@@ -45,7 +45,7 @@ use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
-use crate::ui::{Actions, ActionsKey, DebugOverlayView, ScreenControllers, TargetNameKey};
+use crate::ui::{DebugOverlayView, GameCommands, TargetNameKey, ViewControllerFactory};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -80,8 +80,8 @@ pub struct App {
     theme: Option<Rc<Theme>>,
     frame_rate: FrameRate,
     navigation: NavigationController,
-    screens: ScreenControllers,
-    actions: Actions,
+    view_controllers: ViewControllerFactory,
+    commands: GameCommands,
     overlays: HashSet<Overlay>,
     action_replies: Vec<oneshot::Receiver<Output>>,
 }
@@ -94,12 +94,14 @@ impl App {
         config_document: ConfigDocument,
         pauses_time: bool,
     ) -> Self {
-        let actions = Actions::default();
-        let screens = ScreenControllers {
-            actions: actions.clone(),
+        let commands = GameCommands::default();
+        let mut navigation = NavigationController::new();
+        let view_controllers = ViewControllerFactory {
+            navigation: navigation.navigation(),
+            commands: commands.clone(),
             pauses_time,
         };
-        let navigation = NavigationController::new(screens.build(Screen::MainMenu));
+        navigation.set_root(view_controllers.build(ViewControllerId::MainMenu));
 
         Self {
             renderer: None,
@@ -124,8 +126,8 @@ impl App {
             theme: None,
             frame_rate: FrameRate::new(),
             navigation,
-            screens,
-            actions,
+            view_controllers,
+            commands,
             overlays: HashSet::new(),
             action_replies: Vec::new(),
         }
@@ -171,7 +173,7 @@ impl App {
         self.poll_connection()?;
         self.poll_invocations();
         self.poll_input();
-        self.run_interface_actions();
+        self.run_game_commands();
         let idle = Input::default();
         let input = if self.is_game_active() { &self.input } else { &idle };
 
@@ -318,9 +320,7 @@ impl App {
             .as_ref()
             .zip(self.cameras.target_body())
             .map(|(world, body)| world.body(body).id.to_string());
-        let environment = environment
-            .with::<ActionsKey>(Some(self.actions.clone()))
-            .with::<TargetNameKey>(target);
+        let environment = environment.with::<TargetNameKey>(target);
         let fill = Some(f32::INFINITY);
         let debug_overlay = self.overlays.contains(&Overlay::DebugOverlay).then(|| {
             DebugOverlayView {

@@ -123,42 +123,57 @@ difference here.
 
 ## Navigation
 
-xui mirrors UIKit's controllers for full screens, with SwiftUI views inside
-them. All of it is generic, for any app.
+xui mirrors UIKit's view controllers for full pages, with SwiftUI views
+inside them, the way an iOS app hosts SwiftUI in UIKit. All of it is generic,
+for any app.
 
 - **`ViewController`**, like `UIViewController`: an object that lives as long
   as it is in the stack and owns its fields.
-  - `root()` returns the controller's content. By convention it is one named
-    view (`MainMenuViewController::root()` returns `MainMenuView { … }`) whose
-    `body` holds the layout; a controller never builds its layout inline.
-  - `presentation()` is `FullScreen` (the controllers below are not drawn but
-    keep their state) or `Overlay` (the controllers below keep drawing, as a
-    pause menu over the game).
+  - `root(&self, this)` returns the controller's content: by convention one
+    named view (`MainMenuView`) whose `body` holds the layout, given an
+    actions object; a controller never builds its layout inline.
+  - `presentation()` is `FullScreen` (the view controllers below are not
+    drawn but keep their state) or `Overlay` (the ones below keep drawing, as
+    a pause menu over the game).
   - Lifecycle hooks, all optional: `did_load`/`did_unload` when it enters or
     leaves the stack, `did_appear`/`did_disappear` when it becomes visible or
     hidden.
-- **`NavigationController`** holds one stack of controllers: `push`, `pop`
-  and `set_root`. There is no separate modal presentation: what UIKit's
-  `present` adds is a screen that leaves the one below visible, which is the
-  `Overlay` presentation. The app owns the controller; `NavigationView`
-  draws it, framing every screen to fill its container.
-- **Transitions** are chosen per pair of controllers by a
+- **Actions**, as when hosting SwiftUI in UIKit:
+  - Each view controller defines an actions object for its view
+    (`MainMenuActions`), whose fields are `Action`s; the view receives it
+    through its initializer and its buttons perform them.
+  - `Action<Input = ()>` is a cloneable closure: `perform()`, or
+    `perform_with(value)` for actions carrying data, such as the id of the
+    row a list opens.
+  - The handlers are the controller's own methods: `this.action(Self::quit)`
+    or `this.action_with(Self::show_body)` builds an action that calls the
+    method with `&mut self` once the stack next advances, Rust's equivalent
+    of a closure capturing `[weak self]`. The compiler checks that each
+    action's value matches its handler.
+  - `dismiss`, from the environment (`DismissKey`), removes the view
+    controller whose view reads it, as SwiftUI's `dismiss`.
+- **`self.navigation`:** a view controller keeps a `Navigation` handle to its
+  stack as a field, given when it is built, like UIKit's
+  `navigationController`. It offers `push`, `pop` and `set_root`; requests
+  apply when the stack advances, never while it is drawn.
+- **`NavigationController`** holds one stack: there is no separate modal
+  presentation, since what UIKit's `present` adds is a page that leaves the
+  one below visible, which is the `Overlay` presentation. The app owns it,
+  calls `advance` every frame (which runs triggered actions, applies
+  navigation requests and moves transitions along), and draws it with
+  `view`, framing every view controller's view to fill its container.
+- **Transitions** are chosen per pair of view controllers by a
   `NavigationDelegate`, like UIKit's `animationControllerFor:from:to:`: it
-  gets the operation (push, pop, set root) and both controllers and returns a
-  `Transition`. A transition has a duration and, for each moment, how the
-  outgoing and incoming screens appear (opacity, offset); built-ins are
-  `FadeTransition`, `SlideTransition` and `NoTransition`. The app sees each
-  frame's progress too, so a transition can drive things outside the
-  interface (the main menu to game zoom moves the 3D camera). Nothing is
-  hit-testable while a transition runs. The app advances transitions with
-  the frame's elapsed time.
-- **Overlays that are not screens** (a debug overlay) are not in the stack:
-  the app shows or hides them around its `NavigationView`, as SwiftUI's
-  `.overlay`.
-- **Signals out of the interface** go through the environment, as in
-  SwiftUI's environment actions (`openURL`, `dismiss`): the app puts a typed
-  actions handle in the environment, whose methods take arguments and build
-  typed requests the app carries out.
+  gets the operation (push, pop, set root) and both view controllers and
+  returns a `Transition`. A transition has a duration and, for each moment,
+  how the outgoing and incoming views appear (opacity, offset); built-ins are
+  `FadeTransition`, `SlideTransition` and `NoTransition`, and the default is
+  a quick fade. A transition also sees each frame's progress, so it can drive
+  things outside the interface (the main menu to game zoom moves the 3D
+  camera). Nothing is hit-testable while a transition runs.
+- **Overlays that are not view controllers** (a debug overlay) are not in the
+  stack: the app shows or hides them around the navigation controller's
+  view, as SwiftUI's `.overlay`.
 
 ## Text
 
@@ -190,27 +205,31 @@ them. All of it is generic, for any app.
   `<Feature><Name>View` (`DebugOverlayView`, `HudTargetView`).
 - `App` builds one root environment per frame (scale factor, color scheme,
   theme, default foreground) and renders a single root view.
-- **Screens and navigation:**
-  - Each screen is a `ViewController` in `ui/<feature>/`
-    (`MainMenuViewController` with its root `MainMenuView`), addressed by a
-    screen id in commands: `main-menu`, `config` (shown to players as
-    Options), `load`, `game`, `pause-menu`.
-  - `ui push <screen>`, `ui pop` and `ui set <screen>` change the stack;
-    `ui show|hide|toggle <overlay>` change the overlays (`debug-overlay`).
-    They are typed client commands: buttons send them through the `Actions`
-    handle in the environment (`actions.push(Screen::Config)`), binds and the
-    console and IPC run the same commands. `App` runs queued actions through
-    the executor, never formatting text.
-  - Back is per screen, mostly a BACK button popping. Escape pushes the pause
-    menu in game and does nothing elsewhere; F3 toggles the debug overlay,
-    hidden at start. There are no other interface binds; debug toggles are
-    commands.
-  - The pause menu is an `Overlay` controller over `game`. It pauses time
-    while it is in the stack when the server is the integrated one; on a
-    remote server time keeps running.
+- **View controllers and navigation:**
+  - Each page is a `ViewController` in `ui/<feature>/`
+    (`MainMenuViewController`, its root `MainMenuView` and its
+    `MainMenuActions`), addressed by an id in commands: `main-menu`,
+    `config` (shown to players as Options), `load`, `game`, `pause-menu`.
+    `ViewControllerFactory` builds them, handing each the navigation handle
+    and `GameCommands`.
+  - `ui push <view-controller>`, `ui pop` and `ui set <view-controller>`
+    change the stack; `ui show|hide|toggle <overlay>` change the overlays
+    (`debug-overlay`). The console, IPC and binds run these; view controllers
+    navigate through their `navigation` handle, ending in the same stack
+    operations.
+  - What a view controller asks of the game beyond navigation (exit, pausing
+    time) goes through `GameCommands`, which queues typed commands that `App`
+    runs through the router, never formatting text.
+  - Back is per page, mostly a BACK button performing `dismiss`. Escape
+    pushes the pause menu in game and does nothing elsewhere; F3 toggles the
+    debug overlay, hidden at start. There are no other interface binds;
+    debug toggles are commands.
+  - The pause menu (RESUME, OPTIONS, MAIN MENU) is an `Overlay` view
+    controller over `game`. It pauses time while it is in the stack when the
+    server is the integrated one; on a remote server time keeps running.
   - The camera gets input, and may capture the mouse, only while `game` is
-    the visible top screen and no transition runs; leaving it releases the
-    mouse.
+    the visible top view controller and no transition runs; leaving it
+    releases the mouse.
   - The 3D world renders full-screen, owned by the game, and the interface
     is drawn on top. A view that contains 3D (a part preview, a minimap)
     would be a viewport primitive showing a render-target texture.

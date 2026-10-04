@@ -38,7 +38,7 @@ pub use time::{
 #[cfg(feature = "client")]
 pub use ui::{
     InterfaceAction, InterfaceCommand, InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand,
-    InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand, Overlay, Screen,
+    InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
 };
 
 use usage::Subcommands;
@@ -54,7 +54,7 @@ pub enum Command {
     /// Show, change, save or reload the game's settings
     Config(ConfigCommand),
     #[cfg(feature = "client")]
-    /// Change the interface's screens and overlays
+    /// Change the interface's view controllers and overlays
     Ui(InterfaceCommand),
     /// Exit
     Exit(ExitCommand),

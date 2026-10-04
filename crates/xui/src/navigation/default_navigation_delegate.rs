@@ -2,7 +2,7 @@ use super::{AnyViewController, FadeTransition, NavigationDelegate, NavigationOpe
 
 const FADE_SECONDS: f32 = 0.25;
 
-// A quick fade of the screens that appear or disappear: pushing an overlay fades only it in, popping one fades
+// A quick fade of the view controllers that appear or disappear: pushing an overlay fades only it in, popping one fades
 // only it out.
 pub struct DefaultNavigationDelegate;
 

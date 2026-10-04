@@ -1,6 +1,6 @@
 use super::{Transition, TransitionAppearance, TransitionRole};
 
-// Switches screens at once.
+// Switches view controllers at once.
 pub struct NoTransition;
 
 impl Transition for NoTransition {

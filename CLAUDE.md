@@ -84,9 +84,11 @@ like any external library.
   into persistent scene objects each frame; objects and materials are created
   once and referenced by handle.
 - **Pack content is resolved at load time**, never per frame.
-- **The interface is built with xui** (`docs/xui.md`). Each screen is a
-  `ViewController` whose `root()` returns one named view; the layout lives in
-  that view's `body`, never inline in the controller.
+- **The interface is built with xui** (`docs/xui.md`). Each page is a
+  `ViewController` whose `root()` returns one named view, given the
+  controller's actions object; the layout lives in that view's `body`, never
+  inline in the controller, and the action handlers are methods of the
+  controller.
 - **Networking:** QUIC on UDP 1969. The dedicated server generates a
   self-signed identity in `.xsa/server/` and prints its fingerprint; clients
   pin it with `--fingerprint` (the SSH model).
@@ -202,7 +204,7 @@ like any external library.
 The game starts in the main menu. In game, right-drag orbits the target and
 scroll zooms; the debug camera (`camera mode debug`) flies with WASD,
 Space/Shift and mouse look (click to capture), and scroll sets its speed. The
-camera gets input only while the game screen is on top; menus release the
+camera gets input only while the game view controller is on top; menus release the
 mouse. Debug toggles are commands (`config toggle render.stars`,
 `config set debug.shader normals`, …), not binds. The default binds:
 

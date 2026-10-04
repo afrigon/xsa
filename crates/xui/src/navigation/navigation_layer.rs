@@ -1,5 +1,5 @@
-// One screen as the navigation view draws it this frame.
-pub(crate) struct NavigationLayer<Screen> {
+// One view controller's view as the navigation controller draws it this frame.
+pub(crate) struct NavigationLayer<Content> {
     pub id: u64,
-    pub screen: Screen,
+    pub view: Content,
 }

@@ -1,18 +1,24 @@
-use xui::{Presentation, View, ViewController};
+use xsa_commands::command::ViewControllerId;
+use xui::{Controller, Navigation, Presentation, View, ViewController};
 
-use super::PauseView;
-use crate::ui::Actions;
+use super::{PauseActions, PauseView};
+use crate::ui::ViewControllerFactory;
 
 // The pause menu, over the game. While it is in the stack, time stops when the server is the integrated one; a
 // remote server keeps running for everyone else.
 pub struct PauseViewController {
-    pub actions: Actions,
-    pub pauses_time: bool,
+    pub navigation: Navigation,
+    pub factory: ViewControllerFactory,
 }
 
 impl ViewController for PauseViewController {
-    fn root(&self) -> impl View {
-        PauseView
+    fn root(&self, this: &Controller<Self>) -> impl View {
+        PauseView {
+            actions: PauseActions {
+                options: this.action(Self::show_options),
+                main_menu: this.action(Self::return_to_main_menu),
+            },
+        }
     }
 
     fn presentation(&self) -> Presentation {
@@ -20,14 +26,26 @@ impl ViewController for PauseViewController {
     }
 
     fn did_load(&mut self) {
-        if self.pauses_time {
-            self.actions.pause_time();
+        if self.factory.pauses_time {
+            self.factory.commands.pause_time();
         }
     }
 
     fn did_unload(&mut self) {
-        if self.pauses_time {
-            self.actions.resume_time();
+        if self.factory.pauses_time {
+            self.factory.commands.resume_time();
         }
+    }
+}
+
+impl PauseViewController {
+    fn show_options(&mut self) {
+        let config = self.factory.build(ViewControllerId::Config);
+        self.navigation.push(config);
+    }
+
+    fn return_to_main_menu(&mut self) {
+        let main_menu = self.factory.build(ViewControllerId::MainMenu);
+        self.navigation.set_root(main_menu);
     }
 }

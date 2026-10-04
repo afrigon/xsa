@@ -15,18 +15,18 @@ const FADE_SECONDS: f32 = 0.25;
 
 type Log = Rc<RefCell<Vec<String>>>;
 
-// A screen that records each frame it is drawn, and how many frames its state has seen.
-struct ScreenView {
+// A view that records each frame it is drawn, and how many frames its state has seen.
+struct RecordingView {
     name: &'static str,
     log: Log,
 }
 
-struct ScreenLayout {
+struct RecordingLayout {
     name: &'static str,
     log: Log,
 }
 
-impl NodeLayout for ScreenLayout {
+impl NodeLayout for RecordingLayout {
     fn size_that_fits(
         &mut self,
         _proposal: SizeProposal,
@@ -48,7 +48,7 @@ impl NodeLayout for ScreenLayout {
     }
 }
 
-impl View for ScreenView {
+impl View for RecordingView {
     fn body(&self, _context: &Context) -> impl View {
         EmptyView
     }
@@ -59,7 +59,7 @@ impl View for ScreenView {
         self.log
             .borrow_mut()
             .push(format!("{} frame {}", self.name, frames.get()));
-        node.layout_mut(|| ScreenLayout {
+        node.layout_mut(|| RecordingLayout {
             name: self.name,
             log: self.log.clone(),
         });
@@ -67,15 +67,15 @@ impl View for ScreenView {
     }
 }
 
-struct Screen {
+struct RecordingViewController {
     name: &'static str,
     presentation: Presentation,
     log: Log,
 }
 
-impl Screen {
-    fn new(name: &'static str, presentation: Presentation, log: &Log) -> Screen {
-        Screen {
+impl RecordingViewController {
+    fn new(name: &'static str, presentation: Presentation, log: &Log) -> RecordingViewController {
+        RecordingViewController {
             name,
             presentation,
             log: log.clone(),
@@ -87,9 +87,9 @@ impl Screen {
     }
 }
 
-impl ViewController for Screen {
+impl ViewController for RecordingViewController {
     fn root(&self, _this: &Controller<Self>) -> impl View {
-        ScreenView {
+        RecordingView {
             name: self.name,
             log: self.log.clone(),
         }
@@ -116,7 +116,7 @@ impl ViewController for Screen {
     }
 }
 
-fn navigation_with(root: Screen) -> NavigationController {
+fn navigation_with(root: RecordingViewController) -> NavigationController {
     let mut navigation = NavigationController::new();
     navigation.set_root(root);
     navigation
@@ -139,11 +139,11 @@ fn drawn(events: &[String]) -> Vec<&str> {
 }
 
 #[test]
-fn a_full_screen_push_hides_the_screen_below_after_its_transition() {
+fn a_full_screen_push_hides_the_view_controller_below_after_its_transition() {
     let log = Log::default();
-    let mut navigation = navigation_with(Screen::new("menu", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(RecordingViewController::new("menu", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
-    navigation.push(Screen::new("game", Presentation::FullScreen, &log));
+    navigation.push(RecordingViewController::new("game", Presentation::FullScreen, &log));
     assert_eq!(take(&log), ["menu loaded", "menu appeared", "game loaded"]);
 
     assert_eq!(drawn(&render(&mut interface, &navigation, &log)), ["menu", "game"]);
@@ -154,11 +154,11 @@ fn a_full_screen_push_hides_the_screen_below_after_its_transition() {
 }
 
 #[test]
-fn an_overlay_leaves_the_screen_below_drawn() {
+fn an_overlay_leaves_the_view_controller_below_drawn() {
     let log = Log::default();
-    let mut navigation = navigation_with(Screen::new("game", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(RecordingViewController::new("game", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
-    navigation.push(Screen::new("pause", Presentation::Overlay, &log));
+    navigation.push(RecordingViewController::new("pause", Presentation::Overlay, &log));
     navigation.advance(FADE_SECONDS);
 
     assert_eq!(
@@ -169,12 +169,12 @@ fn an_overlay_leaves_the_screen_below_drawn() {
 }
 
 #[test]
-fn popping_returns_to_the_screen_below_with_its_state() {
+fn popping_returns_to_the_view_controller_below_with_its_state() {
     let log = Log::default();
-    let mut navigation = navigation_with(Screen::new("menu", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(RecordingViewController::new("menu", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
     render(&mut interface, &navigation, &log);
-    navigation.push(Screen::new("config", Presentation::FullScreen, &log));
+    navigation.push(RecordingViewController::new("config", Presentation::FullScreen, &log));
     navigation.advance(FADE_SECONDS);
     render(&mut interface, &navigation, &log);
     take(&log);
@@ -190,19 +190,19 @@ fn popping_returns_to_the_screen_below_with_its_state() {
 #[test]
 fn setting_the_root_unloads_the_whole_stack() {
     let log = Log::default();
-    let mut navigation = navigation_with(Screen::new("game", Presentation::FullScreen, &log));
-    navigation.push(Screen::new("pause", Presentation::Overlay, &log));
+    let mut navigation = navigation_with(RecordingViewController::new("game", Presentation::FullScreen, &log));
+    navigation.push(RecordingViewController::new("pause", Presentation::Overlay, &log));
     navigation.advance(FADE_SECONDS);
     take(&log);
 
-    navigation.set_root(Screen::new("menu", Presentation::FullScreen, &log));
+    navigation.set_root(RecordingViewController::new("menu", Presentation::FullScreen, &log));
     navigation.advance(FADE_SECONDS);
 
     let events = take(&log);
     for expected in ["game unloaded", "pause unloaded", "menu appeared"] {
         assert!(events.contains(&expected.to_string()), "{events:?}");
     }
-    assert!(navigation.top().is::<Screen>());
+    assert!(navigation.top().is::<RecordingViewController>());
 }
 
 struct InstantDelegate;
@@ -221,9 +221,9 @@ impl NavigationDelegate for InstantDelegate {
 #[test]
 fn a_delegate_chooses_the_transition() {
     let log = Log::default();
-    let mut navigation = navigation_with(Screen::new("menu", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(RecordingViewController::new("menu", Presentation::FullScreen, &log));
     navigation.set_delegate(InstantDelegate);
-    navigation.push(Screen::new("game", Presentation::FullScreen, &log));
+    navigation.push(RecordingViewController::new("game", Presentation::FullScreen, &log));
 
     assert!(!navigation.is_transitioning());
     assert!(take(&log).ends_with(&["menu disappeared".to_string(), "game appeared".to_string()]));

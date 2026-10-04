@@ -119,7 +119,7 @@
   `docs/xui.md`):
   1. Navigation: xui `ViewController`, `NavigationController`,
      `NavigationView`, transitions with a delegate, `.opacity`, `.offset`,
-     `.hidden`; xsa screens (main menu with CONTINUE, LOAD, NEW GAME,
+     `.hidden`; xsa view controllers (main menu with CONTINUE, LOAD, NEW GAME,
      OPTIONS, QUIT; config and load placeholders; game with the HUD; the
      pause menu), `ui` commands, the `Actions` handle, link-style buttons and
      a `menu` text style, the Escape and F3 binds replacing every debug bind,

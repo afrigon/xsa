@@ -1,6 +1,6 @@
 use super::{Transition, TransitionAppearance, TransitionRole, ease_in_out};
 
-// Cross-fades the screens; a side that stays visible after the transition, like the screen under an overlay,
+// Cross-fades the views; a side that stays visible after the transition, like the view controller under an overlay,
 // is left alone.
 pub struct FadeTransition {
     pub duration: f32,

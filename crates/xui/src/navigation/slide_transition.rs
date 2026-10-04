@@ -1,7 +1,7 @@
 use super::{Transition, TransitionAppearance, TransitionRole, ease_in_out};
 use crate::Point;
 
-// The incoming screen slides in from `offset` while fading in; the outgoing one slides the other way while fading
+// The incoming view slides in from `offset` while fading in; the outgoing one slides the other way while fading
 // out.
 pub struct SlideTransition {
     pub duration: f32,

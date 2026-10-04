@@ -8,11 +8,11 @@ use crate::command::{Routable, Route};
 
 #[derive(Subcommands)]
 pub enum InterfaceAction {
-    /// Push a screen over the current one
+    /// Push a view controller over the current one
     Push(InterfacePushCommand),
-    /// Go back to the screen below the current one
+    /// Go back to the view controller below the current one
     Pop(InterfacePopCommand),
-    /// Replace every screen with this one
+    /// Replace every view controller with this one
     Set(InterfaceSetCommand),
     /// Show an overlay
     Show(InterfaceShowCommand),

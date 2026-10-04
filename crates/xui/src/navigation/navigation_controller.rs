@@ -64,7 +64,7 @@ impl NavigationController {
         );
     }
 
-    // Returns whether there was a screen to pop: the root stays.
+    // Returns whether there was a view controller to pop: the root stays.
     pub fn pop(&mut self) -> bool {
         self.finish_transition();
 
@@ -125,7 +125,7 @@ impl NavigationController {
         }
     }
 
-    // The screen on top once any running transition ends.
+    // The view controller on top once any running transition ends.
     pub fn top(&self) -> &dyn AnyViewController {
         let removed = self.removed_ids();
         let entry = self
@@ -142,8 +142,8 @@ impl NavigationController {
         self.transition.is_some()
     }
 
-    // Every screen in the stack, drawn or not, so each keeps its state while it stays in the stack. Only the top
-    // screen takes pointer events, and none does during a transition.
+    // Every view controller's view, drawn or not, so each keeps its state while it stays in the stack. Only the
+    // top one takes pointer events, and none does during a transition.
     pub fn view(&self) -> impl View + use<> {
         let removed = self.removed_ids();
         let mut drawn = self.visible_ids(&removed);
@@ -163,7 +163,7 @@ impl NavigationController {
                 let navigation = self.navigation();
                 let id = entry.id;
                 let dismiss = Action::new(move |()| navigation.dismiss(id));
-                let screen = Visibility::new(
+                let view = Visibility::new(
                     entry
                         .controller
                         .root_view(entry.id, &self.messages)
@@ -175,11 +175,11 @@ impl NavigationController {
                 )
                 .max_frame(fill, fill, Alignment::CENTER);
 
-                NavigationLayer { id: entry.id, screen }
+                NavigationLayer { id: entry.id, view }
             })
             .collect();
 
-        ZStack::new(ForEach::with_id(layers, |layer| layer.id, |layer| layer.screen))
+        ZStack::new(ForEach::with_id(layers, |layer| layer.id, |layer| layer.view))
     }
 
     fn deliver_messages(&mut self) {
@@ -325,7 +325,7 @@ impl NavigationController {
         }
     }
 
-    // The screens drawn when the stack holds every entry but `excluded`: from the top down to the first
+    // The view controllers drawn when the stack holds every entry but `excluded`: from the top down to the first
     // full-screen one.
     fn visible_ids(&self, excluded: &[u64]) -> Vec<u64> {
         let mut visible = Vec::new();

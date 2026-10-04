@@ -1,4 +1,6 @@
-use xsa_commands::command::{CameraTargetCommand, InterfacePushCommand, InterfaceToggleCommand, Overlay, Screen};
+use xsa_commands::command::{
+    CameraTargetCommand, InterfacePushCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
+};
 use xsa_commands::value::Target;
 
 use super::App;
@@ -11,7 +13,7 @@ impl App {
             BindAction::CameraTargetNext => App::target(Target::Next).start(self),
             BindAction::CameraTargetPrevious => App::target(Target::Previous).start(self),
             BindAction::InterfacePauseMenu if self.is_game_active() => InterfacePushCommand {
-                screen: Screen::PauseMenu,
+                view_controller: ViewControllerId::PauseMenu,
             }
             .start(self),
             BindAction::InterfacePauseMenu => return,

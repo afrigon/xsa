@@ -1,6 +1,6 @@
 use crate::Point;
 
-// How a screen appears at one moment of a transition.
+// How a view controller's view appears at one moment of a transition.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct TransitionAppearance {
     pub opacity: f32,

@@ -1,12 +1,12 @@
 use usage::Args;
 
-use super::Screen;
+use super::ViewControllerId;
 use crate::command::{ClientCommand, Routable, Route};
 
 #[derive(Args)]
 pub struct InterfaceSetCommand {
     #[usage(value_enum)]
-    pub screen: Screen,
+    pub view_controller: ViewControllerId,
 }
 
 impl Routable for InterfaceSetCommand {

@@ -1,6 +1,6 @@
 use super::{AnyViewController, NavigationOperation, Transition};
 
-// Chooses the transition between two screens, like UIKit's `animationControllerFor:from:to:`.
+// Chooses the transition between two view controllers, like UIKit's `animationControllerFor:from:to:`.
 pub trait NavigationDelegate: 'static {
     fn transition(
         &self,

@@ -1,11 +1,11 @@
-use xui::{View, ViewController};
+use xui::{Controller, View, ViewController};
 
 use super::LoadView;
 
 pub struct LoadViewController;
 
 impl ViewController for LoadViewController {
-    fn root(&self) -> impl View {
+    fn root(&self, _this: &Controller<Self>) -> impl View {
         LoadView
     }
 }

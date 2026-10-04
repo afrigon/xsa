@@ -1,22 +1,24 @@
-use xsa_commands::command::Screen;
-use xui::{Alignment, Context, HorizontalAlignment, Text, VStack, View};
+use xui::{Alignment, Context, DismissKey, HorizontalAlignment, Text, VStack, View};
 
+use super::PauseActions;
 use crate::ui::{MenuButtonView, ThemedView};
 
 const SPACING: f32 = 16.0;
 
-pub struct PauseView;
+pub struct PauseView {
+    pub actions: PauseActions,
+}
 
 impl View for PauseView {
-    fn body(&self, _context: &Context) -> impl View {
+    fn body(&self, context: &Context) -> impl View {
         let fill = Some(f32::INFINITY);
+        let dismiss = context.environment().get::<DismissKey>();
 
         VStack::new((
             Text::new("PAUSED").text_style("title"),
-            MenuButtonView::new("RESUME", |actions| actions.pop()),
-            MenuButtonView::new("OPTIONS", |actions| actions.push(Screen::Config)),
-            MenuButtonView::new("MAIN MENU", |actions| actions.set(Screen::MainMenu)),
-            MenuButtonView::new("QUIT", |actions| actions.exit()),
+            MenuButtonView::new("RESUME", dismiss),
+            MenuButtonView::new("OPTIONS", self.actions.options.clone()),
+            MenuButtonView::new("MAIN MENU", self.actions.main_menu.clone()),
         ))
         .alignment(HorizontalAlignment::Center)
         .spacing(SPACING)

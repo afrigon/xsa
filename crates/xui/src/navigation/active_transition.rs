@@ -1,6 +1,6 @@
 use super::Transition;
 
-// A transition in progress: the screens it moves between, the screens visible before it started, and the entries
+// A transition in progress: the view controllers it moves between, the ones visible before it started, and the entries
 // it removes when it ends.
 pub(crate) struct ActiveTransition {
     pub transition: Box<dyn Transition>,
