@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{Context, Environment, FontLibrary, Subview};
+use crate::{Environment, FontLibrary, Subview};
 
 // What the update pass carries down the tree: the environment, what text shaping needs, and the content a
 // view modifier wraps.
@@ -13,10 +13,6 @@ pub struct UpdateContext<'a> {
 }
 
 impl UpdateContext<'_> {
-    pub fn context(&self) -> Context {
-        Context::new(self.environment.clone())
-    }
-
     pub fn with_environment(&mut self, environment: Environment) -> UpdateContext<'_> {
         UpdateContext {
             environment,
