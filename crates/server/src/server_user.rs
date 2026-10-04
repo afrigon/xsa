@@ -76,7 +76,7 @@ mod tests {
     #[tokio::test]
     async fn server_user_commands_reach_the_server_and_report_back() {
         let world = World::load(&WorldOptions {
-            packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../data")),
+            packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")),
             packs: vec!["base".to_string(), "system-solar".to_string()],
             simulation: None,
         })
