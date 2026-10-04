@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use xsa_packs::{Id, PackStack, SrgbColor, ThemeDefinition};
 
 fn load() -> ThemeDefinition {
-    let packs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../data");
+    let packs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data");
     let stack = PackStack::load(&packs, &["base".to_string()]).unwrap();
     ThemeDefinition::load(&stack).unwrap()
 }
