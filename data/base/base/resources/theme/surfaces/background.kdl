@@ -1,0 +1,8 @@
+default {
+    light "gray" 100
+    dark "gray" 800
+}
+emphasis "gray" 300
+muted "gray" 200
+disabled "gray" 400
+inverse "gray" 800

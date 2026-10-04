@@ -12,6 +12,8 @@ const DATA_DIRECTORY: &str = "data";
 const RESOURCES_DIRECTORY: &str = "resources";
 const TEXTURES: &str = "textures";
 const TEXTURE_EXTENSION: &str = "dds";
+const FONTS: &str = "fonts";
+const FONT_EXTENSION: &str = "ttf";
 
 pub struct PackStack {
     manifests: Vec<Manifest>,
@@ -76,13 +78,25 @@ impl PackStack {
         self.resource(TEXTURES, id, TEXTURE_EXTENSION)
     }
 
+    pub fn font(&self, id: &Id) -> anyhow::Result<&Path> {
+        self.resource(FONTS, id, FONT_EXTENSION)
+    }
+
     pub fn data_ids(&self, kind: &str) -> Vec<Id> {
+        self.ids(DATA_DIRECTORY, kind)
+    }
+
+    pub fn resource_ids(&self, kind: &str) -> Vec<Id> {
+        self.ids(RESOURCES_DIRECTORY, kind)
+    }
+
+    fn ids(&self, section: &str, kind: &str) -> Vec<Id> {
         let suffix = format!(".{DOCUMENT_EXTENSION}");
         let mut ids: Vec<Id> = self
             .files
             .keys()
             .filter_map(|key| {
-                let rest = key.strip_prefix(DATA_DIRECTORY)?.strip_prefix('/')?;
+                let rest = key.strip_prefix(section)?.strip_prefix('/')?;
                 let (namespace, rest) = rest.split_once('/')?;
                 let path = rest.strip_prefix(kind)?.strip_prefix('/')?.strip_suffix(&suffix)?;
                 Some(Id {

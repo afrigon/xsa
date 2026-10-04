@@ -11,11 +11,11 @@ impl RenderPass for CapturePass {
             return Ok(());
         };
 
-        frame.recorder.present_to_transfer_source(frame.output_image);
+        frame.recorder.color_attachment_to_transfer_source(frame.output_image);
         frame
             .recorder
             .copy_image_to_buffer(frame.output_image, frame.output_extent, buffer);
-        frame.recorder.transfer_source_to_present(frame.output_image);
+        frame.recorder.transfer_source_to_color_attachment(frame.output_image);
 
         Ok(())
     }

@@ -12,6 +12,7 @@ use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{Buffer, GraphicsPipeline, GraphicsPipelineDescription};
 
 const SPHERE_SUBDIVISIONS: u32 = 64;
+const TRIANGLE_VERTICES: u32 = 3;
 
 pub(in crate::renderer) struct ForwardPass {
     pipelines: Vec<GraphicsPipeline>,
@@ -80,6 +81,9 @@ impl ForwardPass {
 
                 frame.push_draw_constants(pipeline, object_index, object.material.index());
                 recorder.draw_indexed(self.index_count);
+                frame
+                    .triangles
+                    .set(frame.triangles.get() + u64::from(self.index_count / TRIANGLE_VERTICES));
             }
         }
 

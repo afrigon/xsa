@@ -6,12 +6,14 @@ mod client_world;
 mod command_handlers;
 mod command_progress;
 mod command_task;
+mod frame_rate;
 mod immediate_command_handler;
 mod running_task;
 mod snapshot;
 mod task_status;
 
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Instant;
 
 use anyhow::{Context, bail};
@@ -28,16 +30,23 @@ use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
+use xui::{
+    Alignment, ColorScheme, ColorSchemeKey, DrawList, Environment, ForegroundStyleKey, HorizontalAlignment, Interface,
+    ScaleFactorKey, Size, VerticalAlignment,
+};
 
 use crate::camera::CameraMode;
 use crate::config::Config;
 use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
+use crate::theme::{Theme, ThemeKey};
+use crate::ui::{DebugOverlayView, HudTargetView};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
 use command_progress::CommandProgress;
+use frame_rate::FrameRate;
 use running_task::RunningTask;
 use task_status::TaskStatus;
 
@@ -61,6 +70,9 @@ pub struct App {
     config: Config,
     mouse_captured: bool,
     last_frame: Option<Instant>,
+    interface: Interface,
+    theme: Option<Rc<Theme>>,
+    frame_rate: FrameRate,
 }
 
 impl App {
@@ -87,6 +99,9 @@ impl App {
             config_document,
             mouse_captured: false,
             last_frame: None,
+            interface: Interface::new(),
+            theme: None,
+            frame_rate: FrameRate::new(),
         }
     }
 
@@ -99,6 +114,7 @@ impl App {
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
         let shaders = ShaderBinaries::load(&base)?;
         self.renderer = Some(Renderer::new(&window, &shaders, &self.config)?);
+        self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
         window.request_redraw();
         self.window = Some(window);
 
@@ -109,6 +125,7 @@ impl App {
         let now = Instant::now();
         let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
         self.last_frame = Some(now);
+        self.frame_rate.record(delta_seconds);
 
         self.update(delta_seconds)?;
         self.draw()?;
@@ -219,6 +236,7 @@ impl App {
     }
 
     fn capture(&mut self) -> anyhow::Result<CapturedImage> {
+        self.update_user_interface()?;
         let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
 
         if let Some(world) = &self.world {
@@ -229,6 +247,7 @@ impl App {
     }
 
     fn draw(&mut self) -> anyhow::Result<()> {
+        self.update_user_interface()?;
         let Some(renderer) = &mut self.renderer else {
             return Ok(());
         };
@@ -238,6 +257,49 @@ impl App {
         }
 
         renderer.draw(self.cameras.camera())
+    }
+
+    fn update_user_interface(&mut self) -> anyhow::Result<()> {
+        let (Some(renderer), Some(window), Some(theme)) = (&mut self.renderer, &self.window, &self.theme) else {
+            return Ok(());
+        };
+        let color_scheme = ColorScheme::Dark;
+        let environment = Environment::default()
+            .with::<ScaleFactorKey>(window.scale_factor() as f32)
+            .with::<ColorSchemeKey>(color_scheme)
+            .with::<ForegroundStyleKey>(theme.color(&theme.foreground().default, color_scheme))
+            .with::<ThemeKey>(Some(theme.clone()));
+        let window_size = window.inner_size();
+        let viewport = Size {
+            width: window_size.width as f32,
+            height: window_size.height as f32,
+        };
+        let target = self
+            .world
+            .as_ref()
+            .zip(self.cameras.target_body())
+            .map(|(world, body)| world.body(body).id.to_string());
+        let mut draw_list = match target {
+            Some(name) => self
+                .interface
+                .render(&HudTargetView { name }, viewport, &environment, Alignment::TOP)?,
+            None => DrawList::default(),
+        };
+        // Two roots rendered separately until xui can compose views with different alignments.
+        let overlay = DebugOverlayView {
+            frames_per_second: self.frame_rate.frames_per_second(),
+            triangles: renderer.statistics().triangles,
+        };
+        let top_leading = Alignment {
+            horizontal: HorizontalAlignment::Leading,
+            vertical: VerticalAlignment::Top,
+        };
+        let overlay = self.interface.render(&overlay, viewport, &environment, top_leading)?;
+        draw_list.primitives.extend(overlay.primitives);
+        draw_list.atlas_updates.extend(overlay.atlas_updates);
+        renderer.set_user_interface(draw_list);
+
+        Ok(())
     }
 
     fn set_mouse_captured(&mut self, captured: bool) {

@@ -37,13 +37,11 @@ impl TonemapPass {
 impl RenderPass for TonemapPass {
     fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
         let recorder = &frame.recorder;
-        recorder.to_color_attachment(frame.output_image);
         recorder.begin_rendering(frame.output_view, None, frame.targets.extent);
         recorder.bind_graphics(&self.pipeline, frame.descriptor_set);
         frame.push_draw_constants(&self.pipeline, 0, 0);
         recorder.draw_fullscreen();
         recorder.end_rendering();
-        recorder.to_present(frame.output_image);
 
         Ok(())
     }

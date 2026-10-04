@@ -3,6 +3,7 @@ use glam::DVec3;
 use winit::event::MouseButton;
 use xsa_commands::command::CameraTargetCommand;
 use xsa_commands::value::Target;
+use xsa_core::simulation::BodyIndex;
 
 use super::body_step::BodyStep;
 use super::client_world::ClientWorld;
@@ -34,6 +35,10 @@ impl CameraController {
 
     pub fn camera(&self) -> &Camera {
         &self.camera
+    }
+
+    pub fn target_body(&self) -> Option<BodyIndex> {
+        self.orbit.as_ref().map(OrbitCamera::target)
     }
 
     pub fn focus(&mut self, world: &ClientWorld) {

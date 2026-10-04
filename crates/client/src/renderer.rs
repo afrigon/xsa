@@ -3,6 +3,7 @@ mod captured_image;
 mod command_recorder;
 mod frame;
 mod frame_context;
+mod frame_statistics;
 mod gpu_context;
 mod gpu_data;
 mod material;
@@ -16,18 +17,21 @@ mod tonemapper;
 
 pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
+pub use frame_statistics::FrameStatistics;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
 pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
 
+use std::cell::Cell;
 use std::path::Path;
 
 use ash::vk;
 use glam::{Mat4, Vec2, Vec3};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
+use xui::DrawList;
 
 use crate::camera::Camera;
 use crate::config::{Config, DebugConfig, RenderConfig};
@@ -39,7 +43,7 @@ use frame_context::FrameContext;
 use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData};
 use material::MaterialData;
-use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TonemapPass};
+use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TonemapPass, UserInterfacePass};
 use render_pass::RenderPass;
 use render_targets::RenderTargets;
 use texture::DdsImage;
@@ -58,6 +62,8 @@ pub struct Renderer {
     debug: DebugConfig,
     exposure: AutoExposure,
     capture: Option<Buffer>,
+    user_interface: DrawList,
+    statistics: FrameStatistics,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     material_data: Vec<MaterialData>,
@@ -97,6 +103,7 @@ impl Renderer {
             Box::new(HistogramPass::new(&gpu, shaders)?),
             Box::new(bloom),
             Box::new(TonemapPass::new(&gpu, shaders, swapchain.format())?),
+            Box::new(UserInterfacePass::new(&gpu, swapchain.format(), FRAMES_IN_FLIGHT)?),
             Box::new(CapturePass),
         ];
 
@@ -106,6 +113,8 @@ impl Renderer {
             debug: config.debug.clone(),
             exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
             capture: None,
+            user_interface: DrawList::default(),
+            statistics: FrameStatistics::default(),
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
@@ -126,6 +135,18 @@ impl Renderer {
 
     pub fn scene_mut(&mut self) -> &mut Scene {
         &mut self.scene
+    }
+
+    pub fn statistics(&self) -> FrameStatistics {
+        self.statistics
+    }
+
+    // Atlas updates no frame has recorded yet carry over, or their glyphs would stay blank.
+    pub fn set_user_interface(&mut self, mut draw_list: DrawList) {
+        draw_list
+            .atlas_updates
+            .splice(0..0, self.user_interface.atlas_updates.drain(..));
+        self.user_interface = draw_list;
     }
 
     pub fn configure(&mut self, render: &RenderConfig, debug: &DebugConfig) {
@@ -382,6 +403,7 @@ impl Renderer {
         let context = FrameContext {
             recorder: CommandRecorder::new(&self.gpu.device, frame.command_buffer),
             frame,
+            frame_slot: self.frame_index,
             targets: &self.targets,
             render: &self.render,
             debug: &self.debug,
@@ -391,13 +413,22 @@ impl Renderer {
             output_view: self.swapchain.image_view(image_index),
             output_extent: self.swapchain.extent(),
             capture: self.capture.as_ref(),
+            user_interface: &self.user_interface,
+            triangles: Cell::new(0),
         };
+
+        context.recorder.to_color_attachment(context.output_image);
 
         for pass in &mut self.passes {
             pass.record(&context)?;
         }
 
+        context.recorder.to_present(context.output_image);
         unsafe { device.end_command_buffer(frame.command_buffer) }?;
+        self.statistics = FrameStatistics {
+            triangles: context.triangles.get(),
+        };
+        self.user_interface.atlas_updates.clear();
 
         Ok(())
     }
