@@ -179,7 +179,8 @@ renderer uses it like an external library, through its public API only.
   waits the delay in real time while the game keeps rendering, then renders a
   frame, copies the presented image back from the GPU and writes a PNG before
   it replies (the game pauses while it encodes). Without `--output` it goes to
-  `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`.
+  `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. Always pass a short
+  delay (`--delay 2s`) so camera transitions and eye adaptation settle first.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
@@ -238,6 +239,6 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
   release).
 - On Wayland a window appears only once a frame is presented: an invisible
   window means presentation is broken.
-- Agent screenshots of the game window are unreliable (Hyprland retiles it, it
-  may be on another workspace). Verify rendering numerically and ask the user
-  to confirm what is on screen.
+- Screenshots of the game window taken from outside the game are unreliable
+  (Hyprland retiles it, it may be on another workspace). Use `camera snap`,
+  which reads the presented image back from the GPU.
