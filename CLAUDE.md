@@ -116,7 +116,7 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 - **Passes:** each render pass implements `RenderPass`, owns its pipelines and
   resources, and is recorded in the renderer's pass order.
 - **Few pipelines:** bindless resources and dynamic state over per-material
-  pipelines; a `VkPipelineCache` persisted to disk.
+  pipelines.
 - **Materials are typed:** a `Shader` is a program, a `Material` is a shader
   plus typed parameters in a per-frame GPU buffer.
 - Every rendering feature is explained before it is implemented: what it is,
