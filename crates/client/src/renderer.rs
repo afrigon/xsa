@@ -4,6 +4,7 @@ mod command_recorder;
 mod frame;
 mod frame_context;
 mod frame_statistics;
+mod frustum;
 mod gpu_context;
 mod gpu_data;
 mod material;
