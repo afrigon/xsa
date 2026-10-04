@@ -11,6 +11,8 @@ mod route;
 mod server_command;
 mod session_command;
 mod time;
+#[cfg(feature = "client")]
+mod ui;
 
 #[cfg(feature = "client")]
 pub use camera::{
@@ -33,6 +35,11 @@ pub use session_command::SessionCommand;
 pub use time::{
     TimeAction, TimeCommand, TimePauseCommand, TimeRateCommand, TimeResumeCommand, TimeSetCommand, TimeStepCommand,
 };
+#[cfg(feature = "client")]
+pub use ui::{
+    InterfaceAction, InterfaceCommand, InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand,
+    InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
+};
 
 use usage::Subcommands;
 
@@ -46,6 +53,9 @@ pub enum Command {
     #[cfg(feature = "client")]
     /// Show, change, save or reload the game's settings
     Config(ConfigCommand),
+    #[cfg(feature = "client")]
+    /// Change the interface's view controllers and overlays
+    Ui(InterfaceCommand),
     /// Exit
     Exit(ExitCommand),
 }
@@ -58,6 +68,8 @@ impl Routable for Command {
             Command::Camera(command) => command.route(),
             #[cfg(feature = "client")]
             Command::Config(command) => command.route(),
+            #[cfg(feature = "client")]
+            Command::Ui(command) => command.route(),
             Command::Exit(command) => command.route(),
         }
     }

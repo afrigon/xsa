@@ -21,7 +21,7 @@ use xsa_proto::event::{Outcome, ServerEvent};
 use xsa_proto::message::MessageId;
 use xsa_proto::session::ServerSession;
 
-use crate::command::{CommandLine, Routable, Route, ServerCommand};
+use crate::command::{Command, CommandLine, Routable, Route, ServerCommand};
 use crate::completion::Completions;
 
 #[derive(Default)]
@@ -64,19 +64,21 @@ impl CommandRouter {
                 return;
             }
         };
+        self.dispatch(command, invocation.reply, executor);
+    }
+
+    // Runs an already typed command, as the interface does, the same way as a command typed in.
+    pub fn dispatch(&mut self, command: Command, reply: oneshot::Sender<Output>, executor: &mut impl CommandExecutor) {
         let route = command.route();
         let joined = executor.session().state().is_some();
 
         if !joined && !matches!(route, Route::Exit) {
-            self.waiting_for_join.push(Waiting {
-                route,
-                reply: invocation.reply,
-            });
+            self.waiting_for_join.push(Waiting { route, reply });
 
             return;
         }
 
-        self.run(route, invocation.reply, executor);
+        self.run(route, reply, executor);
     }
 
     pub fn resume(&mut self, executor: &mut impl CommandExecutor) {

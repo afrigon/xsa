@@ -23,6 +23,7 @@ impl GameClient {
     pub fn run(self) -> anyhow::Result<()> {
         let packs_directory = self.options.world.packs_directory.clone();
         let config = ConfigDocument::load(ConfigDocument::default_path()?)?;
+        let pauses_time = self.options.remote.is_none();
         let connection = match self.options.remote {
             Some(remote) => Connection::remote(&remote.address, &remote.fingerprint)?,
             None => Server::start_local(World::load(&self.options.world)?)?,
@@ -38,7 +39,7 @@ impl GameClient {
         let _endpoint = IpcEndpoint::spawn(self.options.instance, InstanceKind::Client, invocation_sender.clone())?;
         let _repl = Repl::spawn(invocation_sender)?;
         let event_loop = EventLoop::new()?;
-        let mut app = App::new(session, invocations, packs_directory, config);
+        let mut app = App::new(session, invocations, packs_directory, config, pauses_time);
         event_loop.run_app(&mut app)?;
 
         app.into_result()
