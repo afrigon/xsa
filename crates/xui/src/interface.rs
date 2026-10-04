@@ -28,14 +28,9 @@ impl Interface {
         &mut self.fonts
     }
 
-    // `viewport` is in physical pixels, like the returned draw list.
-    pub fn render(
-        &mut self,
-        view: &impl View,
-        viewport: Size,
-        environment: &Environment,
-        alignment: Alignment,
-    ) -> anyhow::Result<DrawList> {
+    // `viewport` is in physical pixels, like the returned draw list. The view is centered in it, as in SwiftUI;
+    // frames position content anywhere else.
+    pub fn render(&mut self, view: &impl View, viewport: Size, environment: &Environment) -> anyhow::Result<DrawList> {
         let scale_factor = environment.get::<ScaleFactorKey>();
         let container = Size {
             width: viewport.width / scale_factor,
@@ -47,12 +42,13 @@ impl Interface {
             layouts: &mut self.layouts,
             atlas: &mut self.atlas,
             warnings: &mut self.warnings,
+            stack_axis: None,
         };
         let size = view.size_that_fits(SizeProposal::from(container), &mut context)?;
         let mut draw_list = DrawList::default();
         view.place(
             Rect {
-                origin: alignment.position(container, size),
+                origin: Alignment::CENTER.position(container, size),
                 size,
             },
             &mut context,

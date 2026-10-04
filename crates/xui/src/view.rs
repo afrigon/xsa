@@ -1,6 +1,7 @@
 use crate::{
-    DrawList, EdgeInsets, Environment, EnvironmentKey, EnvironmentModifier, Font, FontKey, ForegroundStyleKey,
-    LinearColor, ModifiedContent, Padding, Rect, Size, SizeProposal, ViewContext, ViewModifier,
+    Alignment, DrawList, EdgeInsets, Environment, EnvironmentKey, EnvironmentModifier, FixedFrame, Font, FontKey,
+    ForegroundStyleKey, LinearColor, MaxFrame, ModifiedContent, Padding, Rect, Size, SizeProposal, Subview,
+    ViewContext, ViewModifier,
 };
 
 // A view describes its content in `body`, like SwiftUI. Layout follows SwiftUI too: a parent proposes a size,
@@ -19,11 +20,36 @@ pub trait View {
         self.body(&environment).place(bounds, context, draw_list)
     }
 
+    // The views a stack lays out for this one: itself, or for lists (tuples, Option, ForEach…) their items,
+    // flattened, so an absent item takes neither space nor spacing.
+    fn collect_subviews<'a>(&'a self, subviews: &mut Vec<&'a dyn Subview>)
+    where
+        Self: Sized,
+    {
+        subviews.push(self);
+    }
+
     fn padding(self, insets: EdgeInsets) -> Padding<Self>
     where
         Self: Sized,
     {
         Padding::new(self, insets)
+    }
+
+    // A fixed size on either axis; an axis left as None keeps the content's size.
+    fn frame(self, width: Option<f32>, height: Option<f32>, alignment: Alignment) -> FixedFrame<Self>
+    where
+        Self: Sized,
+    {
+        FixedFrame::new(self, width, height, alignment)
+    }
+
+    // Grows to the proposed size up to the maximum (f32::INFINITY fills it); an axis left as None hugs the content.
+    fn max_frame(self, max_width: Option<f32>, max_height: Option<f32>, alignment: Alignment) -> MaxFrame<Self>
+    where
+        Self: Sized,
+    {
+        MaxFrame::new(self, max_width, max_height, alignment)
     }
 
     fn modifier<Modifier: ViewModifier>(self, modifier: Modifier) -> ModifiedContent<Self, Modifier>
@@ -66,5 +92,9 @@ impl<Content: View> View for &Content {
 
     fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
         (**self).place(bounds, context, draw_list)
+    }
+
+    fn collect_subviews<'a>(&'a self, subviews: &mut Vec<&'a dyn Subview>) {
+        (**self).collect_subviews(subviews);
     }
 }

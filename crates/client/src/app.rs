@@ -31,8 +31,8 @@ use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
 use xui::{
-    Alignment, ColorScheme, ColorSchemeKey, DrawList, Environment, ForegroundStyleKey, HorizontalAlignment, Interface,
-    ScaleFactorKey, Size, VerticalAlignment,
+    Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, ScaleFactorKey, Size, View,
+    ZStack,
 };
 
 use crate::camera::CameraMode;
@@ -279,24 +279,16 @@ impl App {
             .as_ref()
             .zip(self.cameras.target_body())
             .map(|(world, body)| world.body(body).id.to_string());
-        let mut draw_list = match target {
-            Some(name) => self
-                .interface
-                .render(&HudTargetView { name }, viewport, &environment, Alignment::TOP)?,
-            None => DrawList::default(),
-        };
-        // Two roots rendered separately until xui can compose views with different alignments.
-        let overlay = DebugOverlayView {
-            frames_per_second: self.frame_rate.frames_per_second(),
-            triangles: renderer.statistics().triangles,
-        };
-        let top_leading = Alignment {
-            horizontal: HorizontalAlignment::Leading,
-            vertical: VerticalAlignment::Top,
-        };
-        let overlay = self.interface.render(&overlay, viewport, &environment, top_leading)?;
-        draw_list.primitives.extend(overlay.primitives);
-        draw_list.atlas_updates.extend(overlay.atlas_updates);
+        let fill = Some(f32::INFINITY);
+        let root = ZStack::new((
+            target.map(|name| HudTargetView { name }.max_frame(fill, fill, Alignment::TOP)),
+            DebugOverlayView {
+                frames_per_second: self.frame_rate.frames_per_second(),
+                triangles: renderer.statistics().triangles,
+            }
+            .max_frame(fill, fill, Alignment::TOP_LEADING),
+        ));
+        let draw_list = self.interface.render(&root, viewport, &environment)?;
         renderer.set_user_interface(draw_list);
 
         Ok(())

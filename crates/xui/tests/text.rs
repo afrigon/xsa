@@ -23,6 +23,7 @@ fn interface() -> (Interface, String) {
 fn label(family: &str) -> impl View {
     Text::new("earth")
         .padding(EdgeInsets::top(TOP_PADDING))
+        .max_frame(Some(f32::INFINITY), Some(f32::INFINITY), Alignment::TOP)
         .font(Some(Font::new(family, 24.0).weight(500.0)))
 }
 
@@ -40,12 +41,8 @@ fn renders_one_primitive_per_glyph_and_caches_the_atlas() {
     let (mut interface, family) = interface();
     let environment = Environment::default();
 
-    let first = interface
-        .render(&label(&family), VIEWPORT, &environment, Alignment::TOP)
-        .unwrap();
-    let second = interface
-        .render(&label(&family), VIEWPORT, &environment, Alignment::TOP)
-        .unwrap();
+    let first = interface.render(&label(&family), VIEWPORT, &environment).unwrap();
+    let second = interface.render(&label(&family), VIEWPORT, &environment).unwrap();
 
     assert_eq!(first.primitives.len(), 5);
     assert_eq!(first.atlas_updates.len(), first.primitives.len());
@@ -57,7 +54,7 @@ fn renders_one_primitive_per_glyph_and_caches_the_atlas() {
 fn places_the_text_below_the_padding_and_centered() {
     let (mut interface, family) = interface();
     let draw_list = interface
-        .render(&label(&family), VIEWPORT, &Environment::default(), Alignment::TOP)
+        .render(&label(&family), VIEWPORT, &Environment::default())
         .unwrap();
     let bounds: Vec<_> = draw_list
         .primitives
@@ -84,14 +81,13 @@ fn places_the_text_below_the_padding_and_centered() {
 fn scales_glyphs_with_the_scale_factor() {
     let (mut interface, family) = interface();
     let standard = interface
-        .render(&label(&family), VIEWPORT, &Environment::default(), Alignment::TOP)
+        .render(&label(&family), VIEWPORT, &Environment::default())
         .unwrap();
     let doubled = interface
         .render(
             &label(&family),
             VIEWPORT,
             &Environment::default().with::<ScaleFactorKey>(2.0),
-            Alignment::TOP,
         )
         .unwrap();
 
@@ -130,9 +126,7 @@ fn custom_views_and_modifiers_read_the_cascading_environment() {
     }
     .modifier(Emphasis)
     .font(Some(Font::new(&family, 15.0)));
-    let draw_list = interface
-        .render(&view, VIEWPORT, &Environment::default(), Alignment::TOP)
-        .unwrap();
+    let draw_list = interface.render(&view, VIEWPORT, &Environment::default()).unwrap();
 
     assert_eq!(draw_list.primitives.len(), 6);
 
@@ -146,7 +140,7 @@ fn custom_views_and_modifiers_read_the_cascading_environment() {
 fn text_without_a_font_draws_nothing() {
     let (mut interface, _) = interface();
     let draw_list = interface
-        .render(&Text::new("earth"), VIEWPORT, &Environment::default(), Alignment::TOP)
+        .render(&Text::new("earth"), VIEWPORT, &Environment::default())
         .unwrap();
 
     assert!(draw_list.primitives.is_empty());
