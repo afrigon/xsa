@@ -42,7 +42,7 @@ use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
-use crate::ui::{DebugButtonDemoView, DebugOverlayView, HudTargetView};
+use crate::ui::{DebugOverlayView, HudTargetView};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -290,7 +290,6 @@ impl App {
                 triangles: renderer.statistics().triangles,
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING),
-            DebugButtonDemoView.max_frame(fill, fill, Alignment::BOTTOM),
         ));
         let draw_list = self.interface.render(&root, viewport, &environment)?;
         renderer.set_user_interface(draw_list);

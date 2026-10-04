@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 
 use anyhow::Context;
-use xsa_packs::{ColorRole, ForegroundColors, Id, PackStack, ThemeDefinition, ThemedColor};
+use xsa_packs::{ForegroundColors, Id, PackStack, ThemeDefinition, ThemedColor};
 use xui::{ColorScheme, Font, FontLibrary, LinearColor};
 
 pub struct Theme {
@@ -65,10 +65,6 @@ impl Theme {
 
     pub fn foreground(&self) -> &ForegroundColors {
         &self.definition.foreground
-    }
-
-    pub fn color_role(&self, role: &Id) -> Option<&ColorRole> {
-        self.definition.color_roles.get(role)
     }
 
     pub fn color(&self, color: &ThemedColor, scheme: ColorScheme) -> LinearColor {
