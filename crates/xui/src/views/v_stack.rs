@@ -1,7 +1,5 @@
 use crate::layout::{Axis, DEFAULT_SPACING, StackLayout};
-use crate::{
-    Alignment, DrawList, Environment, HorizontalAlignment, Never, Rect, Size, SizeProposal, View, ViewContext,
-};
+use crate::{Alignment, Context, HorizontalAlignment, Never, Node, UpdateContext, View};
 
 pub struct VStack<Content: View> {
     content: Content,
@@ -32,15 +30,14 @@ impl<Content: View> VStack<Content> {
 }
 
 impl<Content: View> View for VStack<Content> {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         Never::primitive_body()
     }
 
-    fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
-        self.layout.size_of_content(&self.content, proposal, context)
-    }
-
-    fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        self.layout.place_content(&self.content, bounds, context, draw_list)
+    fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
+        let mut subviews = Vec::new();
+        self.content.collect_subviews(&mut subviews);
+        node.set_layout(self.layout);
+        node.update_children(&subviews, context)
     }
 }

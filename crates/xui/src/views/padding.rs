@@ -1,4 +1,5 @@
-use crate::{DrawList, EdgeInsets, Environment, Never, Rect, Size, SizeProposal, View, ViewContext};
+use crate::layout::PaddingLayout;
+use crate::{Context, EdgeInsets, Never, Node, SubviewEntry, UpdateContext, View};
 
 pub struct Padding<Content: View> {
     content: Content,
@@ -12,20 +13,12 @@ impl<Content: View> Padding<Content> {
 }
 
 impl<Content: View> View for Padding<Content> {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         Never::primitive_body()
     }
 
-    fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
-        let content = self.content.size_that_fits(proposal.inset(self.insets), context)?;
-
-        Ok(Size {
-            width: content.width + self.insets.horizontal(),
-            height: content.height + self.insets.vertical(),
-        })
-    }
-
-    fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        self.content.place(bounds.inset(self.insets), context, draw_list)
+    fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
+        node.set_layout(PaddingLayout { insets: self.insets });
+        node.update_children(&[SubviewEntry::new(&self.content)], context)
     }
 }

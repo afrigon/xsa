@@ -1,5 +1,6 @@
 mod atlas;
 mod color_scheme;
+mod context;
 mod draw;
 mod environment;
 mod font;
@@ -8,17 +9,19 @@ mod geometry;
 mod identifiable;
 mod interface;
 mod layout;
+mod layout_context;
 mod linear_color;
 mod modifiers;
 mod never;
+mod shaping;
 mod subview;
-mod text_layouts;
+mod tree;
 mod view;
-mod view_context;
 mod views;
 
 pub use atlas::{ATLAS_SIZE, AtlasRegion, AtlasUpdate};
 pub use color_scheme::ColorScheme;
+pub use context::Context;
 pub use draw::{DrawList, GlyphPrimitive, Primitive};
 pub use environment::{ColorSchemeKey, Environment, EnvironmentKey, FontKey, ForegroundStyleKey, ScaleFactorKey};
 pub use font::Font;
@@ -26,12 +29,13 @@ pub use fonts::FontLibrary;
 pub use geometry::{Alignment, EdgeInsets, HorizontalAlignment, Point, Rect, Size, SizeProposal, VerticalAlignment};
 pub use identifiable::Identifiable;
 pub use interface::Interface;
+pub use layout_context::LayoutContext;
 pub use linear_color::LinearColor;
-pub use modifiers::{EnvironmentModifier, ModifiedContent, ViewModifier};
+pub use modifiers::{EnvironmentModifier, IdentifiedView, ModifiedContent, ModifierContent, ViewModifier};
 pub use never::Never;
 pub use subview::Subview;
+pub use tree::{Node, NodeLayout, PassthroughLayout, SubviewEntry, UpdateContext};
 pub use view::View;
-pub use view_context::ViewContext;
 pub use views::{
     AnyView, Either, EmptyView, FixedFrame, ForEach, Group, HStack, MaxFrame, Padding, Spacer, Text, VStack, ZStack,
 };

@@ -58,7 +58,7 @@ like any external library.
 | `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
 | `tools` | Offline asset tools (`convert-skybox`) |
-| `xui` | SwiftUI-style UI framework, renderer-agnostic: views, layout, environment, text shaping, glyph atlas; outputs draw lists |
+| `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, given raw Vulkan handles |
 
 ## Architecture

@@ -1,25 +1,31 @@
-use crate::{DrawList, Rect, Size, SizeProposal, View, ViewContext};
+use std::any::TypeId;
+
+use crate::{Node, SubviewEntry, UpdateContext, View};
 
 // `View` in a form that can sit behind a reference to `dyn`, so containers can hold children of different types.
 // Every view implements it.
 pub trait Subview {
-    fn measure(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size>;
+    fn view_type(&self) -> TypeId;
 
-    fn arrange(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()>;
+    fn update_node(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()>;
 
-    fn collect_into<'a>(&'a self, subviews: &mut Vec<&'a dyn Subview>);
+    fn collect_into<'a>(&'a self, subviews: &mut Vec<SubviewEntry<'a>>);
 }
 
 impl<Content: View> Subview for Content {
-    fn measure(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
-        self.size_that_fits(proposal, context)
+    fn view_type(&self) -> TypeId {
+        TypeId::of::<Content>()
     }
 
-    fn arrange(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        self.place(bounds, context, draw_list)
+    fn update_node(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
+        node.begin_update();
+        self.update(node, context)?;
+        node.end_update();
+
+        Ok(())
     }
 
-    fn collect_into<'a>(&'a self, subviews: &mut Vec<&'a dyn Subview>) {
+    fn collect_into<'a>(&'a self, subviews: &mut Vec<SubviewEntry<'a>>) {
         self.collect_subviews(subviews);
     }
 }
