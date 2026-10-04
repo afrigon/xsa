@@ -12,7 +12,9 @@ Agency, written in Rust on Vulkan.
 4. **Code quality.** The project is built to grow large: clean architecture,
    small focused files, modern tech.
 
-The roadmap and known deferred work live in `.todo`; read it before proposing
+The roadmap lives in the `xsa-roadmap` GitHub project
+(https://github.com/users/afrigon/projects/7): milestones, one issue per item.
+Known deferred work and loose ideas live in `.todo`. Read both before proposing
 what to build next. Design documents live in `docs/` (`docs/packs.md`: how game
 content is packaged and loaded; `docs/xui.md`: the vision and design of xui, the
 UI framework; read it before changing xui or the game's interface).
@@ -64,6 +66,9 @@ like any external library.
 
 ## Architecture
 
+- **Content is data.** Every body, effect and rendering feature is configured
+  by pack data; adding an atmosphere to the Moon is a few lines in its data
+  file. Nothing is hard-coded per body or per system.
 - **One simulation runner.** Local play runs the same `Server` as the dedicated
   binary, on its own thread, over an in-process `Connection`; `--remote` swaps
   in QUIC. Client code is identical either way.
