@@ -26,7 +26,6 @@ use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
 use xsa_commands::command::ClientCommand;
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter};
-use xsa_core::simulation::BodyCategory;
 use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
@@ -42,7 +41,7 @@ use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
-use crate::ui::{DebugBodyListView, DebugOverlayView, HudTargetView};
+use crate::ui::{DebugOverlayView, HudTargetView};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -280,25 +279,8 @@ impl App {
             .as_ref()
             .zip(self.cameras.target_body())
             .map(|(world, body)| world.body(body).id.to_string());
-        let names = |category: BodyCategory| -> Vec<String> {
-            self.world.as_ref().map_or_else(Vec::new, |world| {
-                world
-                    .bodies()
-                    .iter()
-                    .filter(|body| body.category == category)
-                    .map(|body| body.id.to_string())
-                    .collect()
-            })
-        };
-        let planets = names(BodyCategory::Planet);
-        let moons = names(BodyCategory::Moon);
         let fill = Some(f32::INFINITY);
         let root = ZStack::new((
-            DebugBodyListView {
-                planets,
-                moons,
-                show_moons: true,
-            },
             target.map(|name| HudTargetView { name }.max_frame(fill, fill, Alignment::TOP)),
             DebugOverlayView {
                 frames_per_second: self.frame_rate.frames_per_second(),
