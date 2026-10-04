@@ -14,21 +14,10 @@ impl BindDocument {
 
     pub fn key(action: BindAction) -> ConfigKey {
         let path = match action {
-            BindAction::CameraDebugToggle => "bind.camera.debug-toggle",
             BindAction::CameraTargetNext => "bind.camera.target-next",
             BindAction::CameraTargetPrevious => "bind.camera.target-previous",
-            BindAction::CameraReleaseMouse => "bind.camera.release-mouse",
-            BindAction::RenderStarsToggle => "bind.render.stars-toggle",
-            BindAction::RenderTonemapperNext => "bind.render.tonemapper-next",
-            BindAction::RenderExposureModeToggle => "bind.render.exposure-mode-toggle",
-            BindAction::RenderBloomToggle => "bind.render.bloom-toggle",
-            BindAction::DebugShadingNext => "bind.debug.shading-next",
-            BindAction::DebugWireframeToggle => "bind.debug.wireframe-toggle",
-            BindAction::DebugShaderLit => "bind.debug.shader-lit",
-            BindAction::DebugShaderNormals => "bind.debug.shader-normals",
-            BindAction::DebugShaderDepth => "bind.debug.shader-depth",
-            BindAction::DebugShaderTriangles => "bind.debug.shader-triangles",
-            BindAction::DebugShaderLighting => "bind.debug.shader-lighting",
+            BindAction::InterfacePauseMenu => "bind.interface.pause-menu",
+            BindAction::InterfaceDebugOverlay => "bind.interface.debug-overlay",
         };
 
         ConfigKey::saved(path, ConfigValueKind::KeyChord)

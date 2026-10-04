@@ -32,11 +32,7 @@ impl DefaultBind {
     }
 }
 
-const DEFAULT_BINDS: [DefaultBind; 15] = [
-    DefaultBind {
-        action: BindAction::CameraDebugToggle,
-        chord: KeyChord::key(KeyCode::F1),
-    },
+const DEFAULT_BINDS: [DefaultBind; 4] = [
     DefaultBind {
         action: BindAction::CameraTargetNext,
         chord: KeyChord::key(KeyCode::Tab),
@@ -46,52 +42,12 @@ const DEFAULT_BINDS: [DefaultBind; 15] = [
         chord: KeyChord::shift(KeyCode::Tab),
     },
     DefaultBind {
-        action: BindAction::CameraReleaseMouse,
+        action: BindAction::InterfacePauseMenu,
         chord: KeyChord::key(KeyCode::Escape),
     },
     DefaultBind {
-        action: BindAction::RenderStarsToggle,
-        chord: KeyChord::key(KeyCode::F2),
-    },
-    DefaultBind {
-        action: BindAction::RenderTonemapperNext,
+        action: BindAction::InterfaceDebugOverlay,
         chord: KeyChord::key(KeyCode::F3),
-    },
-    DefaultBind {
-        action: BindAction::RenderExposureModeToggle,
-        chord: KeyChord::key(KeyCode::F4),
-    },
-    DefaultBind {
-        action: BindAction::RenderBloomToggle,
-        chord: KeyChord::key(KeyCode::F5),
-    },
-    DefaultBind {
-        action: BindAction::DebugShadingNext,
-        chord: KeyChord::key(KeyCode::F7),
-    },
-    DefaultBind {
-        action: BindAction::DebugWireframeToggle,
-        chord: KeyChord::key(KeyCode::Backquote),
-    },
-    DefaultBind {
-        action: BindAction::DebugShaderLit,
-        chord: KeyChord::key(KeyCode::Digit1),
-    },
-    DefaultBind {
-        action: BindAction::DebugShaderNormals,
-        chord: KeyChord::key(KeyCode::Digit2),
-    },
-    DefaultBind {
-        action: BindAction::DebugShaderDepth,
-        chord: KeyChord::key(KeyCode::Digit3),
-    },
-    DefaultBind {
-        action: BindAction::DebugShaderTriangles,
-        chord: KeyChord::key(KeyCode::Digit4),
-    },
-    DefaultBind {
-        action: BindAction::DebugShaderLighting,
-        chord: KeyChord::key(KeyCode::Digit5),
     },
 ];
 

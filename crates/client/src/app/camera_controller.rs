@@ -64,13 +64,6 @@ impl CameraController {
         true
     }
 
-    pub fn toggled_mode(&self) -> CameraMode {
-        match self.mode {
-            CameraMode::Orbit => CameraMode::Debug,
-            CameraMode::Debug => CameraMode::Orbit,
-        }
-    }
-
     pub fn wants_mouse_capture(&self, input: &Input) -> Option<bool> {
         match self.mode {
             CameraMode::Debug if input.was_button_pressed(MouseButton::Left) => Some(true),

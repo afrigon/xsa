@@ -10,9 +10,11 @@ mod frame_rate;
 mod immediate_command_handler;
 mod pointer_input;
 mod running_task;
+mod screens;
 mod snapshot;
 mod task_status;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
@@ -20,20 +22,21 @@ use std::time::Instant;
 use anyhow::{Context, bail};
 use glam::DVec2;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::oneshot;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
-use xsa_commands::command::ClientCommand;
+use xsa_commands::command::{ClientCommand, Overlay, Screen};
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
-use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter};
+use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
 use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
 use xui::{
-    Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, Point, ScaleFactorKey, Size,
-    View, ZStack,
+    Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, NavigationController, Point,
+    ScaleFactorKey, Size, View, ZStack,
 };
 
 use crate::camera::CameraMode;
@@ -42,7 +45,7 @@ use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
-use crate::ui::{DebugOverlayView, HudTargetView};
+use crate::ui::{Actions, ActionsKey, DebugOverlayView, ScreenControllers, TargetNameKey};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -76,6 +79,11 @@ pub struct App {
     interface: Interface,
     theme: Option<Rc<Theme>>,
     frame_rate: FrameRate,
+    navigation: NavigationController,
+    screens: ScreenControllers,
+    actions: Actions,
+    overlays: HashSet<Overlay>,
+    action_replies: Vec<oneshot::Receiver<Output>>,
 }
 
 impl App {
@@ -84,7 +92,15 @@ impl App {
         invocations: UnboundedReceiver<CommandInvocation>,
         packs_directory: PathBuf,
         config_document: ConfigDocument,
+        pauses_time: bool,
     ) -> Self {
+        let actions = Actions::default();
+        let screens = ScreenControllers {
+            actions: actions.clone(),
+            pauses_time,
+        };
+        let navigation = NavigationController::new(screens.build(Screen::MainMenu));
+
         Self {
             renderer: None,
             window: None,
@@ -107,6 +123,11 @@ impl App {
             interface: Interface::new(),
             theme: None,
             frame_rate: FrameRate::new(),
+            navigation,
+            screens,
+            actions,
+            overlays: HashSet::new(),
+            action_replies: Vec::new(),
         }
     }
 
@@ -132,6 +153,7 @@ impl App {
         self.last_frame = Some(now);
         self.frame_rate.record(delta_seconds);
         self.offer_pointer_move();
+        self.navigation.advance(delta_seconds as f32);
 
         self.update(delta_seconds)?;
         self.draw()?;
@@ -149,13 +171,16 @@ impl App {
         self.poll_connection()?;
         self.poll_invocations();
         self.poll_input();
+        self.run_interface_actions();
+        let idle = Input::default();
+        let input = if self.is_game_active() { &self.input } else { &idle };
 
         if let Some(world) = &mut self.world {
             if let Some(state) = self.session.state() {
                 world.advance(state.time());
             }
 
-            self.cameras.update(world, &self.input, delta_seconds);
+            self.cameras.update(world, input, delta_seconds);
         }
 
         Ok(())
@@ -205,6 +230,14 @@ impl App {
     fn poll_input(&mut self) {
         for action in self.config.bind.triggered(&self.input) {
             self.run_bind_action(action);
+        }
+
+        if !self.is_game_active() {
+            if self.mouse_captured {
+                self.set_mouse_captured(false);
+            }
+
+            return;
         }
 
         if let Some(captured) = self.cameras.wants_mouse_capture(&self.input) {
@@ -285,15 +318,18 @@ impl App {
             .as_ref()
             .zip(self.cameras.target_body())
             .map(|(world, body)| world.body(body).id.to_string());
+        let environment = environment
+            .with::<ActionsKey>(Some(self.actions.clone()))
+            .with::<TargetNameKey>(target);
         let fill = Some(f32::INFINITY);
-        let root = ZStack::new((
-            target.map(|name| HudTargetView { name }.max_frame(fill, fill, Alignment::TOP)),
+        let debug_overlay = self.overlays.contains(&Overlay::DebugOverlay).then(|| {
             DebugOverlayView {
                 frames_per_second: self.frame_rate.frames_per_second(),
                 triangles: renderer.statistics().triangles,
             }
-            .max_frame(fill, fill, Alignment::TOP_LEADING),
-        ));
+            .max_frame(fill, fill, Alignment::TOP_LEADING)
+        });
+        let root = ZStack::new((self.navigation.view(), debug_overlay));
         let draw_list = self.interface.render(&root, viewport, &environment)?;
         renderer.set_user_interface(draw_list);
 
@@ -423,6 +459,12 @@ impl CommandExecutor for App {
             ClientCommand::ConfigToggle(command) => command.start(self),
             ClientCommand::ConfigSave(command) => command.start(self),
             ClientCommand::ConfigReload(command) => command.start(self),
+            ClientCommand::InterfacePush(command) => command.start(self),
+            ClientCommand::InterfacePop(command) => command.start(self),
+            ClientCommand::InterfaceSet(command) => command.start(self),
+            ClientCommand::InterfaceShow(command) => command.start(self),
+            ClientCommand::InterfaceHide(command) => command.start(self),
+            ClientCommand::InterfaceToggle(command) => command.start(self),
         };
 
         self.follow(progress, Some(reply));

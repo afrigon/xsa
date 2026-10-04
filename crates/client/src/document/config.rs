@@ -297,13 +297,12 @@ mod tests {
         let file = TestFile::new("binds", None);
         let mut document = ConfigDocument::load(file.path()).unwrap();
         let binds = [
-            "bind.render.stars-toggle",
-            "bind.render.bloom-toggle",
-            "bind.debug.shader-lit",
-            "bind.debug.shader-normals",
-            "bind.debug.shader-depth",
+            "bind.camera.target-next",
+            "bind.camera.target-previous",
+            "bind.interface.pause-menu",
+            "bind.interface.debug-overlay",
         ];
-        let keys = ["\\", "=", "[", "9", "ctrl+'"];
+        let keys = ["\\", "=", "[", "ctrl+'"];
 
         for (bind, key) in binds.iter().zip(keys) {
             document.set(bind, key).unwrap();

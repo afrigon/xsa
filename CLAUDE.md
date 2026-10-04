@@ -199,22 +199,18 @@ like any external library.
 
 ## Controls
 
-Right-drag orbits the target, scroll zooms (debug camera: speed), and the
-debug camera flies with WASD, Space/Shift and mouse look (click to capture).
-The default binds:
+The game starts in the main menu. In game, right-drag orbits the target and
+scroll zooms; the debug camera (`camera mode debug`) flies with WASD,
+Space/Shift and mouse look (click to capture), and scroll sets its speed. The
+camera gets input only while the game screen is on top; menus release the
+mouse. Debug toggles are commands (`config toggle render.stars`,
+`config set debug.shader normals`, …), not binds. The default binds:
 
 | Key | Bind | Action |
 | --- | --- | --- |
-| F1 | `camera.debug-toggle` | Toggle the debug fly camera |
 | Tab / Shift+Tab | `camera.target-next` / `target-previous` | Next / previous target |
-| Escape | `camera.release-mouse` | Release the mouse |
-| F2 | `render.stars-toggle` | Toggle the skybox |
-| F3 | `render.tonemapper-next` | Cycle the tonemapper: AgX, AgX Punchy, Khronos PBR Neutral, off |
-| F4 | `render.exposure-mode-toggle` | Eye adaptation / manual EV100 |
-| F5 | `render.bloom-toggle` | Toggle bloom |
-| F7 | `debug.shading-next` | Cycle planet shading: Hapke (Sol), textbook Hapke, Lambert |
-| \` | `debug.wireframe-toggle` | Wireframe |
-| 1–5 | `debug.shader-lit` … `shader-lighting` | Shader override: lit, normals, depth, triangles, lighting |
+| Escape | `interface.pause-menu` | Open the pause menu, in game only |
+| F3 | `interface.debug-overlay` | Show or hide the debug overlay (FPS, triangles) |
 
 ## Gotchas
 
