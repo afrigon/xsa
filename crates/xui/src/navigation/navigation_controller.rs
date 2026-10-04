@@ -1,30 +1,49 @@
-use super::{
-    ActiveTransition, AnyViewController, DefaultNavigationDelegate, NavigationDelegate, NavigationEntry,
-    NavigationLayer, NavigationOperation, Presentation, TransitionAppearance, TransitionRole,
-};
-use crate::{Alignment, ForEach, View, Visibility, ZStack};
+use std::any::Any;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-// A stack of screens, like UIKit's `UINavigationController`. The app owns it, changes it with `push`, `pop` and
-// `set_root`, advances its transitions every frame, and draws it with `view`. Changing it while a transition
-// runs finishes that transition first.
+use super::{
+    ActiveTransition, AnyViewController, ControllerMessage, DefaultNavigationDelegate, DismissKey, Navigation,
+    NavigationDelegate, NavigationEntry, NavigationLayer, NavigationOperation, NavigationRequest, Presentation,
+    TransitionAppearance, TransitionRole,
+};
+use crate::{Action, Alignment, ForEach, View, Visibility, ZStack};
+
+// A stack of view controllers, like UIKit's `UINavigationController`. The app owns it and draws it with `view`;
+// it changes through `push`, `pop` and `set_root`, or through the `Navigation` handles its view controllers hold.
+// Every frame, `advance` runs the actions views triggered, applies the requested changes and moves transitions
+// along. Changing the stack while a transition runs finishes that transition first.
 pub struct NavigationController {
     entries: Vec<NavigationEntry>,
     next_id: u64,
     delegate: Box<dyn NavigationDelegate>,
     transition: Option<ActiveTransition>,
+    requests: Rc<RefCell<Vec<NavigationRequest>>>,
+    messages: Rc<RefCell<Vec<ControllerMessage>>>,
+}
+
+impl Default for NavigationController {
+    fn default() -> NavigationController {
+        NavigationController::new()
+    }
 }
 
 impl NavigationController {
-    pub fn new(root: impl Into<Box<dyn AnyViewController>>) -> NavigationController {
-        let mut navigation = NavigationController {
+    // An empty stack: give it a root with `set_root` before drawing it. View controllers built for it take its
+    // `navigation` handle.
+    pub fn new() -> NavigationController {
+        NavigationController {
             entries: Vec::new(),
             next_id: 0,
             delegate: Box::new(DefaultNavigationDelegate),
             transition: None,
-        };
-        navigation.insert(root.into());
-        navigation.entries[0].controller.did_appear();
-        navigation
+            requests: Rc::default(),
+            messages: Rc::default(),
+        }
+    }
+
+    pub fn navigation(&self) -> Navigation {
+        Navigation::new(self.requests.clone())
     }
 
     pub fn set_delegate(&mut self, delegate: impl NavigationDelegate) {
@@ -70,6 +89,13 @@ impl NavigationController {
     // Replaces the whole stack with `controller`.
     pub fn set_root(&mut self, controller: impl Into<Box<dyn AnyViewController>>) {
         self.finish_transition();
+
+        if self.entries.is_empty() {
+            let id = self.insert(controller.into());
+            self.entry_mut(id).controller.did_appear();
+            return;
+        }
+
         let visible_before = self.visible_ids(&[]);
         let outgoing = self.top_id();
         let removed = self.entries.iter().map(|entry| entry.id).collect();
@@ -84,6 +110,9 @@ impl NavigationController {
     }
 
     pub fn advance(&mut self, delta_seconds: f32) {
+        self.deliver_messages();
+        self.apply_requests();
+
         let Some(active) = &mut self.transition else {
             return;
         };
@@ -131,10 +160,14 @@ impl NavigationController {
                 let appearance = self.appearance(entry.id);
                 let interactive = self.transition.is_none() && entry.id == top;
                 let fill = Some(f32::INFINITY);
+                let navigation = self.navigation();
+                let id = entry.id;
+                let dismiss = Action::new(move |()| navigation.dismiss(id));
                 let screen = Visibility::new(
                     entry
                         .controller
-                        .root_view()
+                        .root_view(entry.id, &self.messages)
+                        .environment::<DismissKey>(dismiss)
                         .opacity(appearance.opacity)
                         .offset(appearance.offset),
                     drawn.contains(&entry.id),
@@ -147,6 +180,66 @@ impl NavigationController {
             .collect();
 
         ZStack::new(ForEach::with_id(layers, |layer| layer.id, |layer| layer.screen))
+    }
+
+    fn deliver_messages(&mut self) {
+        let messages = std::mem::take(&mut *self.messages.borrow_mut());
+
+        for message in messages {
+            if let Some(entry) = self.entries.iter_mut().find(|entry| entry.id == message.id) {
+                (message.call)(entry.controller.as_mut() as &mut dyn Any);
+            }
+        }
+    }
+
+    fn apply_requests(&mut self) {
+        let requests = std::mem::take(&mut *self.requests.borrow_mut());
+
+        for request in requests {
+            match request {
+                NavigationRequest::Push(controller) => self.push(controller),
+                NavigationRequest::Pop => {
+                    self.pop();
+                }
+                NavigationRequest::SetRoot(controller) => self.set_root(controller),
+                NavigationRequest::Dismiss { id } => self.dismiss(id),
+            }
+        }
+    }
+
+    // Pops the view controller when it is on top; otherwise removes it from under the top at once.
+    fn dismiss(&mut self, id: u64) {
+        self.finish_transition();
+
+        if self.entries.len() < 2 || !self.entries.iter().any(|entry| entry.id == id) {
+            return;
+        }
+
+        if id == self.top_id() {
+            self.pop();
+            return;
+        }
+
+        let visible_before = self.visible_ids(&[]);
+        let index = self
+            .entries
+            .iter()
+            .position(|entry| entry.id == id)
+            .expect("the entry was found above");
+        let mut entry = self.entries.remove(index);
+
+        if visible_before.contains(&id) {
+            entry.controller.did_disappear();
+        }
+
+        entry.controller.did_unload();
+    }
+
+    fn entry_mut(&mut self, id: u64) -> &mut NavigationEntry {
+        self.entries
+            .iter_mut()
+            .find(|entry| entry.id == id)
+            .expect("the entry is in the stack")
     }
 
     fn appearance(&self, id: u64) -> TransitionAppearance {

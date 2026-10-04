@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use xui::{
-    AnyViewController, Context, DrawList, EmptyView, Environment, Interface, LayoutContext, NavigationController,
-    NavigationDelegate, NavigationOperation, NoTransition, Node, NodeLayout, Presentation, Rect, Size, SizeProposal,
-    Transition, UpdateContext, View, ViewController,
+    Action, AnyViewController, Context, Controller, DismissKey, DrawList, EmptyView, Environment, Interface,
+    LayoutContext, Navigation, NavigationController, NavigationDelegate, NavigationOperation, NoTransition, Node,
+    NodeLayout, Presentation, Rect, Size, SizeProposal, Transition, UpdateContext, View, ViewController,
 };
 
 const VIEWPORT: Size = Size {
@@ -88,7 +88,7 @@ impl Screen {
 }
 
 impl ViewController for Screen {
-    fn root(&self) -> impl View {
+    fn root(&self, _this: &Controller<Self>) -> impl View {
         ScreenView {
             name: self.name,
             log: self.log.clone(),
@@ -116,6 +116,12 @@ impl ViewController for Screen {
     }
 }
 
+fn navigation_with(root: Screen) -> NavigationController {
+    let mut navigation = NavigationController::new();
+    navigation.set_root(root);
+    navigation
+}
+
 fn render(interface: &mut Interface, navigation: &NavigationController, log: &Log) -> Vec<String> {
     log.borrow_mut().clear();
     interface
@@ -135,7 +141,7 @@ fn drawn(events: &[String]) -> Vec<&str> {
 #[test]
 fn a_full_screen_push_hides_the_screen_below_after_its_transition() {
     let log = Log::default();
-    let mut navigation = NavigationController::new(Screen::new("menu", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(Screen::new("menu", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
     navigation.push(Screen::new("game", Presentation::FullScreen, &log));
     assert_eq!(take(&log), ["menu loaded", "menu appeared", "game loaded"]);
@@ -150,7 +156,7 @@ fn a_full_screen_push_hides_the_screen_below_after_its_transition() {
 #[test]
 fn an_overlay_leaves_the_screen_below_drawn() {
     let log = Log::default();
-    let mut navigation = NavigationController::new(Screen::new("game", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(Screen::new("game", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
     navigation.push(Screen::new("pause", Presentation::Overlay, &log));
     navigation.advance(FADE_SECONDS);
@@ -165,7 +171,7 @@ fn an_overlay_leaves_the_screen_below_drawn() {
 #[test]
 fn popping_returns_to_the_screen_below_with_its_state() {
     let log = Log::default();
-    let mut navigation = NavigationController::new(Screen::new("menu", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(Screen::new("menu", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
     render(&mut interface, &navigation, &log);
     navigation.push(Screen::new("config", Presentation::FullScreen, &log));
@@ -184,7 +190,7 @@ fn popping_returns_to_the_screen_below_with_its_state() {
 #[test]
 fn setting_the_root_unloads_the_whole_stack() {
     let log = Log::default();
-    let mut navigation = NavigationController::new(Screen::new("game", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(Screen::new("game", Presentation::FullScreen, &log));
     navigation.push(Screen::new("pause", Presentation::Overlay, &log));
     navigation.advance(FADE_SECONDS);
     take(&log);
@@ -215,10 +221,105 @@ impl NavigationDelegate for InstantDelegate {
 #[test]
 fn a_delegate_chooses_the_transition() {
     let log = Log::default();
-    let mut navigation = NavigationController::new(Screen::new("menu", Presentation::FullScreen, &log));
+    let mut navigation = navigation_with(Screen::new("menu", Presentation::FullScreen, &log));
     navigation.set_delegate(InstantDelegate);
     navigation.push(Screen::new("game", Presentation::FullScreen, &log));
 
     assert!(!navigation.is_transitioning());
     assert!(take(&log).ends_with(&["menu disappeared".to_string(), "game appeared".to_string()]));
+}
+
+// A list whose rows open a detail for their id, and a detail that dismisses itself.
+struct ListViewController {
+    navigation: Navigation,
+    log: Log,
+}
+
+struct ListView {
+    show_item: Action<u32>,
+}
+
+// Opens item 7 on its first frame, standing in for a click on that row.
+impl View for ListView {
+    fn body(&self, context: &Context) -> impl View {
+        let opened = context.state(|| false);
+
+        if !opened.get() {
+            opened.set(true);
+            self.show_item.perform_with(7);
+        }
+
+        EmptyView
+    }
+}
+
+impl ViewController for ListViewController {
+    fn root(&self, this: &Controller<Self>) -> impl View {
+        ListView {
+            show_item: this.action_with(Self::show_item),
+        }
+    }
+}
+
+impl ListViewController {
+    fn show_item(&mut self, id: u32) {
+        self.navigation.push(DetailViewController {
+            id,
+            log: self.log.clone(),
+        });
+    }
+}
+
+struct DetailViewController {
+    id: u32,
+    log: Log,
+}
+
+struct DetailView;
+
+impl View for DetailView {
+    fn body(&self, context: &Context) -> impl View {
+        context.environment().get::<DismissKey>().perform();
+        EmptyView
+    }
+}
+
+impl ViewController for DetailViewController {
+    fn root(&self, _this: &Controller<Self>) -> impl View {
+        DetailView
+    }
+
+    fn did_load(&mut self) {
+        self.log.borrow_mut().push(format!("detail {} loaded", self.id));
+    }
+
+    fn did_unload(&mut self) {
+        self.log.borrow_mut().push(format!("detail {} unloaded", self.id));
+    }
+}
+
+#[test]
+fn actions_reach_their_controller_with_their_value_and_views_dismiss_themselves() {
+    let log = Log::default();
+    let mut navigation = NavigationController::new();
+    navigation.set_delegate(InstantDelegate);
+    navigation.set_root(ListViewController {
+        navigation: navigation.navigation(),
+        log: log.clone(),
+    });
+    let mut interface = Interface::new();
+
+    interface
+        .render(&navigation.view(), VIEWPORT, &Environment::default())
+        .unwrap();
+    navigation.advance(0.0);
+    assert_eq!(take(&log), ["detail 7 loaded"]);
+    assert!(navigation.top().is::<DetailViewController>());
+
+    interface
+        .render(&navigation.view(), VIEWPORT, &Environment::default())
+        .unwrap();
+    navigation.advance(0.0);
+    assert_eq!(take(&log), ["detail 7 unloaded"]);
+    assert!(navigation.top().is::<ListViewController>());
 }

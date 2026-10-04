@@ -1,12 +1,14 @@
 use std::any::Any;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use super::{Presentation, ViewController};
+use super::{Controller, ControllerMessage, Presentation, ViewController};
 use crate::AnyView;
 
 // A view controller behind one type, so a stack can hold controllers of different types. Every view controller
 // implements it.
 pub trait AnyViewController: Any {
-    fn root_view(&self) -> AnyView;
+    fn root_view(&self, id: u64, messages: &Rc<RefCell<Vec<ControllerMessage>>>) -> AnyView;
 
     fn presentation(&self) -> Presentation;
 
@@ -19,9 +21,9 @@ pub trait AnyViewController: Any {
     fn did_disappear(&mut self);
 }
 
-impl<Controller: ViewController> AnyViewController for Controller {
-    fn root_view(&self) -> AnyView {
-        AnyView::new(ViewController::root(self))
+impl<Implementation: ViewController> AnyViewController for Implementation {
+    fn root_view(&self, id: u64, messages: &Rc<RefCell<Vec<ControllerMessage>>>) -> AnyView {
+        AnyView::new(ViewController::root(self, &Controller::new(id, messages.clone())))
     }
 
     fn presentation(&self) -> Presentation {
@@ -47,13 +49,13 @@ impl<Controller: ViewController> AnyViewController for Controller {
 
 impl dyn AnyViewController {
     // Whether this is a `Controller`, for delegates choosing a transition per pair of controllers.
-    pub fn is<Controller: ViewController>(&self) -> bool {
-        (self as &dyn Any).is::<Controller>()
+    pub fn is<Implementation: ViewController>(&self) -> bool {
+        (self as &dyn Any).is::<Implementation>()
     }
 }
 
-impl<Controller: ViewController> From<Controller> for Box<dyn AnyViewController> {
-    fn from(controller: Controller) -> Box<dyn AnyViewController> {
+impl<Implementation: ViewController> From<Implementation> for Box<dyn AnyViewController> {
+    fn from(controller: Implementation) -> Box<dyn AnyViewController> {
         Box::new(controller)
     }
 }

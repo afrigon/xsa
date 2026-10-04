@@ -1,11 +1,11 @@
-use super::Presentation;
+use super::{Controller, Presentation};
 use crate::View;
 
-// A screen, like UIKit's `UIViewController`: an object that lives as long as it is in a navigation stack. Its
-// root is one named view holding the layout; the hooks tell it when it enters or leaves the stack and when it
-// becomes visible or hidden.
-pub trait ViewController: 'static {
-    fn root(&self) -> impl View;
+// Like UIKit's `UIViewController`: an object that lives as long as it is in a navigation stack. Its root is one
+// named view holding the layout, given the actions it triggers; `this` builds actions that call the controller's
+// own methods. The hooks tell it when it enters or leaves the stack and when it becomes visible or hidden.
+pub trait ViewController: Sized + 'static {
+    fn root(&self, this: &Controller<Self>) -> impl View;
 
     fn presentation(&self) -> Presentation {
         Presentation::FullScreen
