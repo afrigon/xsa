@@ -1,12 +1,17 @@
+use std::collections::HashSet;
+
 use parley::LayoutContext;
 
 use crate::atlas::GlyphAtlas;
-use crate::{Alignment, DrawList, Environment, FontLibrary, Rect, Size, SizeProposal, View, ViewContext};
+use crate::{
+    Alignment, DrawList, Environment, FontLibrary, Rect, ScaleFactorKey, Size, SizeProposal, View, ViewContext,
+};
 
 pub struct Interface {
     fonts: FontLibrary,
     layouts: LayoutContext<()>,
     atlas: GlyphAtlas,
+    warnings: HashSet<String>,
 }
 
 impl Interface {
@@ -15,6 +20,7 @@ impl Interface {
             fonts: FontLibrary::new(),
             layouts: LayoutContext::new(),
             atlas: GlyphAtlas::new(),
+            warnings: HashSet::new(),
         }
     }
 
@@ -30,15 +36,17 @@ impl Interface {
         environment: &Environment,
         alignment: Alignment,
     ) -> anyhow::Result<DrawList> {
+        let scale_factor = environment.get::<ScaleFactorKey>();
         let container = Size {
-            width: viewport.width / environment.scale_factor,
-            height: viewport.height / environment.scale_factor,
+            width: viewport.width / scale_factor,
+            height: viewport.height / scale_factor,
         };
         let mut context = ViewContext {
-            environment,
+            environment: environment.clone(),
             fonts: &mut self.fonts,
             layouts: &mut self.layouts,
             atlas: &mut self.atlas,
+            warnings: &mut self.warnings,
         };
         let size = view.size_that_fits(SizeProposal::from(container), &mut context)?;
         let mut draw_list = DrawList::default();

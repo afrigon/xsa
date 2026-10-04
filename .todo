@@ -112,10 +112,17 @@
   17/600), `body` (paragraphs, 15/400), `label` (controls, 13/500), `caption`
   (secondary, 11/400), `overline` (category tags, 11/600, uppercase, +0.08 em)
   and `code` (console, `code` typeface 13/400).
-- xui environment: typed custom keys so the theme reaches views through the
-  environment (color role, text style), plus increased contrast and a
-  UI-scale setting that multiplies every size. `TextCase` from text styles is
-  applied once `Text` has a case modifier.
+- xui environment: increased contrast, a UI-scale setting that multiplies
+  every size, and a color-role modifier reading the theme. `TextCase` from
+  text styles is applied once `Text` has a case modifier.
+- xui composition, toward SwiftUI: `VStack`, `HStack`, `ZStack` and `.frame`
+  (replacing the two separately rendered roots in `App`), views for tuples,
+  `Option` and `Either` (conditionals), `ForEach` with an `Identifiable`
+  trait, and an `AnyView` type eraser for mixed children.
+- xui state and reactivity: a retained view tree matching views by identity,
+  so `State<T>` and `Binding<T>` survive between frames; events; re-running
+  only the bodies whose state or environment changed, with cached layout and
+  shaped text; then `List`.
 - xui glyph atlas: evict or grow instead of failing once its 1024² texture is
   full.
 - Before extracting xui into `xui-rs`: its own error type instead of anyhow,

@@ -13,6 +13,7 @@ mod snapshot;
 mod task_status;
 
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Instant;
 
 use anyhow::{Context, bail};
@@ -29,15 +30,18 @@ use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
-use xui::{Alignment, ColorScheme, DrawList, Environment, HorizontalAlignment, Interface, Size, VerticalAlignment};
+use xui::{
+    Alignment, ColorScheme, ColorSchemeKey, DrawList, Environment, ForegroundStyleKey, HorizontalAlignment, Interface,
+    ScaleFactorKey, Size, VerticalAlignment,
+};
 
 use crate::camera::CameraMode;
 use crate::config::Config;
 use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
-use crate::screens::{StatisticsOverlay, TargetLabel};
-use crate::theme::Theme;
+use crate::theme::{Theme, ThemeKey};
+use crate::ui::{DebugOverlayView, HudTargetView};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -67,7 +71,7 @@ pub struct App {
     mouse_captured: bool,
     last_frame: Option<Instant>,
     interface: Interface,
-    theme: Option<Theme>,
+    theme: Option<Rc<Theme>>,
     frame_rate: FrameRate,
 }
 
@@ -110,7 +114,7 @@ impl App {
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
         let shaders = ShaderBinaries::load(&base)?;
         self.renderer = Some(Renderer::new(&window, &shaders, &self.config)?);
-        self.theme = Some(Theme::load(&base, self.interface.fonts_mut())?);
+        self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
         window.request_redraw();
         self.window = Some(window);
 
@@ -259,10 +263,12 @@ impl App {
         let (Some(renderer), Some(window), Some(theme)) = (&mut self.renderer, &self.window, &self.theme) else {
             return Ok(());
         };
-        let environment = Environment {
-            scale_factor: window.scale_factor() as f32,
-            color_scheme: ColorScheme::Dark,
-        };
+        let color_scheme = ColorScheme::Dark;
+        let environment = Environment::default()
+            .with::<ScaleFactorKey>(window.scale_factor() as f32)
+            .with::<ColorSchemeKey>(color_scheme)
+            .with::<ForegroundStyleKey>(theme.color(&theme.foreground().default, color_scheme))
+            .with::<ThemeKey>(Some(theme.clone()));
         let window_size = window.inner_size();
         let viewport = Size {
             width: window_size.width as f32,
@@ -274,25 +280,21 @@ impl App {
             .zip(self.cameras.target_body())
             .map(|(world, body)| world.body(body).id.to_string());
         let mut draw_list = match target {
-            Some(name) => {
-                let view = TargetLabel { name }.view(theme, &environment)?;
-                self.interface.render(&view, viewport, &environment, Alignment::TOP)?
-            }
+            Some(name) => self
+                .interface
+                .render(&HudTargetView { name }, viewport, &environment, Alignment::TOP)?,
             None => DrawList::default(),
         };
         // Two roots rendered separately until xui can compose views with different alignments.
-        let statistics = StatisticsOverlay {
+        let overlay = DebugOverlayView {
             frames_per_second: self.frame_rate.frames_per_second(),
             triangles: renderer.statistics().triangles,
-        }
-        .view(theme, &environment)?;
+        };
         let top_leading = Alignment {
             horizontal: HorizontalAlignment::Leading,
             vertical: VerticalAlignment::Top,
         };
-        let overlay = self
-            .interface
-            .render(&statistics, viewport, &environment, top_leading)?;
+        let overlay = self.interface.render(&overlay, viewport, &environment, top_leading)?;
         draw_list.primitives.extend(overlay.primitives);
         draw_list.atlas_updates.extend(overlay.atlas_updates);
         renderer.set_user_interface(draw_list);

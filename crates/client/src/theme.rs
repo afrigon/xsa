@@ -1,13 +1,19 @@
-use std::collections::HashMap;
+mod theme_key;
+
+pub use theme_key::ThemeKey;
+
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 
 use anyhow::Context;
 use xsa_packs::{ForegroundColors, Id, PackStack, ThemeDefinition, ThemedColor};
-use xui::{ColorScheme, Environment, Font, FontLibrary, LinearColor};
+use xui::{ColorScheme, Font, FontLibrary, LinearColor};
 
 pub struct Theme {
     definition: ThemeDefinition,
     families: HashMap<Id, String>,
+    reported_styles: RefCell<HashSet<Id>>,
 }
 
 impl Theme {
@@ -30,32 +36,39 @@ impl Theme {
             );
         }
 
-        Ok(Theme { definition, families })
+        Ok(Theme {
+            definition,
+            families,
+            reported_styles: RefCell::new(HashSet::new()),
+        })
     }
 
-    pub fn font(&self, text_style: &Id) -> anyhow::Result<Font> {
-        let style = self
-            .definition
-            .text_styles
-            .get(text_style)
-            .with_context(|| format!("no loaded pack provides text style {text_style}"))?;
-        let family = self
-            .families
-            .get(&style.typeface)
-            .with_context(|| format!("typeface {} was not loaded", style.typeface))?;
+    // An unknown style is reported once and leaves the caller's font unchanged.
+    pub fn font(&self, text_style: &Id) -> Option<Font> {
+        let style = self.definition.text_styles.get(text_style);
+        let family = style.and_then(|style| self.families.get(&style.typeface));
+        let (Some(style), Some(family)) = (style, family) else {
+            if self.reported_styles.borrow_mut().insert(text_style.clone()) {
+                tracing::warn!("no loaded pack provides text style {text_style}");
+            }
 
-        Ok(Font::new(family.clone(), style.size)
-            .weight(style.weight)
-            .letter_spacing(style.letter_spacing)
-            .features(style.features.clone()))
+            return None;
+        };
+
+        Some(
+            Font::new(family.clone(), style.size)
+                .weight(style.weight)
+                .letter_spacing(style.letter_spacing)
+                .features(style.features.clone()),
+        )
     }
 
     pub fn foreground(&self) -> &ForegroundColors {
         &self.definition.foreground
     }
 
-    pub fn color(&self, color: &ThemedColor, environment: &Environment) -> LinearColor {
-        let srgb = match environment.color_scheme {
+    pub fn color(&self, color: &ThemedColor, scheme: ColorScheme) -> LinearColor {
+        let srgb = match scheme {
             ColorScheme::Light => color.light,
             ColorScheme::Dark => color.dark,
         };

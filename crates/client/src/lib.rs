@@ -8,9 +8,9 @@ mod input;
 mod mesh;
 mod remote_server;
 mod renderer;
-mod screens;
 mod star_light;
 mod theme;
+mod ui;
 mod vulkan;
 
 pub use client_options::ClientOptions;

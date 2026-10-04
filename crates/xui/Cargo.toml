@@ -7,3 +7,4 @@ edition.workspace = true
 anyhow.workspace = true
 parley = { version = "0.11.1", default-features = false, features = ["std"] }
 swash = "0.2.10"
+tracing.workspace = true

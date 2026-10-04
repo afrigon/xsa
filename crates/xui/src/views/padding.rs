@@ -1,4 +1,4 @@
-use crate::{DrawList, EdgeInsets, Rect, Size, SizeProposal, View, ViewContext};
+use crate::{DrawList, EdgeInsets, Environment, Never, Rect, Size, SizeProposal, View, ViewContext};
 
 pub struct Padding<Content: View> {
     content: Content,
@@ -12,6 +12,10 @@ impl<Content: View> Padding<Content> {
 }
 
 impl<Content: View> View for Padding<Content> {
+    fn body(&self, _environment: &Environment) -> impl View {
+        Never::primitive_body()
+    }
+
     fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
         let content = self.content.size_that_fits(proposal.inset(self.insets), context)?;
 

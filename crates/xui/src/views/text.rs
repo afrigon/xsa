@@ -3,41 +3,31 @@ use parley::{AlignmentOptions, FontFamily, FontWeight, Layout, PositionedLayoutI
 
 use crate::atlas::{GlyphKey, SUBPIXEL_STEPS};
 use crate::{
-    DrawList, Font, GlyphPrimitive, LinearColor, Point, Primitive, Rect, Size, SizeProposal, View, ViewContext,
+    DrawList, Environment, FontKey, ForegroundStyleKey, GlyphPrimitive, Never, Point, Primitive, Rect, ScaleFactorKey,
+    Size, SizeProposal, View, ViewContext,
 };
 
 const OPTICAL_SIZE_AXIS: &str = "opsz";
 
+// Draws in the environment's font and foreground style; without a font it takes no space.
 pub struct Text {
     content: String,
-    font: Option<Font>,
-    foreground: LinearColor,
 }
 
 impl Text {
     pub fn new(content: impl Into<String>) -> Text {
         Text {
             content: content.into(),
-            font: None,
-            foreground: LinearColor::WHITE,
         }
-    }
-
-    pub fn font(self, font: Font) -> Text {
-        Text {
-            font: Some(font),
-            ..self
-        }
-    }
-
-    pub fn foreground(self, foreground: LinearColor) -> Text {
-        Text { foreground, ..self }
     }
 
     // Laid out in physical pixels: parley scales every metric by the environment's scale factor.
-    fn layout(&self, context: &mut ViewContext, max_width: Option<f32>) -> anyhow::Result<Layout<()>> {
-        let font = self.font.as_ref().context("a Text needs a font")?;
-        let scale_factor = context.environment.scale_factor;
+    fn layout(&self, context: &mut ViewContext, max_width: Option<f32>) -> Option<Layout<()>> {
+        let Some(font) = context.environment.get::<FontKey>() else {
+            context.warn_once(format!("no font in the environment for the text {:?}", self.content));
+            return None;
+        };
+        let scale_factor = context.environment.get::<ScaleFactorKey>();
         let features = font
             .features
             .iter()
@@ -59,14 +49,20 @@ impl Text {
         layout.break_all_lines(max_width.map(|width| width * scale_factor));
         layout.align(parley::Alignment::Start, AlignmentOptions::default());
 
-        Ok(layout)
+        Some(layout)
     }
 }
 
 impl View for Text {
+    fn body(&self, _environment: &Environment) -> impl View {
+        Never::primitive_body()
+    }
+
     fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
-        let layout = self.layout(context, proposal.width)?;
-        let scale_factor = context.environment.scale_factor;
+        let Some(layout) = self.layout(context, proposal.width) else {
+            return Ok(Size::default());
+        };
+        let scale_factor = context.environment.get::<ScaleFactorKey>();
 
         Ok(Size {
             width: layout.width() / scale_factor,
@@ -75,8 +71,11 @@ impl View for Text {
     }
 
     fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        let layout = self.layout(context, Some(bounds.size.width))?;
-        let scale_factor = context.environment.scale_factor;
+        let Some(layout) = self.layout(context, Some(bounds.size.width)) else {
+            return Ok(());
+        };
+        let scale_factor = context.environment.get::<ScaleFactorKey>();
+        let color = context.environment.get::<ForegroundStyleKey>();
         let origin = Point {
             x: bounds.origin.x * scale_factor,
             y: bounds.origin.y * scale_factor,
@@ -118,7 +117,7 @@ impl View for Text {
                             },
                         },
                         atlas_region: atlas_glyph.region,
-                        color: self.foreground,
+                        color,
                     }));
                 }
             }

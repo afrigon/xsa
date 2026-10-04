@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use xui::{Alignment, EdgeInsets, Environment, Font, Interface, Primitive, Size, Text, View};
+use xui::{
+    Alignment, EdgeInsets, Environment, Font, FontKey, Interface, LinearColor, Primitive, ScaleFactorKey, Size, Text,
+    View, ViewModifier,
+};
 
 const VIEWPORT: Size = Size {
     width: 800.0,
@@ -19,8 +22,8 @@ fn interface() -> (Interface, String) {
 
 fn label(family: &str) -> impl View {
     Text::new("earth")
-        .font(Font::new(family, 24.0).weight(500.0))
         .padding(EdgeInsets::top(TOP_PADDING))
+        .font(Some(Font::new(family, 24.0).weight(500.0)))
 }
 
 fn glyph_heights(primitives: &[Primitive]) -> Vec<f32> {
@@ -87,10 +90,7 @@ fn scales_glyphs_with_the_scale_factor() {
         .render(
             &label(&family),
             VIEWPORT,
-            &Environment {
-                scale_factor: 2.0,
-                ..Environment::default()
-            },
+            &Environment::default().with::<ScaleFactorKey>(2.0),
             Alignment::TOP,
         )
         .unwrap();
@@ -101,4 +101,53 @@ fn scales_glyphs_with_the_scale_factor() {
     {
         assert!((doubled / standard - 2.0).abs() < 0.25, "{standard} → {doubled}");
     }
+}
+
+struct Greeting {
+    name: String,
+}
+
+impl View for Greeting {
+    fn body(&self, _environment: &Environment) -> impl View {
+        Text::new(format!("hi {}", self.name))
+    }
+}
+
+struct Emphasis;
+
+impl ViewModifier for Emphasis {
+    fn body<'a, Content: View>(&'a self, content: &'a Content, environment: &Environment) -> impl View + 'a {
+        let font = environment.get::<FontKey>().map(|font| font.weight(700.0));
+        content.font(font).foreground_style(LinearColor::from_srgb(255, 0, 0))
+    }
+}
+
+#[test]
+fn custom_views_and_modifiers_read_the_cascading_environment() {
+    let (mut interface, family) = interface();
+    let view = Greeting {
+        name: "luna".to_string(),
+    }
+    .modifier(Emphasis)
+    .font(Some(Font::new(&family, 15.0)));
+    let draw_list = interface
+        .render(&view, VIEWPORT, &Environment::default(), Alignment::TOP)
+        .unwrap();
+
+    assert_eq!(draw_list.primitives.len(), 6);
+
+    for primitive in &draw_list.primitives {
+        let Primitive::Glyph(glyph) = primitive;
+        assert_eq!(glyph.color, LinearColor::from_srgb(255, 0, 0));
+    }
+}
+
+#[test]
+fn text_without_a_font_draws_nothing() {
+    let (mut interface, _) = interface();
+    let draw_list = interface
+        .render(&Text::new("earth"), VIEWPORT, &Environment::default(), Alignment::TOP)
+        .unwrap();
+
+    assert!(draw_list.primitives.is_empty());
 }
