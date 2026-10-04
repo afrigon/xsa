@@ -72,6 +72,7 @@ impl ClientWorld {
                     position: body_state.position,
                     orientation: body_state.orientation,
                     scale: body.radius,
+                    bounding_radius: body.radius,
                     material,
                 })
             })
@@ -190,6 +191,7 @@ impl ClientWorld {
             object.position = state.position;
             object.orientation = state.orientation;
             object.scale = body.radius;
+            object.bounding_radius = body.radius;
         }
 
         if let Some(light_body) = self.light_body {

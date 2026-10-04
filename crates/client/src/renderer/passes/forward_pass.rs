@@ -64,7 +64,8 @@ impl ForwardPass {
             let pipeline = self.pipeline(shader);
             let mut bound = false;
 
-            for (object_index, object) in frame.scene.objects().iter().enumerate() {
+            for handle in frame.visible_objects {
+                let object = &frame.scene.objects()[handle.index];
                 let object_shader = frame
                     .debug
                     .shader_override
@@ -79,7 +80,7 @@ impl ForwardPass {
                     bound = true;
                 }
 
-                frame.push_draw_constants(pipeline, object_index, object.material.index());
+                frame.push_draw_constants(pipeline, handle.index, object.material.index());
                 recorder.draw_indexed(self.index_count);
                 frame
                     .triangles

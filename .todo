@@ -185,6 +185,9 @@
   Required before high-resolution texture packs.
 - Planet LOD: cube-sphere faces split into quadtrees as the camera approaches;
   each tile has its own local origin to keep f32 precision on the surface.
+  Once terrain displaces vertices, culling bounds must include the maximum
+  elevation (a body's `bounding_radius`, then each tile's own min/max height),
+  or peaks reaching into view are culled; horizon culling joins frustum culling.
 - Seamless map mode: the map is the live world zoomed out. The camera stays
   centered on the current target (no automatic re-targeting); map overlays
   (orbits, markers) fade in only once zoomed out far enough to need them.
