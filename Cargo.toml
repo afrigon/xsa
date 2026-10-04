@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/tools"]
+members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/tools", "crates/xui"]
 
 [workspace.package]
 version = "0.0.1"
@@ -24,3 +24,4 @@ xsa-packs = { path = "crates/packs" }
 xsa-proto = { path = "crates/proto" }
 xsa-server = { path = "crates/server" }
 xsa-units = { path = "crates/units" }
+xui = { path = "crates/xui" }

@@ -1,0 +1,9 @@
+[package]
+name = "xui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+parley = { version = "0.11.1", default-features = false, features = ["std"] }
+swash = "0.2.10"

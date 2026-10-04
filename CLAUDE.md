@@ -43,6 +43,8 @@ Each crate is a directory under `crates/`; `data/` holds the game content (packs
 Dependencies point one way: `units` ← `core` ← `packs` ← `commands` ← `server`
 ← `client` ← `xsa`, and `proto` ← `commands`, `server`, `client`. `core` never
 touches files or KDL, and `proto` does not depend on `core` or `packs`.
+`xui` depends on no xsa crate: it is a UI framework incubated here to become
+its own repository (`xui-rs`), and the game uses it like any external library.
 
 | Crate | Responsibility |
 | --- | --- |
@@ -55,6 +57,7 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 | `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
 | `tools` | Offline asset tools (`convert-skybox`) |
+| `xui` | SwiftUI-style UI framework, renderer-agnostic: views, layout, environment, text shaping, glyph atlas; outputs draw lists |
 
 ## Architecture
 
