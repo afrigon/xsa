@@ -34,4 +34,14 @@ impl Rotation {
             * DQuat::from_rotation_x(self.axial_tilt)
             * DQuat::from_rotation_z(angle)
     }
+
+    // Radians per second about the body's own Z axis, ignoring the far slower drift of its orbital plane.
+    pub fn angular_speed(&self) -> f64 {
+        match self.reference {
+            Some(reference) if self.spin.tidally_locked => {
+                reference.elements.rates.periapsis + reference.elements.mean_motion(reference.gravitational_parameter)
+            }
+            _ => TAU / self.period,
+        }
+    }
 }
