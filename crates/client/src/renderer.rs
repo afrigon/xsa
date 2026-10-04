@@ -69,7 +69,7 @@ pub struct Renderer {
     statistics: FrameStatistics,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
-    visible_objects: Vec<usize>,
+    visible_objects: Vec<ObjectHandle>,
     material_data: Vec<MaterialData>,
     object_capacity: usize,
     bloom_texture: u32,
@@ -405,7 +405,7 @@ impl Renderer {
                 .iter()
                 .enumerate()
                 .filter(|(_, object)| culler.is_visible(object.position - camera.position, object.bounding_radius))
-                .map(|(index, _)| index),
+                .map(|(index, _)| ObjectHandle { index }),
         );
     }
 

@@ -3,11 +3,11 @@ use std::cell::Cell;
 use ash::vk;
 use xui::DrawList;
 
-use super::Scene;
 use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
 use super::gpu_data::PushConstants;
 use super::render_targets::RenderTargets;
+use super::{ObjectHandle, Scene};
 use crate::config::{DebugConfig, RenderConfig};
 use crate::vulkan::{Buffer, GraphicsPipeline};
 
@@ -19,7 +19,7 @@ pub(super) struct FrameContext<'a> {
     pub render: &'a RenderConfig,
     pub debug: &'a DebugConfig,
     pub scene: &'a Scene,
-    pub visible_objects: &'a [usize],
+    pub visible_objects: &'a [ObjectHandle],
     pub descriptor_set: vk::DescriptorSet,
     pub output_image: vk::Image,
     pub output_view: vk::ImageView,
