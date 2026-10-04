@@ -14,7 +14,8 @@ Agency, written in Rust on Vulkan.
 
 The roadmap and known deferred work live in `.todo`; read it before proposing
 what to build next. Design documents live in `docs/` (`docs/packs.md`: how game
-content is packaged and loaded).
+content is packaged and loaded; `docs/xui.md`: the vision and design of xui, the
+UI framework; read it before changing xui or the game's interface).
 
 Linux (Wayland, Hyprland) is the primary and tested platform. Windows must
 build, but X11 and Windows are not a testing focus.
