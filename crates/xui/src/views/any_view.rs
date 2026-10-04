@@ -1,4 +1,4 @@
-use crate::{DrawList, Environment, Never, Rect, Size, SizeProposal, Subview, View, ViewContext};
+use crate::{Context, Never, Node, PassthroughLayout, Subview, SubviewEntry, UpdateContext, View};
 
 // Any view behind one type, like SwiftUI's `AnyView`, for collections of views of different types.
 pub struct AnyView {
@@ -6,25 +6,22 @@ pub struct AnyView {
 }
 
 impl AnyView {
-    pub fn new(view: impl View + 'static) -> AnyView {
+    pub fn new(view: impl View) -> AnyView {
         AnyView { view: Box::new(view) }
     }
 }
 
 impl View for AnyView {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         Never::primitive_body()
     }
 
-    fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
-        self.view.measure(proposal, context)
+    fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
+        node.layout_mut(|| PassthroughLayout);
+        node.update_children(&[SubviewEntry::new(self.view.as_ref())], context)
     }
 
-    fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        self.view.arrange(bounds, context, draw_list)
-    }
-
-    fn collect_subviews<'a>(&'a self, subviews: &mut Vec<&'a dyn Subview>) {
+    fn collect_subviews<'a>(&'a self, subviews: &mut Vec<SubviewEntry<'a>>) {
         self.view.collect_into(subviews);
     }
 }

@@ -1,4 +1,4 @@
-use xui::{EdgeInsets, Environment, Text, View};
+use xui::{Context, EdgeInsets, Text, View};
 
 use crate::ui::ThemedView;
 
@@ -10,7 +10,7 @@ pub struct DebugOverlayView {
 }
 
 impl View for DebugOverlayView {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         let frames_per_second = self
             .frames_per_second
             .map_or_else(|| "–".to_string(), |rate| format!("{rate:.0}"));

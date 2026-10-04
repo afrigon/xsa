@@ -1,14 +1,16 @@
-use crate::layout::StackLayout;
-use crate::{DrawList, Environment, Identifiable, Never, Rect, Size, SizeProposal, Subview, View, ViewContext};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
-// One view per item, like SwiftUI's `ForEach`. Each view keeps its item's identity for when views persist
-// between frames.
-pub struct ForEach<Id, Content: View> {
+use crate::layout::StackLayout;
+use crate::{Context, Identifiable, IdentifiedView, Never, Node, SubviewEntry, UpdateContext, View};
+
+// One view per item, like SwiftUI's `ForEach`. Each view is identified by its item's id, so it keeps its node
+// when items are inserted, removed or reordered.
+pub struct ForEach<Id: Hash + 'static, Content: View> {
     ids: Vec<Id>,
     views: Vec<Content>,
 }
 
-impl<Id, Content: View> ForEach<Id, Content> {
+impl<Id: Hash + 'static, Content: View> ForEach<Id, Content> {
     pub fn new<Item: Identifiable<Id = Id>>(
         items: impl IntoIterator<Item = Item>,
         content: impl Fn(Item) -> Content,
@@ -37,22 +39,25 @@ impl<Id, Content: View> ForEach<Id, Content> {
     }
 }
 
-impl<Id, Content: View> View for ForEach<Id, Content> {
-    fn body(&self, _environment: &Environment) -> impl View {
+impl<Id: Hash + 'static, Content: View> View for ForEach<Id, Content> {
+    fn body(&self, _context: &Context) -> impl View {
         Never::primitive_body()
     }
 
-    fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
-        StackLayout::list().size_of_content(self, proposal, context)
+    fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
+        let mut subviews = Vec::new();
+        self.collect_subviews(&mut subviews);
+        node.set_layout(StackLayout::list());
+        node.update_children(&subviews, context)
     }
 
-    fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        StackLayout::list().place_content(self, bounds, context, draw_list)
-    }
-
-    fn collect_subviews<'a>(&'a self, subviews: &mut Vec<&'a dyn Subview>) {
-        for view in &self.views {
+    fn collect_subviews<'a>(&'a self, subviews: &mut Vec<SubviewEntry<'a>>) {
+        for (id, view) in self.ids.iter().zip(&self.views) {
+            let mut hasher = DefaultHasher::new();
+            id.hash(&mut hasher);
+            let first = subviews.len();
             view.collect_subviews(subviews);
+            IdentifiedView::<Content>::key_subviews(subviews, first, hasher.finish());
         }
     }
 }

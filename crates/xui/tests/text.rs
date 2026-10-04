@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use xui::{
-    Alignment, EdgeInsets, Environment, Font, FontKey, Interface, LinearColor, Primitive, ScaleFactorKey, Size, Text,
-    View, ViewModifier,
+    Alignment, Context, EdgeInsets, Environment, Font, FontKey, Interface, LinearColor, ModifierContent, Primitive,
+    ScaleFactorKey, Size, Text, View, ViewModifier,
 };
 
 const VIEWPORT: Size = Size {
@@ -104,7 +104,7 @@ struct Greeting {
 }
 
 impl View for Greeting {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         Text::new(format!("hi {}", self.name))
     }
 }
@@ -112,8 +112,8 @@ impl View for Greeting {
 struct Emphasis;
 
 impl ViewModifier for Emphasis {
-    fn body<'a, Content: View>(&'a self, content: &'a Content, environment: &Environment) -> impl View + 'a {
-        let font = environment.get::<FontKey>().map(|font| font.weight(700.0));
+    fn body(&self, content: ModifierContent, context: &Context) -> impl View {
+        let font = context.environment().get::<FontKey>().map(|font| font.weight(700.0));
         content.font(font).foreground_style(LinearColor::from_srgb(255, 0, 0))
     }
 }

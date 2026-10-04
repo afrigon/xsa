@@ -1,7 +1,7 @@
-use crate::{Environment, View};
+use crate::{Context, ModifierContent, View};
 
-// A reusable modification of any view, like SwiftUI's `ViewModifier`: `body` receives the modified view and can
-// read the environment.
-pub trait ViewModifier {
-    fn body<'a, Content: View>(&'a self, content: &'a Content, environment: &Environment) -> impl View + 'a;
+// A reusable modification of any view, like SwiftUI's `ViewModifier`: `body` builds on `content`, which stands
+// for the modified view, and can read the context.
+pub trait ViewModifier: 'static {
+    fn body(&self, content: ModifierContent, context: &Context) -> impl View;
 }

@@ -1,5 +1,5 @@
 use crate::layout::StackLayout;
-use crate::{DrawList, Environment, Never, Rect, Size, SizeProposal, Subview, View, ViewContext};
+use crate::{Context, Never, Node, SubviewEntry, UpdateContext, View};
 
 // Gathers views into one without laying them out itself: a stack around it lays out the group's items as its own.
 pub struct Group<Content: View> {
@@ -13,19 +13,18 @@ impl<Content: View> Group<Content> {
 }
 
 impl<Content: View> View for Group<Content> {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         Never::primitive_body()
     }
 
-    fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
-        StackLayout::list().size_of_content(&self.content, proposal, context)
+    fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
+        let mut subviews = Vec::new();
+        self.content.collect_subviews(&mut subviews);
+        node.set_layout(StackLayout::list());
+        node.update_children(&subviews, context)
     }
 
-    fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        StackLayout::list().place_content(&self.content, bounds, context, draw_list)
-    }
-
-    fn collect_subviews<'a>(&'a self, subviews: &mut Vec<&'a dyn Subview>) {
+    fn collect_subviews<'a>(&'a self, subviews: &mut Vec<SubviewEntry<'a>>) {
         self.content.collect_subviews(subviews);
     }
 }

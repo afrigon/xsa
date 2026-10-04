@@ -1,4 +1,6 @@
-use crate::{Environment, View, ViewModifier};
+use crate::{
+    Context, ModifierContent, Never, Node, PassthroughLayout, SubviewEntry, UpdateContext, View, ViewModifier,
+};
 
 pub struct ModifiedContent<Content: View, Modifier: ViewModifier> {
     content: Content,
@@ -12,7 +14,16 @@ impl<Content: View, Modifier: ViewModifier> ModifiedContent<Content, Modifier> {
 }
 
 impl<Content: View, Modifier: ViewModifier> View for ModifiedContent<Content, Modifier> {
-    fn body(&self, environment: &Environment) -> impl View {
-        self.modifier.body(&self.content, environment)
+    fn body(&self, _context: &Context) -> impl View {
+        Never::primitive_body()
+    }
+
+    fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
+        let body = self.modifier.body(ModifierContent::new(), &context.context());
+        node.layout_mut(|| PassthroughLayout);
+        node.update_children(
+            &[SubviewEntry::new(&body)],
+            &mut context.with_modifier_content(Some(&self.content)),
+        )
     }
 }

@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{DrawList, Environment, EnvironmentKey, Never, Rect, Size, SizeProposal, View, ViewContext};
+use crate::{Context, EnvironmentKey, Never, Node, PassthroughLayout, SubviewEntry, UpdateContext, View};
 
 // Sets one environment value for its content and everything inside it.
 pub struct EnvironmentModifier<Content: View, Key: EnvironmentKey> {
@@ -20,19 +20,16 @@ impl<Content: View, Key: EnvironmentKey> EnvironmentModifier<Content, Key> {
 }
 
 impl<Content: View, Key: EnvironmentKey> View for EnvironmentModifier<Content, Key> {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         Never::primitive_body()
     }
 
-    fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
+    fn update(&self, node: &mut Node, context: &mut UpdateContext) -> anyhow::Result<()> {
         let environment = context.environment.with::<Key>(self.value.clone());
-        self.content
-            .size_that_fits(proposal, &mut context.with_environment(environment))
-    }
-
-    fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        let environment = context.environment.with::<Key>(self.value.clone());
-        self.content
-            .place(bounds, &mut context.with_environment(environment), draw_list)
+        node.layout_mut(|| PassthroughLayout);
+        node.update_children(
+            &[SubviewEntry::new(&self.content)],
+            &mut context.with_environment(environment),
+        )
     }
 }

@@ -1,5 +1,5 @@
 use xsa_packs::Id;
-use xui::{Environment, FontKey, View, ViewModifier};
+use xui::{Context, FontKey, ModifierContent, View, ViewModifier};
 
 use crate::theme::ThemeKey;
 
@@ -19,7 +19,8 @@ impl TextStyleModifier {
 }
 
 impl ViewModifier for TextStyleModifier {
-    fn body<'a, Content: View>(&'a self, content: &'a Content, environment: &Environment) -> impl View + 'a {
+    fn body(&self, content: ModifierContent, context: &Context) -> impl View {
+        let environment = context.environment();
         let font = environment
             .get::<ThemeKey>()
             .zip(self.style.as_ref())

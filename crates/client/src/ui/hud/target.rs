@@ -1,4 +1,4 @@
-use xui::{EdgeInsets, Environment, Text, View};
+use xui::{Context, EdgeInsets, Text, View};
 
 use crate::ui::ThemedView;
 
@@ -9,7 +9,7 @@ pub struct HudTargetView {
 }
 
 impl View for HudTargetView {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         Text::new(self.name.clone())
             .text_style("title")
             .padding(EdgeInsets::top(TOP_PADDING))

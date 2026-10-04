@@ -1,25 +1,22 @@
-use crate::{DrawList, Environment, Rect, Size, SizeProposal, View, ViewContext};
+use crate::{Context, Node, UpdateContext, View};
 
-// The body of primitive views, like SwiftUI's `Never`: they lay themselves out, so their body is never asked for.
+// The body of primitive views, like SwiftUI's `Never`: they update their node themselves, so their body is never
+// asked for.
 #[derive(Clone, Copy)]
 pub enum Never {}
 
 impl Never {
     pub(crate) fn primitive_body() -> Never {
-        unreachable!("primitive views lay themselves out and have no body")
+        unreachable!("primitive views update their node themselves and have no body")
     }
 }
 
 impl View for Never {
-    fn body(&self, _environment: &Environment) -> impl View {
+    fn body(&self, _context: &Context) -> impl View {
         *self
     }
 
-    fn size_that_fits(&self, _proposal: SizeProposal, _context: &mut ViewContext) -> anyhow::Result<Size> {
-        match *self {}
-    }
-
-    fn place(&self, _bounds: Rect, _context: &mut ViewContext, _draw_list: &mut DrawList) -> anyhow::Result<()> {
+    fn update(&self, _node: &mut Node, _context: &mut UpdateContext) -> anyhow::Result<()> {
         match *self {}
     }
 }

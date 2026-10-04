@@ -115,10 +115,25 @@
 - xui environment: increased contrast, a UI-scale setting that multiplies
   every size, and a color-role modifier reading the theme. `TextCase` from
   text styles is applied once `Text` has a case modifier.
-- xui state and reactivity: a retained view tree matching views by identity,
-  so `State<T>` and `Binding<T>` survive between frames; events; re-running
-  only the bodies whose state or environment changed, with cached layout and
-  shaped text; then `List`.
+- Interface roadmap, in order, each its own pull request (design in
+  `docs/xui.md`):
+  1. xui state: `State<T>` stored in nodes, read through `Context` and keyed
+     by call site (`#[track_caller]`), and `Binding<T>` handles to it.
+  2. xui input: events, hit-testing and `Button`; `App` gives input to the
+     interface first, and only what it does not use reaches the camera and
+     key binds.
+  3. Scenes: the client starts in a main menu that is itself a simulation
+     with a 3D scene behind the menu (Play, Config, Quit); a
+     `NavigationStack` for menus; navigation as typed commands through the
+     executor; the in-game HUD with Escape opening a pause menu. Eventually
+     Play loads the save while the camera zooms into the starting area.
+  4. xui controls (`Toggle`, `Picker`, `Slider`) and a graphics config panel
+     (stars, bloom, tonemapper, exposure mode) that runs typed config
+     commands through the executor, no command text parsing.
+  Later: `ScrollView`, `List`, keybind editing in the config panel.
+- xui: skip the bodies whose inputs did not change, as SwiftUI does, once
+  re-running every body each frame shows up in profiles. Needs comparable
+  views or tracking which state and environment values each body read.
 - xui glyph atlas: evict or grow instead of failing once its 1024² texture is
   full.
 - Before extracting xui into `xui-rs`: its own error type instead of anyhow,
