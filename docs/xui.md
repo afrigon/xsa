@@ -183,8 +183,10 @@ difference here.
     command text to parse.
 - `App` offers pointer events to the interface first; what the interface
   uses never reaches the camera or the binds, and while the camera holds the
-  mouse captured the interface sees nothing. Keyboard input stays with the
-  binds until text fields exist.
+  mouse captured the interface sees nothing. Cursor moves are coalesced: the
+  interface sees at most one move per frame, with the latest position, before
+  it is updated; presses, releases and leaving the window are offered at
+  once. Keyboard input stays with the binds until text fields exist.
 - The renderer's `UserInterfacePass` runs after tonemapping and before
   capture, so `camera snap` includes the interface. A snap without it is
   `ui hide`, `camera snap`, `ui show`.

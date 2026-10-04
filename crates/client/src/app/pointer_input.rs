@@ -12,14 +12,22 @@ impl App {
             x: position.x as f32,
             y: position.y as f32,
         };
-
-        if !self.mouse_captured {
-            self.offer_pointer(PointerEventKind::Moved);
-        }
+        self.pointer_moved = true;
     }
 
     pub(super) fn handle_cursor_left(&mut self) {
+        self.pointer_moved = false;
         self.offer_pointer(PointerEventKind::Left);
+    }
+
+    // Moves arrive faster than frames and only the latest position matters for hover, so the interface sees at
+    // most one move per frame, offered before it is updated.
+    pub(super) fn offer_pointer_move(&mut self) {
+        if self.pointer_moved && !self.mouse_captured {
+            self.offer_pointer(PointerEventKind::Moved);
+        }
+
+        self.pointer_moved = false;
     }
 
     pub(super) fn handle_mouse_button(&mut self, button: MouseButton, state: ElementState) {

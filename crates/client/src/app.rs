@@ -71,6 +71,7 @@ pub struct App {
     config: Config,
     mouse_captured: bool,
     cursor: Point,
+    pointer_moved: bool,
     last_frame: Option<Instant>,
     interface: Interface,
     theme: Option<Rc<Theme>>,
@@ -101,6 +102,7 @@ impl App {
             config_document,
             mouse_captured: false,
             cursor: Point::default(),
+            pointer_moved: false,
             last_frame: None,
             interface: Interface::new(),
             theme: None,
@@ -129,6 +131,7 @@ impl App {
         let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
         self.last_frame = Some(now);
         self.frame_rate.record(delta_seconds);
+        self.offer_pointer_move();
 
         self.update(delta_seconds)?;
         self.draw()?;
