@@ -64,7 +64,8 @@ impl ForwardPass {
             let pipeline = self.pipeline(shader);
             let mut bound = false;
 
-            for (object_index, object) in frame.scene.objects().iter().enumerate() {
+            for &object_index in frame.visible_objects {
+                let object = &frame.scene.objects()[object_index];
                 let object_shader = frame
                     .debug
                     .shader_override

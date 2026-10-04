@@ -1,6 +1,7 @@
 mod auto_exposure;
 mod captured_image;
 mod command_recorder;
+mod culler;
 mod frame;
 mod frame_context;
 mod frame_statistics;
@@ -39,6 +40,7 @@ use crate::config::{Config, DebugConfig, RenderConfig};
 use crate::vulkan::{Buffer, Image, MemoryLocation, SAMPLED_LAYOUT, Swapchain};
 use auto_exposure::HISTOGRAM_BINS;
 use command_recorder::CommandRecorder;
+use culler::Culler;
 use frame::Frame;
 use frame_context::FrameContext;
 use gpu_context::GpuContext;
@@ -67,6 +69,7 @@ pub struct Renderer {
     statistics: FrameStatistics,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
+    visible_objects: Vec<usize>,
     material_data: Vec<MaterialData>,
     object_capacity: usize,
     bloom_texture: u32,
@@ -118,6 +121,7 @@ impl Renderer {
             statistics: FrameStatistics::default(),
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
+            visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             bloom_texture,
@@ -221,6 +225,7 @@ impl Renderer {
 
         self.update_exposure()?;
         self.write_frame_data(camera)?;
+        self.cull_objects(camera);
         self.record_frame(image_index)?;
         self.submit_and_present(image_index)?;
         self.frames[self.frame_index].histogram_ready = true;
@@ -391,6 +396,19 @@ impl Renderer {
         frame.materials.write(&self.material_data)
     }
 
+    fn cull_objects(&mut self, camera: &Camera) {
+        let culler = Culler::new(camera, self.swapchain.extent());
+        self.visible_objects.clear();
+        self.visible_objects.extend(
+            self.scene
+                .objects()
+                .iter()
+                .enumerate()
+                .filter(|(_, object)| culler.is_visible(object.position - camera.position, object.bounding_radius))
+                .map(|(index, _)| index),
+        );
+    }
+
     fn record_frame(&mut self, image_index: u32) -> anyhow::Result<()> {
         let device = self.gpu.device.handle();
         let frame = &self.frames[self.frame_index];
@@ -409,6 +427,7 @@ impl Renderer {
             render: &self.render,
             debug: &self.debug,
             scene: &self.scene,
+            visible_objects: &self.visible_objects,
             descriptor_set: self.gpu.bindless.set(),
             output_image: self.swapchain.image(image_index),
             output_view: self.swapchain.image_view(image_index),

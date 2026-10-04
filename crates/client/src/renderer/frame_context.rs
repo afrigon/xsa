@@ -19,6 +19,7 @@ pub(super) struct FrameContext<'a> {
     pub render: &'a RenderConfig,
     pub debug: &'a DebugConfig,
     pub scene: &'a Scene,
+    pub visible_objects: &'a [usize],
     pub descriptor_set: vk::DescriptorSet,
     pub output_image: vk::Image,
     pub output_view: vk::ImageView,
