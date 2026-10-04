@@ -45,7 +45,7 @@ use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
-use crate::ui::{DebugOverlayView, GameCommands, TargetNameKey, ViewControllerFactory};
+use crate::ui::{DebugOverlayView, GameCommands, MenuPresence, TargetNameKey, ViewControllerFactory};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -82,6 +82,7 @@ pub struct App {
     navigation: NavigationController,
     view_controllers: ViewControllerFactory,
     commands: GameCommands,
+    presence: MenuPresence,
     overlays: HashSet<Overlay>,
     action_replies: Vec<oneshot::Receiver<Output>>,
 }
@@ -95,11 +96,13 @@ impl App {
         pauses_time: bool,
     ) -> Self {
         let commands = GameCommands::default();
+        let presence = MenuPresence::default();
         let mut navigation = NavigationController::new();
         let view_controllers = ViewControllerFactory {
             navigation: navigation.navigation(),
             commands: commands.clone(),
             pauses_time,
+            presence: presence.clone(),
         };
         navigation.set_root(view_controllers.build(ViewControllerId::MainMenu));
 
@@ -128,6 +131,7 @@ impl App {
             navigation,
             view_controllers,
             commands,
+            presence,
             overlays: HashSet::new(),
             action_replies: Vec::new(),
         }

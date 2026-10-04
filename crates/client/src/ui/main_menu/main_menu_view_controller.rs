@@ -21,6 +21,22 @@ impl ViewController for MainMenuViewController {
             },
         }
     }
+
+    fn did_load(&mut self) {
+        self.factory.presence.set_weight(1.0);
+
+        if self.factory.pauses_time {
+            self.factory.commands.hold_time();
+        }
+    }
+
+    fn did_unload(&mut self) {
+        self.factory.presence.set_weight(0.0);
+
+        if self.factory.pauses_time {
+            self.factory.commands.release_time();
+        }
+    }
 }
 
 impl MainMenuViewController {

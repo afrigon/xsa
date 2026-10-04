@@ -20,7 +20,7 @@ pub use game_commands::GameCommands;
 pub use hud::HudTargetView;
 pub use link_button_style::LinkButtonStyle;
 pub use load::LoadViewController;
-pub use main_menu::MainMenuViewController;
+pub use main_menu::{MainMenuViewController, MenuPresence};
 pub use menu_button_view::MenuButtonView;
 pub use pause::PauseViewController;
 pub use target_name_key::TargetNameKey;
