@@ -4,6 +4,7 @@ use parley::LayoutContext;
 
 use crate::atlas::GlyphAtlas;
 use crate::layout::Axis;
+use crate::text_layouts::TextLayoutCache;
 use crate::{Environment, FontLibrary};
 
 pub struct ViewContext<'a> {
@@ -11,6 +12,7 @@ pub struct ViewContext<'a> {
     pub(crate) fonts: &'a mut FontLibrary,
     pub(crate) layouts: &'a mut LayoutContext<()>,
     pub(crate) atlas: &'a mut GlyphAtlas,
+    pub(crate) text_layouts: &'a mut TextLayoutCache,
     pub(crate) warnings: &'a mut HashSet<String>,
     pub(crate) stack_axis: Option<Axis>,
 }
@@ -22,6 +24,7 @@ impl ViewContext<'_> {
             fonts: self.fonts,
             layouts: self.layouts,
             atlas: self.atlas,
+            text_layouts: self.text_layouts,
             warnings: self.warnings,
             stack_axis: self.stack_axis,
         }
@@ -33,6 +36,7 @@ impl ViewContext<'_> {
             fonts: self.fonts,
             layouts: self.layouts,
             atlas: self.atlas,
+            text_layouts: self.text_layouts,
             warnings: self.warnings,
             stack_axis,
         }

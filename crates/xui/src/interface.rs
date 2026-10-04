@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use parley::LayoutContext;
 
 use crate::atlas::GlyphAtlas;
+use crate::text_layouts::TextLayoutCache;
 use crate::{
     Alignment, DrawList, Environment, FontLibrary, Rect, ScaleFactorKey, Size, SizeProposal, View, ViewContext,
 };
@@ -11,6 +12,7 @@ pub struct Interface {
     fonts: FontLibrary,
     layouts: LayoutContext<()>,
     atlas: GlyphAtlas,
+    text_layouts: TextLayoutCache,
     warnings: HashSet<String>,
 }
 
@@ -20,6 +22,7 @@ impl Interface {
             fonts: FontLibrary::new(),
             layouts: LayoutContext::new(),
             atlas: GlyphAtlas::new(),
+            text_layouts: TextLayoutCache::new(),
             warnings: HashSet::new(),
         }
     }
@@ -41,6 +44,7 @@ impl Interface {
             fonts: &mut self.fonts,
             layouts: &mut self.layouts,
             atlas: &mut self.atlas,
+            text_layouts: &mut self.text_layouts,
             warnings: &mut self.warnings,
             stack_axis: None,
         };
@@ -55,6 +59,7 @@ impl Interface {
             &mut draw_list,
         )?;
         draw_list.atlas_updates = self.atlas.take_updates();
+        self.text_layouts.end_frame();
 
         Ok(draw_list)
     }

@@ -12,6 +12,7 @@ mod linear_color;
 mod modifiers;
 mod never;
 mod subview;
+mod text_layouts;
 mod view;
 mod view_context;
 mod views;
