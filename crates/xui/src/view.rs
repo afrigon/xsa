@@ -1,9 +1,10 @@
 use std::hash::Hash;
+use std::rc::Rc;
 
 use crate::{
-    Alignment, Context, EdgeInsets, EnvironmentKey, EnvironmentModifier, FixedFrame, Font, FontKey, ForegroundStyleKey,
-    IdentifiedView, LinearColor, MaxFrame, ModifiedContent, Node, Padding, PassthroughLayout, SubviewEntry,
-    UpdateContext, ViewModifier,
+    Alignment, ButtonStyle, ButtonStyleKey, Context, EdgeInsets, EnvironmentKey, EnvironmentModifier, FixedFrame, Font,
+    FontKey, ForegroundStyleKey, IdentifiedView, LinearColor, MaxFrame, ModifiedContent, Node, Padding,
+    PassthroughLayout, SubviewEntry, UpdateContext, ViewModifier,
 };
 
 // A view describes its content in `body`, like SwiftUI. Views are values rebuilt every frame and own their data;
@@ -78,6 +79,14 @@ pub trait View: 'static {
         Self: Sized,
     {
         self.environment::<FontKey>(font)
+    }
+
+    // The style of every button in this view, like SwiftUI's `.buttonStyle()`.
+    fn button_style(self, style: impl ButtonStyle) -> EnvironmentModifier<Self, ButtonStyleKey>
+    where
+        Self: Sized,
+    {
+        self.environment::<ButtonStyleKey>(Rc::new(style))
     }
 
     fn foreground_style(self, color: LinearColor) -> EnvironmentModifier<Self, ForegroundStyleKey>

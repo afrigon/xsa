@@ -3,8 +3,8 @@ use std::collections::HashSet;
 
 use crate::atlas::GlyphAtlas;
 use crate::{
-    Alignment, DrawList, Environment, FontLibrary, LayoutContext, Node, Rect, ScaleFactorKey, Size, SizeProposal,
-    Subview, UpdateContext, View,
+    Alignment, DrawList, Environment, FontLibrary, LayoutContext, Node, Point, PointerEvent, Rect, ScaleFactorKey,
+    Size, SizeProposal, Subview, UpdateContext, View,
 };
 
 // Renders a view tree frame after frame, keeping its nodes in between: each render updates the nodes from the
@@ -15,6 +15,7 @@ pub struct Interface {
     atlas: GlyphAtlas,
     warnings: HashSet<String>,
     root: Option<Node>,
+    scale_factor: f32,
 }
 
 impl Interface {
@@ -25,6 +26,7 @@ impl Interface {
             atlas: GlyphAtlas::new(),
             warnings: HashSet::new(),
             root: None,
+            scale_factor: 1.0,
         }
     }
 
@@ -54,6 +56,7 @@ impl Interface {
         view.update_node(root, &mut update)?;
 
         let scale_factor = environment.get::<ScaleFactorKey>();
+        self.scale_factor = scale_factor;
         let container = Size {
             width: viewport.width / scale_factor,
             height: viewport.height / scale_factor,
@@ -75,6 +78,23 @@ impl Interface {
         draw_list.atlas_updates = self.atlas.take_updates();
 
         Ok(draw_list)
+    }
+
+    // Offers a pointer event to the views as they were last rendered, topmost first. Returns whether a view
+    // used it, so the app can keep it from what lies under the interface.
+    pub fn handle_event(&mut self, event: PointerEvent) -> bool {
+        let Some(root) = &mut self.root else {
+            return false;
+        };
+        let event = PointerEvent {
+            position: Point {
+                x: event.position.x / self.scale_factor,
+                y: event.position.y / self.scale_factor,
+            },
+            ..event
+        };
+
+        root.handle_pointer(&event, false)
     }
 }
 

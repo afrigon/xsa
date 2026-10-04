@@ -5,7 +5,8 @@ use std::rc::Rc;
 use super::{NodeIdentity, ProposalKey};
 use crate::state::StateSlots;
 use crate::{
-    Context, DrawList, Environment, LayoutContext, NodeLayout, Rect, Size, SizeProposal, SubviewEntry, UpdateContext,
+    Context, DrawList, Environment, LayoutContext, NodeLayout, PointerEvent, Rect, Size, SizeProposal, SubviewEntry,
+    UpdateContext,
 };
 
 // The part of a view that outlives a frame. Each frame the update pass matches the new views with last frame's
@@ -16,6 +17,7 @@ pub struct Node {
     layout: Option<Box<dyn NodeLayout>>,
     children: Vec<Node>,
     sizes: HashMap<ProposalKey, Size>,
+    bounds: Rect,
     states: Rc<StateSlots>,
     changed: bool,
 }
@@ -27,6 +29,7 @@ impl Node {
             layout: None,
             children: Vec::new(),
             sizes: HashMap::new(),
+            bounds: Rect::default(),
             states: Rc::default(),
             changed: true,
         }
@@ -159,10 +162,29 @@ impl Node {
     }
 
     pub fn place(&mut self, bounds: Rect, context: &mut LayoutContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
+        self.bounds = bounds;
+
         match self.layout.as_deref_mut() {
             Some(layout) => layout.place(bounds, &mut self.children, context, draw_list),
             None => Ok(()),
         }
+    }
+
+    // Offers `event` to the nodes from the topmost down, against where they were last placed: later children
+    // before earlier ones, children before their parent. Returns whether a node claimed it; nodes below a
+    // claiming one still see the event, told it was claimed (so a button under the pointer stops hovering).
+    pub(crate) fn handle_pointer(&mut self, event: &PointerEvent, claimed: bool) -> bool {
+        let mut claimed = claimed;
+
+        for child in self.children.iter_mut().rev() {
+            claimed |= child.handle_pointer(event, claimed);
+        }
+
+        if let Some(layout) = self.layout.as_deref_mut() {
+            claimed |= layout.handle_pointer(self.bounds, event, claimed);
+        }
+
+        claimed
     }
 }
 

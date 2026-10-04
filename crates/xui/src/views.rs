@@ -1,4 +1,5 @@
 mod any_view;
+mod button;
 mod either;
 mod empty_view;
 mod fixed_frame;
@@ -16,6 +17,7 @@ mod vec;
 mod z_stack;
 
 pub use any_view::AnyView;
+pub use button::Button;
 pub use either::Either;
 pub use empty_view::EmptyView;
 pub use fixed_frame::FixedFrame;
