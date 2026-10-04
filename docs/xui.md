@@ -121,16 +121,44 @@ difference here.
   `ButtonConfiguration` (`is_hovered`, `is_pressed`). `.button_style(style)`
   sets it through the environment for every button inside.
 
-## Navigation (planned)
+## Navigation
 
-- Navigation is state, as in SwiftUI: a value says which screen shows, and
-  xui provides the mechanisms to react to it, never the screens.
-- `NavigationStack` mirrors SwiftUI's: a root view, a path of routes bound
-  through a `Binding`, and a function building the view for each route.
-  Back pops the path.
-- The path can live in the app rather than in xui state. Its binding's `set`
-  then decides what changing it means, which lets an app route navigation
-  through its own actions.
+xui mirrors UIKit's controllers for full screens, with SwiftUI views inside
+them. All of it is generic, for any app.
+
+- **`ViewController`**, like `UIViewController`: an object that lives as long
+  as it is in the stack and owns its fields.
+  - `root()` returns the controller's content. By convention it is one named
+    view (`MainMenuViewController::root()` returns `MainMenuView { … }`) whose
+    `body` holds the layout; a controller never builds its layout inline.
+  - `presentation()` is `FullScreen` (the controllers below are not drawn but
+    keep their state) or `Overlay` (the controllers below keep drawing, as a
+    pause menu over the game).
+  - Lifecycle hooks, all optional: `did_load`/`did_unload` when it enters or
+    leaves the stack, `did_appear`/`did_disappear` when it becomes visible or
+    hidden.
+- **`NavigationController`** holds one stack of controllers: `push`, `pop`
+  and `set_root`. There is no separate modal presentation: what UIKit's
+  `present` adds is a screen that leaves the one below visible, which is the
+  `Overlay` presentation. The app owns the controller; `NavigationView`
+  draws it, framing every screen to fill its container.
+- **Transitions** are chosen per pair of controllers by a
+  `NavigationDelegate`, like UIKit's `animationControllerFor:from:to:`: it
+  gets the operation (push, pop, set root) and both controllers and returns a
+  `Transition`. A transition has a duration and, for each moment, how the
+  outgoing and incoming screens appear (opacity, offset); built-ins are
+  `FadeTransition`, `SlideTransition` and `NoTransition`. The app sees each
+  frame's progress too, so a transition can drive things outside the
+  interface (the main menu to game zoom moves the 3D camera). Nothing is
+  hit-testable while a transition runs. The app advances transitions with
+  the frame's elapsed time.
+- **Overlays that are not screens** (a debug overlay) are not in the stack:
+  the app shows or hides them around its `NavigationView`, as SwiftUI's
+  `.overlay`.
+- **Signals out of the interface** go through the environment, as in
+  SwiftUI's environment actions (`openURL`, `dismiss`): the app puts a typed
+  actions handle in the environment, whose methods take arguments and build
+  typed requests the app carries out.
 
 ## Text
 
@@ -162,22 +190,35 @@ difference here.
   `<Feature><Name>View` (`DebugOverlayView`, `HudTargetView`).
 - `App` builds one root environment per frame (scale factor, color scheme,
   theme, default foreground) and renders a single root view.
-- **Scenes and navigation:**
-  - xsa owns the navigation state: a top-level scene (main menu, in game)
-    plus a `NavigationStack` path for menus, so Config opens from both the
-    main menu and an in-game pause menu. Going back is decided per screen,
-    mostly as a Back button's action; Escape opens the pause menu in game
-    and does nothing in menus.
-  - Navigating is an action like any other: a typed command dispatched
-    through the command executor, whether a `Button`, a key bind, the
-    console or IPC triggered it. A `NavigationStack` binding's `set`
-    dispatches that command instead of writing the state directly.
+- **Screens and navigation:**
+  - Each screen is a `ViewController` in `ui/<feature>/`
+    (`MainMenuViewController` with its root `MainMenuView`), addressed by a
+    screen id in commands: `main-menu`, `config` (shown to players as
+    Options), `load`, `game`, `pause-menu`.
+  - `ui push <screen>`, `ui pop` and `ui set <screen>` change the stack;
+    `ui show|hide|toggle <overlay>` change the overlays (`debug-overlay`).
+    They are typed client commands: buttons send them through the `Actions`
+    handle in the environment (`actions.push(Screen::Config)`), binds and the
+    console and IPC run the same commands. `App` runs queued actions through
+    the executor, never formatting text.
+  - Back is per screen, mostly a BACK button popping. Escape pushes the pause
+    menu in game and does nothing elsewhere; F3 toggles the debug overlay,
+    hidden at start. There are no other interface binds; debug toggles are
+    commands.
+  - The pause menu is an `Overlay` controller over `game`. It pauses time
+    while it is in the stack when the server is the integrated one; on a
+    remote server time keeps running.
+  - The camera gets input, and may capture the mouse, only while `game` is
+    the visible top screen and no transition runs; leaving it releases the
+    mouse.
   - The 3D world renders full-screen, owned by the game, and the interface
-    is an overlay drawn on top. A view that contains 3D (a part preview, a
-    minimap) would be a viewport primitive showing a render-target texture.
-  - The main menu is itself a simulation, its 3D scene showing behind the
-    menu. Play loads the save, eventually while the camera zooms into the
-    starting area.
+    is drawn on top. A view that contains 3D (a part preview, a minimap)
+    would be a viewport primitive showing a render-target texture.
+  - The main menu shows the simulation's spawn body large on the right, its
+    buttons on the left. Time is frozen there, so continuing never jumps;
+    the body turns with a cosmetic rotation (the simulation's rotation rate,
+    sped up) eased away as CONTINUE zooms the camera into the game. The
+    camera frames the body's lit side.
   - The config panel edits settings by building the typed config command
     objects and running them through the executor, never by formatting
     command text to parse.
@@ -188,5 +229,4 @@ difference here.
   it is updated; presses, releases and leaving the window are offered at
   once. Keyboard input stays with the binds until text fields exist.
 - The renderer's `UserInterfacePass` runs after tonemapping and before
-  capture, so `camera snap` includes the interface. A snap without it is
-  `ui hide`, `camera snap`, `ui show`.
+  capture, so `camera snap` includes the interface.

@@ -117,19 +117,22 @@
   text styles is applied once `Text` has a case modifier.
 - Interface roadmap, in order, each its own pull request (design in
   `docs/xui.md`):
-  1. Scenes: the client starts in a main menu that is itself a simulation
-     with a 3D scene behind the menu; a `NavigationStack` for menus;
-     navigation as typed commands through the executor, sent by button
-     actions through an `Actions` queue in the environment that `App` runs;
-     link-style buttons (`LinkButtonStyle`: foreground, the primary color on
-     hover) and a bold `menu` text style for CONTINUE, LOAD, NEW GAME,
-     OPTIONS, QUIT; the in-game HUD with Escape opening a pause menu.
-     Eventually Play loads the save while the camera zooms into the starting
-     area.
-  2. xui controls (`Toggle`, `Picker`, `Slider`) and a graphics config panel
+  1. Navigation: xui `ViewController`, `NavigationController`,
+     `NavigationView`, transitions with a delegate, `.opacity`, `.offset`,
+     `.hidden`; xsa screens (main menu with CONTINUE, LOAD, NEW GAME,
+     OPTIONS, QUIT; config and load placeholders; game with the HUD; the
+     pause menu), `ui` commands, the `Actions` handle, link-style buttons and
+     a `menu` text style, the Escape and F3 binds replacing every debug bind,
+     the mouse and pause rules.
+  2. Main menu presentation: time frozen in the menu, the spawn body framed
+     from its lit side on the right, a cosmetic spin from its rotation rate,
+     and a zoom transition on CONTINUE.
+  3. xui controls (`Toggle`, `Picker`, `Slider`) and a graphics config panel
      (stars, bloom, tonemapper, exposure mode) that runs typed config
      commands through the executor, no command text parsing.
-  Later: `ScrollView`, `List`, keybind editing in the config panel.
+  Later: `ScrollView`, `List`, keybind editing in the config panel. Saves,
+  switching worlds behind a loading screen and the menu showing the latest
+  save's spawn body wait until the foundations for saving exist.
 - xui: skip the bodies whose inputs did not change, as SwiftUI does, once
   re-running every body each frame shows up in profiles. Needs comparable
   views or tracking which state and environment values each body read.

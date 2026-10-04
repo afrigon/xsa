@@ -84,6 +84,9 @@ like any external library.
   into persistent scene objects each frame; objects and materials are created
   once and referenced by handle.
 - **Pack content is resolved at load time**, never per frame.
+- **The interface is built with xui** (`docs/xui.md`). Each screen is a
+  `ViewController` whose `root()` returns one named view; the layout lives in
+  that view's `body`, never inline in the controller.
 - **Networking:** QUIC on UDP 1969. The dedicated server generates a
   self-signed identity in `.xsa/server/` and prints its fingerprint; clients
   pin it with `--fingerprint` (the SSH model).
