@@ -1,22 +1,5 @@
 # Deferred work
 
-- Partial setup failure leaks Vulkan objects: if `Renderer::new` fails after
-  the swapchain exists (e.g. a `Frame::new` call fails), the swapchain and any
-  already-created frames are never destroyed, and neither are the pieces of a
-  half-built `Frame` or `Swapchain`. Fix with the deletion queue, so every
-  created object is registered for destruction as soon as it exists.
-- Split depth ranges: one near plane can't serve both a cockpit 1 m away and a
-  planet 10,000 km away (reverse-Z depth below ~1e-8 fails the depth test).
-  Render the far scene with a large near plane, clear depth, then render
-  nearby objects with a small one, in the same frame. Needed once vessels
-  exist; until then the near plane follows the camera's altitude.
-- The tonemap pipeline is built for the swapchain's color format. If a
-  swapchain recreation ever picks a different format (e.g. the window moves to
-  a monitor with other surface formats), it no longer matches; rebuild it on
-  recreation when the format changes.
-- Distant-body markers: bodies smaller than a pixel are no longer drawn at
-  all (the fixed-brightness dots were removed). Redesign how distant bodies
-  are shown, e.g. as physically bright points, map-mode icons or labels.
 - Pack files: unknown nodes are rejected, but unknown properties are not, so a
   misspelled optional property (e.g. a rate) is silently ignored. Reject
   properties a node doesn't define.
@@ -39,32 +22,10 @@
 - Simulation time treats UTC as TDB (Barycentric Dynamical Time), ignoring a
   ~69 s offset: Io sits ~1,200 km and the Moon ~70 km behind NASA's live
   positions. Fix with a leap-second table in `time.rs`.
-- Every body texture is uploaded when joining a simulation (~1.1 GB of VRAM
-  with Sol's 4k set), one at a time with a full queue wait each. Fine at 4k;
-  the 16k set needs texture streaming with a VRAM budget.
-- Revisit auto-exposure: no approach so far is satisfying. In place: an
-  image-based meter (luminance histogram) that classifies pixels as dark
-  (below 0.1 cd/m²), lit, or star surface (above 10⁷ cd/m²) and exposes for
-  the darkest of the average lit surface at mid-grey, lit highlights just
-  under white, and a visible star within a 14-stop sensor range. Known
-  problems: the Sun flickers as the camera moves (its disk overflows
-  RGBA16F, so its measured brightness depends on the exposure and flips
-  between classes); the Sun plus a crescent darkens the crescent (the
-  14-stop rule); stars only show in full darkness (physically expected). An
-  incident-light meter (exposure from the illuminance at the camera, with
-  body shadows) was tried side by side and did not satisfy either. Ideas:
-  treat saturated pixels as a lower bound (star surface, never lit); meter
-  the subject and let light sources clip; identify star disks by a ray-
-  sphere test instead of luminance (also keeps sun glints on metal or water
-  and bright plumes from counting as stars); local exposure (eye-like
-  regional adaptation) for starfields beside bright bodies; the Sun's glare
-  as its own effect. Revisit once terrain, vessels, plumes, atmospheres and
-  planetshine exist, and decide with the scenes side by side.
 - The client loads shaders from the `base` pack only, before joining, so other
   packs cannot override them yet (part of custom shaders in packs).
 - A remote client must have the server's packs installed with matching
   versions; streaming them is part of multiplayer.
-
 - Calendar durations: `time step` takes `s`, `min`, `h` and `t` only. Days,
   weeks and years are calendar units relative to a home body, so `d`, `w` and
   `y` need a calendar defined by the simulation: declared outright (Sol uses
@@ -76,157 +37,29 @@
   all clients.
 - Distances accept `m`, `km`, `Mm` and `Gm`; astronomical units (`au`) are not
   supported.
-
 - Clock synchronization: a client's time is the last tick's server time plus
   elapsed time × rate, so a remote client runs one-way latency × rate behind
   the server (500 s at 10,000× with 50 ms). Undecided until vessel physics and
   multiplayer exist; candidates: QUIC's smoothed RTT estimate with slewed
   corrections, a fixed playback delay, or scheduling every time-critical
   action at an absolute simulation time so the offset is display-only.
-- The Windows IPC path (named pipes in `crates/commands/src/ipc.rs`) and terminal
-  restore (`crates/commands/src/terminal.rs`) have never been compiled; no Windows
-  target is installed.
-
-# Next steps
-
-- Translation keys (undecided): explicit keys in files following
-  `<pack>.description`, `<pack>.<module>.<entry>.<field>` and
-  `<pack>.ui.<screen>.<name>`, or keys derived implicitly from ids.
-- Asset hosting: publish binary pack resources as a versioned `.tar.zst`
-  archive per pack (players open it with 7-Zip 24.01+ or Windows 11; we create
-  it with our own tooling) in S3, optionally behind CloudFront for download
-  costs. Repository keeps pack text files only; fetch-assets downloads the
-  latest release and extracts the binaries into the working tree (first
-  release bootstrapped by hand); a release task packs and uploads, later a
-  GitHub Action. Upload credentials through fnox.
-- Slang ↔ Rust layout check: the `shaders` task also writes
-  `slangc -reflection-json` output; a client build script reads it
-  (serde_json as a build dependency) and generates offsets and sizes that Rust
-  const assertions compare field by field.
-- Grow the per-frame material buffer like the object buffer instead of failing
-  past a fixed capacity.
-- Handle types (ObjectHandle, MaterialHandle, CubeMapHandle) use a named
-  `index` field instead of tuple structs.
-- Theme text styles beyond `title` and `telemetry`, each added when a view
-  first needs it: `display` (main menu, 48/600), `heading` (sections,
-  17/600), `body` (paragraphs, 15/400), `label` (controls, 13/500), `caption`
-  (secondary, 11/400), `overline` (category tags, 11/600, uppercase, +0.08 em)
-  and `code` (console, `code` typeface 13/400).
-- xui environment: increased contrast, a UI-scale setting that multiplies
-  every size, and a color-role modifier reading the theme. `TextCase` from
-  text styles is applied once `Text` has a case modifier.
-- Interface roadmap, in order, each its own pull request (design in
-  `docs/xui.md`):
-  1. Navigation: xui `ViewController`, `NavigationController`,
-     `NavigationView`, transitions with a delegate, `.opacity`, `.offset`,
-     `.hidden`; xsa view controllers (main menu with CONTINUE, LOAD, NEW GAME,
-     OPTIONS, QUIT; config and load placeholders; game with the HUD; the
-     pause menu), `ui` commands, the `Actions` handle, link-style buttons and
-     a `menu` text style, the Escape and F3 binds replacing every debug bind,
-     the mouse and pause rules.
-  2. Main menu presentation: time frozen in the menu, the spawn body framed
-     from its lit side on the right, a cosmetic spin from its rotation rate,
-     and a zoom transition on CONTINUE.
-  3. xui controls (`Toggle`, `Picker`, `Slider`) and a graphics config panel
-     (stars, bloom, tonemapper, exposure mode) that runs typed config
-     commands through the executor, no command text parsing.
-  Later: `ScrollView`, `List`, keybind editing in the config panel. Saves,
-  switching worlds behind a loading screen and the menu showing the latest
-  save's spawn body wait until the foundations for saving exist.
-- xui: skip the bodies whose inputs did not change, as SwiftUI does, once
-  re-running every body each frame shows up in profiles. Needs comparable
-  views or tracking which state and environment values each body read.
-- xui glyph atlas: evict or grow instead of failing once its 1024² texture is
-  full.
-- Before extracting xui into `xui-rs`: its own error type instead of anyhow,
-  and a test font of its own instead of reading Inter from xsa's `data/`.
-
-# Planned features
-
-
-- Real solar system at scale: bodies generated from real physical and orbital
-  parameters. The general shape must be right; fine detail may be procedural.
-- Planet textures from Sol (RSS-Reborn, CC BY-NC-SA 4.0, license shipped in
-  `data/system-solar/LICENSE`). Keep the texture pipeline source-agnostic so
-  they can be swapped for NASA-derived data before any commercial release.
-  Used: Color (alpha is a water mask on Earth), Normal, Height, Emissive (Io),
-  Scatter and Surge (Hapke parameters), VertexHeight (terrain, goes to
-  `data/`). Ignored: Dummy, Icon, Biomes, VertexColor. Order: textured bodies
-  first, then HDR, Hapke shading, and only later rings, atmospheres, clouds,
-  the Sun's corona and flares. Texture conventions (confirmed from the
-  AdvancedPQSTools, Parallax and Kopernicus sources): DDS rows are uploaded
-  as stored, first row is the south pole (v = 0); u = 0.25 − longitude/360°
-  (prime meridian at u = 0.25, u grows westward), v = 0.5 + latitude/180°.
-  Normal maps are tangent-space RG: R toward west (+u), G toward north,
-  z = sqrt(1 − x² − y²). Color is sRGB; Normal, Height, Scatter, Surge and
-  Emissive are linear. Shading is Custom/HapkeScaled from CharonSSS/
-  AdvancedPQSTools (MIT, port with its notice): Scatter R = w, G = b,
-  B = (c + 1)/2; Surge R = B_S0/2, G = h_S, B = B_C0/2, A = h_C.
-- Anti-aliasing: TAA built in-house. It must handle geometric edges (planet
-  limbs), shader aliasing (normal-mapped detail, glints), sub-pixel objects
-  and noise from ray-marched effects: camera jitter, per-body motion vectors,
-  neighborhood color clamping, sharpening, history reset on time-warp jumps
-  and target switches; distant-body markers and orbit lines drawn after it.
-  Lands after bloom and before atmospheres and clouds, which depend on
-  temporal accumulation; gets a toggle key. Later, optionally: AMD FSR 2/3
-  (MIT, vendor-neutral) as a quality and upscaling mode on the same inputs.
-  No motion blur: motion vectors exist only for TAA and FSR.
-- Spawn locations: `spawn` in a simulation names only a body. It will need
-  more detail (where on or around the body: a launch site, a surface
-  position, an orbit), or become a points-of-interest system where several
-  places, such as space stations, can be chosen as the starting point.
-- Lens effects for the Sun: diffraction spikes and lens-flare ghosts, drawn
-  as their own post-processing effect with a toggle key (Sol ships flare,
-  spike and ghost textures). Kept subtle; separate from bloom, which only
-  models the lens's soft scatter.
-- Stars from a catalog: render stars as points from a star catalog (Hipparcos
-  or Tycho-2, or Gaia for millions) with physical brightness from their
-  measured magnitudes, pinpoint sharp at any zoom, over a dimmer Milky Way
-  texture for the diffuse glow. Keeps the physically calibrated sky.
 - Commands, the remaining phases (the router, REPL, IPC and time and camera
   commands exist):
   - `ui [<ui-id>] show|hide|toggle` once there is a UI; a snap without the
     UI is `ui hide`, `camera snap`, `ui show`, so the snap itself never
     takes a UI option. Vessels, maneuvers, resources, EVA, SAS and RCS
     commands with gameplay.
-- Rings as data: inner/outer radii and orientation in the system data
-  (literature values; Sol's ring radii use an unknown unit), textures as
-  resources.
-- Ground detail textures: Sol ships its own only for Earth, Luna and Mars;
-  other bodies reference stock KSP textures that cannot be redistributed.
-  Investigate Sol's set and build similar textures for the rest.
-- Texture streaming and a VRAM budget: textures are not all preloaded — only
-  the mip levels a texture needs at its current on-screen size are resident,
-  loaded and evicted in the background, and total usage stays under the budget
-  reported by VK_EXT_memory_budget (least recently used evicted first).
-  Required before high-resolution texture packs.
-- Planet LOD: cube-sphere faces split into quadtrees as the camera approaches;
-  each tile has its own local origin to keep f32 precision on the surface.
-  Once terrain displaces vertices, culling bounds must include the maximum
-  elevation (a body's `bounding_radius`, then each tile's own min/max height),
-  or peaks reaching into view are culled; horizon culling joins frustum culling.
-- Seamless map mode: the map is the live world zoomed out. The camera stays
-  centered on the current target (no automatic re-targeting); map overlays
-  (orbits, markers) fade in only once zoomed out far enough to need them.
-- Camera modes:
-  - Debug: creative-style fly camera — WASD horizontal, Space/Shift up/down,
-    scroll changes speed, mouse captured.
-  - Game: locked on a target — hold right click to capture the cursor and
-    orbit, scroll zooms in and out.
-- Time control: pause and warp rates limited by situation (in atmosphere, in
-  orbit, eventually interstellar). Rewind is out of scope for performance
-  reasons; if ever added, debug mode only.
+
+# Ideas
+
+- Sky grid debug overlay (to think through): right ascension lines every 1h,
+  declination lines every 10°, celestial equator and ecliptic highlighted,
+  pole markers — drawn procedurally in the skybox shader.
 - Game modes:
   - Survival: career with gradual unlocks and a realistic feel.
   - Creative: survival with infinite resources.
   - Debug: cheats and dev tools — edit positions, orbits and other state.
     The mode used to build the game, also available to players.
-- Sky grid debug overlay (to think through): right ascension lines every 1h,
-  declination lines every 10°, celestial equator and ecliptic highlighted,
-  pole markers — drawn procedurally in the skybox shader.
-- HDR rendering with auto-exposure and bloom: stars near the Sun become hard
-  to see through exposure and glare (not light pollution — space has none);
-  also replaces the fixed dot brightness compromise.
 - Multiplayer (single player comes first): time warp across players
   (subspaces), latency with client interpolation and prediction, bandwidth
   (bodies on rails need no streaming), streaming a server's packs to
@@ -234,23 +67,14 @@
 - Interstellar travel: Voronoi regions assign space to star systems; vessels
   use positions relative to their system, since f64 resolves only ~8 m at
   interstellar distances.
-- AI-assisted translation of lang files through a mise task; English is the
-  reference language.
-- Effects system (plumes, explosions, particles); atmosphere and cloud visuals
-  tie into it.
 - Custom shaders in packs: packs ship SPIR-V compiled against the shader
   interface published by `base` (shared module, data layouts); shaders declare
   their material properties in a sidecar so materials set them by name, which
   replaces the closed Material enum. Interface changes bump the pack format.
-- 3D model formats: glTF 2.0 preferred; support whatever formats the chosen
-  open-source models use.
-- Simulation step: planets on rails — Keplerian orbits with barycenters, and
-  precomputed ephemerides (e.g. JPL DE440) for real bodies, both pure
-  functions of time. Vessels use restricted n-body (planets pull vessels, not
-  the reverse) limited to significant bodies, with symplectic integrators for
-  coasting, adaptive steps for burns and flybys, and Encke's method (integrate
-  the deviation from a Kepler orbit) for large steps. A coasting vessel's
-  trajectory is computed once and treated as rails until it changes — cheap
-  time warp and the map-mode orbit prediction. Any live n-body between bodies
-  stays server-authoritative with periodic keyframes, since floating point
-  differs across machines.
+- Asset hosting: publish binary pack resources as a versioned `.tar.zst`
+  archive per pack (players open it with 7-Zip 24.01+ or Windows 11; we create
+  it with our own tooling) in S3, optionally behind CloudFront for download
+  costs. Repository keeps pack text files only; fetch-assets downloads the
+  latest release and extracts the binaries into the working tree (first
+  release bootstrapped by hand); a release task packs and uploads, later a
+  GitHub Action. Upload credentials through fnox.
