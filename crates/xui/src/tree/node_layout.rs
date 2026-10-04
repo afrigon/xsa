@@ -20,6 +20,11 @@ pub trait NodeLayout: Any {
         draw_list: &mut DrawList,
     ) -> anyhow::Result<()>;
 
+    // Whether pointer events reach this node and everything inside it.
+    fn hit_testable(&self) -> bool {
+        true
+    }
+
     // `bounds` is where the node was last placed and `claimed` whether a view above already took the event.
     // Returns whether this layout takes it.
     fn handle_pointer(&mut self, _bounds: Rect, _event: &PointerEvent, _claimed: bool) -> bool {

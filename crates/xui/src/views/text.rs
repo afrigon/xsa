@@ -1,6 +1,6 @@
 use crate::layout::TextLayout;
 use crate::shaping::{ShapedText, TextInputs};
-use crate::{Context, FontKey, ForegroundStyleKey, Never, Node, ScaleFactorKey, UpdateContext, View};
+use crate::{Context, FontKey, ForegroundStyleKey, Never, Node, OpacityKey, ScaleFactorKey, UpdateContext, View};
 
 // Draws in the environment's font and foreground style; without a font it takes no space. Its node shapes the
 // text again only when the string, font or scale factor changes.
@@ -33,7 +33,10 @@ impl View for Text {
             font,
             scale_factor: context.environment.get::<ScaleFactorKey>(),
         });
-        let color = context.environment.get::<ForegroundStyleKey>();
+        let color = context
+            .environment
+            .get::<ForegroundStyleKey>()
+            .opacity(context.environment.get::<OpacityKey>());
         let layout = node.layout_mut(TextLayout::new);
         layout.color = color;
         let reshape = layout.inputs != inputs;

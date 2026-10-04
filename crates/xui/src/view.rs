@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use crate::{
     Alignment, ButtonStyle, ButtonStyleKey, Context, EdgeInsets, EnvironmentKey, EnvironmentModifier, FixedFrame, Font,
-    FontKey, ForegroundStyleKey, IdentifiedView, LinearColor, MaxFrame, ModifiedContent, Node, Padding,
-    PassthroughLayout, SubviewEntry, UpdateContext, ViewModifier,
+    FontKey, ForegroundStyleKey, IdentifiedView, LinearColor, MaxFrame, ModifiedContent, Node, Offset, OpacityModifier,
+    Padding, PassthroughLayout, Point, SubviewEntry, UpdateContext, ViewModifier, Visibility,
 };
 
 // A view describes its content in `body`, like SwiftUI. Views are values rebuilt every frame and own their data;
@@ -50,6 +50,38 @@ pub trait View: 'static {
         Self: Sized,
     {
         MaxFrame::new(self, max_width, max_height, alignment)
+    }
+
+    // Multiplies the opacity of the view and everything inside it.
+    fn opacity(self, opacity: f32) -> OpacityModifier<Self>
+    where
+        Self: Sized,
+    {
+        OpacityModifier::new(self, opacity)
+    }
+
+    // Draws the view shifted by `offset`, keeping its place in the layout, like SwiftUI's `.offset()`.
+    fn offset(self, offset: Point) -> Offset<Self>
+    where
+        Self: Sized,
+    {
+        Offset::new(self, offset)
+    }
+
+    // A hidden view keeps its place in the layout and its state, but is neither drawn nor hit-tested.
+    fn hidden(self, hidden: bool) -> Visibility<Self>
+    where
+        Self: Sized,
+    {
+        Visibility::new(self, !hidden, true)
+    }
+
+    // Whether pointer events reach the view and everything inside it, like SwiftUI's `.allowsHitTesting()`.
+    fn allows_hit_testing(self, allowed: bool) -> Visibility<Self>
+    where
+        Self: Sized,
+    {
+        Visibility::new(self, true, allowed)
     }
 
     // A new identity whenever `id` changes, so the view starts over with fresh state.

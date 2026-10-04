@@ -2,12 +2,14 @@ mod color_scheme_key;
 mod environment_key;
 mod font_key;
 mod foreground_style_key;
+mod opacity_key;
 mod scale_factor_key;
 
 pub use color_scheme_key::ColorSchemeKey;
 pub use environment_key::EnvironmentKey;
 pub use font_key::FontKey;
 pub use foreground_style_key::ForegroundStyleKey;
+pub use opacity_key::OpacityKey;
 pub use scale_factor_key::ScaleFactorKey;
 
 use std::any::{Any, TypeId};

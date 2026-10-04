@@ -14,6 +14,7 @@ mod layout;
 mod layout_context;
 mod linear_color;
 mod modifiers;
+mod navigation;
 mod never;
 mod shaping;
 mod state;
@@ -27,7 +28,9 @@ pub use button_styles::{AnyButtonStyle, ButtonConfiguration, ButtonStyle, Button
 pub use color_scheme::ColorScheme;
 pub use context::Context;
 pub use draw::{DrawList, GlyphPrimitive, Primitive};
-pub use environment::{ColorSchemeKey, Environment, EnvironmentKey, FontKey, ForegroundStyleKey, ScaleFactorKey};
+pub use environment::{
+    ColorSchemeKey, Environment, EnvironmentKey, FontKey, ForegroundStyleKey, OpacityKey, ScaleFactorKey,
+};
 pub use events::{PointerButton, PointerEvent, PointerEventKind};
 pub use font::Font;
 pub use fonts::FontLibrary;
@@ -36,13 +39,20 @@ pub use identifiable::Identifiable;
 pub use interface::Interface;
 pub use layout_context::LayoutContext;
 pub use linear_color::LinearColor;
-pub use modifiers::{EnvironmentModifier, IdentifiedView, ModifiedContent, ModifierContent, ViewModifier};
+pub use modifiers::{
+    EnvironmentModifier, IdentifiedView, ModifiedContent, ModifierContent, OpacityModifier, ViewModifier,
+};
+pub use navigation::{
+    AnyViewController, DefaultNavigationDelegate, FadeTransition, NavigationController, NavigationDelegate,
+    NavigationOperation, NoTransition, Presentation, SlideTransition, Transition, TransitionAppearance, TransitionRole,
+    ViewController, ease_in_out,
+};
 pub use never::Never;
 pub use state::{Binding, State};
 pub use subview::Subview;
 pub use tree::{Node, NodeLayout, PassthroughLayout, SubviewEntry, UpdateContext};
 pub use view::View;
 pub use views::{
-    AnyView, Button, Either, EmptyView, FixedFrame, ForEach, Group, HStack, MaxFrame, Padding, Spacer, Text, VStack,
-    ZStack,
+    AnyView, Button, Either, EmptyView, FixedFrame, ForEach, Group, HStack, MaxFrame, Offset, Padding, Spacer, Text,
+    VStack, Visibility, ZStack,
 };

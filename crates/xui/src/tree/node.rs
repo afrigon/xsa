@@ -174,6 +174,10 @@ impl Node {
     // before earlier ones, children before their parent. Returns whether a node claimed it; nodes below a
     // claiming one still see the event, told it was claimed (so a button under the pointer stops hovering).
     pub(crate) fn handle_pointer(&mut self, event: &PointerEvent, claimed: bool) -> bool {
+        if self.layout.as_deref().is_some_and(|layout| !layout.hit_testable()) {
+            return claimed;
+        }
+
         let mut claimed = claimed;
 
         for child in self.children.iter_mut().rev() {
