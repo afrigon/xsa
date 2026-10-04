@@ -113,6 +113,14 @@
   11/400), `overline` (category tags, 11/600, uppercase, +0.08 em),
   `telemetry` (instrument readouts, `text` typeface 15/500 with `tnum` and
   `zero`) and `code` (console, `code` typeface 13/400).
+- xui environment: typed custom keys so the theme reaches views through the
+  environment (color role, text style), plus increased contrast and a
+  UI-scale setting that multiplies every size. `TextCase` from text styles is
+  applied once `Text` has a case modifier.
+- xui glyph atlas: evict or grow instead of failing once its 1024² texture is
+  full.
+- Before extracting xui into `xui-rs`: its own error type instead of anyhow,
+  and a test font of its own instead of reading Inter from xsa's `data/`.
 
 # Planned features
 

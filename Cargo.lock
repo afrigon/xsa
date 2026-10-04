@@ -3168,6 +3168,8 @@ dependencies = [
  "xsa-proto",
  "xsa-server",
  "xsa-units",
+ "xui",
+ "xui-vulkan",
 ]
 
 [[package]]

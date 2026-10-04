@@ -28,6 +28,7 @@ use ash::vk;
 use glam::{Mat4, Vec2, Vec3};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
+use xui::DrawList;
 
 use crate::camera::Camera;
 use crate::config::{Config, DebugConfig, RenderConfig};
@@ -39,7 +40,7 @@ use frame_context::FrameContext;
 use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData};
 use material::MaterialData;
-use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TonemapPass};
+use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TonemapPass, UserInterfacePass};
 use render_pass::RenderPass;
 use render_targets::RenderTargets;
 use texture::DdsImage;
@@ -58,6 +59,7 @@ pub struct Renderer {
     debug: DebugConfig,
     exposure: AutoExposure,
     capture: Option<Buffer>,
+    user_interface: DrawList,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     material_data: Vec<MaterialData>,
@@ -97,6 +99,7 @@ impl Renderer {
             Box::new(HistogramPass::new(&gpu, shaders)?),
             Box::new(bloom),
             Box::new(TonemapPass::new(&gpu, shaders, swapchain.format())?),
+            Box::new(UserInterfacePass::new(&gpu, swapchain.format(), FRAMES_IN_FLIGHT)?),
             Box::new(CapturePass),
         ];
 
@@ -106,6 +109,7 @@ impl Renderer {
             debug: config.debug.clone(),
             exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
             capture: None,
+            user_interface: DrawList::default(),
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
@@ -126,6 +130,14 @@ impl Renderer {
 
     pub fn scene_mut(&mut self) -> &mut Scene {
         &mut self.scene
+    }
+
+    // Atlas updates no frame has recorded yet carry over, or their glyphs would stay blank.
+    pub fn set_user_interface(&mut self, mut draw_list: DrawList) {
+        draw_list
+            .atlas_updates
+            .splice(0..0, self.user_interface.atlas_updates.drain(..));
+        self.user_interface = draw_list;
     }
 
     pub fn configure(&mut self, render: &RenderConfig, debug: &DebugConfig) {
@@ -382,6 +394,7 @@ impl Renderer {
         let context = FrameContext {
             recorder: CommandRecorder::new(&self.gpu.device, frame.command_buffer),
             frame,
+            frame_slot: self.frame_index,
             targets: &self.targets,
             render: &self.render,
             debug: &self.debug,
@@ -391,6 +404,7 @@ impl Renderer {
             output_view: self.swapchain.image_view(image_index),
             output_extent: self.swapchain.extent(),
             capture: self.capture.as_ref(),
+            user_interface: &self.user_interface,
         };
 
         context.recorder.to_color_attachment(context.output_image);
@@ -401,6 +415,7 @@ impl Renderer {
 
         context.recorder.to_present(context.output_image);
         unsafe { device.end_command_buffer(frame.command_buffer) }?;
+        self.user_interface.atlas_updates.clear();
 
         Ok(())
     }

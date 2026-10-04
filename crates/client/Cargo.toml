@@ -19,3 +19,5 @@ xsa-packs.workspace = true
 xsa-proto.workspace = true
 xsa-server.workspace = true
 xsa-units.workspace = true
+xui.workspace = true
+xui-vulkan.workspace = true

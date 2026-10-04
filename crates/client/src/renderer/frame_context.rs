@@ -1,4 +1,5 @@
 use ash::vk;
+use xui::DrawList;
 
 use super::Scene;
 use super::command_recorder::CommandRecorder;
@@ -11,6 +12,7 @@ use crate::vulkan::{Buffer, GraphicsPipeline};
 pub(super) struct FrameContext<'a> {
     pub recorder: CommandRecorder<'a>,
     pub frame: &'a Frame,
+    pub frame_slot: usize,
     pub targets: &'a RenderTargets,
     pub render: &'a RenderConfig,
     pub debug: &'a DebugConfig,
@@ -20,6 +22,7 @@ pub(super) struct FrameContext<'a> {
     pub output_view: vk::ImageView,
     pub output_extent: vk::Extent2D,
     pub capture: Option<&'a Buffer>,
+    pub user_interface: &'a DrawList,
 }
 
 impl FrameContext<'_> {

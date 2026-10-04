@@ -28,12 +28,15 @@ use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
 use xsa_proto::session::ServerSession;
+use xui::{Alignment, ColorScheme, DrawList, Environment, Interface, Size};
 
 use crate::camera::CameraMode;
 use crate::config::Config;
 use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
+use crate::screens::TargetLabel;
+use crate::theme::Theme;
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -61,6 +64,8 @@ pub struct App {
     config: Config,
     mouse_captured: bool,
     last_frame: Option<Instant>,
+    interface: Interface,
+    theme: Option<Theme>,
 }
 
 impl App {
@@ -87,6 +92,8 @@ impl App {
             config_document,
             mouse_captured: false,
             last_frame: None,
+            interface: Interface::new(),
+            theme: None,
         }
     }
 
@@ -99,6 +106,7 @@ impl App {
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
         let shaders = ShaderBinaries::load(&base)?;
         self.renderer = Some(Renderer::new(&window, &shaders, &self.config)?);
+        self.theme = Some(Theme::load(&base, self.interface.fonts_mut())?);
         window.request_redraw();
         self.window = Some(window);
 
@@ -219,6 +227,7 @@ impl App {
     }
 
     fn capture(&mut self) -> anyhow::Result<CapturedImage> {
+        self.update_user_interface()?;
         let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
 
         if let Some(world) = &self.world {
@@ -229,6 +238,7 @@ impl App {
     }
 
     fn draw(&mut self) -> anyhow::Result<()> {
+        self.update_user_interface()?;
         let Some(renderer) = &mut self.renderer else {
             return Ok(());
         };
@@ -238,6 +248,35 @@ impl App {
         }
 
         renderer.draw(self.cameras.camera())
+    }
+
+    fn update_user_interface(&mut self) -> anyhow::Result<()> {
+        let (Some(renderer), Some(window), Some(theme)) = (&mut self.renderer, &self.window, &self.theme) else {
+            return Ok(());
+        };
+        let target = self
+            .world
+            .as_ref()
+            .zip(self.cameras.target_body())
+            .map(|(world, body)| world.body(body).id.to_string());
+        let Some(name) = target else {
+            renderer.set_user_interface(DrawList::default());
+            return Ok(());
+        };
+        let environment = Environment {
+            scale_factor: window.scale_factor() as f32,
+            color_scheme: ColorScheme::Dark,
+        };
+        let window_size = window.inner_size();
+        let viewport = Size {
+            width: window_size.width as f32,
+            height: window_size.height as f32,
+        };
+        let view = TargetLabel { name }.view(theme, &environment)?;
+        let draw_list = self.interface.render(&view, viewport, &environment, Alignment::TOP)?;
+        renderer.set_user_interface(draw_list);
+
+        Ok(())
     }
 
     fn set_mouse_captured(&mut self, captured: bool) {
