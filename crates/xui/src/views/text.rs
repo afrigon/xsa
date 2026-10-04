@@ -1,13 +1,12 @@
 use anyhow::Context;
-use parley::{AlignmentOptions, FontFamily, FontWeight, Layout, PositionedLayoutItem, StyleProperty};
+use parley::PositionedLayoutItem;
 
 use crate::atlas::{GlyphKey, SUBPIXEL_STEPS};
+use crate::text_layouts::{CachedTextLayout, TextLayoutKey};
 use crate::{
     DrawList, Environment, FontKey, ForegroundStyleKey, GlyphPrimitive, Never, Point, Primitive, Rect, ScaleFactorKey,
     Size, SizeProposal, View, ViewContext,
 };
-
-const OPTICAL_SIZE_AXIS: &str = "opsz";
 
 // Draws in the environment's font and foreground style; without a font it takes no space.
 pub struct Text {
@@ -21,35 +20,15 @@ impl Text {
         }
     }
 
-    // Laid out in physical pixels: parley scales every metric by the environment's scale factor.
-    fn layout(&self, context: &mut ViewContext, max_width: Option<f32>) -> Option<Layout<()>> {
+    // The text's shaped layout, in physical pixels; without a font in the environment there is none.
+    fn layout<'a>(&self, context: &'a mut ViewContext) -> Option<&'a mut CachedTextLayout> {
         let Some(font) = context.environment.get::<FontKey>() else {
             context.warn_once(format!("no font in the environment for the text {:?}", self.content));
             return None;
         };
-        let scale_factor = context.environment.get::<ScaleFactorKey>();
-        let features = font
-            .features
-            .iter()
-            .map(|tag| format!("\"{tag}\" on"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let variations = format!("\"{OPTICAL_SIZE_AXIS}\" {}", font.size);
-        let mut builder =
-            context
-                .layouts
-                .ranged_builder(context.fonts.context_mut(), &self.content, scale_factor, true);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named(&font.family)));
-        builder.push_default(StyleProperty::FontSize(font.size));
-        builder.push_default(StyleProperty::FontWeight(FontWeight::new(font.weight)));
-        builder.push_default(StyleProperty::LetterSpacing(font.letter_spacing * font.size));
-        builder.push_default(StyleProperty::FontFeatures(features.as_str().into()));
-        builder.push_default(StyleProperty::FontVariations(variations.as_str().into()));
-        let mut layout = builder.build(&self.content);
-        layout.break_all_lines(max_width.map(|width| width * scale_factor));
-        layout.align(parley::Alignment::Start, AlignmentOptions::default());
+        let key = TextLayoutKey::new(&self.content, &font, context.environment.get::<ScaleFactorKey>());
 
-        Some(layout)
+        Some(context.text_layouts.get(key, context.fonts, context.layouts))
     }
 }
 
@@ -59,23 +38,30 @@ impl View for Text {
     }
 
     fn size_that_fits(&self, proposal: SizeProposal, context: &mut ViewContext) -> anyhow::Result<Size> {
-        let Some(layout) = self.layout(context, proposal.width) else {
+        let scale_factor = context.environment.get::<ScaleFactorKey>();
+        let Some(layout) = self.layout(context) else {
             return Ok(Size::default());
         };
-        let scale_factor = context.environment.get::<ScaleFactorKey>();
+        let size = layout.size(proposal.width.map(|width| width * scale_factor));
 
         Ok(Size {
-            width: layout.width() / scale_factor,
-            height: layout.height() / scale_factor,
+            width: size.width / scale_factor,
+            height: size.height / scale_factor,
         })
     }
 
     fn place(&self, bounds: Rect, context: &mut ViewContext, draw_list: &mut DrawList) -> anyhow::Result<()> {
-        let Some(layout) = self.layout(context, Some(bounds.size.width)) else {
-            return Ok(());
-        };
         let scale_factor = context.environment.get::<ScaleFactorKey>();
         let color = context.environment.get::<ForegroundStyleKey>();
+        let Some(font) = context.environment.get::<FontKey>() else {
+            context.warn_once(format!("no font in the environment for the text {:?}", self.content));
+            return Ok(());
+        };
+        let key = TextLayoutKey::new(&self.content, &font, scale_factor);
+        let layout = context
+            .text_layouts
+            .get(key, context.fonts, context.layouts)
+            .broken_at(Some(bounds.size.width * scale_factor));
         let origin = Point {
             x: bounds.origin.x * scale_factor,
             y: bounds.origin.y * scale_factor,
