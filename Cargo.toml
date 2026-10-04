@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["units", "core", "packs", "proto", "commands", "server", "client", "xsa", "tools"]
+members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/tools"]
 
 [workspace.package]
 version = "0.0.1"
@@ -17,10 +17,10 @@ tokio = "1.53.1"
 tracing = "0.1.44"
 usage = { version = "6.12.0", package = "usage-rs" }
 winit = "0.30.13"
-xsa-client = { path = "client" }
-xsa-commands = { path = "commands" }
-xsa-core = { path = "core" }
-xsa-packs = { path = "packs" }
-xsa-proto = { path = "proto" }
-xsa-server = { path = "server" }
-xsa-units = { path = "units" }
+xsa-client = { path = "crates/client" }
+xsa-commands = { path = "crates/commands" }
+xsa-core = { path = "crates/core" }
+xsa-packs = { path = "crates/packs" }
+xsa-proto = { path = "crates/proto" }
+xsa-server = { path = "crates/server" }
+xsa-units = { path = "crates/units" }

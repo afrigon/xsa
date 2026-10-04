@@ -39,7 +39,7 @@ game prints no validation messages.
 
 ## Crates
 
-Each crate is a top-level directory; `data/` holds the game content (packs).
+Each crate is a directory under `crates/`; `data/` holds the game content (packs).
 Dependencies point one way: `units` ← `core` ← `packs` ← `commands` ← `server`
 ← `client` ← `xsa`, and `proto` ← `commands`, `server`, `client`. `core` never
 touches files or KDL, and `proto` does not depend on `core` or `packs`.
@@ -174,8 +174,8 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
   to `~/.config/xsa/config.kdl`), read at startup and by `config reload`.
   Dotted keys are nested nodes: `render.bloom.strength` is
   `render { bloom { strength 0.05 } }`. A repeated block is read last-wins.
-- Two models: `client/src/document/config/` holds the document models (KDL,
-  key paths, text values, every `ConfigKey`), `client/src/config/` the runtime
+- Two models: `crates/client/src/document/config/` holds the document models (KDL,
+  key paths, text values, every `ConfigKey`), `crates/client/src/config/` the runtime
   `Config` the renderer and input read. Converting a document into the runtime
   model fills in the defaults, all of which live in `config/default_config.rs`.
 - `config set|toggle` edit the document and rebuild `Config`; `--save` and

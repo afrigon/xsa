@@ -101,6 +101,6 @@ CREDIT
 [tasks.convert-skybox]
 description = "Convert the Deep Star Maps star map into a cube map DDS"
 depends = ["fetch-assets"]
-sources = ["assets/deep-star-maps/starmap_2020_16k.exr", "tools/src/main.rs"]
+sources = ["assets/deep-star-maps/starmap_2020_16k.exr", "crates/tools/src/main.rs"]
 outputs = ["data/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds"]
 run = "cargo run --release -p xsa-tools --bin convert-skybox -- assets/deep-star-maps/starmap_2020_16k.exr data/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds"

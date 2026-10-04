@@ -21,7 +21,7 @@
   misspelled optional property (e.g. a rate) is silently ignored. Reject
   properties a node doesn't define.
 - system-solar data accuracy against JPL Horizons (fitted mean elements, see
-  `core/tests/system_solar.rs`): planets and most moons within ~0.1° as seen
+  `crates/packs/tests/system_solar.rs`): planets and most moons within ~0.1° as seen
   from their parent. Weak fits: Mimas drifts several degrees and Tethys ~0.3°
   (their resonance swings Mimas ±44° over 70 years), Hyperion up to 15° (4:3
   resonance with Titan), Phoebe ~1°, Pluto's small moons 1–2° (they orbit a
@@ -83,8 +83,8 @@
   multiplayer exist; candidates: QUIC's smoothed RTT estimate with slewed
   corrections, a fixed playback delay, or scheduling every time-critical
   action at an absolute simulation time so the offset is display-only.
-- The Windows IPC path (named pipes in `commands/src/ipc.rs`) and terminal
-  restore (`commands/src/terminal.rs`) have never been compiled; no Windows
+- The Windows IPC path (named pipes in `crates/commands/src/ipc.rs`) and terminal
+  restore (`crates/commands/src/terminal.rs`) have never been compiled; no Windows
   target is installed.
 
 # Next steps
