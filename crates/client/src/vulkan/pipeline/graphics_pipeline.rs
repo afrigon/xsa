@@ -81,7 +81,7 @@ impl GraphicsPipeline {
             .line_width(1.0);
         let multisample =
             vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
-        let blend_attachments = [vk::PipelineColorBlendAttachmentState::default()
+        let blend_attachment = vk::PipelineColorBlendAttachmentState::default()
             .color_write_mask(vk::ColorComponentFlags::RGBA)
             .blend_enable(description.additive_blend)
             .src_color_blend_factor(vk::BlendFactor::ONE)
@@ -89,7 +89,8 @@ impl GraphicsPipeline {
             .color_blend_op(vk::BlendOp::ADD)
             .src_alpha_blend_factor(vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(vk::BlendFactor::ONE)
-            .alpha_blend_op(vk::BlendOp::ADD)];
+            .alpha_blend_op(vk::BlendOp::ADD);
+        let blend_attachments = vec![blend_attachment; description.color_formats.len()];
         let color_blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
         let mut dynamic_states = vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
 
@@ -102,9 +103,8 @@ impl GraphicsPipeline {
             .depth_test_enable(description.depth_format.is_some())
             .depth_write_enable(description.depth_format.is_some() && description.depth_write)
             .depth_compare_op(description.depth_compare_op);
-        let color_formats = [description.color_format];
         let mut rendering = vk::PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(&color_formats)
+            .color_attachment_formats(description.color_formats)
             .depth_attachment_format(description.depth_format.unwrap_or(vk::Format::UNDEFINED));
 
         let create_info = vk::GraphicsPipelineCreateInfo::default()

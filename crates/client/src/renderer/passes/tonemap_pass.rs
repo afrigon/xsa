@@ -17,7 +17,7 @@ impl TonemapPass {
             &gpu.device,
             &GraphicsPipelineDescription {
                 spirv: &binaries.tonemap,
-                color_format: output_format,
+                color_formats: &[output_format],
                 depth_format: None,
                 depth_compare_op: vk::CompareOp::ALWAYS,
                 depth_write: false,
@@ -37,7 +37,7 @@ impl TonemapPass {
 impl RenderPass for TonemapPass {
     fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
         let recorder = &frame.recorder;
-        recorder.begin_rendering(frame.output_view, None, frame.targets.extent);
+        recorder.begin_rendering(&[frame.output_view], None, frame.targets.extent);
         recorder.bind_graphics(&self.pipeline, frame.descriptor_set);
         frame.push_draw_constants(&self.pipeline, 0, 0);
         recorder.draw_fullscreen();

@@ -46,15 +46,20 @@ impl<'a> CommandRecorder<'a> {
         CommandRecorder { device, command_buffer }
     }
 
-    pub fn begin_rendering(&self, color: vk::ImageView, depth: Option<vk::ImageView>, extent: vk::Extent2D) {
-        let color_attachments = [vk::RenderingAttachmentInfo::default()
-            .image_view(color)
-            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(vk::ClearValue {
-                color: vk::ClearColorValue { float32: CLEAR_COLOR },
-            })];
+    pub fn begin_rendering(&self, colors: &[vk::ImageView], depth: Option<vk::ImageView>, extent: vk::Extent2D) {
+        let color_attachments: Vec<_> = colors
+            .iter()
+            .map(|view| {
+                vk::RenderingAttachmentInfo::default()
+                    .image_view(*view)
+                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .clear_value(vk::ClearValue {
+                        color: vk::ClearColorValue { float32: CLEAR_COLOR },
+                    })
+            })
+            .collect();
         let depth_attachment = depth.map(|view| {
             vk::RenderingAttachmentInfo::default()
                 .image_view(view)
