@@ -3,7 +3,7 @@ use xsa_proto::message::{ClientMessage, StepTime};
 use xsa_proto::session::SessionState;
 
 use super::TimeCommand;
-use crate::command::{Routable, Route, ServerCommand};
+use crate::command::{Availability, Routable, Route, ServerCommand};
 use crate::router::Output;
 use crate::value::Duration;
 
@@ -15,6 +15,10 @@ pub struct TimeStepCommand {
 impl Routable for TimeStepCommand {
     fn route(self) -> Route {
         Route::Server(Box::new(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::InGame
     }
 }
 

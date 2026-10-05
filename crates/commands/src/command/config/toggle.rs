@@ -1,6 +1,6 @@
 use usage::Args;
 
-use crate::command::{ClientCommand, Routable, Route};
+use crate::command::{Availability, ClientCommand, Routable, Route};
 use crate::completion::complete_config_key;
 
 #[derive(Args)]
@@ -14,5 +14,9 @@ pub struct ConfigToggleCommand {
 impl Routable for ConfigToggleCommand {
     fn route(self) -> Route {
         Route::Client(ClientCommand::ConfigToggle(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::Anywhere
     }
 }

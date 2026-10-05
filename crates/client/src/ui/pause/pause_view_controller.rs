@@ -27,13 +27,13 @@ impl ViewController for PauseViewController {
 
     fn did_load(&mut self) {
         if self.factory.pauses_time {
-            self.factory.commands.pause_time();
+            self.factory.commands.hold_time();
         }
     }
 
     fn did_unload(&mut self) {
         if self.factory.pauses_time {
-            self.factory.commands.resume_time();
+            self.factory.commands.release_time();
         }
     }
 }

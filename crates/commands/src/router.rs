@@ -21,7 +21,7 @@ use xsa_proto::event::{Outcome, ServerEvent};
 use xsa_proto::message::MessageId;
 use xsa_proto::session::ServerSession;
 
-use crate::command::{Command, CommandLine, Routable, Route, ServerCommand};
+use crate::command::{Availability, Command, CommandLine, Routable, Route, ServerCommand};
 use crate::completion::Completions;
 
 #[derive(Default)]
@@ -64,6 +64,15 @@ impl CommandRouter {
                 return;
             }
         };
+
+        if command.availability() == Availability::InGame && !executor.is_in_game() {
+            let _ = invocation
+                .reply
+                .send(Output::failure("only available in game: close the menu first"));
+
+            return;
+        }
+
         self.dispatch(command, invocation.reply, executor);
     }
 
@@ -154,10 +163,12 @@ mod tests {
     use xsa_units::{SimulationDuration, SimulationTime, TimeRate};
 
     use super::*;
+    use crate::command::{TimeAction, TimeCommand, TimePauseCommand};
 
     struct FakeExecutor {
         session: ServerSession,
         exited: bool,
+        in_game: bool,
     }
 
     impl CommandExecutor for FakeExecutor {
@@ -167,6 +178,10 @@ mod tests {
 
         fn exit(&mut self) {
             self.exited = true;
+        }
+
+        fn is_in_game(&self) -> bool {
+            self.in_game
         }
     }
 
@@ -183,6 +198,7 @@ mod tests {
                 executor: FakeExecutor {
                     session: ServerSession::new(local.connection),
                     exited: false,
+                    in_game: true,
                 },
                 link: local.link,
                 router: CommandRouter::default(),
@@ -274,6 +290,36 @@ mod tests {
             outcome: Outcome::denied("no"),
         }));
         assert_eq!(receiver.try_recv().unwrap(), Output::failure("no"));
+    }
+
+    #[test]
+    fn commands_available_in_game_are_refused_outside_it() {
+        let mut harness = Harness::joined();
+        harness.executor.in_game = false;
+        let output = harness.invoke("time rate 5").try_recv().unwrap();
+        assert_eq!(output, Output::failure("only available in game: close the menu first"));
+        assert!(harness.link.messages.try_recv().is_err());
+    }
+
+    #[test]
+    fn commands_available_anywhere_run_outside_the_game() {
+        let mut harness = Harness::joined();
+        harness.executor.in_game = false;
+        let output = harness.invoke("time").try_recv().unwrap();
+        assert!(output.succeeded, "{output:?}");
+    }
+
+    #[test]
+    fn dispatched_commands_run_outside_the_game() {
+        let mut harness = Harness::joined();
+        harness.executor.in_game = false;
+        let (reply, _receiver) = oneshot::channel();
+        let command = Command::Time(TimeCommand {
+            action: Some(TimeAction::Pause(TimePauseCommand {})),
+        });
+        harness.router.dispatch(command, reply, &mut harness.executor);
+        let rate = TimeRate::PAUSED;
+        assert_eq!(harness.sent().message, ClientMessage::SetTimeRate(SetTimeRate { rate }));
     }
 
     struct Case {

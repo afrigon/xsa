@@ -14,7 +14,7 @@ pub use toggle::ConfigToggleCommand;
 
 use usage::Args;
 
-use super::{Routable, Route};
+use super::{Availability, Routable, Route};
 
 #[derive(Args)]
 pub struct ConfigCommand {
@@ -25,5 +25,9 @@ pub struct ConfigCommand {
 impl Routable for ConfigCommand {
     fn route(self) -> Route {
         self.action.route()
+    }
+
+    fn availability(&self) -> Availability {
+        self.action.availability()
     }
 }

@@ -8,6 +8,7 @@ mod command_progress;
 mod command_task;
 mod frame_rate;
 mod immediate_command_handler;
+mod menu_spin;
 mod pointer_input;
 mod running_task;
 mod snapshot;
@@ -45,12 +46,15 @@ use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
-use crate::ui::{DebugOverlayView, GameCommands, TargetNameKey, ViewControllerFactory};
+use crate::ui::{
+    DebugOverlayView, GameCommands, GameNavigationDelegate, MenuPresence, TargetNameKey, ViewControllerFactory,
+};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
 use command_progress::CommandProgress;
 use frame_rate::FrameRate;
+use menu_spin::MenuSpin;
 use running_task::RunningTask;
 use task_status::TaskStatus;
 
@@ -82,6 +86,8 @@ pub struct App {
     navigation: NavigationController,
     view_controllers: ViewControllerFactory,
     commands: GameCommands,
+    presence: MenuPresence,
+    menu_spin: MenuSpin,
     overlays: HashSet<Overlay>,
     action_replies: Vec<oneshot::Receiver<Output>>,
 }
@@ -95,11 +101,16 @@ impl App {
         pauses_time: bool,
     ) -> Self {
         let commands = GameCommands::default();
+        let presence = MenuPresence::default();
         let mut navigation = NavigationController::new();
+        navigation.set_delegate(GameNavigationDelegate {
+            presence: presence.clone(),
+        });
         let view_controllers = ViewControllerFactory {
             navigation: navigation.navigation(),
             commands: commands.clone(),
             pauses_time,
+            presence: presence.clone(),
         };
         navigation.set_root(view_controllers.build(ViewControllerId::MainMenu));
 
@@ -128,6 +139,8 @@ impl App {
             navigation,
             view_controllers,
             commands,
+            presence,
+            menu_spin: MenuSpin::new(),
             overlays: HashSet::new(),
             action_replies: Vec::new(),
         }
@@ -182,7 +195,9 @@ impl App {
                 world.advance(state.time());
             }
 
-            self.cameras.update(world, input, delta_seconds);
+            let menu_weight = self.presence.weight();
+            self.cameras.update(world, input, delta_seconds, menu_weight);
+            self.menu_spin.update(world, menu_weight, delta_seconds);
         }
 
         Ok(())
@@ -282,6 +297,7 @@ impl App {
 
         if let Some(world) = &self.world {
             world.sync(renderer);
+            self.menu_spin.apply(world, renderer);
         }
 
         renderer.capture(self.cameras.camera())
@@ -295,6 +311,7 @@ impl App {
 
         if let Some(world) = &self.world {
             world.sync(renderer);
+            self.menu_spin.apply(world, renderer);
         }
 
         renderer.draw(self.cameras.camera())
@@ -422,6 +439,10 @@ impl CommandExecutor for App {
 
     fn exit(&mut self) {
         self.exit_requested = true;
+    }
+
+    fn is_in_game(&self) -> bool {
+        self.is_game_active()
     }
 
     fn completion_values(&self, kind: CompletionKind) -> Vec<CompletionCandidate> {

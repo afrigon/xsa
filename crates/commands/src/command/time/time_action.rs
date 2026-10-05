@@ -1,7 +1,7 @@
 use usage::Subcommands;
 
 use super::{TimePauseCommand, TimeRateCommand, TimeResumeCommand, TimeSetCommand, TimeStepCommand};
-use crate::command::{Routable, Route};
+use crate::command::{Availability, Routable, Route};
 
 #[derive(Subcommands)]
 pub enum TimeAction {
@@ -25,6 +25,16 @@ impl Routable for TimeAction {
             TimeAction::Pause(command) => command.route(),
             TimeAction::Resume(command) => command.route(),
             TimeAction::Step(command) => command.route(),
+        }
+    }
+
+    fn availability(&self) -> Availability {
+        match self {
+            TimeAction::Set(command) => command.availability(),
+            TimeAction::Rate(command) => command.availability(),
+            TimeAction::Pause(command) => command.availability(),
+            TimeAction::Resume(command) => command.availability(),
+            TimeAction::Step(command) => command.availability(),
         }
     }
 }

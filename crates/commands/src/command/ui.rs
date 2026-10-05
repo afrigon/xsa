@@ -20,7 +20,7 @@ pub use view_controller_id::ViewControllerId;
 
 use usage::Args;
 
-use super::{Routable, Route};
+use super::{Availability, Routable, Route};
 
 #[derive(Args)]
 pub struct InterfaceCommand {
@@ -31,5 +31,9 @@ pub struct InterfaceCommand {
 impl Routable for InterfaceCommand {
     fn route(self) -> Route {
         self.action.route()
+    }
+
+    fn availability(&self) -> Availability {
+        self.action.availability()
     }
 }

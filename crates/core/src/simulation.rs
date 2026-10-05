@@ -85,6 +85,10 @@ impl Simulation {
         &self.bodies[index.value]
     }
 
+    pub fn angular_speed(&self, index: BodyIndex) -> f64 {
+        self.rotations[index.value].angular_speed()
+    }
+
     pub fn find_body(&self, id: &BodyId) -> Option<BodyIndex> {
         self.bodies
             .iter()

@@ -1,7 +1,7 @@
 use usage::Subcommands;
 
 use super::{ConfigGetCommand, ConfigReloadCommand, ConfigSaveCommand, ConfigSetCommand, ConfigToggleCommand};
-use crate::command::{Routable, Route};
+use crate::command::{Availability, Routable, Route};
 
 #[derive(Subcommands)]
 pub enum ConfigAction {
@@ -25,6 +25,16 @@ impl Routable for ConfigAction {
             ConfigAction::Toggle(command) => command.route(),
             ConfigAction::Save(command) => command.route(),
             ConfigAction::Reload(command) => command.route(),
+        }
+    }
+
+    fn availability(&self) -> Availability {
+        match self {
+            ConfigAction::Get(command) => command.availability(),
+            ConfigAction::Set(command) => command.availability(),
+            ConfigAction::Toggle(command) => command.availability(),
+            ConfigAction::Save(command) => command.availability(),
+            ConfigAction::Reload(command) => command.availability(),
         }
     }
 }

@@ -4,7 +4,7 @@ use super::{
     InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand,
     InterfaceToggleCommand,
 };
-use crate::command::{Routable, Route};
+use crate::command::{Availability, Routable, Route};
 
 #[derive(Subcommands)]
 pub enum InterfaceAction {
@@ -31,6 +31,17 @@ impl Routable for InterfaceAction {
             InterfaceAction::Show(command) => command.route(),
             InterfaceAction::Hide(command) => command.route(),
             InterfaceAction::Toggle(command) => command.route(),
+        }
+    }
+
+    fn availability(&self) -> Availability {
+        match self {
+            InterfaceAction::Push(command) => command.availability(),
+            InterfaceAction::Pop(command) => command.availability(),
+            InterfaceAction::Set(command) => command.availability(),
+            InterfaceAction::Show(command) => command.availability(),
+            InterfaceAction::Hide(command) => command.availability(),
+            InterfaceAction::Toggle(command) => command.availability(),
         }
     }
 }

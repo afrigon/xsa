@@ -2,7 +2,7 @@ use xsa_commands::command::ViewControllerId;
 use xui::{AnyViewController, Navigation};
 
 use super::{
-    ConfigViewController, GameCommands, GameViewController, LoadViewController, MainMenuViewController,
+    ConfigViewController, GameCommands, GameViewController, LoadViewController, MainMenuViewController, MenuPresence,
     PauseViewController,
 };
 
@@ -12,6 +12,7 @@ pub struct ViewControllerFactory {
     pub navigation: Navigation,
     pub commands: GameCommands,
     pub pauses_time: bool,
+    pub presence: MenuPresence,
 }
 
 impl ViewControllerFactory {

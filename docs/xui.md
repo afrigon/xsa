@@ -227,17 +227,37 @@ for any app.
   - The pause menu (RESUME, OPTIONS, MAIN MENU) is an `Overlay` view
     controller over `game`. It pauses time while it is in the stack when the
     server is the integrated one; on a remote server time keeps running.
+    Pausing is a hold counted by `GameCommands`: time stops when the first
+    hold is taken and resumes when the last is released, so the main menu
+    replacing the pause menu (loading before the pause menu unloads) never
+    lets time run in between.
+  - Every command declares its `Availability`: `InGame` for what changes the
+    game (camera moves, server commands such as `time rate`), `Anywhere` for
+    queries, settings, the interface and `camera snap`. Commands typed in the
+    console or sent over IPC, and binds, run `InGame` commands only while
+    `game` is the visible top and no transition runs; the dedicated server,
+    which has no menus, runs everything. Commands the interface issues
+    through `GameCommands` are not checked.
   - The camera gets input, and may capture the mouse, only while `game` is
     the visible top view controller and no transition runs; leaving it
     releases the mouse.
   - The 3D world renders full-screen, owned by the game, and the interface
     is drawn on top. A view that contains 3D (a part preview, a minimap)
     would be a viewport primitive showing a render-target texture.
-  - The main menu shows the simulation's spawn body large on the right, its
-    buttons on the left. Time is frozen there, so continuing never jumps;
-    the body turns with a cosmetic rotation (the simulation's rotation rate,
-    sped up) eased away as CONTINUE zooms the camera into the game. The
-    camera frames the body's lit side.
+  - The main menu shows the simulation's spawn body large in the bottom
+    right, its buttons on the left. `MenuCamera` frames the body's lit side,
+    its pole up, with a narrower field of view than the game's. Time is
+    held there (integrated server only), so continuing never jumps; the body
+    turns with a display-only rotation about its axis (its real rate, sped
+    up) that the simulation never sees.
+  - CONTINUE and NEW GAME zoom into the game: `GameNavigationDelegate`
+    returns a `ZoomTransition` from the main menu to `game`, which drives
+    `MenuPresence`, the weight `App` uses to blend the menu framing into the
+    game camera (direction, logarithm of the distance, orientation, field of
+    view). The display rotation keeps turning forward and comes to rest on a
+    whole turn as the zoom lands, and time resumes when the main menu
+    unloads. Returning to the main menu cuts back to its framing under the
+    default fade.
   - The config panel edits settings by building the typed config command
     objects and running them through the executor, never by formatting
     command text to parse.

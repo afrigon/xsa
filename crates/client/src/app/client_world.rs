@@ -117,6 +117,18 @@ impl ClientWorld {
         self.state.body(index)
     }
 
+    pub fn body_object(&self, index: BodyIndex) -> ObjectHandle {
+        self.body_objects[index.value]
+    }
+
+    pub fn angular_speed(&self, index: BodyIndex) -> f64 {
+        self.simulation.angular_speed(index)
+    }
+
+    pub fn light_body(&self) -> Option<BodyIndex> {
+        self.light_body
+    }
+
     pub fn initial_target(&self) -> Option<BodyIndex> {
         self.simulation.spawn().or_else(|| {
             self.bodies()

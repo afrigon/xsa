@@ -49,6 +49,10 @@
     UI is `ui hide`, `camera snap`, `ui show`, so the snap itself never
     takes a UI option. Vessels, maneuvers, resources, EVA, SAS and RCS
     commands with gameplay.
+- Main menu zoom: CONTINUE lands on the orbit camera's view of the spawn body;
+  it should land on the player's launchpad or vessel once those exist.
+  Returning to the main menu cuts to its framing; a reverse zoom needs a path
+  from wherever the camera was, possibly another body.
 
 # Ideas
 

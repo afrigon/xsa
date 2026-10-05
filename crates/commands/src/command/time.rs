@@ -15,7 +15,7 @@ pub use time_action::TimeAction;
 use usage::Args;
 use xsa_proto::session::SessionState;
 
-use super::{Routable, Route, SessionCommand};
+use super::{Availability, Routable, Route, SessionCommand};
 use crate::router::Output;
 
 #[derive(Args)]
@@ -40,6 +40,12 @@ impl Routable for TimeCommand {
             Some(action) => action.route(),
             None => Route::Session(Box::new(self)),
         }
+    }
+
+    fn availability(&self) -> Availability {
+        self.action
+            .as_ref()
+            .map_or(Availability::Anywhere, Routable::availability)
     }
 }
 

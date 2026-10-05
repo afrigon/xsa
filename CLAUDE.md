@@ -172,6 +172,10 @@ like any external library.
   frame, copies the presented image back from the GPU and writes a PNG before
   it replies (the game pauses while it encodes). Without `--output` it goes to
   `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`.
+- Every command declares its `Availability` (`Routable::availability`):
+  `InGame` commands (camera moves, server commands) typed in the client's
+  console, sent over IPC or run by a bind are refused while a menu is open;
+  the dedicated server runs every command.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
@@ -209,8 +213,8 @@ like any external library.
 The game starts in the main menu. In game, right-drag orbits the target and
 scroll zooms; the debug camera (`camera mode debug`) flies with WASD,
 Space/Shift and mouse look (click to capture), and scroll sets its speed. The
-camera gets input only while the game view controller is on top; menus release the
-mouse. Debug toggles are commands (`config toggle render.stars`,
+camera gets input, and gameplay commands and binds run, only while the game view
+controller is on top; menus release the mouse. Debug toggles are commands (`config toggle render.stars`,
 `config set debug.shader normals`, …), not binds. The default binds:
 
 | Key | Bind | Action |

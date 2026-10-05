@@ -1,7 +1,7 @@
 use usage::Subcommands;
 
 use super::{CameraLookAtCommand, CameraModeCommand, CameraSnapCommand, CameraTargetCommand};
-use crate::command::{Routable, Route};
+use crate::command::{Availability, Routable, Route};
 
 #[derive(Subcommands)]
 pub enum CameraAction {
@@ -22,6 +22,15 @@ impl Routable for CameraAction {
             CameraAction::Target(command) => command.route(),
             CameraAction::LookAt(command) => command.route(),
             CameraAction::Snap(command) => command.route(),
+        }
+    }
+
+    fn availability(&self) -> Availability {
+        match self {
+            CameraAction::Mode(command) => command.availability(),
+            CameraAction::Target(command) => command.availability(),
+            CameraAction::LookAt(command) => command.availability(),
+            CameraAction::Snap(command) => command.availability(),
         }
     }
 }
