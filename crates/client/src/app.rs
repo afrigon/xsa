@@ -69,7 +69,7 @@ pub struct App {
     packs_directory: PathBuf,
     world: Option<ClientWorld>,
     input: Input,
-    cameras: CameraController,
+    cameras: Option<CameraController>,
     config_document: ConfigDocument,
     config: Config,
     mouse_captured: bool,
@@ -115,7 +115,7 @@ impl App {
             packs_directory,
             world: None,
             input: Input::default(),
-            cameras: CameraController::new(),
+            cameras: None,
             config: config_document.config(),
             config_document,
             mouse_captured: false,
@@ -143,6 +143,7 @@ impl App {
         let shaders = ShaderBinaries::load(&base)?;
         self.renderer = Some(Renderer::new(&window, &shaders, &self.config)?);
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
+        self.cameras = Some(CameraController::new(window.inner_size()));
         window.request_redraw();
         self.window = Some(window);
 
@@ -182,7 +183,9 @@ impl App {
                 world.advance(state.time());
             }
 
-            self.cameras.update(world, input, delta_seconds);
+            if let Some(cameras) = &mut self.cameras {
+                cameras.update(world, input, delta_seconds);
+            }
         }
 
         Ok(())
@@ -222,7 +225,8 @@ impl App {
     fn join(&mut self, state: &WorldState) -> anyhow::Result<()> {
         let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
         let world = ClientWorld::load(&self.packs_directory, state, renderer)?;
-        self.cameras.focus(&world);
+        let cameras = self.cameras.as_mut().context("the cameras are not ready")?;
+        cameras.focus(&world);
         self.world = Some(world);
         self.apply_config();
 
@@ -242,7 +246,11 @@ impl App {
             return;
         }
 
-        if let Some(captured) = self.cameras.wants_mouse_capture(&self.input) {
+        if let Some(captured) = self
+            .cameras
+            .as_ref()
+            .and_then(|cameras| cameras.wants_mouse_capture(&self.input))
+        {
             self.set_mouse_captured(captured);
         }
     }
@@ -284,12 +292,13 @@ impl App {
             world.sync(renderer);
         }
 
-        renderer.capture(self.cameras.camera())
+        let cameras = self.cameras.as_ref().context("the cameras are not ready")?;
+        renderer.capture(cameras.camera())
     }
 
     fn draw(&mut self) -> anyhow::Result<()> {
         self.update_user_interface()?;
-        let Some(renderer) = &mut self.renderer else {
+        let (Some(renderer), Some(cameras)) = (&mut self.renderer, &self.cameras) else {
             return Ok(());
         };
 
@@ -297,7 +306,7 @@ impl App {
             world.sync(renderer);
         }
 
-        renderer.draw(self.cameras.camera())
+        renderer.draw(cameras.camera())
     }
 
     fn update_user_interface(&mut self) -> anyhow::Result<()> {
@@ -318,7 +327,7 @@ impl App {
         let target = self
             .world
             .as_ref()
-            .zip(self.cameras.target_body())
+            .zip(self.cameras.as_ref().and_then(CameraController::target_body))
             .map(|(world, body)| world.body(body).id.to_string());
         let environment = environment.with::<TargetNameKey>(target);
         let fill = Some(f32::INFINITY);
@@ -358,7 +367,7 @@ impl App {
     }
 
     fn set_camera_mode(&mut self, mode: CameraMode) {
-        if self.cameras.set_mode(mode) {
+        if self.cameras.as_mut().is_some_and(|cameras| cameras.set_mode(mode)) {
             self.set_mouse_captured(false);
         }
     }
@@ -489,6 +498,10 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size);
+                }
+
+                if let Some(cameras) = &mut self.cameras {
+                    cameras.resize(size);
                 }
             }
             WindowEvent::Focused(false) => self.input.clear(),
