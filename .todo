@@ -49,6 +49,13 @@
     UI is `ui hide`, `camera snap`, `ui show`, so the snap itself never
     takes a UI option. Vessels, maneuvers, resources, EVA, SAS and RCS
     commands with gameplay.
+- Terrain self-shadowing on bodies: `planet.slang` zeroes lighting wherever
+  the smooth sphere faces away from the Sun. The step hides normal-mapped
+  slopes lit on the night side, but draws the terminator as a clean geometric
+  line instead of lit peaks past it and dark crater floors before it. Replace
+  it with horizon mapping precomputed offline from the bodies' `height.dds`
+  maps (horizon elevation in a few fixed directions, compared with the Sun's
+  elevation at runtime), then remove the step.
 
 # Ideas
 
