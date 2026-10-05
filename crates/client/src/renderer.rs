@@ -349,8 +349,7 @@ impl Renderer {
 
     fn write_frame_data(&mut self, camera: &Camera) -> anyhow::Result<()> {
         let extent = self.swapchain.extent();
-        let aspect_ratio = extent.width as f32 / extent.height as f32;
-        let clip_from_view = camera.clip_from_view(aspect_ratio);
+        let clip_from_view = camera.clip_from_view();
         let view_projection = clip_from_view * camera.view_rotation();
         let frame_data = FrameData {
             view_projection,

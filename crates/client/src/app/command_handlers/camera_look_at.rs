@@ -8,6 +8,8 @@ impl ImmediateCommandHandler for CameraLookAtCommand {
     fn run(self, app: &mut App) -> anyhow::Result<String> {
         let world = app.world.as_ref().context("not joined to a simulation yet")?;
 
-        app.cameras.look_at(&self.target, world)
+        let cameras = app.cameras.as_mut().context("the cameras are not ready")?;
+
+        cameras.look_at(&self.target, world)
     }
 }

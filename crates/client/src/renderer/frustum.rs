@@ -42,8 +42,8 @@ mod tests {
     const ASTRONOMICAL_UNIT: f64 = 1.495_978_707e11;
 
     fn frustum() -> Frustum {
-        let camera = Camera::new(FRAC_PI_2);
-        let view_projection = camera.clip_from_view(ASPECT_RATIO) * camera.view_rotation();
+        let camera = Camera::new(FRAC_PI_2, ASPECT_RATIO);
+        let view_projection = camera.clip_from_view() * camera.view_rotation();
         Frustum::from_view_projection(view_projection.as_dmat4())
     }
 
