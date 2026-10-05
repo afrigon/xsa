@@ -23,7 +23,7 @@ impl ViewController for MainMenuViewController {
     }
 
     fn did_load(&mut self) {
-        self.factory.presence.set_weight(1.0);
+        self.factory.presence.menu_loaded();
 
         if self.factory.pauses_time {
             self.factory.commands.hold_time();
@@ -31,7 +31,7 @@ impl ViewController for MainMenuViewController {
     }
 
     fn did_unload(&mut self) {
-        self.factory.presence.set_weight(0.0);
+        self.factory.presence.menu_unloaded();
 
         if self.factory.pauses_time {
             self.factory.commands.release_time();

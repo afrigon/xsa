@@ -1,5 +1,5 @@
 use anyhow::{Context, bail, ensure};
-use glam::DVec3;
+use glam::{DQuat, DVec3};
 use winit::event::MouseButton;
 use xsa_commands::command::CameraTargetCommand;
 use xsa_commands::value::Target;
@@ -8,6 +8,7 @@ use xsa_core::simulation::BodyIndex;
 use super::body_step::BodyStep;
 use super::client_world::ClientWorld;
 use crate::camera::debug::DebugCamera;
+use crate::camera::menu::MenuCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
 use crate::camera::{Camera, CameraMode};
 use crate::input::Input;
@@ -16,25 +17,30 @@ const HORIZONTAL_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
 const DEBUG_CAMERA_SPEED: f64 = 2_000_000.0;
 const METERS_PER_KILOMETER: f64 = 1_000.0;
 
+// `camera` is driven by the active mode; `presented`, the one drawn, blends it with the main menu's framing.
 pub(super) struct CameraController {
     camera: Camera,
+    presented: Camera,
     mode: CameraMode,
     orbit: Option<OrbitCamera>,
     debug: DebugCamera,
+    menu: MenuCamera,
 }
 
 impl CameraController {
     pub fn new() -> CameraController {
         CameraController {
             camera: Camera::new(HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians()),
+            presented: Camera::new(HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians()),
             mode: CameraMode::Orbit,
             orbit: None,
             debug: DebugCamera::new(DEBUG_CAMERA_SPEED),
+            menu: MenuCamera,
         }
     }
 
     pub fn camera(&self) -> &Camera {
-        &self.camera
+        &self.presented
     }
 
     pub fn target_body(&self) -> Option<BodyIndex> {
@@ -73,7 +79,7 @@ impl CameraController {
         }
     }
 
-    pub fn update(&mut self, world: &ClientWorld, input: &Input, delta_seconds: f64) {
+    pub fn update(&mut self, world: &ClientWorld, input: &Input, delta_seconds: f64, menu_weight: f64) {
         match self.mode {
             CameraMode::Orbit => {
                 if let Some(orbit) = &mut self.orbit {
@@ -88,8 +94,40 @@ impl CameraController {
             CameraMode::Debug => self.debug.update(&mut self.camera, input, delta_seconds),
         }
 
-        let nearest_surface_distance = world.nearest_surface_distance(self.camera.position);
-        self.camera.fit_near_plane(nearest_surface_distance);
+        self.presented.position = self.camera.position;
+        self.presented.orientation = self.camera.orientation;
+
+        if menu_weight > 0.0
+            && let Some(body) = world.initial_target()
+        {
+            self.blend_menu_framing(world, body, menu_weight);
+        }
+
+        let nearest_surface_distance = world.nearest_surface_distance(self.presented.position);
+        self.presented.fit_near_plane(nearest_surface_distance);
+    }
+
+    // Moves the presented camera toward the menu's framing of `body`: the direction from the body turns and the
+    // distance changes geometrically, so a zoom from far away covers each order of magnitude at the same pace.
+    fn blend_menu_framing(&mut self, world: &ClientWorld, body: BodyIndex, weight: f64) {
+        let center = world.body_state(body).position;
+        let target = OrbitTarget {
+            position: center,
+            radius: world.body(body).radius,
+        };
+        let star_position = world.light_body().map(|light| world.body_state(light).position);
+        let mut menu = Camera::new(self.camera.horizontal_fov);
+        self.menu.update(&mut menu, target, star_position);
+
+        let game_offset = self.camera.position - center;
+        let menu_offset = menu.position - center;
+        let turn = DQuat::from_rotation_arc(game_offset.normalize(), menu_offset.normalize());
+        let direction = DQuat::IDENTITY.slerp(turn, weight) * game_offset.normalize();
+        let game_distance = game_offset.length().ln();
+        let distance = (game_distance + (menu_offset.length().ln() - game_distance) * weight).exp();
+
+        self.presented.position = center + direction * distance;
+        self.presented.orientation = self.camera.orientation.slerp(menu.orientation, weight);
     }
 
     pub fn target(&mut self, command: &CameraTargetCommand, world: &ClientWorld) -> anyhow::Result<String> {

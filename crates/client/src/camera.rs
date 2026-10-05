@@ -1,5 +1,6 @@
 mod camera_mode;
 pub mod debug;
+pub mod menu;
 pub mod orbit;
 
 pub use camera_mode::CameraMode;
