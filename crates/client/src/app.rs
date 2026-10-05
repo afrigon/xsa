@@ -366,8 +366,14 @@ impl App {
     }
 
     fn set_camera_mode(&mut self, mode: CameraMode) {
-        if self.cameras.as_mut().is_some_and(|cameras| cameras.set_mode(mode)) {
-            self.set_mouse_captured(false);
+        if !self.cameras.as_mut().is_some_and(|cameras| cameras.set_mode(mode)) {
+            return;
+        }
+
+        self.set_mouse_captured(false);
+
+        if let Some(renderer) = &mut self.renderer {
+            renderer.reset_history();
         }
     }
 

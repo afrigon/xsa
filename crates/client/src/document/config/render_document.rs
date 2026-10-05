@@ -1,4 +1,7 @@
-use super::{BloomDocument, ConfigChoice, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues, ExposureDocument};
+use super::{
+    AntialiasingDocument, BloomDocument, ConfigChoice, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues,
+    ExposureDocument,
+};
 use crate::config::RenderConfig;
 use crate::renderer::Tonemapper;
 
@@ -7,6 +10,7 @@ pub struct RenderDocument {
     stars: Option<bool>,
     bloom: BloomDocument,
     exposure: ExposureDocument,
+    antialiasing: AntialiasingDocument,
 }
 
 impl RenderDocument {
@@ -24,6 +28,7 @@ impl RenderDocument {
             stars: values.bool(RenderDocument::STARS),
             bloom: BloomDocument::read(values),
             exposure: ExposureDocument::read(values),
+            antialiasing: AntialiasingDocument::read(values),
         }
     }
 
@@ -33,6 +38,7 @@ impl RenderDocument {
             stars: self.stars.unwrap_or(defaults.stars),
             bloom: self.bloom.into_config(&defaults.bloom),
             exposure: self.exposure.into_config(&defaults.exposure),
+            antialiasing: self.antialiasing.into_config(&defaults.antialiasing),
         }
     }
 
@@ -41,5 +47,6 @@ impl RenderDocument {
         layer.set(RenderDocument::STARS.path, config.stars.into());
         BloomDocument::write(&config.bloom, layer);
         ExposureDocument::write(&config.exposure, layer);
+        AntialiasingDocument::write(&config.antialiasing, layer);
     }
 }

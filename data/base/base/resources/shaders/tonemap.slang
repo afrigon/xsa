@@ -85,7 +85,7 @@ float3 khronosNeutral(float3 color)
 float4 fragmentMain(FullscreenOutput input) : SV_Target
 {
     FrameData frame = *constants.frame;
-    float3 color = textures[frame.hdrTexture].Load(int3(int2(input.position.xy), 0)).rgb;
+    float3 color = textures[frame.sceneColorTexture].Load(int3(int2(input.position.xy), 0)).rgb;
     if (frame.bloomStrength > 0.0)
     {
         float2 uv = input.position.xy / frame.viewportSize;

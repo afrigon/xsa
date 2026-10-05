@@ -29,5 +29,6 @@ shaders! {
     Depth => "depth",
     Triangles => "triangles",
     Lighting => "lighting",
+    Motion => "motion",
     Skybox => "skybox",
 }

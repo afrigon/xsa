@@ -1,4 +1,6 @@
 mod adaptation_config;
+mod antialiasing_config;
+mod antialiasing_kind;
 mod bind_action;
 mod bind_config;
 mod bloom_config;
@@ -10,6 +12,8 @@ mod key_chord;
 mod render_config;
 
 pub use adaptation_config::AdaptationConfig;
+pub use antialiasing_config::AntialiasingConfig;
+pub use antialiasing_kind::AntialiasingKind;
 pub use bind_action::BindAction;
 pub use bind_config::BindConfig;
 pub use bloom_config::BloomConfig;

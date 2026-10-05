@@ -7,10 +7,10 @@ VertexOutput vertexMain(VertexInput input)
 }
 
 [shader("fragment")]
-float4 fragmentMain(VertexOutput input) : SV_Target
+SurfaceOutput fragmentMain(VertexOutput input)
 {
     static const float maximumDistanceExponent = 12.0;
     float distance = max(length(input.worldPosition), 1.0);
     float brightness = 1.0 - saturate(log10(distance) / maximumDistanceExponent);
-    return float4(brightness.xxx, 1.0);
+    return surfaceOutput(float4(brightness.xxx, 1.0), input);
 }

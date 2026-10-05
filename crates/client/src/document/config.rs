@@ -1,4 +1,6 @@
 mod adaptation_document;
+mod antialiasing_document;
+mod antialiasing_kind_choice;
 mod bind_document;
 mod bloom_document;
 mod config_choice;
@@ -15,6 +17,7 @@ mod shader_choice;
 mod shading_model_choice;
 mod tonemapper_choice;
 
+pub use antialiasing_document::AntialiasingDocument;
 pub use bloom_document::BloomDocument;
 pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;

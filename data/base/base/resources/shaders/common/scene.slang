@@ -3,6 +3,7 @@ __exported import common.frame;
 struct ObjectData
 {
     float4x4 worldFromModel;
+    float4x4 previousClipFromModel;
 };
 
 struct HapkeData
@@ -41,6 +42,7 @@ struct PushConstants
 ConstantBuffer<PushConstants> constants;
 
 static const float pi = 3.14159265358979;
+static const float uvPerNdc = 0.5;
 
 struct VertexInput
 {
@@ -54,7 +56,37 @@ struct VertexOutput
     float3 worldPosition;
     float3 normal;
     float3 modelNormal;
+    float4 currentClip;
+    float4 previousClip;
 };
+
+struct SurfaceOutput
+{
+    float4 color : SV_Target0;
+    float2 motion : SV_Target1;
+};
+
+// The jitter shifts every clip-space position by the same fraction of the viewport.
+float4 unjittered(float4 clip)
+{
+    return float4(clip.xy - constants.frame.jitter * clip.w, clip.zw);
+}
+
+// How far the surface moved across the screen since the previous frame, in texture coordinates.
+float2 motionVector(float4 currentClip, float4 previousClip)
+{
+    float2 current = currentClip.xy / currentClip.w;
+    float2 previous = previousClip.xy / previousClip.w;
+    return (current - previous) * uvPerNdc;
+}
+
+SurfaceOutput surfaceOutput(float4 color, VertexOutput input)
+{
+    SurfaceOutput output;
+    output.color = color;
+    output.motion = motionVector(input.currentClip, input.previousClip);
+    return output;
+}
 
 ObjectData currentObject()
 {
@@ -72,6 +104,8 @@ VertexOutput transformVertex(VertexInput input)
     float4 world = mul(object.worldFromModel, float4(input.position, 1.0));
     VertexOutput output;
     output.position = mul(constants.frame.viewProjection, world);
+    output.currentClip = unjittered(output.position);
+    output.previousClip = mul(object.previousClipFromModel, float4(input.position, 1.0));
     output.worldPosition = world.xyz;
     output.normal = mul(object.worldFromModel, float4(input.normal, 0.0)).xyz;
     output.modelNormal = input.normal;

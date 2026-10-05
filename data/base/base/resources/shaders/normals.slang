@@ -7,7 +7,7 @@ VertexOutput vertexMain(VertexInput input)
 }
 
 [shader("fragment")]
-float4 fragmentMain(VertexOutput input) : SV_Target
+SurfaceOutput fragmentMain(VertexOutput input)
 {
-    return float4(normalize(input.normal) * 0.5 + 0.5, 1.0);
+    return surfaceOutput(float4(normalize(input.normal) * 0.5 + 0.5, 1.0), input);
 }
