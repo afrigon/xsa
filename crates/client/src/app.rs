@@ -138,13 +138,12 @@ impl App {
     }
 
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> anyhow::Result<()> {
-        let window = event_loop.create_window(App::window_attributes())?;
+        let window = self.window.insert(event_loop.create_window(App::window_attributes())?);
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
         let shaders = ShaderBinaries::load(&base)?;
-        self.renderer = Some(Renderer::new(&window, &shaders, &self.config)?);
+        self.renderer = Some(Renderer::new(window, &shaders, &self.config)?);
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
         window.request_redraw();
-        self.window = Some(window);
 
         Ok(())
     }
