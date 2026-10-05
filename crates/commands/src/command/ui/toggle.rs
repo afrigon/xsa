@@ -1,7 +1,7 @@
 use usage::Args;
 
 use super::Overlay;
-use crate::command::{ClientCommand, Routable, Route};
+use crate::command::{Availability, ClientCommand, Routable, Route};
 
 #[derive(Args)]
 pub struct InterfaceToggleCommand {
@@ -12,5 +12,9 @@ pub struct InterfaceToggleCommand {
 impl Routable for InterfaceToggleCommand {
     fn route(self) -> Route {
         Route::Client(ClientCommand::InterfaceToggle(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::Anywhere
     }
 }

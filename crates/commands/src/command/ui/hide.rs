@@ -1,7 +1,7 @@
 use usage::Args;
 
 use super::Overlay;
-use crate::command::{ClientCommand, Routable, Route};
+use crate::command::{Availability, ClientCommand, Routable, Route};
 
 #[derive(Args)]
 pub struct InterfaceHideCommand {
@@ -12,5 +12,9 @@ pub struct InterfaceHideCommand {
 impl Routable for InterfaceHideCommand {
     fn route(self) -> Route {
         Route::Client(ClientCommand::InterfaceHide(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::Anywhere
     }
 }

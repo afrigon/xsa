@@ -441,6 +441,10 @@ impl CommandExecutor for App {
         self.exit_requested = true;
     }
 
+    fn is_in_game(&self) -> bool {
+        self.is_game_active()
+    }
+
     fn completion_values(&self, kind: CompletionKind) -> Vec<CompletionCandidate> {
         match kind {
             CompletionKind::Body => self

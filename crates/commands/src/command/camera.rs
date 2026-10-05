@@ -14,7 +14,7 @@ pub use target::CameraTargetCommand;
 
 use usage::Args;
 
-use super::{Routable, Route};
+use super::{Availability, Routable, Route};
 
 #[derive(Args)]
 pub struct CameraCommand {
@@ -25,5 +25,9 @@ pub struct CameraCommand {
 impl Routable for CameraCommand {
     fn route(self) -> Route {
         self.action.route()
+    }
+
+    fn availability(&self) -> Availability {
+        self.action.availability()
     }
 }

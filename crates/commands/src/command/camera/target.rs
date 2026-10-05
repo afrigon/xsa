@@ -1,6 +1,6 @@
 use usage::Args;
 
-use crate::command::{ClientCommand, Routable, Route};
+use crate::command::{Availability, ClientCommand, Routable, Route};
 use xsa_core::simulation::BodyCategory;
 
 use crate::completion::{complete_body_category, complete_target};
@@ -29,5 +29,9 @@ pub struct CameraTargetCommand {
 impl Routable for CameraTargetCommand {
     fn route(self) -> Route {
         Route::Client(ClientCommand::CameraTarget(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::InGame
     }
 }

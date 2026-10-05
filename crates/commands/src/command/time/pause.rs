@@ -4,7 +4,7 @@ use xsa_proto::session::SessionState;
 use xsa_units::TimeRate;
 
 use super::TimeCommand;
-use crate::command::{Routable, Route, ServerCommand};
+use crate::command::{Availability, Routable, Route, ServerCommand};
 use crate::router::Output;
 
 #[derive(Args)]
@@ -13,6 +13,10 @@ pub struct TimePauseCommand {}
 impl Routable for TimePauseCommand {
     fn route(self) -> Route {
         Route::Server(Box::new(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::InGame
     }
 }
 

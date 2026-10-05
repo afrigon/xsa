@@ -1,3 +1,4 @@
+mod availability;
 #[cfg(feature = "client")]
 mod camera;
 #[cfg(feature = "client")]
@@ -14,6 +15,7 @@ mod time;
 #[cfg(feature = "client")]
 mod ui;
 
+pub use availability::Availability;
 #[cfg(feature = "client")]
 pub use camera::{
     CameraAction, CameraCommand, CameraLookAtCommand, CameraMode, CameraModeCommand, CameraSnapCommand,
@@ -71,6 +73,19 @@ impl Routable for Command {
             #[cfg(feature = "client")]
             Command::Ui(command) => command.route(),
             Command::Exit(command) => command.route(),
+        }
+    }
+
+    fn availability(&self) -> Availability {
+        match self {
+            Command::Time(command) => command.availability(),
+            #[cfg(feature = "client")]
+            Command::Camera(command) => command.availability(),
+            #[cfg(feature = "client")]
+            Command::Config(command) => command.availability(),
+            #[cfg(feature = "client")]
+            Command::Ui(command) => command.availability(),
+            Command::Exit(command) => command.availability(),
         }
     }
 }

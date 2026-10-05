@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use usage::Args;
 
-use crate::command::{ClientCommand, Routable, Route};
+use crate::command::{Availability, ClientCommand, Routable, Route};
 use crate::value::{Duration, Region};
 
 #[derive(Args)]
@@ -24,5 +24,9 @@ pub struct CameraSnapCommand {
 impl Routable for CameraSnapCommand {
     fn route(self) -> Route {
         Route::Client(ClientCommand::CameraSnap(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::Anywhere
     }
 }

@@ -1,7 +1,7 @@
 use usage::Args;
 
 use super::ViewControllerId;
-use crate::command::{ClientCommand, Routable, Route};
+use crate::command::{Availability, ClientCommand, Routable, Route};
 
 #[derive(Args)]
 pub struct InterfaceSetCommand {
@@ -12,5 +12,9 @@ pub struct InterfaceSetCommand {
 impl Routable for InterfaceSetCommand {
     fn route(self) -> Route {
         Route::Client(ClientCommand::InterfaceSet(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::Anywhere
     }
 }

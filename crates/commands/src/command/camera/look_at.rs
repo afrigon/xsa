@@ -1,6 +1,6 @@
 use usage::Args;
 
-use crate::command::{ClientCommand, Routable, Route};
+use crate::command::{Availability, ClientCommand, Routable, Route};
 use crate::completion::complete_target;
 use crate::value::Target;
 
@@ -13,5 +13,9 @@ pub struct CameraLookAtCommand {
 impl Routable for CameraLookAtCommand {
     fn route(self) -> Route {
         Route::Client(ClientCommand::CameraLookAt(self))
+    }
+
+    fn availability(&self) -> Availability {
+        Availability::InGame
     }
 }
