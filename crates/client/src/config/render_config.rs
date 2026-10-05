@@ -1,4 +1,4 @@
-use super::{BloomConfig, ExposureConfig, TaaConfig};
+use super::{AntialiasingConfig, BloomConfig, ExposureConfig};
 use crate::renderer::Tonemapper;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -7,5 +7,5 @@ pub struct RenderConfig {
     pub stars: bool,
     pub bloom: BloomConfig,
     pub exposure: ExposureConfig,
-    pub taa: TaaConfig,
+    pub antialiasing: AntialiasingConfig,
 }

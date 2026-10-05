@@ -37,7 +37,7 @@ use winit::window::Window;
 use xui::DrawList;
 
 use crate::camera::Camera;
-use crate::config::{Config, DebugConfig, RenderConfig};
+use crate::config::{AntialiasingKind, Config, DebugConfig, RenderConfig};
 use crate::vulkan::{Buffer, Image, MemoryLocation, SAMPLED_LAYOUT, Swapchain};
 use auto_exposure::HISTOGRAM_BINS;
 use command_recorder::CommandRecorder;
@@ -237,7 +237,7 @@ impl Renderer {
             return Ok(());
         };
 
-        if !self.render.taa.enabled {
+        if self.render.antialiasing.kind != Some(AntialiasingKind::Taa) {
             self.temporal.reset();
         }
 
@@ -371,7 +371,7 @@ impl Renderer {
         let unjittered_view_projection = clip_from_view * camera.view_rotation();
         self.temporal
             .begin_frame(unjittered_view_projection, self.exposure.exposure());
-        let jitter = if self.render.taa.enabled {
+        let jitter = if self.render.antialiasing.kind == Some(AntialiasingKind::Taa) {
             self.temporal.jitter(extent)
         } else {
             Vec2::ZERO
@@ -426,7 +426,7 @@ impl Renderer {
     }
 
     fn scene_color_texture(&self) -> u32 {
-        if self.render.taa.enabled {
+        if self.render.antialiasing.kind == Some(AntialiasingKind::Taa) {
             self.history_textures[self.temporal.current()]
         } else {
             self.targets.hdr_texture

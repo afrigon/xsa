@@ -1,4 +1,6 @@
 mod adaptation_document;
+mod antialiasing_document;
+mod antialiasing_kind_choice;
 mod bind_document;
 mod bloom_document;
 mod config_choice;
@@ -13,9 +15,9 @@ mod key_chord_name;
 mod render_document;
 mod shader_choice;
 mod shading_model_choice;
-mod taa_document;
 mod tonemapper_choice;
 
+pub use antialiasing_document::AntialiasingDocument;
 pub use bloom_document::BloomDocument;
 pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;
@@ -23,7 +25,6 @@ pub use config_value_kind::ConfigValueKind;
 pub use debug_document::DebugDocument;
 pub use exposure_document::ExposureDocument;
 pub use render_document::RenderDocument;
-pub use taa_document::TaaDocument;
 
 use adaptation_document::AdaptationDocument;
 use bind_document::BindDocument;

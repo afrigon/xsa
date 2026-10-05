@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use winit::keyboard::KeyCode;
 
 use super::{
-    AdaptationConfig, BindAction, BindConfig, BloomConfig, Config, DebugConfig, ExposureConfig, ExposureMode, KeyChord,
-    RenderConfig, TaaConfig,
+    AdaptationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, DebugConfig,
+    ExposureConfig, ExposureMode, KeyChord, RenderConfig,
 };
 use crate::renderer::{ShadingModel, Tonemapper};
 
@@ -70,7 +70,9 @@ impl Default for Config {
                         light_to_dark_half_life_seconds: LIGHT_TO_DARK_HALF_LIFE_SECONDS,
                     },
                 },
-                taa: TaaConfig { enabled: true },
+                antialiasing: AntialiasingConfig {
+                    kind: Some(AntialiasingKind::Taa),
+                },
             },
             bind: BindConfig {
                 keys: DefaultBind::keys(),

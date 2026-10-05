@@ -1,5 +1,6 @@
 use ash::vk;
 
+use crate::config::AntialiasingKind;
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
@@ -84,7 +85,7 @@ impl TaaPass {
 
 impl RenderPass for TaaPass {
     fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
-        if !frame.render.taa.enabled {
+        if frame.render.antialiasing.kind != Some(AntialiasingKind::Taa) {
             return Ok(());
         }
 
