@@ -363,6 +363,45 @@ impl<'a> CommandRecorder<'a> {
         });
     }
 
+    pub fn history_start(&self, image: vk::Image) {
+        self.transition(&ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::UNDEFINED,
+            new_layout: vk::ImageLayout::GENERAL,
+            source_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER | vk::PipelineStageFlags2::COMPUTE_SHADER,
+            source_access: vk::AccessFlags2::NONE,
+            destination_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            destination_access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+        });
+    }
+
+    pub fn history_previous_to_compute(&self, image: vk::Image) {
+        self.transition(&ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::GENERAL,
+            new_layout: vk::ImageLayout::GENERAL,
+            source_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            source_access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+            destination_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            destination_access: vk::AccessFlags2::SHADER_SAMPLED_READ,
+        });
+    }
+
+    pub fn history_to_readers(&self, image: vk::Image) {
+        self.transition(&ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::COLOR,
+            old_layout: vk::ImageLayout::GENERAL,
+            new_layout: vk::ImageLayout::GENERAL,
+            source_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            source_access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+            destination_stage: vk::PipelineStageFlags2::FRAGMENT_SHADER | vk::PipelineStageFlags2::COMPUTE_SHADER,
+            destination_access: vk::AccessFlags2::SHADER_SAMPLED_READ,
+        });
+    }
+
     pub fn cleared_to_compute(&self, buffer: &Buffer) {
         self.buffer_dependency(&BufferDependency {
             buffer: buffer.handle(),

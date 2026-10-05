@@ -12,6 +12,7 @@ const TONEMAP_SHADER_PATH: &str = "tonemap";
 const HISTOGRAM_SHADER_PATH: &str = "histogram";
 const BLOOM_DOWNSAMPLE_SHADER_PATH: &str = "bloom-downsample";
 const BLOOM_UPSAMPLE_SHADER_PATH: &str = "bloom-upsample";
+const TAA_SHADER_PATH: &str = "taa";
 
 pub struct ShaderBinaries {
     pub shaders: Vec<Vec<u8>>,
@@ -19,6 +20,7 @@ pub struct ShaderBinaries {
     pub histogram: Vec<u8>,
     pub bloom_downsample: Vec<u8>,
     pub bloom_upsample: Vec<u8>,
+    pub taa: Vec<u8>,
 }
 
 impl ShaderBinaries {
@@ -44,6 +46,7 @@ impl ShaderBinaries {
             histogram: read(HISTOGRAM_SHADER_PATH)?,
             bloom_downsample: read(BLOOM_DOWNSAMPLE_SHADER_PATH)?,
             bloom_upsample: read(BLOOM_UPSAMPLE_SHADER_PATH)?,
+            taa: read(TAA_SHADER_PATH)?,
         })
     }
 }

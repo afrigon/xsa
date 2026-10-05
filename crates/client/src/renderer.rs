@@ -47,7 +47,7 @@ use frame_context::FrameContext;
 use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData};
 use material::MaterialData;
-use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TonemapPass, UserInterfacePass};
+use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TaaPass, TonemapPass, UserInterfacePass};
 use render_pass::RenderPass;
 use render_targets::RenderTargets;
 use temporal_history::TemporalHistory;
@@ -75,6 +75,7 @@ pub struct Renderer {
     material_data: Vec<MaterialData>,
     object_capacity: usize,
     bloom_texture: u32,
+    history_textures: Vec<u32>,
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
     passes: Vec<Box<dyn RenderPass>>,
@@ -105,8 +106,11 @@ impl Renderer {
         let targets = RenderTargets::new(&mut gpu, swapchain.extent())?;
         let bloom = BloomPass::new(&mut gpu, shaders, swapchain.extent())?;
         let bloom_texture = bloom.texture();
+        let taa = TaaPass::new(&mut gpu, shaders, swapchain.extent())?;
+        let history_textures = taa.textures();
         let passes: Vec<Box<dyn RenderPass>> = vec![
             Box::new(ForwardPass::new(&mut gpu, shaders)?),
+            Box::new(taa),
             Box::new(HistogramPass::new(&gpu, shaders)?),
             Box::new(bloom),
             Box::new(TonemapPass::new(&gpu, shaders, swapchain.format())?),
@@ -128,6 +132,7 @@ impl Renderer {
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             bloom_texture,
+            history_textures,
             cube_maps: Vec::new(),
             textures: Vec::new(),
             passes,
@@ -226,6 +231,10 @@ impl Renderer {
         let Some(image_index) = self.acquire_image()? else {
             return Ok(());
         };
+
+        if !self.render.taa.enabled {
+            self.temporal.reset();
+        }
 
         self.update_exposure()?;
         self.write_frame_data(camera)?;
@@ -354,8 +363,15 @@ impl Renderer {
     fn write_frame_data(&mut self, camera: &Camera) -> anyhow::Result<()> {
         let extent = self.swapchain.extent();
         let clip_from_view = camera.clip_from_view();
-        let view_projection = clip_from_view * camera.view_rotation();
-        self.temporal.begin_frame(view_projection, self.exposure.exposure());
+        let unjittered_view_projection = clip_from_view * camera.view_rotation();
+        self.temporal
+            .begin_frame(unjittered_view_projection, self.exposure.exposure());
+        let jitter = if self.render.taa.enabled {
+            self.temporal.jitter(extent)
+        } else {
+            Vec2::ZERO
+        };
+        let view_projection = Mat4::from_translation(jitter.extend(0.0)) * unjittered_view_projection;
         let frame_data = FrameData {
             view_projection,
             world_from_clip: view_projection.inverse(),
@@ -363,7 +379,7 @@ impl Renderer {
             sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
             sun_intensity: self.scene.sun_intensity.extend(0.0),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
-            jitter: Vec2::ZERO,
+            jitter,
             exposure: self.exposure.exposure(),
             scene_color_texture: self.scene_color_texture(),
             tonemapper: self.render.tonemapper.shader_id(),
@@ -405,7 +421,11 @@ impl Renderer {
     }
 
     fn scene_color_texture(&self) -> u32 {
-        self.targets.hdr_texture
+        if self.render.taa.enabled {
+            self.history_textures[self.temporal.current()]
+        } else {
+            self.targets.hdr_texture
+        }
     }
 
     fn cull_objects(&mut self, camera: &Camera) {
