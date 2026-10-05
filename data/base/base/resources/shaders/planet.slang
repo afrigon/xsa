@@ -106,7 +106,7 @@ float3 textbookAlbedo(MaterialData material, SurfaceCoordinates coordinates, flo
 }
 
 [shader("fragment")]
-float4 fragmentMain(VertexOutput input) : SV_Target
+SurfaceOutput fragmentMain(VertexOutput input)
 {
     MaterialData material = currentMaterial();
     float3 modelNormal = normalize(input.modelNormal);
@@ -148,5 +148,5 @@ float4 fragmentMain(VertexOutput input) : SV_Target
         luminance += sampleSurface(material.emissiveTexture, coordinates).rgb * material.luminance;
     }
     float3 color = luminance * constants.frame.exposure;
-    return float4(color, 1.0);
+    return surfaceOutput(float4(color, 1.0), input);
 }

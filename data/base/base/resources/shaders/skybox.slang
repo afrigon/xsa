@@ -23,12 +23,18 @@ SkyOutput vertexMain(uint vertexIndex : SV_VertexID)
 }
 
 [shader("fragment")]
-float4 fragmentMain(SkyOutput input) : SV_Target
+SurfaceOutput fragmentMain(SkyOutput input)
 {
     float4 world = mul(constants.frame.worldFromClip, float4(input.clip, 1.0, 1.0));
     float3 direction = normalize(world.xyz / world.w);
+    // The sky is infinitely far away, so only the camera's rotation moves it.
+    float4 currentClip = float4(input.clip - constants.frame.jitter, 0.0, 1.0);
+    float4 previousClip = mul(constants.frame.previousViewProjection, float4(direction, 0.0));
     MaterialData material = currentMaterial();
     float3 cubeDirection = mul(material.transform, float4(direction, 0.0)).xyz;
     float3 sky = cubeTextures[material.texture].Sample(linearSampler, cubeDirection).rgb;
-    return float4(sky * material.luminance * constants.frame.exposure, 1.0);
+    SurfaceOutput output;
+    output.color = float4(sky * material.luminance * constants.frame.exposure, 1.0);
+    output.motion = motionVector(currentClip, previousClip);
+    return output;
 }

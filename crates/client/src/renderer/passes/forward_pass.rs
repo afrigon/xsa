@@ -120,7 +120,7 @@ impl ForwardPass {
         ];
         let mesh_description = GraphicsPipelineDescription {
             spirv,
-            color_formats: &[RenderTargets::HDR_FORMAT],
+            color_formats: &[RenderTargets::HDR_FORMAT, RenderTargets::MOTION_FORMAT],
             depth_format: Some(RenderTargets::DEPTH_FORMAT),
             depth_compare_op: vk::CompareOp::GREATER,
             depth_write: true,
@@ -152,14 +152,21 @@ impl RenderPass for ForwardPass {
         let targets = frame.targets;
         let recorder = &frame.recorder;
         recorder.sampled_to_color_attachment(targets.hdr.handle());
+        recorder.sampled_to_color_attachment(targets.motion.handle());
         recorder.to_depth_attachment(targets.depth.handle());
-        recorder.begin_rendering(&[targets.hdr.view()], Some(targets.depth.view()), targets.extent);
+        recorder.begin_rendering(
+            &[targets.hdr.view(), targets.motion.view()],
+            Some(targets.depth.view()),
+            targets.extent,
+        );
 
         self.record_objects(frame);
         self.record_skybox(frame);
 
         recorder.end_rendering();
         recorder.color_attachment_to_sampled(targets.hdr.handle());
+        recorder.color_attachment_to_sampled(targets.motion.handle());
+        recorder.depth_attachment_to_sampled(targets.depth.handle());
 
         Ok(())
     }

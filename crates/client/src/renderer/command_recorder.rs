@@ -65,7 +65,7 @@ impl<'a> CommandRecorder<'a> {
                 .image_view(view)
                 .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .store_op(vk::AttachmentStoreOp::STORE)
                 .clear_value(vk::ClearValue {
                     depth_stencil: vk::ClearDepthStencilValue {
                         depth: REVERSE_Z_FAR_DEPTH,
@@ -232,11 +232,24 @@ impl<'a> CommandRecorder<'a> {
             aspect: vk::ImageAspectFlags::DEPTH,
             old_layout: vk::ImageLayout::UNDEFINED,
             new_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            source_stage: DEPTH_TESTS,
+            source_stage: DEPTH_TESTS | vk::PipelineStageFlags2::COMPUTE_SHADER,
             source_access: vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
             destination_stage: DEPTH_TESTS,
             destination_access: vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
                 | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        });
+    }
+
+    pub fn depth_attachment_to_sampled(&self, image: vk::Image) {
+        self.transition(&ImageTransition {
+            image,
+            aspect: vk::ImageAspectFlags::DEPTH,
+            old_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            source_stage: DEPTH_TESTS,
+            source_access: vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            destination_stage: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            destination_access: vk::AccessFlags2::SHADER_SAMPLED_READ,
         });
     }
 

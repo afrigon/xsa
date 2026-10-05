@@ -89,7 +89,7 @@ impl RenderPass for BloomPass {
         for level in 0..BLOOM_LEVELS as usize {
             let first = level == 0;
             let step = BloomStep {
-                source_texture: if first { frame.targets.hdr_texture } else { self.texture },
+                source_texture: if first { frame.scene_color_texture } else { self.texture },
                 source_level: if first { 0 } else { level as u32 - 1 },
                 target_level: level,
                 karis_average: first,

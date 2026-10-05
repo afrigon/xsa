@@ -14,6 +14,7 @@ mod render_pass;
 mod render_targets;
 mod scene;
 mod shader_binaries;
+mod temporal_history;
 mod texture;
 mod tonemapper;
 
@@ -49,6 +50,7 @@ use material::MaterialData;
 use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TonemapPass, UserInterfacePass};
 use render_pass::RenderPass;
 use render_targets::RenderTargets;
+use temporal_history::TemporalHistory;
 use texture::DdsImage;
 
 const FRAMES_IN_FLIGHT: usize = 2;
@@ -77,6 +79,7 @@ pub struct Renderer {
     textures: Vec<Image>,
     passes: Vec<Box<dyn RenderPass>>,
     targets: RenderTargets,
+    temporal: TemporalHistory,
     frames: Vec<Frame>,
     frame_index: usize,
     swapchain: Swapchain,
@@ -129,6 +132,7 @@ impl Renderer {
             textures: Vec::new(),
             passes,
             targets,
+            temporal: TemporalHistory::default(),
             frames,
             frame_index: 0,
             swapchain,
@@ -352,32 +356,37 @@ impl Renderer {
         let aspect_ratio = extent.width as f32 / extent.height as f32;
         let clip_from_view = camera.clip_from_view(aspect_ratio);
         let view_projection = clip_from_view * camera.view_rotation();
+        self.temporal.begin_frame(view_projection, self.exposure.exposure());
         let frame_data = FrameData {
             view_projection,
             world_from_clip: view_projection.inverse(),
+            previous_view_projection: self.temporal.previous_view_projection(),
             sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
             sun_intensity: self.scene.sun_intensity.extend(0.0),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
+            jitter: Vec2::ZERO,
             exposure: self.exposure.exposure(),
-            hdr_texture: self.targets.hdr_texture,
+            scene_color_texture: self.scene_color_texture(),
             tonemapper: self.render.tonemapper.shader_id(),
             starlight_illuminance: STARLIGHT_ILLUMINANCE,
             bloom_texture: self.bloom_texture,
             bloom_strength: self.render.bloom.effective_strength(),
             shading_model: self.debug.shading_model.shader_id(),
-            padding: [0; 3],
+            padding: [0; 1],
         };
 
         self.object_data.clear();
 
         for object in self.scene.objects() {
             let camera_relative = object.position - camera.position;
+            let world_from_model = Mat4::from_scale_rotation_translation(
+                Vec3::splat(object.scale as f32),
+                object.orientation.as_quat(),
+                camera_relative.as_vec3(),
+            );
             self.object_data.push(ObjectData {
-                world_from_model: Mat4::from_scale_rotation_translation(
-                    Vec3::splat(object.scale as f32),
-                    object.orientation.as_quat(),
-                    camera_relative.as_vec3(),
-                ),
+                world_from_model,
+                previous_clip_from_model: self.temporal.record_object(world_from_model),
             });
         }
 
@@ -394,6 +403,10 @@ impl Renderer {
         frame.objects.write(&self.object_data)?;
 
         frame.materials.write(&self.material_data)
+    }
+
+    fn scene_color_texture(&self) -> u32 {
+        self.targets.hdr_texture
     }
 
     fn cull_objects(&mut self, camera: &Camera) {
@@ -424,6 +437,8 @@ impl Renderer {
             frame,
             frame_slot: self.frame_index,
             targets: &self.targets,
+            temporal: &self.temporal,
+            scene_color_texture: self.scene_color_texture(),
             render: &self.render,
             debug: &self.debug,
             scene: &self.scene,
@@ -523,6 +538,7 @@ impl Renderer {
         unsafe { old_swapchain.destroy(&self.gpu.device) };
 
         self.targets.recreate(&mut self.gpu, self.swapchain.extent())?;
+        self.temporal.reset();
 
         for pass in &mut self.passes {
             pass.resize(&mut self.gpu, &self.targets)?;

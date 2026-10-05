@@ -7,6 +7,7 @@ use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
 use super::gpu_data::PushConstants;
 use super::render_targets::RenderTargets;
+use super::temporal_history::TemporalHistory;
 use super::{ObjectHandle, Scene};
 use crate::config::{DebugConfig, RenderConfig};
 use crate::vulkan::{Buffer, GraphicsPipeline};
@@ -16,6 +17,8 @@ pub(super) struct FrameContext<'a> {
     pub frame: &'a Frame,
     pub frame_slot: usize,
     pub targets: &'a RenderTargets,
+    pub temporal: &'a TemporalHistory,
+    pub scene_color_texture: u32,
     pub render: &'a RenderConfig,
     pub debug: &'a DebugConfig,
     pub scene: &'a Scene,
