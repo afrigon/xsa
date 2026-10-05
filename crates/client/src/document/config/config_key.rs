@@ -1,5 +1,6 @@
 use super::{
     AdaptationDocument, BindDocument, BloomDocument, ConfigValueKind, DebugDocument, ExposureDocument, RenderDocument,
+    TaaDocument,
 };
 
 #[derive(Clone, Copy)]
@@ -20,6 +21,7 @@ impl ConfigKey {
         ExposureDocument::COMPENSATION,
         AdaptationDocument::DARK_TO_LIGHT,
         AdaptationDocument::LIGHT_TO_DARK,
+        TaaDocument::ENABLED,
         DebugDocument::SHADER,
         DebugDocument::SHADING,
         DebugDocument::WIREFRAME,

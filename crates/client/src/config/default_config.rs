@@ -4,7 +4,7 @@ use winit::keyboard::KeyCode;
 
 use super::{
     AdaptationConfig, BindAction, BindConfig, BloomConfig, Config, DebugConfig, ExposureConfig, ExposureMode, KeyChord,
-    RenderConfig,
+    RenderConfig, TaaConfig,
 };
 use crate::renderer::{ShadingModel, Tonemapper};
 
@@ -70,6 +70,7 @@ impl Default for Config {
                         light_to_dark_half_life_seconds: LIGHT_TO_DARK_HALF_LIFE_SECONDS,
                     },
                 },
+                taa: TaaConfig { enabled: true },
             },
             bind: BindConfig {
                 keys: DefaultBind::keys(),
