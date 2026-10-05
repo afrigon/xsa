@@ -1,0 +1,11 @@
+# Slang shaders are formatted as C#, the language clang-format knows that shares Slang's bracketed attributes.
+Language: CSharp
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortBlocksOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+BinPackArguments: false
