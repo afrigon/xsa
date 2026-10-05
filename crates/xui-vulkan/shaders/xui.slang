@@ -1,14 +1,12 @@
 // Must match PrimitiveInstance in src/primitive_instance.rs; std430 rounds the stride up to 64 bytes.
-struct PrimitiveInstance
-{
+struct PrimitiveInstance {
     float4 bounds;
     float4 atlasRegion;
     float4 color;
     uint kind;
 };
 
-struct PushConstants
-{
+struct PushConstants {
     float2 viewportSize;
     float2 atlasSize;
 };
@@ -25,8 +23,7 @@ StructuredBuffer<PrimitiveInstance> instances;
 [[vk::push_constant]]
 ConstantBuffer<PushConstants> pushConstants;
 
-struct VertexOutput
-{
+struct VertexOutput {
     float4 position : SV_Position;
     float2 atlasCoordinate;
     float4 color;
@@ -34,12 +31,15 @@ struct VertexOutput
 };
 
 [shader("vertex")]
-VertexOutput vertexMain(uint vertexIndex : SV_VertexID, uint instanceIndex : SV_InstanceID)
-{
+VertexOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_InstanceID) {
     // Two triangles: corners 0 1 2 and 2 1 3 of the unit square.
     static const float2 corners[6] = {
-        float2(0.0, 0.0), float2(1.0, 0.0), float2(0.0, 1.0),
-        float2(0.0, 1.0), float2(1.0, 0.0), float2(1.0, 1.0),
+        float2(0.0, 0.0),
+        float2(1.0, 0.0),
+        float2(0.0, 1.0),
+        float2(0.0, 1.0),
+        float2(1.0, 0.0),
+        float2(1.0, 1.0),
     };
     float2 corner = corners[vertexIndex];
     PrimitiveInstance instance = instances[instanceIndex];
@@ -54,8 +54,7 @@ VertexOutput vertexMain(uint vertexIndex : SV_VertexID, uint instanceIndex : SV_
 }
 
 [shader("fragment")]
-float4 fragmentMain(VertexOutput input) : SV_Target
-{
+float4 fragmentMain(VertexOutput input) : SV_Target {
     float coverage = input.kind == primitiveGlyph ? atlas.Sample(input.atlasCoordinate).r : 1.0;
     float alpha = input.color.a * coverage;
     return float4(input.color.rgb * alpha, alpha);

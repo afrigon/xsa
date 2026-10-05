@@ -8,8 +8,7 @@ Texture2D textures[];
 [format("r11f_g11f_b10f")]
 RWTexture2D<float4> storageImages[];
 
-struct BloomConstants
-{
+struct BloomConstants {
     uint sourceTexture;
     uint sourceLevel;
     uint targetImage;
@@ -19,7 +18,6 @@ struct BloomConstants
 [[vk::push_constant]]
 ConstantBuffer<BloomConstants> constants;
 
-float3 sampleSource(float2 uv)
-{
+float3 sampleSource(float2 uv) {
     return textures[constants.sourceTexture].SampleLevel(clampingSampler, uv, float(constants.sourceLevel)).rgb;
 }

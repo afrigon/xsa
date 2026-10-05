@@ -1,13 +1,11 @@
 __exported import common.frame;
 
-struct ObjectData
-{
+struct ObjectData {
     float4x4 worldFromModel;
     float4x4 previousClipFromModel;
 };
 
-struct HapkeData
-{
+struct HapkeData {
     uint scatterTexture;
     uint surgeTexture;
     float porosity;
@@ -18,8 +16,7 @@ struct HapkeData
     uint padding;
 };
 
-struct MaterialData
-{
+struct MaterialData {
     float4 color;
     float4x4 transform;
     uint texture;
@@ -29,11 +26,10 @@ struct MaterialData
     HapkeData hapke;
 };
 
-struct PushConstants
-{
-    FrameData* frame;
-    ObjectData* objects;
-    MaterialData* materials;
+struct PushConstants {
+    FrameData *frame;
+    ObjectData *objects;
+    MaterialData *materials;
     uint objectIndex;
     uint materialIndex;
 };
@@ -44,14 +40,12 @@ ConstantBuffer<PushConstants> constants;
 static const float pi = 3.14159265358979;
 static const float uvPerNdc = 0.5;
 
-struct VertexInput
-{
+struct VertexInput {
     float3 position;
     float3 normal;
 };
 
-struct VertexOutput
-{
+struct VertexOutput {
     float4 position : SV_Position;
     float3 worldPosition;
     float3 normal;
@@ -60,46 +54,39 @@ struct VertexOutput
     float4 previousClip;
 };
 
-struct SurfaceOutput
-{
+struct SurfaceOutput {
     float4 color : SV_Target0;
     float2 motion : SV_Target1;
 };
 
 // The jitter shifts every clip-space position by the same fraction of the viewport.
-float4 unjittered(float4 clip)
-{
+float4 unjittered(float4 clip) {
     return float4(clip.xy - constants.frame.jitter * clip.w, clip.zw);
 }
 
 // How far the surface moved across the screen since the previous frame, in texture coordinates.
-float2 motionVector(float4 currentClip, float4 previousClip)
-{
+float2 motionVector(float4 currentClip, float4 previousClip) {
     float2 current = currentClip.xy / currentClip.w;
     float2 previous = previousClip.xy / previousClip.w;
     return (current - previous) * uvPerNdc;
 }
 
-SurfaceOutput surfaceOutput(float4 color, VertexOutput input)
-{
+SurfaceOutput surfaceOutput(float4 color, VertexOutput input) {
     SurfaceOutput output;
     output.color = color;
     output.motion = motionVector(input.currentClip, input.previousClip);
     return output;
 }
 
-ObjectData currentObject()
-{
+ObjectData currentObject() {
     return constants.objects[constants.objectIndex];
 }
 
-MaterialData currentMaterial()
-{
+MaterialData currentMaterial() {
     return constants.materials[constants.materialIndex];
 }
 
-VertexOutput transformVertex(VertexInput input)
-{
+VertexOutput transformVertex(VertexInput input) {
     ObjectData object = currentObject();
     float4 world = mul(object.worldFromModel, float4(input.position, 1.0));
     VertexOutput output;
@@ -112,27 +99,23 @@ VertexOutput transformVertex(VertexInput input)
     return output;
 }
 
-float sunCosine(float3 worldPosition, float3 normal)
-{
+float sunCosine(float3 worldPosition, float3 normal) {
     float3 toSun = normalize(constants.frame.sunPosition.xyz - worldPosition);
     return max(dot(normal, toSun), 0.0);
 }
 
 // Lux per color channel: the star's luminous intensity falls off with the square of the distance.
-float3 sunIlluminance(float3 worldPosition)
-{
+float3 sunIlluminance(float3 worldPosition) {
     float3 toSun = constants.frame.sunPosition.xyz - worldPosition;
     return constants.frame.sunIntensity.rgb / dot(toSun, toSun);
 }
 
 // cd/m² reflected from the faint starlight arriving from every direction.
-float3 starlightLuminance(float3 albedo)
-{
+float3 starlightLuminance(float3 albedo) {
     return albedo / pi * constants.frame.starlightIlluminance;
 }
 
 // cd/m² reflected by a Lambertian surface of the given albedo, including starlight.
-float3 lambertLuminance(float3 albedo, float3 illuminance, float cosine)
-{
+float3 lambertLuminance(float3 albedo, float3 illuminance, float cosine) {
     return albedo / pi * illuminance * cosine + starlightLuminance(albedo);
 }

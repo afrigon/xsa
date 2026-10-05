@@ -1,4 +1,5 @@
 [tools]
+"conda:clang-format" = "latest"
 "github:shader-slang/slang" = "latest"
 rust = "latest"
 xh = "latest"
@@ -24,15 +25,36 @@ depends = ["shaders"]
 run = "cargo test --workspace"
 
 [tasks.fmt]
-description = "Format the Rust sources"
-run = "cargo fmt --all"
+description = "Format the Rust sources and the Slang shaders"
+run = [
+    "cargo fmt --all",
+    """
+#!/usr/bin/env bash
+set -euo pipefail
+# clang-format picks the C# language from the assumed name, which it only reads for standard input.
+find data/base/base/resources/shaders crates/xui-vulkan/shaders -name '*.slang' | while read -r source; do
+    clang-format --assume-filename="$source.cs" < "$source" > "$source.formatted"
+    mv "$source.formatted" "$source"
+done
+""",
+]
 
 [tasks.lint]
-description = "Lint every crate with clippy, with the client and server-only, treating warnings as errors"
+description = "Lint every crate with clippy, with the client and server-only, treating warnings as errors, and check the shaders are formatted"
 depends = ["shaders"]
 run = [
     "cargo clippy --workspace --all-targets -- -D warnings",
     "cargo clippy -p xsa --all-targets --no-default-features --features server --target-dir {{vars.server_target_directory}} -- -D warnings",
+    """
+#!/usr/bin/env bash
+set -euo pipefail
+find data/base/base/resources/shaders crates/xui-vulkan/shaders -name '*.slang' | while read -r source; do
+    if ! clang-format --assume-filename="$source.cs" --dry-run --Werror < "$source" 2> /dev/null; then
+        echo "$source is not formatted, run mise run fmt" >&2
+        exit 1
+    fi
+done
+""",
 ]
 
 [tasks.shaders]

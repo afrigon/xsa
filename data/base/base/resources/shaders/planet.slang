@@ -14,26 +14,22 @@ static const uint shadingHapkeSol = 0;
 static const uint shadingHapkeTextbook = 1;
 
 [shader("vertex")]
-VertexOutput vertexMain(VertexInput input)
-{
+VertexOutput vertexMain(VertexInput input) {
     return transformVertex(input);
 }
 
-struct SurfaceCoordinates
-{
+struct SurfaceCoordinates {
     float2 uv;
     float2 uvPerPixelX;
     float2 uvPerPixelY;
 };
 
-float smallerChange(float wrappedAtZero, float wrappedAtHalf)
-{
+float smallerChange(float wrappedAtZero, float wrappedAtHalf) {
     return abs(wrappedAtZero) <= abs(wrappedAtHalf) ? wrappedAtZero : wrappedAtHalf;
 }
 
 // Equirectangular maps put longitude 0 at u = 0.25 with u growing westward, and the south pole at v = 0.
-SurfaceCoordinates equirectangularCoordinates(float3 direction)
-{
+SurfaceCoordinates equirectangularCoordinates(float3 direction) {
     float longitude = atan2(direction.y, direction.x);
     float latitude = asin(clamp(direction.z, -1.0, 1.0));
     float u = 0.25 - longitude / (2.0 * pi);
@@ -49,16 +45,13 @@ SurfaceCoordinates equirectangularCoordinates(float3 direction)
     return coordinates;
 }
 
-float4 sampleSurface(uint texture, SurfaceCoordinates coordinates)
-{
+float4 sampleSurface(uint texture, SurfaceCoordinates coordinates) {
     return textures[texture].SampleGrad(
         wrappingSampler, coordinates.uv, coordinates.uvPerPixelX, coordinates.uvPerPixelY);
 }
 
-float3 surfaceNormal(MaterialData material, float3 modelNormal, SurfaceCoordinates coordinates)
-{
-    if (material.normalTexture == noTexture)
-    {
+float3 surfaceNormal(MaterialData material, float3 modelNormal, SurfaceCoordinates coordinates) {
+    if (material.normalTexture == noTexture) {
         return modelNormal;
     }
     float2 tangent = sampleSurface(material.normalTexture, coordinates).rg * 2.0 - 1.0;
@@ -68,14 +61,12 @@ float3 surfaceNormal(MaterialData material, float3 modelNormal, SurfaceCoordinat
     return normalize(-east * tangent.x + north * tangent.y + modelNormal * outward);
 }
 
-float4 sampleSurfaceCoarser(uint texture, SurfaceCoordinates coordinates, float scale)
-{
+float4 sampleSurfaceCoarser(uint texture, SurfaceCoordinates coordinates, float scale) {
     return textures[texture].SampleGrad(
         wrappingSampler, coordinates.uv, coordinates.uvPerPixelX * scale, coordinates.uvPerPixelY * scale);
 }
 
-HapkeSurface hapkeSurface(MaterialData material, SurfaceCoordinates coordinates, float3 albedo)
-{
+HapkeSurface hapkeSurface(MaterialData material, SurfaceCoordinates coordinates, float3 albedo) {
     float4 scatter = sampleSurface(material.hapke.scatterTexture, coordinates);
     float4 surge = sampleSurface(material.hapke.surgeTexture, coordinates);
     HapkeSurface surface;
@@ -94,8 +85,8 @@ HapkeSurface hapkeSurface(MaterialData material, SurfaceCoordinates coordinates,
 
 // The scatter map gives the regional single-scattering albedo at a fraction of the colour map's resolution; the
 // colour map adds colour and fine detail as its ratio to its own average at the scatter map's resolution.
-float3 textbookAlbedo(MaterialData material, SurfaceCoordinates coordinates, float3 color, float singleScatteringAlbedo)
-{
+float3 textbookAlbedo(MaterialData material, SurfaceCoordinates coordinates, float3 color,
+                      float singleScatteringAlbedo) {
     uint colorWidth, colorHeight, scatterWidth, scatterHeight;
     textures[material.texture].GetDimensions(colorWidth, colorHeight);
     textures[material.hapke.scatterTexture].GetDimensions(scatterWidth, scatterHeight);
@@ -106,8 +97,7 @@ float3 textbookAlbedo(MaterialData material, SurfaceCoordinates coordinates, flo
 }
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(VertexOutput input)
-{
+SurfaceOutput fragmentMain(VertexOutput input) {
     MaterialData material = currentMaterial();
     float3 modelNormal = normalize(input.modelNormal);
     SurfaceCoordinates coordinates = equirectangularCoordinates(modelNormal);
@@ -121,9 +111,8 @@ SurfaceOutput fragmentMain(VertexOutput input)
     float3 illuminance = sunIlluminance(input.worldPosition);
     float3 luminance = lambertLuminance(albedo, illuminance, cosine);
     uint shading = constants.frame.shadingModel;
-    if (material.hapke.scatterTexture != noTexture && cosine > 0.0
-        && (shading == shadingHapkeSol || shading == shadingHapkeTextbook))
-    {
+    if (material.hapke.scatterTexture != noTexture && cosine > 0.0 &&
+        (shading == shadingHapkeSol || shading == shadingHapkeTextbook)) {
         float3 toCamera = normalize(-input.worldPosition);
         float3 toSun = normalize(constants.frame.sunPosition.xyz - input.worldPosition);
         HapkeGeometry geometry;
@@ -132,19 +121,16 @@ SurfaceOutput fragmentMain(VertexOutput input)
         geometry.phaseAngle = acos(clamp(dot(toSun, toCamera), -1.0, 1.0));
         HapkeSurface surface = hapkeSurface(material, coordinates, albedo);
         float3 reflectance;
-        if (shading == shadingHapkeSol)
-        {
-            reflectance = hapkeSol(surface, geometry, material.hapke.blend, material.hapke.lightBoost, material.hapke.gammaBoost);
-        }
-        else
-        {
+        if (shading == shadingHapkeSol) {
+            reflectance =
+                hapkeSol(surface, geometry, material.hapke.blend, material.hapke.lightBoost, material.hapke.gammaBoost);
+        } else {
             surface.albedo = textbookAlbedo(material, coordinates, albedo, surface.singleScatteringAlbedo);
             reflectance = hapkeTextbook(surface, geometry);
         }
         luminance = reflectance * illuminance + starlightLuminance(albedo);
     }
-    if (material.emissiveTexture != noTexture)
-    {
+    if (material.emissiveTexture != noTexture) {
         luminance += sampleSurface(material.emissiveTexture, coordinates).rgb * material.luminance;
     }
     float3 color = luminance * constants.frame.exposure;
