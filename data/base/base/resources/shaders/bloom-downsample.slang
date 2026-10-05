@@ -7,13 +7,11 @@ static const float3 luminanceWeights = float3(0.2126, 0.7152, 0.0722);
 // bright pixel cannot flicker as it moves across the 2×2 grid.
 [shader("compute")]
 [numthreads(8, 8, 1)]
-void computeMain(uint3 pixel : SV_DispatchThreadID)
-{
+void computeMain(uint3 pixel: SV_DispatchThreadID) {
     RWTexture2D<float4> target = storageImages[constants.targetImage];
     uint2 size;
     target.GetDimensions(size.x, size.y);
-    if (any(pixel.xy >= size))
-    {
+    if (any(pixel.xy >= size)) {
         return;
     }
     float2 uv = (float2(pixel.xy) + 0.5) / float2(size);
@@ -44,11 +42,9 @@ void computeMain(uint3 pixel : SV_DispatchThreadID)
 
     float3 sum = float3(0.0);
     float totalWeight = 0.0;
-    for (int group = 0; group < 5; group++)
-    {
+    for (int group = 0; group < 5; group++) {
         float weight = groupWeights[group];
-        if (constants.karisAverage != 0)
-        {
+        if (constants.karisAverage != 0) {
             weight /= 1.0 + dot(groups[group], luminanceWeights);
         }
         sum += groups[group] * weight;

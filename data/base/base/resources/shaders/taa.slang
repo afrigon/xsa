@@ -10,9 +10,8 @@ Texture2D textures[];
 [format("rgba16f")]
 RWTexture2D<float4> storageImages[];
 
-struct TaaConstants
-{
-    FrameData* frame;
+struct TaaConstants {
+    FrameData *frame;
     uint colorTexture;
     uint motionTexture;
     uint depthTexture;
@@ -34,33 +33,27 @@ static const float minimumClipExtent = 1e-5;
 static const int neighborhoodRadius = 1;
 static const float neighborhoodSize = 9.0;
 
-float3 toYCoCg(float3 rgb)
-{
-    return float3(
-        0.25 * rgb.r + 0.5 * rgb.g + 0.25 * rgb.b,
-        0.5 * rgb.r - 0.5 * rgb.b,
-        -0.25 * rgb.r + 0.5 * rgb.g - 0.25 * rgb.b);
+float3 toYCoCg(float3 rgb) {
+    return float3(0.25 * rgb.r + 0.5 * rgb.g + 0.25 * rgb.b,
+                  0.5 * rgb.r - 0.5 * rgb.b,
+                  -0.25 * rgb.r + 0.5 * rgb.g - 0.25 * rgb.b);
 }
 
-float3 fromYCoCg(float3 ycocg)
-{
+float3 fromYCoCg(float3 ycocg) {
     return float3(ycocg.x + ycocg.y - ycocg.z, ycocg.x + ycocg.z, ycocg.x - ycocg.y - ycocg.z);
 }
 
-float luminance(float3 color)
-{
+float luminance(float3 color) {
     return dot(color, luminanceWeights);
 }
 
-float3 sampleHistory(float2 uv)
-{
+float3 sampleHistory(float2 uv) {
     return textures[constants.historyTexture].SampleLevel(clampingSampler, uv, 0.0).rgb;
 }
 
 // Catmull-Rom filtering keeps the history sharp where bilinear filtering would blur it a little every frame. Its 4×4
 // taps fold into bilinear fetches; the four corner fetches carry so little weight that they are left out.
-float3 sampleHistoryCatmullRom(float2 uv, float2 size)
-{
+float3 sampleHistoryCatmullRom(float2 uv, float2 size) {
     float2 position = uv * size;
     float2 center = floor(position - 0.5) + 0.5;
     float2 f = position - center;
@@ -83,8 +76,7 @@ float3 sampleHistoryCatmullRom(float2 uv, float2 size)
 }
 
 // Moves the color along the line to the box's center until it lies inside, which keeps its hue unlike a clamp.
-float3 clipToBox(float3 color, float3 center, float3 extent)
-{
+float3 clipToBox(float3 color, float3 center, float3 extent) {
     float3 offset = color - center;
     float3 units = abs(offset / max(extent, minimumClipExtent));
     float largest = max(units.x, max(units.y, units.z));
@@ -93,12 +85,10 @@ float3 clipToBox(float3 color, float3 center, float3 extent)
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
-void computeMain(uint3 pixel : SV_DispatchThreadID)
-{
+void computeMain(uint3 pixel: SV_DispatchThreadID) {
     FrameData frame = *constants.frame;
     float2 size = frame.viewportSize;
-    if (any(float2(pixel.xy) >= size))
-    {
+    if (any(float2(pixel.xy) >= size)) {
         return;
     }
 
@@ -110,17 +100,14 @@ void computeMain(uint3 pixel : SV_DispatchThreadID)
     // Reverse-Z: the nearest surface has the greatest depth. Its motion keeps edges moving with the foreground.
     float nearestDepth = -1.0;
     int2 nearestPixel = center;
-    for (int y = -neighborhoodRadius; y <= neighborhoodRadius; y++)
-    {
-        for (int x = -neighborhoodRadius; x <= neighborhoodRadius; x++)
-        {
+    for (int y = -neighborhoodRadius; y <= neighborhoodRadius; y++) {
+        for (int x = -neighborhoodRadius; x <= neighborhoodRadius; x++) {
             int2 neighbor = clamp(center + int2(x, y), int2(0), lastPixel);
             float3 color = toYCoCg(textures[constants.colorTexture].Load(int3(neighbor, 0)).rgb);
             sum += color;
             sumOfSquares += color * color;
             float depth = textures[constants.depthTexture].Load(int3(neighbor, 0)).r;
-            if (depth > nearestDepth)
-            {
+            if (depth > nearestDepth) {
                 nearestDepth = depth;
                 nearestPixel = neighbor;
             }
@@ -130,8 +117,7 @@ void computeMain(uint3 pixel : SV_DispatchThreadID)
     RWTexture2D<float4> output = storageImages[constants.outputImage];
     float2 motion = textures[constants.motionTexture].Load(int3(nearestPixel, 0)).rg;
     float2 historyUv = (float2(pixel.xy) + 0.5) / size - motion;
-    if (constants.historyValid == 0 || any(historyUv < 0.0) || any(historyUv > 1.0))
-    {
+    if (constants.historyValid == 0 || any(historyUv < 0.0) || any(historyUv > 1.0)) {
         output[pixel.xy] = float4(current, 1.0);
         return;
     }

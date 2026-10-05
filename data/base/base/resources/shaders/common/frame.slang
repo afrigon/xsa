@@ -1,5 +1,4 @@
-struct FrameData
-{
+struct FrameData {
     float4x4 viewProjection;
     float4x4 worldFromClip;
     float4x4 previousViewProjection;
