@@ -184,6 +184,8 @@ like any external library.
 - Game content lives in `data/`. Text files are committed; binaries (`.dds`,
   `.spv`) are git-ignored and produced by tasks. `assets/` holds git-ignored
   third-party source downloads.
+- A change to any file in `data/` needs a new version of each pack it touches:
+  always remind the user to publish one.
 - Every third-party asset is listed in `LICENSES.md` with source, author and
   terms, with its license file next to its download.
 
