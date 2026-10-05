@@ -174,6 +174,11 @@ impl Renderer {
         }
     }
 
+    // For a camera cut: the accumulated image no longer matches anything on screen.
+    pub fn reset_history(&mut self) {
+        self.temporal.reset();
+    }
+
     // Wireframe needs the polygon mode to be dynamic state.
     pub fn supports_wireframe(&self) -> bool {
         self.gpu.device.extended_dynamic_state3().is_some()
