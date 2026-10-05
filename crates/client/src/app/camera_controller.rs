@@ -1,5 +1,6 @@
 use anyhow::{Context, bail, ensure};
 use glam::DVec3;
+use winit::dpi::PhysicalSize;
 use winit::event::MouseButton;
 use xsa_commands::command::CameraTargetCommand;
 use xsa_commands::value::Target;
@@ -24,9 +25,12 @@ pub(super) struct CameraController {
 }
 
 impl CameraController {
-    pub fn new() -> CameraController {
+    pub fn new(window_size: PhysicalSize<u32>) -> CameraController {
         CameraController {
-            camera: Camera::new(HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians()),
+            camera: Camera::new(
+                HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians(),
+                CameraController::aspect_ratio_of(window_size),
+            ),
             mode: CameraMode::Orbit,
             orbit: None,
             debug: DebugCamera::new(DEBUG_CAMERA_SPEED),
@@ -35,6 +39,14 @@ impl CameraController {
 
     pub fn camera(&self) -> &Camera {
         &self.camera
+    }
+
+    pub fn resize(&mut self, window_size: PhysicalSize<u32>) {
+        if window_size.width == 0 || window_size.height == 0 {
+            return;
+        }
+
+        self.camera.aspect_ratio = CameraController::aspect_ratio_of(window_size);
     }
 
     pub fn target_body(&self) -> Option<BodyIndex> {
@@ -154,5 +166,9 @@ impl CameraController {
             .look_along((-direction.x).atan2(direction.y), direction.z.asin());
 
         Ok(format!("looking at {id}"))
+    }
+
+    fn aspect_ratio_of(window_size: PhysicalSize<u32>) -> f32 {
+        window_size.width as f32 / window_size.height as f32
     }
 }

@@ -21,7 +21,7 @@ use zoom_path::ZoomPath;
 const MOUSE_SENSITIVITY: f64 = 0.004;
 const PITCH_LIMIT: f64 = FRAC_PI_2 - 0.01;
 const ZOOM_FACTOR_PER_SCROLL_STEP: f64 = 1.25;
-const MINIMUM_ALTITUDE: f64 = 100.0;
+const FRAMING_MARGIN: f64 = 1.05;
 const MAXIMUM_DISTANCE: f64 = 1e13;
 const FRAMING_DISTANCE_IN_RADII: f64 = 4.0;
 const TRANSITION_SECONDS_PER_PATH_LENGTH: f64 = 0.25;
@@ -119,8 +119,9 @@ impl OrbitCamera {
             self.pitch = (self.pitch - mouse_delta.y * MOUSE_SENSITIVITY).clamp(-PITCH_LIMIT, PITCH_LIMIT);
         }
 
+        let minimum_distance = target.radius * FRAMING_MARGIN / f64::from(camera.narrowest_half_fov()).sin();
         self.distance = (self.distance / ZOOM_FACTOR_PER_SCROLL_STEP.powf(input.scroll_steps()))
-            .clamp(target.radius + MINIMUM_ALTITUDE, MAXIMUM_DISTANCE);
+            .clamp(minimum_distance, MAXIMUM_DISTANCE);
 
         self.current = match &mut self.transition {
             Some(transition) => {

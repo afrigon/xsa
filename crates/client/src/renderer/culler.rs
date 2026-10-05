@@ -13,8 +13,7 @@ pub(in crate::renderer) struct Culler {
 
 impl Culler {
     pub fn new(camera: &Camera, extent: vk::Extent2D) -> Self {
-        let aspect_ratio = extent.width as f32 / extent.height as f32;
-        let clip_from_view = camera.clip_from_view(aspect_ratio);
+        let clip_from_view = camera.clip_from_view();
         let view_projection = clip_from_view * camera.view_rotation();
 
         Self {
@@ -42,7 +41,9 @@ mod tests {
     };
 
     fn culler() -> Culler {
-        Culler::new(&Camera::new(FRAC_PI_2), EXTENT)
+        let aspect_ratio = EXTENT.width as f32 / EXTENT.height as f32;
+
+        Culler::new(&Camera::new(FRAC_PI_2, aspect_ratio), EXTENT)
     }
 
     #[test]
