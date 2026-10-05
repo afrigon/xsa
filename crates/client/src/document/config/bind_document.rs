@@ -18,6 +18,7 @@ impl BindDocument {
             BindAction::CameraTargetPrevious => "bind.camera.target-previous",
             BindAction::InterfacePauseMenu => "bind.interface.pause-menu",
             BindAction::InterfaceDebugOverlay => "bind.interface.debug-overlay",
+            BindAction::RenderTaaToggle => "bind.render.taa-toggle",
         };
 
         ConfigKey::saved(path, ConfigValueKind::KeyChord)

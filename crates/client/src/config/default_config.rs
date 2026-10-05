@@ -32,7 +32,7 @@ impl DefaultBind {
     }
 }
 
-const DEFAULT_BINDS: [DefaultBind; 4] = [
+const DEFAULT_BINDS: [DefaultBind; 5] = [
     DefaultBind {
         action: BindAction::CameraTargetNext,
         chord: KeyChord::key(KeyCode::Tab),
@@ -48,6 +48,10 @@ const DEFAULT_BINDS: [DefaultBind; 4] = [
     DefaultBind {
         action: BindAction::InterfaceDebugOverlay,
         chord: KeyChord::key(KeyCode::F3),
+    },
+    DefaultBind {
+        action: BindAction::RenderTaaToggle,
+        chord: KeyChord::key(KeyCode::F1),
     },
 ];
 

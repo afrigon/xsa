@@ -1,5 +1,5 @@
 use xsa_commands::command::{
-    CameraTargetCommand, InterfacePushCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
+    CameraTargetCommand, ConfigToggleCommand, InterfacePushCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
 };
 use xsa_commands::value::Target;
 
@@ -19,6 +19,11 @@ impl App {
             BindAction::InterfacePauseMenu => return,
             BindAction::InterfaceDebugOverlay => InterfaceToggleCommand {
                 overlay: Overlay::DebugOverlay,
+            }
+            .start(self),
+            BindAction::RenderTaaToggle => ConfigToggleCommand {
+                key: "render.taa.enabled".to_string(),
+                save: false,
             }
             .start(self),
         };
