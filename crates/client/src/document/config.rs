@@ -12,6 +12,7 @@ mod debug_document;
 mod exposure_document;
 mod exposure_mode_choice;
 mod key_chord_name;
+mod number_range;
 mod render_document;
 mod shader_choice;
 mod shading_model_choice;
@@ -23,6 +24,7 @@ pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;
 pub use config_value_kind::ConfigValueKind;
 pub use debug_document::DebugDocument;
+pub use number_range::NumberRange;
 pub use exposure_document::ExposureDocument;
 pub use render_document::RenderDocument;
 
@@ -44,7 +46,7 @@ use crate::config::Config;
 const DIRECTORY_NAME: &str = "xsa";
 const FILE_NAME: &str = "config.kdl";
 
-// Three layers: values set but never saved (debug.*), the file, and the defaults beneath both.
+// Three layers: values of keys that are never saved, the file, and the defaults beneath both.
 pub struct ConfigDocument {
     path: PathBuf,
     session: ConfigLayer,
@@ -94,8 +96,12 @@ impl ConfigDocument {
         self.file = ConfigLayer::new(document);
 
         for path in self.file.leaf_paths() {
-            if ConfigKey::find(&path).is_none() {
-                tracing::warn!("{}: unknown config key {path}, ignored", self.path.display());
+            match ConfigKey::find(&path) {
+                None => tracing::warn!("{}: unknown config key {path}, ignored", self.path.display()),
+                Some(key) if !key.persisted => {
+                    tracing::warn!("{}: {path} cannot be set in the config file, ignored", self.path.display());
+                }
+                Some(_) => {}
             }
         }
 
@@ -104,7 +110,8 @@ impl ConfigDocument {
 
     pub fn config(&self) -> Config {
         let values = ConfigValues {
-            layers: [&self.session, &self.file],
+            session: &self.session,
+            file: &self.file,
         };
         let defaults = Config::default();
 
@@ -165,8 +172,11 @@ impl ConfigDocument {
     }
 
     fn value(&self, key: ConfigKey) -> &KdlValue {
-        [&self.session, &self.file, &self.defaults]
+        let file = key.persisted.then_some(&self.file);
+
+        [Some(&self.session), file, Some(&self.defaults)]
             .into_iter()
+            .flatten()
             .find_map(|layer| layer.get(key.path))
             .expect("every key has a default")
     }
@@ -326,6 +336,14 @@ mod tests {
         let file = TestFile::new("invalid", Some("render { tonemapper \"sepia\"; stars 3 }\n"));
         let config = ConfigDocument::load(file.path()).unwrap().config();
         assert_eq!(config.render, Config::default().render);
+    }
+
+    #[test]
+    fn the_file_cannot_set_session_settings() {
+        let file = TestFile::new("session", Some("debug { wireframe #true }\n"));
+        let document = ConfigDocument::load(file.path()).unwrap();
+        assert!(!document.config().debug.wireframe);
+        assert_eq!(document.get("debug.wireframe").unwrap(), "false");
     }
 
     #[test]

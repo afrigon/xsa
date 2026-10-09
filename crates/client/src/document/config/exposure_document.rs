@@ -15,8 +15,8 @@ impl ExposureDocument {
             names: <ExposureMode as ConfigChoice>::names,
         },
     );
-    pub const EV100: ConfigKey = ConfigKey::saved("render.exposure.ev100", ConfigValueKind::Number);
-    pub const COMPENSATION: ConfigKey = ConfigKey::saved("render.exposure.compensation", ConfigValueKind::Number);
+    pub const EV100: ConfigKey = ConfigKey::saved("render.exposure.ev100", ConfigValueKind::NUMBER);
+    pub const COMPENSATION: ConfigKey = ConfigKey::saved("render.exposure.compensation", ConfigValueKind::NUMBER);
 
     pub fn read(values: &ConfigValues) -> ExposureDocument {
         ExposureDocument {

@@ -1,4 +1,4 @@
-use super::{ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues};
+use super::{NumberRange, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues};
 use crate::config::AdaptationConfig;
 
 pub struct AdaptationDocument {
@@ -8,9 +8,17 @@ pub struct AdaptationDocument {
 
 impl AdaptationDocument {
     pub const DARK_TO_LIGHT: ConfigKey =
-        ConfigKey::saved("render.exposure.adaptation.dark-to-light", ConfigValueKind::Number);
+        ConfigKey::saved("render.exposure.adaptation.dark-to-light",
+        ConfigValueKind::Number {
+            range: NumberRange::at_least(0.0),
+        },
+    );
     pub const LIGHT_TO_DARK: ConfigKey =
-        ConfigKey::saved("render.exposure.adaptation.light-to-dark", ConfigValueKind::Number);
+        ConfigKey::saved("render.exposure.adaptation.light-to-dark",
+        ConfigValueKind::Number {
+            range: NumberRange::at_least(0.0),
+        },
+    );
 
     pub fn read(values: &ConfigValues) -> AdaptationDocument {
         AdaptationDocument {

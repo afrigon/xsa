@@ -3,9 +3,10 @@ use kdl::KdlValue;
 use super::{ConfigChoice, ConfigKey, ConfigLayer};
 use crate::config::KeyChord;
 
+// The session layer takes precedence; only persisted keys are read from the file.
 pub struct ConfigValues<'a> {
-    // Earlier layers take precedence.
-    pub layers: [&'a ConfigLayer; 2],
+    pub session: &'a ConfigLayer,
+    pub file: &'a ConfigLayer,
 }
 
 impl ConfigValues<'_> {
@@ -23,7 +24,8 @@ impl ConfigValues<'_> {
             .as_float()
             .or_else(|| value.as_integer().map(|integer| integer as f64))
             .filter(|number| number.is_finite())
-            .map(|number| number as f32);
+            .map(|number| number as f32)
+            .filter(|number| key.kind.accepts_number(*number));
         ConfigValues::warn_if_invalid(key, value, parsed.is_some());
 
         parsed
@@ -46,7 +48,12 @@ impl ConfigValues<'_> {
     }
 
     fn value(&self, key: ConfigKey) -> Option<&KdlValue> {
-        self.layers.iter().find_map(|layer| layer.get(key.path))
+        let file = key.persisted.then_some(self.file);
+
+        [Some(self.session), file]
+            .into_iter()
+            .flatten()
+            .find_map(|layer| layer.get(key.path))
     }
 
     fn warn_if_invalid(key: ConfigKey, value: &KdlValue, valid: bool) {

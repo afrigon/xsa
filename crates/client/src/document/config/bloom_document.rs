@@ -1,4 +1,4 @@
-use super::{ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues};
+use super::{NumberRange, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues};
 use crate::config::BloomConfig;
 
 pub struct BloomDocument {
@@ -8,7 +8,12 @@ pub struct BloomDocument {
 
 impl BloomDocument {
     pub const ENABLED: ConfigKey = ConfigKey::saved("render.bloom.enabled", ConfigValueKind::Bool);
-    pub const STRENGTH: ConfigKey = ConfigKey::saved("render.bloom.strength", ConfigValueKind::Number);
+    pub const STRENGTH: ConfigKey = ConfigKey::saved(
+        "render.bloom.strength",
+        ConfigValueKind::Number {
+            range: NumberRange::at_least(0.0),
+        },
+    );
 
     pub fn read(values: &ConfigValues) -> BloomDocument {
         BloomDocument {

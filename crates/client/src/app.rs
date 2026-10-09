@@ -265,7 +265,7 @@ impl App {
         let mut description = format!("{key} {}", self.config_document.get(key)?);
 
         if save && ConfigKey::find(key).is_some_and(|key| !key.persisted) {
-            description.push_str(" (debug settings are never saved)");
+            description.push_str(" (not saved: this setting only lasts for the session)");
         } else if save {
             self.config_document.save()?;
             description.push_str(&format!(" (saved to {})", self.config_document.path().display()));

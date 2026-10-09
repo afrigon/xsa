@@ -1,4 +1,4 @@
-use super::{ConfigChoice, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues};
+use super::{NumberRange, ConfigChoice, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues};
 use crate::config::DebugConfig;
 use crate::renderer::{Shader, ShadingModel};
 
@@ -24,7 +24,12 @@ impl DebugDocument {
     );
     pub const WIREFRAME: ConfigKey = ConfigKey::session("debug.wireframe", ConfigValueKind::Bool);
     pub const ANIMATION_DURATION_SCALE: ConfigKey =
-        ConfigKey::session("debug.animation-duration-scale", ConfigValueKind::Number);
+        ConfigKey::session(
+        "debug.animation-duration-scale",
+        ConfigValueKind::Number {
+            range: NumberRange::at_least(0.0),
+        },
+    );
 
     pub fn read(values: &ConfigValues) -> DebugDocument {
         DebugDocument {
