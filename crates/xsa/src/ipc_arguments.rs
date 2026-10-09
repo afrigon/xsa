@@ -82,9 +82,16 @@ fn complete_ipc_words<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) ->
     completions
         .candidates
         .into_iter()
-        .map(|candidate| match candidate.description {
-            Some(description) => Candidate::described(candidate.value, description),
-            None => Candidate::new(candidate.value),
+        .map(|candidate| {
+            let completion = match candidate.description {
+                Some(description) => Candidate::described(candidate.value, description),
+                None => Candidate::new(candidate.value),
+            };
+
+            match candidate.display {
+                Some(display) => completion.displayed(display),
+                None => completion,
+            }
         })
         .collect()
 }

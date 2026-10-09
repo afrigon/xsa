@@ -34,6 +34,7 @@ impl Completions {
             .filter(|candidate| candidate.value.starts_with(&split.prefix))
             .map(|candidate| CompletionCandidate {
                 value: candidate.value,
+                display: candidate.display.map(|display| display.into_owned()),
                 description: candidate.description.map(|description| description.into_owned()),
                 scope: None,
             })
@@ -87,6 +88,27 @@ mod tests {
         for value in ["next", "previous", "luna", "system-solar:"] {
             assert!(all.contains(&value.to_string()), "{value} in {all:?}");
         }
+    }
+
+    #[cfg(feature = "client")]
+    #[test]
+    fn config_keys_complete_one_segment_at_a_time() {
+        let keys = [
+            "render.stars",
+            "render.bloom.enabled",
+            "render.bloom.strength",
+            "debug.shader",
+        ];
+        assert_eq!(completed("config set ", &keys), ["debug", "render"]);
+        assert_eq!(completed("config set render.", &keys), ["render.bloom", "render.stars"]);
+        assert_eq!(completed("config set render.bloom.s", &keys), ["render.bloom.strength"]);
+
+        let displayed: Vec<Option<String>> = Completions::compute("config set render.", 18, values(&keys))
+            .candidates
+            .into_iter()
+            .map(|candidate| candidate.display)
+            .collect();
+        assert_eq!(displayed, [Some("bloom".to_string()), Some("stars".to_string())]);
     }
 
     #[test]

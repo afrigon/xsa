@@ -454,6 +454,7 @@ impl CommandExecutor for App {
                 .flat_map(|key| {
                     key.kind.values().into_iter().map(|value| CompletionCandidate {
                         value: value.to_string(),
+                        display: None,
                         description: None,
                         scope: Some(key.path.to_string()),
                     })
