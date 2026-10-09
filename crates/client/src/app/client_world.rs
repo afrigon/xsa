@@ -148,6 +148,7 @@ impl ClientWorld {
             .iter()
             .map(|body| CompletionCandidate {
                 value: body.id.to_string(),
+                display: None,
                 description: Some(body.category.name().to_string()),
                 scope: None,
             })

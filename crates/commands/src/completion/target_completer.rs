@@ -26,6 +26,7 @@ pub(crate) fn complete_target<Partial>(_partial: &Partial, context: &CompleteCtx
         candidates.push(
             CompletionCandidate {
                 value: path.to_string(),
+                display: None,
                 description: body.description.clone(),
                 scope: None,
             }
