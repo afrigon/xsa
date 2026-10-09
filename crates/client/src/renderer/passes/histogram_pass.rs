@@ -64,7 +64,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for HistogramPass {
             &HistogramPushConstants {
                 frame: frame.frame.frame_data.device_address(),
                 histogram: frame.frame.histogram.device_address(),
-                scene_color_texture: frame.texture(pass, inputs.scene_color)?,
+                scene_color_texture: frame.texture(pass, inputs.scene_color),
                 padding: 0,
             },
         );

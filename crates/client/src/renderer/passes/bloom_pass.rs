@@ -57,7 +57,7 @@ impl BloomPass {
         pipeline: &ComputePipeline,
         bloom: ImageHandle,
         step: &BloomStep,
-    ) -> anyhow::Result<()> {
+    ) {
         let recorder = &frame.recorder;
         recorder.bind_compute(pipeline, frame.descriptor_set);
         recorder.push_compute_constants(
@@ -65,13 +65,11 @@ impl BloomPass {
             &BloomPushConstants {
                 source_texture: step.source_texture,
                 source_level: step.source_level,
-                target_image: frame.storage_image(pass, bloom, step.target_level)?,
+                target_image: frame.storage_image(pass, bloom, step.target_level),
                 karis_average: u32::from(step.karis_average),
             },
         );
         recorder.dispatch(pass.extent(bloom.level(step.target_level)), WORKGROUP_SIZE);
-
-        Ok(())
     }
 }
 
@@ -113,14 +111,14 @@ impl<'frame> RenderPass<FrameContext<'frame>> for BloomPass {
         resources: &BloomResources,
     ) -> Result<(), PassError> {
         let bloom = resources.bloom;
-        let bloom_texture = frame.texture(pass, bloom)?;
+        let bloom_texture = frame.texture(pass, bloom);
         let first = BloomStep {
-            source_texture: frame.texture(pass, resources.scene_color)?,
+            source_texture: frame.texture(pass, resources.scene_color),
             source_level: 0,
             target_level: 0,
             karis_average: true,
         };
-        self.dispatch(frame, pass, &self.downsample, bloom, &first)?;
+        self.dispatch(frame, pass, &self.downsample, bloom, &first);
 
         for level in 1..BLOOM_LEVELS {
             pass.next_step();
@@ -130,7 +128,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for BloomPass {
                 target_level: level,
                 karis_average: false,
             };
-            self.dispatch(frame, pass, &self.downsample, bloom, &step)?;
+            self.dispatch(frame, pass, &self.downsample, bloom, &step);
         }
 
         for level in (0..BLOOM_LEVELS - 1).rev() {
@@ -141,7 +139,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for BloomPass {
                 target_level: level,
                 karis_average: false,
             };
-            self.dispatch(frame, pass, &self.upsample, bloom, &step)?;
+            self.dispatch(frame, pass, &self.upsample, bloom, &step);
         }
 
         Ok(())

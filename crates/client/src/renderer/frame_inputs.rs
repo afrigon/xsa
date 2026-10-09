@@ -1,8 +1,8 @@
-use render_graph::{BufferHandle, ImageHandle};
+use render_graph::{BufferHandle, ImportedImageHandle};
 
 #[derive(Clone, Copy)]
 pub(super) struct FrameInputs {
-    pub output: ImageHandle,
+    pub output: ImportedImageHandle,
     pub histogram: BufferHandle,
     pub capture: Option<BufferHandle>,
 }

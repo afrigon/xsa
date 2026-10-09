@@ -1,5 +1,5 @@
 use ash::vk::{self, Handle};
-use render_graph::{Attachment, ImageHandle, PassContext, PassDeclaration, PassError, RenderPass};
+use render_graph::{Attachment, ImportedImageHandle, PassContext, PassDeclaration, PassError, RenderPass};
 use xui_vulkan::{FrameTarget, VulkanHost};
 
 use crate::renderer::frame_context::FrameContext;
@@ -34,10 +34,10 @@ impl UserInterfacePass {
 impl<'frame> RenderPass<FrameContext<'frame>> for UserInterfacePass {
     const NAME: &'static str = "user interface";
 
-    type Inputs = ImageHandle;
-    type Resources = ImageHandle;
+    type Inputs = ImportedImageHandle;
+    type Resources = ImportedImageHandle;
 
-    fn declare(&self, pass: &mut PassDeclaration, output: ImageHandle) -> ImageHandle {
+    fn declare(&self, pass: &mut PassDeclaration, output: ImportedImageHandle) -> ImportedImageHandle {
         pass.color_attachment(output, Attachment::Load);
 
         output
@@ -47,7 +47,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for UserInterfacePass {
         &mut self,
         frame: &FrameContext<'frame>,
         pass: &PassContext,
-        output: &ImageHandle,
+        output: &ImportedImageHandle,
     ) -> Result<(), PassError> {
         let extent = pass.extent(*output);
         let target = FrameTarget {

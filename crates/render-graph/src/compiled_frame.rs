@@ -1,7 +1,7 @@
 use ash::vk;
 
 use crate::recorded_pass::RecordedPass;
-use crate::{ImageHandle, ImageId, RenderGraph, RenderGraphError};
+use crate::{ImageId, RenderGraph, RenderGraphError};
 
 /// A frame ready to record. The images it uses exist, so their ids can be written into the host's frame data first.
 pub struct CompiledFrame<'graph, 'passes, Context> {
@@ -33,11 +33,6 @@ impl<'graph, 'passes, Context> CompiledFrame<'graph, 'passes, Context> {
 
     pub fn graph(&self) -> &RenderGraph {
         self.graph
-    }
-
-    /// The graph's id for an image it allocates this frame, `None` for imported images and images no pass uses.
-    pub fn image_id(&self, image: ImageHandle) -> Option<ImageId> {
-        self.graph.image_id(image)
     }
 
     /// Records every pass that runs, with the barriers before each step and the final transitions of imports.

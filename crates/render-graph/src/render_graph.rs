@@ -13,8 +13,8 @@ use crate::image_pool::{HISTORY_IMAGE_COUNT, ImagePool};
 use crate::recorded_pass::RecordedPass;
 use crate::resolved_image::ResolvedImage;
 use crate::{
-    BufferHandle, GraphBuilder, GraphImageDescription, HistoryId, ImageHandle, ImageId, ImportedBuffer, ImportedImage,
-    PassContext, PassDeclaration, RenderGraphError, RenderPass,
+    BufferHandle, GraphBuilder, GraphImageDescription, HistoryId, ImageId, ImportedBuffer, ImportedImage,
+    ImportedImageHandle, PassContext, PassDeclaration, RenderGraphError, RenderPass,
 };
 
 const COMPILED_GRAPH_CAPACITY: usize = 16;
@@ -119,10 +119,10 @@ impl RenderGraph {
         self.frame_number = self.frame_number.wrapping_add(1);
     }
 
-    pub(crate) fn import_image(&mut self, image: ImportedImage) -> ImageHandle {
+    pub(crate) fn import_image(&mut self, image: ImportedImage) -> ImportedImageHandle {
         self.imported_images.push(image);
 
-        self.frame.add_image(DeclaredImage::Imported {
+        self.frame.add_imported_image(DeclaredImage::Imported {
             import: self.imported_images.len() - 1,
             name: image.name,
             aspect: image.aspect,
@@ -165,10 +165,6 @@ impl RenderGraph {
         self.resolve(entry);
 
         Ok(entry)
-    }
-
-    pub(crate) fn image_id(&self, image: ImageHandle) -> Option<ImageId> {
-        self.resolved[image.index].id
     }
 
     pub(crate) fn execute<Context>(
@@ -293,7 +289,7 @@ impl RenderGraph {
                     continue;
                 }
             };
-            let resolved = id.map_or(ResolvedImage::UNUSED, |id| {
+            let resolved = id.map_or(ResolvedImage::unused(image.name()), |id| {
                 ResolvedImage::physical(id, self.pool.image(id))
             });
             self.resolved.push(resolved);

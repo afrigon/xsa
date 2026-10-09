@@ -66,7 +66,7 @@ impl<'frame> PassDeclaration<'frame> {
         self.frame.image_usages.push(DeclaredImageUsage {
             pass: self.pass,
             step: self.step,
-            image: subresource.image.index,
+            image: subresource.image,
             level: subresource.level,
             usage,
         });

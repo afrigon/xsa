@@ -40,18 +40,26 @@ impl<'frame> PassContext<'frame> {
         self.record_barriers();
     }
 
-    pub fn image(&self, image: ImageHandle) -> vk::Image {
-        self.recorder.resolved[image.index].image
+    pub fn image(&self, image: impl Into<Subresource>) -> vk::Image {
+        self.recorder.resolved[image.into().image].image
     }
 
-    /// The graph's id for an image it allocates, `None` for imported images.
-    pub fn image_id(&self, image: ImageHandle) -> Option<ImageId> {
-        self.recorder.resolved[image.index].id
+    /// The graph's id for an image this pass declared.
+    ///
+    /// # Panics
+    ///
+    /// If no running pass uses the image, which means this pass uses it without declaring it.
+    pub fn image_id(&self, image: ImageHandle) -> ImageId {
+        let resolved = &self.recorder.resolved[image.index];
+
+        resolved
+            .id
+            .unwrap_or_else(|| panic!("{} is not used by any running pass", resolved.name))
     }
 
     pub fn view(&self, subresource: impl Into<Subresource>) -> vk::ImageView {
         let subresource = subresource.into();
-        let resolved = &self.recorder.resolved[subresource.image.index];
+        let resolved = &self.recorder.resolved[subresource.image];
 
         match (subresource.level, resolved.id) {
             (Some(level), Some(id)) => self.recorder.pool.image(id).level_view(level),
@@ -62,7 +70,7 @@ impl<'frame> PassContext<'frame> {
     pub fn extent(&self, subresource: impl Into<Subresource>) -> vk::Extent2D {
         let subresource = subresource.into();
 
-        self.recorder.resolved[subresource.image.index].level_extent(subresource.level.unwrap_or(0))
+        self.recorder.resolved[subresource.image].level_extent(subresource.level.unwrap_or(0))
     }
 
     pub fn buffer(&self, buffer: BufferHandle) -> vk::Buffer {

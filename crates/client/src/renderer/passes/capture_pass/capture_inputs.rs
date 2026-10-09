@@ -1,7 +1,7 @@
-use render_graph::{BufferHandle, ImageHandle};
+use render_graph::{BufferHandle, ImportedImageHandle};
 
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct CaptureInputs {
-    pub output: ImageHandle,
+    pub output: ImportedImageHandle,
     pub capture: BufferHandle,
 }

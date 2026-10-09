@@ -42,11 +42,11 @@ impl FrameContext<'_> {
         );
     }
 
-    pub fn texture(&self, pass: &PassContext, image: ImageHandle) -> anyhow::Result<u32> {
+    pub fn texture(&self, pass: &PassContext, image: ImageHandle) -> u32 {
         self.textures.texture(pass.image_id(image))
     }
 
-    pub fn storage_image(&self, pass: &PassContext, image: ImageHandle, level: u32) -> anyhow::Result<u32> {
+    pub fn storage_image(&self, pass: &PassContext, image: ImageHandle, level: u32) -> u32 {
         self.textures.storage_image(pass.image_id(image), level)
     }
 }

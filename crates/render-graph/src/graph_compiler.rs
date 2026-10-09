@@ -442,7 +442,7 @@ mod tests {
     use crate::frame_declaration::FrameDeclaration;
     use crate::{
         Attachment, BufferHandle, BufferState, BufferUsage, GraphImageDescription, HistoryId, ImageHandle, ImageSize,
-        ImageState, PassDeclaration, RenderGraphError, Stage,
+        ImageState, ImportedImageHandle, PassDeclaration, RenderGraphError, Stage,
     };
 
     const COLOR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
@@ -480,8 +480,8 @@ mod tests {
         }
     }
 
-    fn import_swapchain(frame: &mut FrameDeclaration) -> ImageHandle {
-        frame.add_image(DeclaredImage::Imported {
+    fn import_swapchain(frame: &mut FrameDeclaration) -> ImportedImageHandle {
+        frame.add_imported_image(DeclaredImage::Imported {
             import: 0,
             name: "swapchain",
             aspect: vk::ImageAspectFlags::COLOR,

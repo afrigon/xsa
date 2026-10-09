@@ -3,7 +3,7 @@ use crate::declared_buffer_usage::DeclaredBufferUsage;
 use crate::declared_image::DeclaredImage;
 use crate::declared_image_usage::DeclaredImageUsage;
 use crate::declared_pass::DeclaredPass;
-use crate::{BufferHandle, GraphImageDescription, HistoryId, ImageHandle};
+use crate::{BufferHandle, GraphImageDescription, HistoryId, ImageHandle, ImportedImageHandle};
 
 // Everything a frame declared, in declaration order. Two frames with equal declarations compile to the same graph.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -25,10 +25,14 @@ impl FrameDeclaration {
     }
 
     pub fn add_image(&mut self, image: DeclaredImage) -> ImageHandle {
-        self.images.push(image);
-
         ImageHandle {
-            index: self.images.len() - 1,
+            index: self.push_image(image),
+        }
+    }
+
+    pub fn add_imported_image(&mut self, image: DeclaredImage) -> ImportedImageHandle {
+        ImportedImageHandle {
+            index: self.push_image(image),
         }
     }
 
@@ -51,5 +55,11 @@ impl FrameDeclaration {
             Some(index) => ImageHandle { index },
             None => self.add_image(image),
         }
+    }
+
+    fn push_image(&mut self, image: DeclaredImage) -> usize {
+        self.images.push(image);
+
+        self.images.len() - 1
     }
 }

@@ -57,17 +57,19 @@ impl GraphTextures {
         Ok(())
     }
 
-    pub fn texture(&self, image: Option<ImageId>) -> anyhow::Result<u32> {
-        image
-            .and_then(|id| self.images.get(id.index()))
-            .and_then(|image| image.texture)
-            .ok_or_else(|| anyhow::anyhow!("the image is not sampled through the render graph"))
+    // Panics for an image whose pass never declared it sampled.
+    pub fn texture(&self, image: ImageId) -> u32 {
+        self.images
+            .get(image.index())
+            .and_then(|registered| registered.texture)
+            .unwrap_or_else(|| panic!("image {} is not sampled through the render graph", image.index()))
     }
 
-    pub fn storage_image(&self, image: Option<ImageId>, level: u32) -> anyhow::Result<u32> {
-        image
-            .and_then(|id| self.images.get(id.index()))
-            .and_then(|image| image.storage_images.get(level as usize).copied())
-            .ok_or_else(|| anyhow::anyhow!("level {level} of the image is not a render graph storage image"))
+    // Panics for a level whose pass never declared it a storage image.
+    pub fn storage_image(&self, image: ImageId, level: u32) -> u32 {
+        self.images
+            .get(image.index())
+            .and_then(|registered| registered.storage_images.get(level as usize).copied())
+            .unwrap_or_else(|| panic!("level {level} of image {} is not a storage image", image.index()))
     }
 }

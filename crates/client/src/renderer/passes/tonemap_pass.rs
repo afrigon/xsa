@@ -71,7 +71,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for TonemapPass {
         inputs: &TonemapInputs,
     ) -> Result<(), PassError> {
         let (bloom_texture, bloom_strength) = match inputs.bloom {
-            Some(bloom) => (frame.texture(pass, bloom)?, frame.render.bloom.strength),
+            Some(bloom) => (frame.texture(pass, bloom), frame.render.bloom.strength),
             None => (UNSAMPLED_BLOOM_TEXTURE, NO_BLOOM_STRENGTH),
         };
         let recorder = &frame.recorder;
@@ -81,7 +81,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for TonemapPass {
             &self.pipeline,
             &TonemapPushConstants {
                 frame: frame.frame.frame_data.device_address(),
-                scene_color_texture: frame.texture(pass, inputs.scene_color)?,
+                scene_color_texture: frame.texture(pass, inputs.scene_color),
                 bloom_texture,
                 bloom_strength,
                 padding: 0,
