@@ -84,7 +84,9 @@ impl ConfigValueKind {
     pub fn toggled(self, current: &KdlValue) -> anyhow::Result<KdlValue> {
         match self {
             ConfigValueKind::Bool => Ok(KdlValue::Bool(!current.as_bool().unwrap_or(false))),
-            ConfigValueKind::Number { .. } | ConfigValueKind::KeyChord => bail!("only on/off and choice settings toggle"),
+            ConfigValueKind::Number { .. } | ConfigValueKind::KeyChord => {
+                bail!("only on/off and choice settings toggle")
+            }
             ConfigValueKind::Choice { names } => {
                 let names = names();
                 let index = names

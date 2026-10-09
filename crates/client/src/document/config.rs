@@ -1,4 +1,5 @@
 mod adaptation_document;
+mod animation_document;
 mod antialiasing_document;
 mod antialiasing_kind_choice;
 mod bind_document;
@@ -8,7 +9,6 @@ mod config_key;
 mod config_layer;
 mod config_value_kind;
 mod config_values;
-mod debug_document;
 mod exposure_document;
 mod exposure_mode_choice;
 mod key_chord_name;
@@ -23,12 +23,12 @@ pub use bloom_document::BloomDocument;
 pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;
 pub use config_value_kind::ConfigValueKind;
-pub use debug_document::DebugDocument;
-pub use number_range::NumberRange;
 pub use exposure_document::ExposureDocument;
+pub use number_range::NumberRange;
 pub use render_document::RenderDocument;
 
 use adaptation_document::AdaptationDocument;
+use animation_document::AnimationDocument;
 use bind_document::BindDocument;
 use config_layer::ConfigLayer;
 use config_values::ConfigValues;
@@ -70,7 +70,7 @@ impl ConfigDocument {
         let config = Config::default();
         RenderDocument::write(&config.render, &mut defaults);
         BindDocument::write(&config.bind, &mut defaults);
-        DebugDocument::write(&config.debug, &mut defaults);
+        AnimationDocument::write(&config.animations, &mut defaults);
         let mut document = ConfigDocument {
             path,
             session: ConfigLayer::default(),
@@ -99,7 +99,10 @@ impl ConfigDocument {
             match ConfigKey::find(&path) {
                 None => tracing::warn!("{}: unknown config key {path}, ignored", self.path.display()),
                 Some(key) if !key.persisted => {
-                    tracing::warn!("{}: {path} cannot be set in the config file, ignored", self.path.display());
+                    tracing::warn!(
+                        "{}: {path} cannot be set in the config file, ignored",
+                        self.path.display()
+                    );
                 }
                 Some(_) => {}
             }
@@ -118,7 +121,7 @@ impl ConfigDocument {
         Config {
             render: RenderDocument::read(&values).into_config(&defaults.render),
             bind: BindDocument::read(&values).into_config(&defaults.bind),
-            debug: DebugDocument::read(&values).into_config(&defaults.debug),
+            animations: AnimationDocument::read(&values).into_config(&defaults.animations),
         }
     }
 
@@ -204,7 +207,6 @@ impl ConfigDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::ExposureMode;
     use crate::renderer::Tonemapper;
 
     struct TestFile {
@@ -251,12 +253,11 @@ mod tests {
     fn file_values_override_the_defaults() {
         let file = TestFile::new(
             "override",
-            Some("render {\n    tonemapper \"off\"\n    exposure { mode \"manual\"; ev100 12 }\n}\n"),
+            Some("render {\n    tonemapper \"off\"\n    stars #false\n}\n"),
         );
         let config = ConfigDocument::load(file.path()).unwrap().config();
         assert_eq!(config.render.tonemapper, Tonemapper::Off);
-        assert_eq!(config.render.exposure.mode, ExposureMode::Manual);
-        assert_eq!(config.render.exposure.ev100, 12.0);
+        assert!(!config.render.stars);
         assert_eq!(config.render.bloom, Config::default().render.bloom);
     }
 
@@ -267,14 +268,14 @@ mod tests {
             Some("// my settings\nrender {\n    stars #false // dark sky\n}\n"),
         );
         let mut document = ConfigDocument::load(file.path()).unwrap();
-        document.set("render.bloom.strength", "0.05").unwrap();
+        document.set("render.bloom.enabled", "false").unwrap();
         document.save().unwrap();
         let contents = file.contents();
         assert!(
             contents.contains("// my settings") && contents.contains("// dark sky"),
             "{contents}"
         );
-        assert!(contents.contains("strength 0.05"), "{contents}");
+        assert!(contents.contains("enabled #false"), "{contents}");
         assert!(!contents.contains("tonemapper"), "{contents}");
     }
 
@@ -282,10 +283,10 @@ mod tests {
     fn setting_a_default_removes_it_from_the_file() {
         let file = TestFile::new(
             "default",
-            Some("render {\n    bloom {\n        strength 0.05\n    }\n}\n"),
+            Some("render {\n    bloom {\n        enabled #false\n    }\n}\n"),
         );
         let mut document = ConfigDocument::load(file.path()).unwrap();
-        document.set("render.bloom.strength", "0.02").unwrap();
+        document.set("render.bloom.enabled", "true").unwrap();
         document.save().unwrap();
         assert!(!file.contents().contains("bloom"), "{}", file.contents());
     }
@@ -294,15 +295,15 @@ mod tests {
     fn a_repeated_block_is_read_last_wins() {
         let file = TestFile::new(
             "repeated",
-            Some("render { stars #false; exposure { compensation 1 } }\nrender { exposure { compensation 1.5 } }\n"),
+            Some("render { stars #false; tonemapper \"agx-punchy\" }\nrender { tonemapper \"off\" }\n"),
         );
         let mut document = ConfigDocument::load(file.path()).unwrap();
         let config = document.config();
         assert!(!config.render.stars);
-        assert_eq!(config.render.exposure.compensation, 1.5);
+        assert_eq!(config.render.tonemapper, Tonemapper::Off);
 
-        document.set("render.exposure.compensation", "0").unwrap();
-        assert_eq!(document.config().render.exposure.compensation, 0.0);
+        document.set("render.tonemapper", "agx").unwrap();
+        assert_eq!(document.config().render.tonemapper, Tonemapper::Agx);
     }
 
     #[test]
@@ -340,20 +341,38 @@ mod tests {
 
     #[test]
     fn the_file_cannot_set_session_settings() {
-        let file = TestFile::new("session", Some("debug { wireframe #true }\n"));
+        let file = TestFile::new("session", Some("render { wireframe #true }\n"));
         let document = ConfigDocument::load(file.path()).unwrap();
-        assert!(!document.config().debug.wireframe);
-        assert_eq!(document.get("debug.wireframe").unwrap(), "false");
+        assert!(!document.config().render.wireframe);
+        assert_eq!(document.get("render.wireframe").unwrap(), "false");
     }
 
     #[test]
-    fn debug_settings_apply_but_are_never_saved() {
-        let file = TestFile::new("debug", None);
+    fn session_settings_apply_but_are_never_saved() {
+        let file = TestFile::new("session-save", None);
         let mut document = ConfigDocument::load(file.path()).unwrap();
-        document.set("debug.wireframe", "true").unwrap();
-        assert!(document.config().debug.wireframe);
+        document.set("render.wireframe", "true").unwrap();
+        assert!(document.config().render.wireframe);
         document.save().unwrap();
         assert!(!file.contents().contains("wireframe"), "{}", file.contents());
+    }
+
+    #[test]
+    fn numbers_outside_their_range_are_rejected() {
+        let file = TestFile::new("range", None);
+        let mut document = ConfigDocument::load(file.path()).unwrap();
+        assert!(document.set("animations.duration-scale", "-1").is_err());
+        assert!(document.set("render.exposure.adaptation.light-to-dark", "11").is_err());
+        document.set("render.exposure.adaptation.light-to-dark", "10").unwrap();
+        assert_eq!(
+            document
+                .config()
+                .render
+                .exposure
+                .adaptation
+                .light_to_dark_half_life_seconds,
+            10.0
+        );
     }
 
     #[test]

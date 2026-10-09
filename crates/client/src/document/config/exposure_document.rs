@@ -9,14 +9,14 @@ pub struct ExposureDocument {
 }
 
 impl ExposureDocument {
-    pub const MODE: ConfigKey = ConfigKey::saved(
+    pub const MODE: ConfigKey = ConfigKey::session(
         "render.exposure.mode",
         ConfigValueKind::Choice {
             names: <ExposureMode as ConfigChoice>::names,
         },
     );
-    pub const EV100: ConfigKey = ConfigKey::saved("render.exposure.ev100", ConfigValueKind::NUMBER);
-    pub const COMPENSATION: ConfigKey = ConfigKey::saved("render.exposure.compensation", ConfigValueKind::NUMBER);
+    pub const EV100: ConfigKey = ConfigKey::session("render.exposure.ev100", ConfigValueKind::NUMBER);
+    pub const COMPENSATION: ConfigKey = ConfigKey::session("render.exposure.compensation", ConfigValueKind::NUMBER);
 
     pub fn read(values: &ConfigValues) -> ExposureDocument {
         ExposureDocument {

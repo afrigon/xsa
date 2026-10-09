@@ -275,7 +275,7 @@ impl App {
     }
 
     fn apply_config(&mut self) {
-        let animation_duration_scale = self.config.debug.animation_duration_scale;
+        let animation_duration_scale = self.config.animations.duration_scale;
         self.navigation.set_duration_scale(animation_duration_scale);
 
         if let Some(cameras) = &mut self.cameras {
@@ -286,7 +286,7 @@ impl App {
             return;
         };
 
-        renderer.configure(&self.config.render, &self.config.debug);
+        renderer.configure(&self.config.render, &self.config.animations);
         let skybox = self.world.as_ref().and_then(ClientWorld::skybox);
         renderer.scene_mut().skybox = if self.config.render.stars { skybox } else { None };
     }

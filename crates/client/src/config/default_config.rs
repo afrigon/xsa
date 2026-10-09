@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use winit::keyboard::KeyCode;
 
 use super::{
-    AdaptationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, DebugConfig,
-    ExposureConfig, ExposureMode, KeyChord, RenderConfig,
+    AdaptationConfig, AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig,
+    Config, ExposureConfig, ExposureMode, KeyChord, RenderConfig,
 };
 use crate::renderer::{ShadingModel, Tonemapper};
 
@@ -74,15 +74,15 @@ impl Default for Config {
                 antialiasing: AntialiasingConfig {
                     kind: Some(AntialiasingKind::Taa),
                 },
+                wireframe: false,
+                shader_override: None,
+                shading_model: ShadingModel::HapkeSol,
             },
             bind: BindConfig {
                 keys: DefaultBind::keys(),
             },
-            debug: DebugConfig {
-                shader_override: None,
-                shading_model: ShadingModel::HapkeSol,
-                wireframe: false,
-                animation_duration_scale: ANIMATION_DURATION_SCALE,
+            animations: AnimationConfig {
+                duration_scale: ANIMATION_DURATION_SCALE,
             },
         }
     }
