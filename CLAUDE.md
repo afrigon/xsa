@@ -48,7 +48,8 @@ Dependencies point one way: `units` ← `core` ← `packs` ← `commands` ← `s
 touches files or KDL, and `proto` does not depend on `core` or `packs`.
 `xui` and `xui-vulkan` depend on no xsa crate: they are a UI framework
 incubated here to become its own repository (`xui-rs`), and the game uses them
-like any external library.
+like any external library. `render-graph` depends on no xsa crate either: the
+renderer uses it like an external library, through its public API only.
 
 | Crate | Responsibility |
 | --- | --- |
@@ -63,6 +64,7 @@ like any external library.
 | `tools` | Offline asset tools (`convert-skybox`) |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, given raw Vulkan handles |
+| `render-graph` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images |
 
 ## Architecture
 
@@ -129,8 +131,14 @@ like any external library.
   HDR targets and tonemapping. Volumetrics (atmosphere via Hillaire's LUTs,
   clouds, plumes, explosions) are ray-marched passes reading depth, cleaned up
   by temporal anti-aliasing and upscaling.
-- **Passes:** each render pass implements `RenderPass`, owns its pipelines and
-  resources, and is recorded in the renderer's pass order.
+- **Render graph:** each pass implements `render_graph::RenderPass` and owns
+  only its pipelines. `declare` states the images and buffers each step uses
+  and how, and returns the handles the pass records with; `record` records draws
+  and dispatches, never barriers. `RenderPasses::add_to` builds every frame's
+  pipeline in code: a disabled feature's pass is simply not added, and passes
+  are wired through the handles earlier passes return. Shaders get texture
+  indices for graph images from the pass (push constants), never from
+  `FrameData`, which only describes the scene.
 - **Few pipelines:** bindless resources and dynamic state over per-material
   pipelines.
 - **Materials are typed:** a `Shader` is a program, a `Material` is a shader
