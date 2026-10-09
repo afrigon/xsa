@@ -9,12 +9,10 @@ use crate::{GraphImageDescription, HistoryId, ImageId, ImageSize, RenderGraphErr
 
 pub(crate) const HISTORY_IMAGE_COUNT: usize = 2;
 
-// The images the graph allocates. An image is never freed while the graph lives, so its ImageId stays valid; one
-// replaced while frames may still use it is retired until the GPU is idle.
+// The images the graph allocates. An image is never freed while the graph lives, so its ImageId stays valid.
 pub(crate) struct ImagePool {
     output: vk::Extent2D,
     images: Vec<PhysicalImage>,
-    retired: Vec<PhysicalImage>,
 }
 
 impl ImagePool {
@@ -22,7 +20,6 @@ impl ImagePool {
         ImagePool {
             output,
             images: Vec::new(),
-            retired: Vec::new(),
         }
     }
 
@@ -87,7 +84,7 @@ impl ImagePool {
         Ok(slots)
     }
 
-    // Returns whether the pair was created or replaced, which happens when its usage changes.
+    // Returns whether the pair was created. Its usage is fixed by the first frame that uses it.
     pub fn ensure_history(
         &mut self,
         device: &ash::Device,
@@ -97,41 +94,36 @@ impl ImagePool {
         usage: vk::ImageUsageFlags,
         pair: &mut Option<[ImageId; HISTORY_IMAGE_COUNT]>,
     ) -> Result<bool, RenderGraphError> {
-        let owner = ImageOwner::History { id };
-
-        match pair {
-            Some(ids) if self.images[ids[0].index].usage == usage => Ok(false),
-            Some(ids) => {
-                for image in ids.iter() {
-                    let physical = PhysicalImage::new(device, allocator, description, usage, self.output, owner)?;
-                    let previous = std::mem::replace(&mut self.images[image.index], physical);
-                    self.retired.push(previous);
-                }
-
-                Ok(true)
+        if let Some(ids) = pair {
+            if self.images[ids[0].index].usage != usage {
+                return Err(RenderGraphError::HistoryUsageChanged {
+                    history: description.name,
+                });
             }
-            None => {
-                let first = self.add(PhysicalImage::new(
-                    device,
-                    allocator,
-                    description,
-                    usage,
-                    self.output,
-                    owner,
-                )?);
-                let second = self.add(PhysicalImage::new(
-                    device,
-                    allocator,
-                    description,
-                    usage,
-                    self.output,
-                    owner,
-                )?);
-                *pair = Some([first, second]);
 
-                Ok(true)
-            }
+            return Ok(false);
         }
+
+        let owner = ImageOwner::History { id };
+        let first = self.add(PhysicalImage::new(
+            device,
+            allocator,
+            description,
+            usage,
+            self.output,
+            owner,
+        )?);
+        let second = self.add(PhysicalImage::new(
+            device,
+            allocator,
+            description,
+            usage,
+            self.output,
+            owner,
+        )?);
+        *pair = Some([first, second]);
+
+        Ok(true)
     }
 
     // Safety: the GPU must be done with every image.
@@ -142,7 +134,6 @@ impl ImagePool {
         output: vk::Extent2D,
     ) -> Result<Vec<ImageId>, RenderGraphError> {
         self.output = output;
-        unsafe { self.destroy_retired(device, allocator) }?;
         let mut recreated = Vec::new();
 
         for index in 0..self.images.len() {
@@ -170,21 +161,7 @@ impl ImagePool {
 
     // Safety: the GPU must be done with every image.
     pub unsafe fn destroy(&mut self, device: &ash::Device, allocator: &mut Allocator) -> Result<(), RenderGraphError> {
-        unsafe { self.destroy_retired(device, allocator) }?;
-
         for mut image in self.images.drain(..) {
-            unsafe { image.destroy(device, allocator) }?;
-        }
-
-        Ok(())
-    }
-
-    unsafe fn destroy_retired(
-        &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-    ) -> Result<(), RenderGraphError> {
-        for mut image in self.retired.drain(..) {
             unsafe { image.destroy(device, allocator) }?;
         }
 

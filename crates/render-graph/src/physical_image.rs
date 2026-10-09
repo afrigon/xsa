@@ -52,10 +52,15 @@ impl PhysicalImage {
             allocation: None,
         };
 
-        if let Err(error) = physical.bind_memory_and_views(device, allocator) {
-            // The creation error is the one worth reporting; a failed cleanup adds nothing to it.
-            let _ = unsafe { physical.destroy(device, allocator) };
-            return Err(error);
+        if let Err(creation) = physical.bind_memory_and_views(device, allocator) {
+            return match unsafe { physical.destroy(device, allocator) } {
+                Ok(()) => Err(creation),
+                Err(cleanup) => Err(RenderGraphError::ImageCleanup {
+                    image: description.name,
+                    creation: Box::new(creation),
+                    cleanup: Box::new(cleanup),
+                }),
+            };
         }
 
         Ok(physical)

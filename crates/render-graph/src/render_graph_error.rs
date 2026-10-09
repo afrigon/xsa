@@ -23,6 +23,16 @@ pub enum RenderGraphError {
         pass: &'static str,
         source: PassError,
     },
+    /// A frame used a history image with other usages than the frame that created it.
+    HistoryUsageChanged {
+        history: &'static str,
+    },
+    /// Creating an image failed, then destroying what was already created failed too.
+    ImageCleanup {
+        image: &'static str,
+        creation: Box<RenderGraphError>,
+        cleanup: Box<RenderGraphError>,
+    },
     Vulkan(vk::Result),
     Allocation(AllocationError),
 }
@@ -37,6 +47,18 @@ impl fmt::Display for RenderGraphError {
                 recorded,
             } => write!(formatter, "{pass} declared {declared} steps but recorded {recorded}"),
             RenderGraphError::Pass { pass, .. } => write!(formatter, "recording {pass}"),
+            RenderGraphError::HistoryUsageChanged { history } => {
+                write!(
+                    formatter,
+                    "{history} is used differently than in the frame that created it"
+                )
+            }
+            RenderGraphError::ImageCleanup { image, cleanup, .. } => {
+                write!(
+                    formatter,
+                    "creating {image} failed, then destroying its parts failed: {cleanup}"
+                )
+            }
             RenderGraphError::Vulkan(result) => write!(formatter, "a Vulkan call failed: {result}"),
             RenderGraphError::Allocation(error) => write!(formatter, "allocating GPU memory: {error}"),
         }
@@ -47,9 +69,12 @@ impl Error for RenderGraphError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             RenderGraphError::Pass { source, .. } => Some(source.as_ref()),
+            RenderGraphError::ImageCleanup { creation, .. } => Some(creation.as_ref()),
             RenderGraphError::Vulkan(result) => Some(result),
             RenderGraphError::Allocation(error) => Some(error),
-            RenderGraphError::Declaration { .. } | RenderGraphError::StepCount { .. } => None,
+            RenderGraphError::Declaration { .. }
+            | RenderGraphError::StepCount { .. }
+            | RenderGraphError::HistoryUsageChanged { .. } => None,
         }
     }
 }

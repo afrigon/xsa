@@ -13,8 +13,8 @@ use crate::image_pool::{HISTORY_IMAGE_COUNT, ImagePool};
 use crate::recorded_pass::RecordedPass;
 use crate::resolved_image::ResolvedImage;
 use crate::{
-    BufferHandle, GraphBuilder, GraphDescription, GraphImageDescription, HistoryId, ImageHandle, ImageId,
-    ImportedBuffer, ImportedImage, PassContext, PassDeclaration, RenderGraphError, RenderPass,
+    BufferHandle, GraphBuilder, GraphImageDescription, HistoryId, ImageHandle, ImageId, ImportedBuffer, ImportedImage,
+    PassContext, PassDeclaration, RenderGraphError, RenderPass,
 };
 
 const COMPILED_GRAPH_CAPACITY: usize = 16;
@@ -29,7 +29,6 @@ pub struct RenderGraph {
     history_images: Vec<Option<[ImageId; HISTORY_IMAGE_COUNT]>>,
     pool: ImagePool,
     cache: Vec<CompiledEntry>,
-    current: Option<usize>,
     resolved: Vec<ResolvedImage>,
     image_barriers: RefCell<Vec<vk::ImageMemoryBarrier2<'static>>>,
     buffer_barriers: RefCell<Vec<vk::BufferMemoryBarrier2<'static>>>,
@@ -47,7 +46,6 @@ impl RenderGraph {
             history_images: Vec::new(),
             pool: ImagePool::new(output),
             cache: Vec::new(),
-            current: None,
             resolved: Vec::new(),
             image_barriers: RefCell::new(Vec::new()),
             buffer_barriers: RefCell::new(Vec::new()),
@@ -102,11 +100,6 @@ impl RenderGraph {
     /// The layout every shader samples the image in, which a bindless descriptor for it must name.
     pub fn sampled_layout(&self, id: ImageId) -> vk::ImageLayout {
         self.pool.image(id).sampled_layout()
-    }
-
-    /// The last compiled frame, as plain data.
-    pub fn description(&self) -> Option<&GraphDescription> {
-        self.current.map(|entry| &self.cache[entry].description)
     }
 
     /// # Safety
@@ -170,7 +163,6 @@ impl RenderGraph {
         };
         self.ensure_histories(device, allocator, entry, created)?;
         self.resolve(entry);
-        self.current = Some(entry);
 
         Ok(entry)
     }
@@ -242,7 +234,6 @@ impl RenderGraph {
         let image_slots =
             self.pool
                 .assign_transients(device, allocator, &self.frame, &compiled.usage_flags, created)?;
-        let description = GraphDescription::new(&self.frame, &compiled);
 
         if self.cache.len() == COMPILED_GRAPH_CAPACITY {
             self.cache.remove(0);
@@ -252,7 +243,6 @@ impl RenderGraph {
             declaration: self.frame.clone(),
             compiled,
             image_slots,
-            description,
         });
 
         Ok(self.cache.len() - 1)
