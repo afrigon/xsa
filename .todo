@@ -85,3 +85,6 @@
   latest release and extracts the binaries into the working tree (first
   release bootstrapped by hand); a release task packs and uploads, later a
   GitHub Action. Upload credentials through fnox.
+- Camera target transition style is undecided: the orbit camera always arcs
+  along a zoom path (`ARC_CURVATURE`). Try alternatives (a flatter path with
+  curvature 0.5, cuts, other easing) before settling on one.
