@@ -9,10 +9,11 @@ use crate::compiled_graph::CompiledGraph;
 use crate::declared_image::DeclaredImage;
 use crate::end_state::EndState;
 use crate::frame_declaration::FrameDeclaration;
-use crate::{ImageState, RenderGraphError, ResourceUsage};
+use crate::{BufferState, ImageState, RenderGraphError, ResourceUsage};
 
 pub(crate) const MAX_COLOR_ATTACHMENTS: usize = 8;
 
+#[derive(Clone, Copy)]
 struct SubresourceAccess {
     pass: usize,
     step: u32,
@@ -60,19 +61,31 @@ impl AccessGroup {
         self.usages.push(next.usage);
     }
 
-    fn state(&self) -> ImageState {
+    fn image_state(&self) -> ImageState {
         ImageState {
             stages: self.access.stages,
             access: self.access.write_access(),
             layout: self.access.layout,
         }
     }
+
+    fn buffer_state(&self) -> BufferState {
+        BufferState {
+            stages: self.access.stages,
+            access: self.access.write_access(),
+        }
+    }
 }
 
 // Turns a frame's declarations into the passes that run and the barriers between their steps. Pure: the same
-// declarations always compile to the same graph.
+// declarations always compile to the same graph. Usages are indexed by pass and by resource up front, so compiling
+// takes time proportional to the declarations.
 pub(crate) struct GraphCompiler<'declaration> {
     declaration: &'declaration FrameDeclaration,
+    image_usages_by_pass: Vec<Vec<usize>>,
+    buffer_usages_by_pass: Vec<Vec<usize>>,
+    image_usages_by_image: Vec<Vec<usize>>,
+    buffer_usages_by_buffer: Vec<Vec<usize>>,
     live_passes: Vec<usize>,
     positions: Vec<Option<usize>>,
 }
@@ -81,9 +94,24 @@ impl<'declaration> GraphCompiler<'declaration> {
     pub fn new(declaration: &'declaration FrameDeclaration) -> GraphCompiler<'declaration> {
         let mut compiler = GraphCompiler {
             declaration,
+            image_usages_by_pass: vec![Vec::new(); declaration.passes.len()],
+            buffer_usages_by_pass: vec![Vec::new(); declaration.passes.len()],
+            image_usages_by_image: vec![Vec::new(); declaration.images.len()],
+            buffer_usages_by_buffer: vec![Vec::new(); declaration.buffers.len()],
             live_passes: Vec::new(),
             positions: vec![None; declaration.passes.len()],
         };
+
+        for (index, usage) in declaration.image_usages.iter().enumerate() {
+            compiler.image_usages_by_pass[usage.pass].push(index);
+            compiler.image_usages_by_image[usage.image].push(index);
+        }
+
+        for (index, usage) in declaration.buffer_usages.iter().enumerate() {
+            compiler.buffer_usages_by_pass[usage.pass].push(index);
+            compiler.buffer_usages_by_buffer[usage.buffer].push(index);
+        }
+
         compiler.cull();
 
         compiler
@@ -98,9 +126,9 @@ impl<'declaration> GraphCompiler<'declaration> {
         for (index, image) in self.declaration.images.iter().enumerate() {
             let sampled_layout = Access::sampled_layout(usage_flags[index]);
 
-            for level in 0..image.level_count() {
-                let accesses = self.image_accesses(index, level, sampled_layout);
-                let groups = self.group(image.name(), &accesses)?;
+            for (level, accesses) in self.image_accesses(index, image, sampled_layout).iter().enumerate() {
+                let level = level as u32;
+                let groups = self.group(image.name(), accesses)?;
 
                 if let (DeclaredImage::Transient(_), Some(first)) = (image, groups.first())
                     && first.reads
@@ -121,7 +149,7 @@ impl<'declaration> GraphCompiler<'declaration> {
                         compiled.end_states.push(EndState {
                             image: index,
                             level,
-                            state: last.state(),
+                            state: last.image_state(),
                         });
                     }
                 }
@@ -131,11 +159,7 @@ impl<'declaration> GraphCompiler<'declaration> {
         for (index, buffer) in self.declaration.buffers.iter().enumerate() {
             let accesses = self.buffer_accesses(index);
             let groups = self.group(buffer.name, &accesses)?;
-            let mut source = ImageState {
-                stages: buffer.initial.stages,
-                access: buffer.initial.access,
-                layout: vk::ImageLayout::UNDEFINED,
-            };
+            let mut source = buffer.initial;
 
             for group in &groups {
                 compiled.passes[group.pass].steps[group.step as usize]
@@ -147,7 +171,7 @@ impl<'declaration> GraphCompiler<'declaration> {
                         destination_stages: group.access.stages,
                         destination_access: group.access.access,
                     });
-                source = group.state();
+                source = group.buffer_state();
             }
 
             compiled.final_buffer_barriers.push(CompiledBufferBarrier {
@@ -171,11 +195,14 @@ impl<'declaration> GraphCompiler<'declaration> {
         let mut live_images = vec![false; declaration.images.len()];
 
         for pass in (0..declaration.passes.len()).rev() {
-            let image_usages = || declaration.image_usages.iter().filter(move |usage| usage.pass == pass);
-            let writes_buffer = declaration
-                .buffer_usages
+            let image_usages = || {
+                self.image_usages_by_pass[pass]
+                    .iter()
+                    .map(|index| &declaration.image_usages[*index])
+            };
+            let writes_buffer = self.buffer_usages_by_pass[pass]
                 .iter()
-                .any(|usage| usage.pass == pass && usage.usage.writes());
+                .any(|index| declaration.buffer_usages[*index].usage.writes());
             let writes_needed_image = image_usages().any(|usage| {
                 usage.usage.writes() && (declaration.images[usage.image].persists() || live_images[usage.image])
             });
@@ -232,60 +259,73 @@ impl<'declaration> GraphCompiler<'declaration> {
             flags[usage.image] |= usage.usage.image_usage();
         }
 
-        let history_flags: Vec<_> = declaration
-            .images
-            .iter()
-            .enumerate()
-            .filter_map(|(index, image)| match image {
-                DeclaredImage::History { id, .. } => Some((*id, flags[index])),
-                _ => None,
-            })
-            .collect();
+        let mut history_flags: Vec<vk::ImageUsageFlags> = Vec::new();
 
         for (index, image) in declaration.images.iter().enumerate() {
             if let DeclaredImage::History { id, .. } = image {
-                flags[index] = history_flags
-                    .iter()
-                    .filter(|(other, _)| other == id)
-                    .fold(vk::ImageUsageFlags::empty(), |union, (_, other_flags)| {
-                        union | *other_flags
-                    });
+                if history_flags.len() <= id.index {
+                    history_flags.resize(id.index + 1, vk::ImageUsageFlags::empty());
+                }
+
+                history_flags[id.index] |= flags[index];
+            }
+        }
+
+        for (index, image) in declaration.images.iter().enumerate() {
+            if let DeclaredImage::History { id, .. } = image {
+                flags[index] = history_flags[id.index];
             }
         }
 
         flags
     }
 
-    fn image_accesses(&self, image: usize, level: u32, sampled_layout: vk::ImageLayout) -> Vec<SubresourceAccess> {
-        self.declaration
-            .image_usages
-            .iter()
-            .enumerate()
-            .filter(|(_, usage)| usage.image == image && usage.level.is_none_or(|used| used == level))
-            .filter_map(|(index, usage)| {
-                self.positions[usage.pass].map(|pass| SubresourceAccess {
-                    pass,
-                    step: usage.step,
-                    usage: index,
-                    access: usage.usage.access(sampled_layout),
-                    reads: usage.usage.reads(),
-                    writes: usage.usage.writes(),
-                })
-            })
-            .collect()
+    // The accesses to each level of the image by the passes that run, in order.
+    fn image_accesses(
+        &self,
+        index: usize,
+        image: &DeclaredImage,
+        sampled_layout: vk::ImageLayout,
+    ) -> Vec<Vec<SubresourceAccess>> {
+        let mut levels: Vec<Vec<SubresourceAccess>> = (0..image.level_count()).map(|_| Vec::new()).collect();
+
+        for usage_index in &self.image_usages_by_image[index] {
+            let usage = &self.declaration.image_usages[*usage_index];
+            let Some(pass) = self.positions[usage.pass] else {
+                continue;
+            };
+            let access = SubresourceAccess {
+                pass,
+                step: usage.step,
+                usage: *usage_index,
+                access: usage.usage.access(sampled_layout),
+                reads: usage.usage.reads(),
+                writes: usage.usage.writes(),
+            };
+
+            match usage.level {
+                Some(level) => levels[level as usize].push(access),
+                None => {
+                    for level in &mut levels {
+                        level.push(access);
+                    }
+                }
+            }
+        }
+
+        levels
     }
 
     fn buffer_accesses(&self, buffer: usize) -> Vec<SubresourceAccess> {
-        self.declaration
-            .buffer_usages
+        self.buffer_usages_by_buffer[buffer]
             .iter()
-            .enumerate()
-            .filter(|(_, usage)| usage.buffer == buffer)
-            .filter_map(|(index, usage)| {
+            .filter_map(|index| {
+                let usage = &self.declaration.buffer_usages[*index];
+
                 self.positions[usage.pass].map(|pass| SubresourceAccess {
                     pass,
                     step: usage.step,
-                    usage: index,
+                    usage: *index,
                     access: usage.usage.access(),
                     reads: usage.usage.reads(),
                     writes: usage.usage.writes(),
@@ -330,7 +370,7 @@ impl<'declaration> GraphCompiler<'declaration> {
 
         for group in groups {
             let source = match (previous, image) {
-                (Some(previous), _) => BarrierSource::Known(previous.state()),
+                (Some(previous), _) => BarrierSource::Known(previous.image_state()),
                 (None, DeclaredImage::Transient(_)) => BarrierSource::PreviousFrame { discard: true },
                 (None, DeclaredImage::History { .. }) => BarrierSource::PreviousFrame { discard: !group.reads },
                 (None, DeclaredImage::Imported { initial, .. }) => BarrierSource::Known(*initial),
@@ -353,7 +393,7 @@ impl<'declaration> GraphCompiler<'declaration> {
             initial, final_state, ..
         } = image
         {
-            let source = previous.map_or(*initial, AccessGroup::state);
+            let source = previous.map_or(*initial, AccessGroup::image_state);
             compiled.final_image_barriers.push(CompiledBarrier {
                 image: index,
                 base_level: level,

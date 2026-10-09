@@ -42,12 +42,7 @@ impl<'frame> PassDeclaration<'frame> {
     }
 
     pub fn history(&mut self, id: HistoryId) -> HistoryImage {
-        let description = self.histories[id.index];
-
-        HistoryImage {
-            current: self.frame.history(id, description, false),
-            previous: self.frame.history(id, description, true),
-        }
+        self.frame.history(id, self.histories[id.index])
     }
 
     /// Starts a step that runs after a barrier on everything the previous steps wrote.

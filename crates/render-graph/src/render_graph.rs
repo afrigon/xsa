@@ -29,6 +29,7 @@ pub struct RenderGraph {
     history_images: Vec<Option<[ImageId; HISTORY_IMAGE_COUNT]>>,
     pool: ImagePool,
     cache: Vec<CompiledEntry>,
+    last_entry: Option<usize>,
     resolved: Vec<ResolvedImage>,
     image_barriers: RefCell<Vec<vk::ImageMemoryBarrier2<'static>>>,
     buffer_barriers: RefCell<Vec<vk::BufferMemoryBarrier2<'static>>>,
@@ -46,6 +47,7 @@ impl RenderGraph {
             history_images: Vec::new(),
             pool: ImagePool::new(output),
             cache: Vec::new(),
+            last_entry: None,
             resolved: Vec::new(),
             image_barriers: RefCell::new(Vec::new()),
             buffer_barriers: RefCell::new(Vec::new()),
@@ -107,6 +109,7 @@ impl RenderGraph {
     /// The GPU must be done with every frame recorded through the graph.
     pub unsafe fn destroy(&mut self, device: &ash::Device, allocator: &mut Allocator) -> Result<(), RenderGraphError> {
         self.cache.clear();
+        self.last_entry = None;
         self.history_images.fill(None);
 
         unsafe { self.pool.destroy(device, allocator) }
@@ -157,10 +160,11 @@ impl RenderGraph {
         allocator: &mut Allocator,
         created: &mut Vec<ImageId>,
     ) -> Result<usize, RenderGraphError> {
-        let entry = match self.cache.iter().position(|entry| entry.declaration == self.frame) {
+        let entry = match self.cached_entry() {
             Some(entry) => entry,
             None => self.compile_entry(device, allocator, created)?,
         };
+        self.last_entry = Some(entry);
         self.ensure_histories(device, allocator, entry, created)?;
         self.resolve(entry);
 
@@ -218,6 +222,17 @@ impl RenderGraph {
         }
 
         Ok(())
+    }
+
+    // Most frames declare what the previous one did, so its entry is compared first.
+    fn cached_entry(&self) -> Option<usize> {
+        if let Some(last) = self.last_entry
+            && self.cache[last].declaration == self.frame
+        {
+            return Some(last);
+        }
+
+        self.cache.iter().position(|entry| entry.declaration == self.frame)
     }
 
     fn compile_entry(

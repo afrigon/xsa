@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ash::vk;
 use gpu_allocator::vulkan::Allocator;
 
@@ -5,6 +7,7 @@ use crate::declared_image::DeclaredImage;
 use crate::frame_declaration::FrameDeclaration;
 use crate::image_owner::ImageOwner;
 use crate::physical_image::PhysicalImage;
+use crate::transient_key::TransientKey;
 use crate::{GraphImageDescription, HistoryId, ImageId, ImageSize, RenderGraphError};
 
 pub(crate) const HISTORY_IMAGE_COUNT: usize = 2;
@@ -13,6 +16,7 @@ pub(crate) const HISTORY_IMAGE_COUNT: usize = 2;
 pub(crate) struct ImagePool {
     output: vk::Extent2D,
     images: Vec<PhysicalImage>,
+    transients: HashMap<TransientKey, Vec<ImageId>>,
 }
 
 impl ImagePool {
@@ -20,6 +24,7 @@ impl ImagePool {
         ImagePool {
             output,
             images: Vec::new(),
+            transients: HashMap::new(),
         }
     }
 
@@ -31,7 +36,8 @@ impl ImagePool {
         &mut self.images[id.index]
     }
 
-    // Images with the same description and usage are reused, each by at most one image of the frame.
+    // Images with the same description and usage are reused, each by at most one image of the frame: the frame's
+    // nth image of a kind takes the pool's nth image of that kind.
     pub fn assign_transients(
         &mut self,
         device: &ash::Device,
@@ -40,7 +46,7 @@ impl ImagePool {
         usage_flags: &[vk::ImageUsageFlags],
         created: &mut Vec<ImageId>,
     ) -> Result<Vec<Option<ImageId>>, RenderGraphError> {
-        let mut taken = vec![false; self.images.len()];
+        let mut used: HashMap<TransientKey, usize> = HashMap::new();
         let mut slots = Vec::with_capacity(declaration.images.len());
 
         for (image, usage) in declaration.images.iter().zip(usage_flags) {
@@ -54,14 +60,14 @@ impl ImagePool {
                 continue;
             }
 
-            let reusable = self.images.iter().zip(&taken).position(|(physical, taken)| {
-                !taken
-                    && physical.owner == ImageOwner::Transient
-                    && physical.description == *description
-                    && physical.usage == *usage
-            });
-            let id = match reusable {
-                Some(index) => ImageId { index },
+            let key = TransientKey {
+                description: *description,
+                usage: *usage,
+            };
+            let nth = used.entry(key).or_default();
+            let existing = self.transients.get(&key).and_then(|ids| ids.get(*nth)).copied();
+            let id = match existing {
+                Some(id) => id,
                 None => {
                     let physical = PhysicalImage::new(
                         device,
@@ -72,12 +78,12 @@ impl ImagePool {
                         ImageOwner::Transient,
                     )?;
                     let id = self.add(physical);
-                    taken.push(false);
+                    self.transients.entry(key).or_default().push(id);
                     created.push(id);
                     id
                 }
             };
-            taken[id.index] = true;
+            *nth += 1;
             slots.push(Some(id));
         }
 
@@ -161,6 +167,8 @@ impl ImagePool {
 
     // Safety: the GPU must be done with every image.
     pub unsafe fn destroy(&mut self, device: &ash::Device, allocator: &mut Allocator) -> Result<(), RenderGraphError> {
+        self.transients.clear();
+
         for mut image in self.images.drain(..) {
             unsafe { image.destroy(device, allocator) }?;
         }

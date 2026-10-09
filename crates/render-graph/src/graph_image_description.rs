@@ -3,7 +3,7 @@ use ash::vk;
 use crate::ImageSize;
 
 /// An image the graph allocates. Its usage flags follow from how passes declare they use it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GraphImageDescription {
     pub name: &'static str,
     pub format: vk::Format,

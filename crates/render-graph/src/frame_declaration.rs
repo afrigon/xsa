@@ -3,7 +3,7 @@ use crate::declared_buffer_usage::DeclaredBufferUsage;
 use crate::declared_image::DeclaredImage;
 use crate::declared_image_usage::DeclaredImageUsage;
 use crate::declared_pass::DeclaredPass;
-use crate::{BufferHandle, GraphImageDescription, HistoryId, ImageHandle, ImportedImageHandle};
+use crate::{BufferHandle, GraphImageDescription, HistoryId, HistoryImage, ImageHandle, ImportedImageHandle};
 
 // Everything a frame declared, in declaration order. Two frames with equal declarations compile to the same graph.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -13,6 +13,7 @@ pub(crate) struct FrameDeclaration {
     pub buffers: Vec<DeclaredBuffer>,
     pub image_usages: Vec<DeclaredImageUsage>,
     pub buffer_usages: Vec<DeclaredBufferUsage>,
+    pub histories: Vec<Option<HistoryImage>>,
 }
 
 impl FrameDeclaration {
@@ -22,6 +23,7 @@ impl FrameDeclaration {
         self.buffers.clear();
         self.image_usages.clear();
         self.buffer_usages.clear();
+        self.histories.clear();
     }
 
     pub fn add_image(&mut self, image: DeclaredImage) -> ImageHandle {
@@ -44,17 +46,32 @@ impl FrameDeclaration {
         }
     }
 
-    pub fn history(&mut self, id: HistoryId, description: GraphImageDescription, previous: bool) -> ImageHandle {
-        let image = DeclaredImage::History {
-            id,
-            description,
-            previous,
+    // A history named by several passes is one pair of images in the frame.
+    pub fn history(&mut self, id: HistoryId, description: GraphImageDescription) -> HistoryImage {
+        if let Some(Some(history)) = self.histories.get(id.index) {
+            return *history;
+        }
+
+        let history = HistoryImage {
+            current: self.add_image(DeclaredImage::History {
+                id,
+                description,
+                previous: false,
+            }),
+            previous: self.add_image(DeclaredImage::History {
+                id,
+                description,
+                previous: true,
+            }),
         };
 
-        match self.images.iter().position(|declared| *declared == image) {
-            Some(index) => ImageHandle { index },
-            None => self.add_image(image),
+        if self.histories.len() <= id.index {
+            self.histories.resize(id.index + 1, None);
         }
+
+        self.histories[id.index] = Some(history);
+
+        history
     }
 
     fn push_image(&mut self, image: DeclaredImage) -> usize {

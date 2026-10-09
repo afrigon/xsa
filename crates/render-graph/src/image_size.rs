@@ -1,7 +1,7 @@
 use ash::vk;
 
 /// The size of a graph image, relative to the output it is rendered for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ImageSize {
     Output,
     OutputDivided(u32),

@@ -54,6 +54,7 @@ mod resolved_image;
 mod resource_usage;
 mod stage;
 mod subresource;
+mod transient_key;
 
 pub use attachment::Attachment;
 pub use buffer_handle::BufferHandle;
