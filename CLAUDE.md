@@ -184,6 +184,10 @@ renderer uses it like an external library, through its public API only.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
+- Agents driving the game start their own instance with a unique name
+  (`mise run client -- --instance agent-<task>`) and pass that `--instance` to
+  every `mise run ipc`. Other instances may be the user's: never send them
+  commands.
 
 ## Dependencies and assets
 
