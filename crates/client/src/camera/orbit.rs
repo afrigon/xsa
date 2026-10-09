@@ -36,6 +36,7 @@ pub struct OrbitCamera {
     pitch: f64,
     transition: Option<Transition>,
     current: ViewPoint,
+    duration_scale: f64,
 }
 
 impl OrbitCamera {
@@ -51,6 +52,7 @@ impl OrbitCamera {
                 focus: DVec3::ZERO,
                 distance,
             },
+            duration_scale: 1.0,
         }
     }
 
@@ -82,6 +84,10 @@ impl OrbitCamera {
         self.yaw = yaw;
     }
 
+    pub fn set_duration_scale(&mut self, duration_scale: f64) {
+        self.duration_scale = duration_scale;
+    }
+
     pub fn set_target(&mut self, target: BodyIndex, target_position: DVec3, target_radius: f64) {
         self.target = target;
         self.distance = target_radius * FRAMING_DISTANCE_IN_RADII;
@@ -91,7 +97,8 @@ impl OrbitCamera {
         };
         let path = ZoomPath::new(self.current, end, ARC_CURVATURE);
         let duration = (path.length * TRANSITION_SECONDS_PER_PATH_LENGTH)
-            .clamp(MINIMUM_TRANSITION_SECONDS, MAXIMUM_TRANSITION_SECONDS);
+            .clamp(MINIMUM_TRANSITION_SECONDS, MAXIMUM_TRANSITION_SECONDS)
+            * self.duration_scale;
         self.transition = Some(Transition {
             path,
             end,

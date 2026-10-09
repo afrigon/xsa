@@ -22,6 +22,7 @@ pub(super) struct CameraController {
     mode: CameraMode,
     orbit: Option<OrbitCamera>,
     debug: DebugCamera,
+    animation_duration_scale: f64,
 }
 
 impl CameraController {
@@ -34,6 +35,7 @@ impl CameraController {
             mode: CameraMode::Orbit,
             orbit: None,
             debug: DebugCamera::new(DEBUG_CAMERA_SPEED),
+            animation_duration_scale: 1.0,
         }
     }
 
@@ -57,6 +59,15 @@ impl CameraController {
         self.orbit = world
             .initial_target()
             .map(|target| OrbitCamera::new(target, world.body(target).radius));
+        self.set_animation_duration_scale(self.animation_duration_scale);
+    }
+
+    pub fn set_animation_duration_scale(&mut self, animation_duration_scale: f64) {
+        self.animation_duration_scale = animation_duration_scale;
+
+        if let Some(orbit) = &mut self.orbit {
+            orbit.set_duration_scale(animation_duration_scale);
+        }
     }
 
     // Returns whether the mode changed.

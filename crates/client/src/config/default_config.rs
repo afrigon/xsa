@@ -14,6 +14,7 @@ const MANUAL_EV100: f32 = 15.0;
 // Eyes adapt to brighter scenes far faster than to darker ones.
 const DARK_TO_LIGHT_HALF_LIFE_SECONDS: f32 = 0.1;
 const LIGHT_TO_DARK_HALF_LIFE_SECONDS: f32 = 1.5;
+const ANIMATION_DURATION_SCALE: f32 = 1.0;
 
 struct DefaultBind {
     action: BindAction,
@@ -81,6 +82,7 @@ impl Default for Config {
                 shader_override: None,
                 shading_model: ShadingModel::HapkeSol,
                 wireframe: false,
+                animation_duration_scale: ANIMATION_DURATION_SCALE,
             },
         }
     }

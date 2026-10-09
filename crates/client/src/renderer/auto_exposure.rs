@@ -35,6 +35,7 @@ pub struct AutoExposure {
     config: ExposureConfig,
     metered_ev100: f32,
     last_update: Option<Instant>,
+    duration_scale: f32,
 }
 
 impl AutoExposure {
@@ -43,11 +44,13 @@ impl AutoExposure {
             config,
             metered_ev100: initial_ev100,
             last_update: None,
+            duration_scale: 1.0,
         }
     }
 
-    pub fn configure(&mut self, config: &ExposureConfig) {
+    pub fn configure(&mut self, config: &ExposureConfig, duration_scale: f32) {
         self.config = config.clone();
+        self.duration_scale = duration_scale;
     }
 
     pub fn ev100(&self) -> f32 {
@@ -85,7 +88,12 @@ impl AutoExposure {
             adaptation.dark_to_light_half_life_seconds
         } else {
             adaptation.light_to_dark_half_life_seconds
-        };
+        } * self.duration_scale;
+
+        if half_life <= 0.0 {
+            return target;
+        }
+
         current + (target - current) * (1.0 - 0.5_f32.powf(seconds / half_life))
     }
 }
@@ -103,5 +111,14 @@ mod tests {
         let brighter = exposure.adapt(0.0, 10.0, adaptation.dark_to_light_half_life_seconds);
         let darker = exposure.adapt(10.0, 0.0, adaptation.light_to_dark_half_life_seconds);
         assert!((brighter - 5.0).abs() < 1e-4 && (darker - 5.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_zero_duration_scale_adapts_at_once() {
+        let config = Config::default().render.exposure;
+        let mut exposure = AutoExposure::new(config.clone(), 0.0);
+        exposure.configure(&config, 0.0);
+        assert_eq!(exposure.adapt(0.0, 10.0, 0.0), 10.0);
+        assert_eq!(exposure.adapt(10.0, 0.0, 0.0), 0.0);
     }
 }

@@ -174,7 +174,8 @@ impl Renderer {
     pub fn configure(&mut self, render: &RenderConfig, debug: &DebugConfig) {
         self.render = render.clone();
         self.debug = debug.clone();
-        self.exposure.configure(&render.exposure);
+        self.exposure
+            .configure(&render.exposure, debug.animation_duration_scale);
 
         if debug.wireframe && !self.supports_wireframe() {
             tracing::warn!("wireframe is unsupported by this device");

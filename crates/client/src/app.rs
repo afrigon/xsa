@@ -145,6 +145,7 @@ impl App {
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
         self.cameras = Some(CameraController::new(window.inner_size()));
         window.request_redraw();
+        self.apply_config();
 
         Ok(())
     }
@@ -274,6 +275,13 @@ impl App {
     }
 
     fn apply_config(&mut self) {
+        let animation_duration_scale = self.config.debug.animation_duration_scale;
+        self.navigation.set_duration_scale(animation_duration_scale);
+
+        if let Some(cameras) = &mut self.cameras {
+            cameras.set_animation_duration_scale(f64::from(animation_duration_scale));
+        }
+
         let Some(renderer) = &mut self.renderer else {
             return;
         };

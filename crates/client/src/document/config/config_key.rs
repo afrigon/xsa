@@ -25,6 +25,7 @@ impl ConfigKey {
         DebugDocument::SHADER,
         DebugDocument::SHADING,
         DebugDocument::WIREFRAME,
+        DebugDocument::ANIMATION_DURATION_SCALE,
     ];
 
     pub fn all() -> Vec<ConfigKey> {
