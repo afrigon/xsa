@@ -152,7 +152,7 @@ impl RenderGraph {
         &mut self,
         pass: &Pass,
         inputs: Pass::Inputs,
-    ) -> Pass::Outputs {
+    ) -> Pass::Resources {
         let mut declaration = PassDeclaration::new(&mut self.frame, &self.histories, Pass::NAME);
 
         pass.declare(&mut declaration, inputs)
@@ -182,7 +182,7 @@ impl RenderGraph {
     pub(crate) fn execute<Context>(
         &mut self,
         entry: usize,
-        passes: &mut [&mut dyn RecordedPass<Context>],
+        passes: &mut [Box<dyn RecordedPass<Context> + '_>],
         device: &ash::Device,
         command_buffer: vk::CommandBuffer,
         context: &Context,

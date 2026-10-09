@@ -47,6 +47,7 @@ mod pass_context;
 mod pass_declaration;
 mod pass_description;
 mod pass_error;
+mod pass_recording;
 mod physical_image;
 mod recorded_pass;
 mod render_graph;

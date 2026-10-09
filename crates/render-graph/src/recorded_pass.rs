@@ -1,12 +1,6 @@
-use crate::{PassContext, PassError, RenderPass};
+use crate::{PassContext, PassError};
 
-// RenderPass without its associated types, so passes of different types share one list.
+// A pass and the resources it declared this frame, without their types, so passes of different types share one list.
 pub(crate) trait RecordedPass<Context> {
     fn record(&mut self, context: &Context, pass: &PassContext) -> Result<(), PassError>;
-}
-
-impl<Context, Pass: RenderPass<Context>> RecordedPass<Context> for Pass {
-    fn record(&mut self, context: &Context, pass: &PassContext) -> Result<(), PassError> {
-        RenderPass::record(self, context, pass)
-    }
 }

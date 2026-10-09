@@ -1,18 +1,26 @@
+mod forward_resources;
+
+pub(in crate::renderer) use forward_resources::ForwardResources;
+
 use std::mem::offset_of;
 
 use ash::vk;
+use render_graph::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
 
 use crate::mesh::{Mesh, Vertex};
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
-use crate::renderer::render_pass::RenderPass;
-use crate::renderer::render_targets::RenderTargets;
 use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{Buffer, GraphicsPipeline, GraphicsPipelineDescription};
 
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const TRIANGLE_VERTICES: u32 = 3;
+const HDR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+const MOTION_FORMAT: vk::Format = vk::Format::R16G16_SFLOAT;
+const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
+const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
     pipelines: Vec<GraphicsPipeline>,
@@ -49,6 +57,26 @@ impl ForwardPass {
             index_buffer,
             index_count: sphere.indices.len() as u32,
         })
+    }
+
+    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
+        unsafe {
+            for pipeline in &mut self.pipelines {
+                pipeline.destroy(&gpu.device);
+            }
+
+            self.vertex_buffer.destroy(&gpu.device, &mut gpu.allocator);
+            self.index_buffer.destroy(&gpu.device, &mut gpu.allocator);
+        }
+    }
+
+    fn target(name: &'static str, format: vk::Format) -> GraphImageDescription {
+        GraphImageDescription {
+            name,
+            format,
+            size: ImageSize::Output,
+            mip_levels: 1,
+        }
     }
 
     fn pipeline(&self, shader: Shader) -> &GraphicsPipeline {
@@ -120,8 +148,8 @@ impl ForwardPass {
         ];
         let mesh_description = GraphicsPipelineDescription {
             spirv,
-            color_formats: &[RenderTargets::HDR_FORMAT, RenderTargets::MOTION_FORMAT],
-            depth_format: Some(RenderTargets::DEPTH_FORMAT),
+            color_formats: &[HDR_FORMAT, MOTION_FORMAT],
+            depth_format: Some(DEPTH_FORMAT),
             depth_compare_op: vk::CompareOp::GREATER,
             depth_write: true,
             cull_mode: vk::CullModeFlags::BACK,
@@ -147,38 +175,34 @@ impl ForwardPass {
     }
 }
 
-impl RenderPass for ForwardPass {
-    fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
-        let targets = frame.targets;
-        let recorder = &frame.recorder;
-        recorder.sampled_to_color_attachment(targets.hdr.handle());
-        recorder.sampled_to_color_attachment(targets.motion.handle());
-        recorder.to_depth_attachment(targets.depth.handle());
-        recorder.begin_rendering(
-            &[targets.hdr.view(), targets.motion.view()],
-            Some(targets.depth.view()),
-            targets.extent,
-        );
+impl<'frame> RenderPass<FrameContext<'frame>> for ForwardPass {
+    const NAME: &'static str = "forward";
 
-        self.record_objects(frame);
-        self.record_skybox(frame);
+    type Inputs = ();
+    type Resources = ForwardResources;
 
-        recorder.end_rendering();
-        recorder.color_attachment_to_sampled(targets.hdr.handle());
-        recorder.color_attachment_to_sampled(targets.motion.handle());
-        recorder.depth_attachment_to_sampled(targets.depth.handle());
+    fn declare(&self, pass: &mut PassDeclaration, _inputs: ()) -> ForwardResources {
+        let hdr = pass.create_image(ForwardPass::target("hdr color", HDR_FORMAT));
+        let motion = pass.create_image(ForwardPass::target("motion vectors", MOTION_FORMAT));
+        let depth = pass.create_image(ForwardPass::target("depth", DEPTH_FORMAT));
+        pass.color_attachment(hdr, Attachment::ClearColor(CLEAR_COLOR));
+        pass.color_attachment(motion, Attachment::ClearColor(CLEAR_COLOR));
+        pass.depth_attachment(depth, Attachment::ClearDepth(REVERSE_Z_FAR_DEPTH));
 
-        Ok(())
+        ForwardResources { hdr, motion, depth }
     }
 
-    unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe {
-            for pipeline in &mut self.pipelines {
-                pipeline.destroy(&gpu.device);
-            }
+    fn record(
+        &mut self,
+        frame: &FrameContext<'frame>,
+        pass: &PassContext,
+        _resources: &ForwardResources,
+    ) -> Result<(), PassError> {
+        pass.begin_rendering();
+        self.record_objects(frame);
+        self.record_skybox(frame);
+        pass.end_rendering();
 
-            self.vertex_buffer.destroy(&gpu.device, &mut gpu.allocator);
-            self.index_buffer.destroy(&gpu.device, &mut gpu.allocator);
-        }
+        Ok(())
     }
 }

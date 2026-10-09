@@ -1,9 +1,9 @@
 use ash::vk::{self, Handle};
+use render_graph::{Attachment, ImageHandle, PassContext, PassDeclaration, PassError, RenderPass};
 use xui_vulkan::{FrameTarget, VulkanHost};
 
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
-use crate::renderer::render_pass::RenderPass;
 
 pub(in crate::renderer) struct UserInterfacePass {
     renderer: xui_vulkan::Renderer,
@@ -25,22 +25,41 @@ impl UserInterfacePass {
 
         Ok(UserInterfacePass { renderer })
     }
+
+    pub unsafe fn destroy(&mut self) {
+        unsafe { self.renderer.destroy() };
+    }
 }
 
-impl RenderPass for UserInterfacePass {
-    fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
+impl<'frame> RenderPass<FrameContext<'frame>> for UserInterfacePass {
+    const NAME: &'static str = "user interface";
+
+    type Inputs = ImageHandle;
+    type Resources = ImageHandle;
+
+    fn declare(&self, pass: &mut PassDeclaration, output: ImageHandle) -> ImageHandle {
+        pass.color_attachment(output, Attachment::Load);
+
+        output
+    }
+
+    fn record(
+        &mut self,
+        frame: &FrameContext<'frame>,
+        pass: &PassContext,
+        output: &ImageHandle,
+    ) -> Result<(), PassError> {
+        let extent = pass.extent(*output);
         let target = FrameTarget {
             command_buffer: frame.frame.command_buffer.as_raw(),
-            image_view: frame.output_view.as_raw(),
-            width: frame.output_extent.width,
-            height: frame.output_extent.height,
+            image_view: pass.view(*output).as_raw(),
+            width: extent.width,
+            height: extent.height,
             frame_slot: frame.frame_slot,
         };
 
-        unsafe { self.renderer.record(&target, frame.user_interface) }
-    }
+        unsafe { self.renderer.record(&target, frame.user_interface) }?;
 
-    unsafe fn destroy(&mut self, _gpu: &mut GpuContext) {
-        unsafe { self.renderer.destroy() };
+        Ok(())
     }
 }

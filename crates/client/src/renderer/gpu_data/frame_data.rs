@@ -13,15 +13,11 @@ pub(in crate::renderer) struct FrameData {
     pub viewport_size: Vec2,
     pub jitter: Vec2,
     pub exposure: f32,
-    pub scene_color_texture: u32,
     pub tonemapper: u32,
     pub starlight_illuminance: f32,
-    pub bloom_texture: u32,
-    pub bloom_strength: f32,
     pub shading_model: u32,
-    pub padding: [u32; 1],
 }
 
-const _: () = assert!(size_of::<FrameData>() == 272);
+const _: () = assert!(size_of::<FrameData>() == 256);
 
 unsafe impl GpuData for FrameData {}

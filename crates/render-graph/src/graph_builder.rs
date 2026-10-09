@@ -1,5 +1,6 @@
 use gpu_allocator::vulkan::Allocator;
 
+use crate::pass_recording::PassRecording;
 use crate::recorded_pass::RecordedPass;
 use crate::{
     BufferHandle, CompiledFrame, ImageHandle, ImportedBuffer, ImportedImage, RenderGraph, RenderGraphError, RenderPass,
@@ -8,7 +9,7 @@ use crate::{
 /// Collects one frame's passes, in the order they run.
 pub struct GraphBuilder<'graph, 'passes, Context> {
     graph: &'graph mut RenderGraph,
-    passes: Vec<&'passes mut dyn RecordedPass<Context>>,
+    passes: Vec<Box<dyn RecordedPass<Context> + 'passes>>,
 }
 
 impl<'graph, 'passes, Context> GraphBuilder<'graph, 'passes, Context> {
@@ -29,16 +30,19 @@ impl<'graph, 'passes, Context> GraphBuilder<'graph, 'passes, Context> {
         self.graph.import_buffer(buffer)
     }
 
-    /// Adds a pass after the ones already added and returns what it gives later passes.
+    /// Adds a pass after the ones already added and returns the handles it declared, to wire later passes.
     pub fn add<Pass: RenderPass<Context> + 'passes>(
         &mut self,
         pass: &'passes mut Pass,
         inputs: Pass::Inputs,
-    ) -> Pass::Outputs {
-        let outputs = self.graph.declare(&*pass, inputs);
-        self.passes.push(pass);
+    ) -> Pass::Resources
+    where
+        Pass::Resources: 'passes,
+    {
+        let resources = self.graph.declare(&*pass, inputs);
+        self.passes.push(Box::new(PassRecording { pass, resources }));
 
-        outputs
+        resources
     }
 
     /// Compiles the frame, or reuses an earlier frame's result when the declarations match, and allocates the images

@@ -1,24 +1,39 @@
-use crate::renderer::frame_context::FrameContext;
-use crate::renderer::gpu_context::GpuContext;
-use crate::renderer::render_pass::RenderPass;
+mod capture_inputs;
 
-// Copies the presented image into the frame's capture buffer, on frames that asked for one.
+pub(in crate::renderer) use capture_inputs::CaptureInputs;
+
+use render_graph::{BufferUsage, PassContext, PassDeclaration, PassError, RenderPass};
+
+use crate::renderer::frame_context::FrameContext;
+
+// Copies the presented image into the capture buffer, on frames that asked for one.
 pub(in crate::renderer) struct CapturePass;
 
-impl RenderPass for CapturePass {
-    fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
-        let Some(buffer) = frame.capture else {
-            return Ok(());
-        };
+impl<'frame> RenderPass<FrameContext<'frame>> for CapturePass {
+    const NAME: &'static str = "capture";
 
-        frame.recorder.color_attachment_to_transfer_source(frame.output_image);
-        frame
-            .recorder
-            .copy_image_to_buffer(frame.output_image, frame.output_extent, buffer);
-        frame.recorder.transfer_source_to_color_attachment(frame.output_image);
+    type Inputs = CaptureInputs;
+    type Resources = CaptureInputs;
+
+    fn declare(&self, pass: &mut PassDeclaration, inputs: CaptureInputs) -> CaptureInputs {
+        pass.transfer_source(inputs.output);
+        pass.buffer(inputs.capture, BufferUsage::TransferDestination);
+
+        inputs
+    }
+
+    fn record(
+        &mut self,
+        frame: &FrameContext<'frame>,
+        pass: &PassContext,
+        inputs: &CaptureInputs,
+    ) -> Result<(), PassError> {
+        frame.recorder.copy_image_to_buffer(
+            pass.image(inputs.output),
+            pass.extent(inputs.output),
+            pass.buffer(inputs.capture),
+        );
 
         Ok(())
     }
-
-    unsafe fn destroy(&mut self, _gpu: &mut GpuContext) {}
 }

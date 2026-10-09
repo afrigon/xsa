@@ -6,7 +6,7 @@ use crate::{ImageHandle, ImageId, RenderGraph, RenderGraphError};
 /// A frame ready to record. The images it uses exist, so their ids can be written into the host's frame data first.
 pub struct CompiledFrame<'graph, 'passes, Context> {
     graph: &'graph mut RenderGraph,
-    passes: Vec<&'passes mut dyn RecordedPass<Context>>,
+    passes: Vec<Box<dyn RecordedPass<Context> + 'passes>>,
     entry: usize,
     created: Vec<ImageId>,
 }
@@ -14,7 +14,7 @@ pub struct CompiledFrame<'graph, 'passes, Context> {
 impl<'graph, 'passes, Context> CompiledFrame<'graph, 'passes, Context> {
     pub(crate) fn new(
         graph: &'graph mut RenderGraph,
-        passes: Vec<&'passes mut dyn RecordedPass<Context>>,
+        passes: Vec<Box<dyn RecordedPass<Context> + 'passes>>,
         entry: usize,
         created: Vec<ImageId>,
     ) -> CompiledFrame<'graph, 'passes, Context> {

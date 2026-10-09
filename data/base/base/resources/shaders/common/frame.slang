@@ -7,10 +7,7 @@ struct FrameData {
     float2 viewportSize;
     float2 jitter;
     float exposure;
-    uint sceneColorTexture;
     uint tonemapper;
     float starlightIlluminance;
-    uint bloomTexture;
-    float bloomStrength;
     uint shadingModel;
 };

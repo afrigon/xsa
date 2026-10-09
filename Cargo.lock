@@ -3167,6 +3167,7 @@ dependencies = [
  "gpu-allocator",
  "image",
  "kdl",
+ "render-graph",
  "tokio",
  "tracing",
  "winit",

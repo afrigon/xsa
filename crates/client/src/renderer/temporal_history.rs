@@ -7,10 +7,9 @@ const JITTER_BASE_X: u32 = 2;
 const JITTER_BASE_Y: u32 = 3;
 const PIXEL_CENTER: f32 = 0.5;
 const NDC_PER_VIEWPORT: f32 = 2.0;
-pub(super) const HISTORY_IMAGE_COUNT: usize = 2;
 
 // What temporal effects carry from one frame to the next: the previous transforms motion vectors are measured
-// against, the jitter sequence and which history image holds the accumulated result.
+// against, the jitter sequence and whether the accumulated history is usable.
 #[derive(Default)]
 pub(super) struct TemporalHistory {
     frame: u32,
@@ -57,14 +56,6 @@ impl TemporalHistory {
         let offset = Vec2::new(halton(sample, JITTER_BASE_X), halton(sample, JITTER_BASE_Y)) - PIXEL_CENTER;
 
         offset * NDC_PER_VIEWPORT / Vec2::new(extent.width as f32, extent.height as f32)
-    }
-
-    pub fn current(&self) -> usize {
-        self.frame as usize % HISTORY_IMAGE_COUNT
-    }
-
-    pub fn previous(&self) -> usize {
-        (self.frame as usize + 1) % HISTORY_IMAGE_COUNT
     }
 
     pub fn is_valid(&self) -> bool {
@@ -129,6 +120,5 @@ mod tests {
         history.reset();
         history.begin_frame(Mat4::IDENTITY, 1.0);
         assert!(!history.is_valid());
-        assert_ne!(history.current(), history.previous());
     }
 }

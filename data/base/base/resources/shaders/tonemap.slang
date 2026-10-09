@@ -1,4 +1,4 @@
-import common.scene;
+import common.frame;
 
 [[vk::binding(0, 0)]]
 SamplerState clampingSampler;
@@ -14,6 +14,16 @@ static const float bloomWeightSum = 1.96875;
 static const uint tonemapperAgx = 0;
 static const uint tonemapperAgxPunchy = 1;
 static const uint tonemapperKhronosNeutral = 2;
+
+struct TonemapConstants {
+    FrameData *frame;
+    uint sceneColorTexture;
+    uint bloomTexture;
+    float bloomStrength;
+};
+
+[[vk::push_constant]]
+ConstantBuffer<TonemapConstants> constants;
 
 struct FullscreenOutput {
     float4 position : SV_Position;
@@ -76,11 +86,11 @@ float3 khronosNeutral(float3 color) {
 [shader("fragment")]
 float4 fragmentMain(FullscreenOutput input) : SV_Target {
     FrameData frame = *constants.frame;
-    float3 color = textures[frame.sceneColorTexture].Load(int3(int2(input.position.xy), 0)).rgb;
-    if (frame.bloomStrength > 0.0) {
+    float3 color = textures[constants.sceneColorTexture].Load(int3(int2(input.position.xy), 0)).rgb;
+    if (constants.bloomStrength > 0.0) {
         float2 uv = input.position.xy / frame.viewportSize;
-        float3 bloom = textures[frame.bloomTexture].SampleLevel(clampingSampler, uv, 0.0).rgb / bloomWeightSum;
-        color = lerp(color, bloom, frame.bloomStrength);
+        float3 bloom = textures[constants.bloomTexture].SampleLevel(clampingSampler, uv, 0.0).rgb / bloomWeightSum;
+        color = lerp(color, bloom, constants.bloomStrength);
     }
     switch (frame.tonemapper) {
     case tonemapperAgx:

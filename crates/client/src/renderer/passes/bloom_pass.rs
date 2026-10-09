@@ -1,33 +1,34 @@
 mod bloom_resources;
 mod bloom_step;
 
+pub(in crate::renderer) use bloom_resources::BloomResources;
+
 use ash::vk;
+use render_graph::{
+    GraphImageDescription, ImageHandle, ImageSize, PassContext, PassDeclaration, PassError, RenderPass, Stage,
+};
 
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::BloomPushConstants;
-use crate::renderer::render_pass::RenderPass;
-use crate::renderer::render_targets::RenderTargets;
 use crate::vulkan::ComputePipeline;
-use bloom_resources::BloomResources;
 use bloom_step::BloomStep;
 
 // Must match bloomWeightSum in tonemap.slang.
 const BLOOM_LEVELS: u32 = 6;
+const BLOOM_FORMAT: vk::Format = vk::Format::B10G11R11_UFLOAT_PACK32;
+const OUTPUT_DIVISOR: u32 = 2;
 const WORKGROUP_SIZE: u32 = 8;
 
 // Level 0 is half the window's resolution; each further level halves again.
 pub(in crate::renderer) struct BloomPass {
     downsample: ComputePipeline,
     upsample: ComputePipeline,
-    resources: BloomResources,
-    texture: u32,
-    storage_images: Vec<u32>,
 }
 
 impl BloomPass {
-    pub fn new(gpu: &mut GpuContext, binaries: &ShaderBinaries, extent: vk::Extent2D) -> anyhow::Result<BloomPass> {
+    pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<BloomPass> {
         let pipeline = |spirv: &[u8]| {
             ComputePipeline::new(
                 &gpu.device,
@@ -38,30 +39,25 @@ impl BloomPass {
         };
         let downsample = pipeline(&binaries.bloom_downsample)?;
         let upsample = pipeline(&binaries.bloom_upsample)?;
-        let resources = BloomResources::new(gpu, extent, BLOOM_LEVELS)?;
-        let texture = gpu
-            .bindless
-            .add_texture(&gpu.device, resources.image.view(), vk::ImageLayout::GENERAL)?;
-        let storage_images = resources
-            .level_views
-            .iter()
-            .map(|view| gpu.bindless.add_storage_image(&gpu.device, *view))
-            .collect::<anyhow::Result<_>>()?;
 
-        Ok(BloomPass {
-            downsample,
-            upsample,
-            resources,
-            texture,
-            storage_images,
-        })
+        Ok(BloomPass { downsample, upsample })
     }
 
-    pub fn texture(&self) -> u32 {
-        self.texture
+    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
+        unsafe {
+            self.downsample.destroy(&gpu.device);
+            self.upsample.destroy(&gpu.device);
+        }
     }
 
-    fn dispatch(&self, frame: &FrameContext, pipeline: &ComputePipeline, step: &BloomStep) {
+    fn dispatch(
+        &self,
+        frame: &FrameContext,
+        pass: &PassContext,
+        pipeline: &ComputePipeline,
+        bloom: ImageHandle,
+        step: &BloomStep,
+    ) -> anyhow::Result<()> {
         let recorder = &frame.recorder;
         recorder.bind_compute(pipeline, frame.descriptor_set);
         recorder.push_compute_constants(
@@ -69,73 +65,85 @@ impl BloomPass {
             &BloomPushConstants {
                 source_texture: step.source_texture,
                 source_level: step.source_level,
-                target_image: self.storage_images[step.target_level],
+                target_image: frame.storage_image(pass, bloom, step.target_level)?,
                 karis_average: u32::from(step.karis_average),
             },
         );
-        recorder.dispatch(self.resources.level_extents[step.target_level], WORKGROUP_SIZE);
-        recorder.bloom_between_passes(self.resources.image.handle());
+        recorder.dispatch(pass.extent(bloom.level(step.target_level)), WORKGROUP_SIZE);
+
+        Ok(())
     }
 }
 
-impl RenderPass for BloomPass {
-    fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
-        if !frame.render.bloom.enabled {
-            return Ok(());
+impl<'frame> RenderPass<FrameContext<'frame>> for BloomPass {
+    const NAME: &'static str = "bloom";
+
+    type Inputs = ImageHandle;
+    type Resources = BloomResources;
+
+    fn declare(&self, pass: &mut PassDeclaration, scene_color: ImageHandle) -> BloomResources {
+        let bloom = pass.create_image(GraphImageDescription {
+            name: "bloom",
+            format: BLOOM_FORMAT,
+            size: ImageSize::OutputDivided(OUTPUT_DIVISOR),
+            mip_levels: BLOOM_LEVELS,
+        });
+        pass.sampled(scene_color, Stage::Compute);
+        pass.storage_write(bloom.level(0), Stage::Compute);
+
+        for level in 1..BLOOM_LEVELS {
+            pass.next_step();
+            pass.sampled(bloom.level(level - 1), Stage::Compute);
+            pass.storage_write(bloom.level(level), Stage::Compute);
         }
 
-        frame.recorder.bloom_start(self.resources.image.handle());
-
-        for level in 0..BLOOM_LEVELS as usize {
-            let first = level == 0;
-            let step = BloomStep {
-                source_texture: if first { frame.scene_color_texture } else { self.texture },
-                source_level: if first { 0 } else { level as u32 - 1 },
-                target_level: level,
-                karis_average: first,
-            };
-            self.dispatch(frame, &self.downsample, &step);
+        for level in (0..BLOOM_LEVELS - 1).rev() {
+            pass.next_step();
+            pass.sampled(bloom.level(level + 1), Stage::Compute);
+            pass.storage_read_write(bloom.level(level), Stage::Compute);
         }
 
-        for level in (0..BLOOM_LEVELS as usize - 1).rev() {
+        BloomResources { scene_color, bloom }
+    }
+
+    fn record(
+        &mut self,
+        frame: &FrameContext<'frame>,
+        pass: &PassContext,
+        resources: &BloomResources,
+    ) -> Result<(), PassError> {
+        let bloom = resources.bloom;
+        let bloom_texture = frame.texture(pass, bloom)?;
+        let first = BloomStep {
+            source_texture: frame.texture(pass, resources.scene_color)?,
+            source_level: 0,
+            target_level: 0,
+            karis_average: true,
+        };
+        self.dispatch(frame, pass, &self.downsample, bloom, &first)?;
+
+        for level in 1..BLOOM_LEVELS {
+            pass.next_step();
             let step = BloomStep {
-                source_texture: self.texture,
-                source_level: level as u32 + 1,
+                source_texture: bloom_texture,
+                source_level: level - 1,
                 target_level: level,
                 karis_average: false,
             };
-            self.dispatch(frame, &self.upsample, &step);
+            self.dispatch(frame, pass, &self.downsample, bloom, &step)?;
         }
 
-        frame.recorder.bloom_to_fragment(self.resources.image.handle());
+        for level in (0..BLOOM_LEVELS - 1).rev() {
+            pass.next_step();
+            let step = BloomStep {
+                source_texture: bloom_texture,
+                source_level: level + 1,
+                target_level: level,
+                karis_average: false,
+            };
+            self.dispatch(frame, pass, &self.upsample, bloom, &step)?;
+        }
 
         Ok(())
-    }
-
-    fn resize(&mut self, gpu: &mut GpuContext, targets: &RenderTargets) -> anyhow::Result<()> {
-        let resources = BloomResources::new(gpu, targets.extent, BLOOM_LEVELS)?;
-        gpu.bindless.set_texture(
-            &gpu.device,
-            self.texture,
-            resources.image.view(),
-            vk::ImageLayout::GENERAL,
-        );
-
-        for (slot, view) in self.storage_images.iter().zip(&resources.level_views) {
-            gpu.bindless.set_storage_image(&gpu.device, *slot, *view);
-        }
-
-        let mut old = std::mem::replace(&mut self.resources, resources);
-        unsafe { old.destroy(gpu) };
-
-        Ok(())
-    }
-
-    unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe {
-            self.downsample.destroy(&gpu.device);
-            self.upsample.destroy(&gpu.device);
-            self.resources.destroy(gpu);
-        }
     }
 }
