@@ -19,7 +19,7 @@ impl ConfigChoice for Option<Shader> {
             Some(Shader::Triangles) => "triangles",
             Some(Shader::Lighting) => "lighting",
             Some(Shader::Motion) => "motion",
-            _ => "lit",
+            _ => "none",
         }
     }
 }
