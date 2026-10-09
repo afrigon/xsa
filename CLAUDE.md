@@ -175,19 +175,20 @@ renderer uses it like an external library, through its public API only.
   or a `CommandTask` that `App` polls once per frame after drawing, replying
   when it finishes. Commands that finish at once implement
   `ImmediateCommandHandler`; binds start tasks too, logging their result.
-- `camera snap [--output <path>] [--region x,y:widthxheight] [--delay 5s]`
-  waits the delay in real time while the game keeps rendering, then renders a
-  frame, copies the presented image back from the GPU and writes a PNG before
-  it replies (the game pauses while it encodes). Without `--output` it goes to
-  `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. Always pass a short
-  delay (`--delay 2s`) so camera transitions and eye adaptation settle first.
+- `camera snap [--output <path>] [--region x,y:widthxheight]` keeps rendering
+  until temporal effects (exposure metering, anti-aliasing history) reflect the
+  scene, then renders a frame, copies the presented image back from the GPU and
+  writes a PNG before it replies (the game pauses while it encodes). Without
+  `--output` it goes to `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. It
+  does not wait for animations: set `debug.animation-duration-scale 0` first so
+  camera transitions, eye adaptation and interface transitions finish at once.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
 - Agents driving the game start their own instance with a unique name
   (`mise run client -- --instance agent-<task>`) and pass that `--instance` to
-  every `mise run ipc`. Other instances may be the user's: never send them
-  commands.
+  every `mise run ipc`, and stop it with `exit` when done. Other instances may
+  be the user's: never send them commands.
 
 ## Dependencies and assets
 

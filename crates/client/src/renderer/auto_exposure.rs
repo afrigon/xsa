@@ -4,6 +4,8 @@ use std::time::Instant;
 
 use metering::Metering;
 
+use super::FRAMES_IN_FLIGHT;
+
 use crate::config::{ExposureConfig, ExposureMode};
 
 // Must match histogram.slang.
@@ -57,6 +59,14 @@ impl AutoExposure {
         match self.config.mode {
             ExposureMode::EyeAdaptation => self.metered_ev100,
             ExposureMode::Manual => self.config.ev100,
+        }
+    }
+
+    // A frame's histogram is read back when its frame slot comes round again.
+    pub fn settling_frames(&self) -> u32 {
+        match self.config.mode {
+            ExposureMode::EyeAdaptation => FRAMES_IN_FLIGHT as u32,
+            ExposureMode::Manual => 0,
         }
     }
 

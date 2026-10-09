@@ -51,6 +51,7 @@ use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData};
 use graph_textures::GraphTextures;
 use material::MaterialData;
+use passes::TaaPass;
 use render_passes::RenderPasses;
 use temporal_history::TemporalHistory;
 use texture::DdsImage;
@@ -186,6 +187,16 @@ impl Renderer {
     // For a camera cut: the accumulated image no longer matches anything on screen.
     pub fn reset_history(&mut self) {
         self.temporal.reset();
+    }
+
+    // Frames to render after a change before the image reflects it: temporal effects carry earlier frames forward.
+    pub fn settling_frames(&self) -> u32 {
+        let antialiasing = match self.render.antialiasing.kind {
+            Some(AntialiasingKind::Taa) => TaaPass::settling_frames(),
+            _ => 0,
+        };
+
+        antialiasing.max(self.exposure.settling_frames())
     }
 
     // Wireframe needs the polygon mode to be dynamic state.

@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
 
 use xsa_commands::command::CameraSnapCommand;
 use xsa_commands::value::Region;
@@ -10,33 +9,32 @@ use crate::app::command_progress::CommandProgress;
 use crate::app::command_task::CommandTask;
 use crate::app::snapshot::Snapshot;
 use crate::app::task_status::TaskStatus;
+use crate::renderer::Renderer;
 
 impl ClientCommandHandler for CameraSnapCommand {
-    fn start(self, _app: &mut App) -> CommandProgress {
-        let delay_seconds = self.delay.map_or(0.0, |delay| delay.duration().seconds);
-
-        if !(delay_seconds.is_finite() && delay_seconds >= 0.0) {
-            return CommandProgress::Done(Err(anyhow::anyhow!("the delay must be a positive duration")));
-        }
+    fn start(self, app: &mut App) -> CommandProgress {
+        let settling_frames = app.renderer.as_ref().map_or(0, Renderer::settling_frames);
 
         CommandProgress::Running(Box::new(SnapTask {
-            due: Instant::now() + Duration::from_secs_f64(delay_seconds),
+            frames_remaining: settling_frames,
             output: self.output,
             region: self.region,
         }))
     }
 }
 
-// Waits in real time while the game keeps rendering, so exposure and other animations progress.
+// Keeps rendering until temporal effects (exposure metering, anti-aliasing history) reflect the scene.
 struct SnapTask {
-    due: Instant,
+    frames_remaining: u32,
     output: Option<PathBuf>,
     region: Option<Region>,
 }
 
 impl CommandTask for SnapTask {
     fn poll(&mut self, app: &mut App) -> TaskStatus {
-        if Instant::now() < self.due {
+        if self.frames_remaining > 0 {
+            self.frames_remaining -= 1;
+
             return TaskStatus::Pending;
         }
 

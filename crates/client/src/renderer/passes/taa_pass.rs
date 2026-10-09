@@ -19,6 +19,10 @@ const HISTORY_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 const HISTORY_LEVEL: u32 = 0;
 // Must match the workgroup size in taa.slang.
 const WORKGROUP_SIZE: u32 = 8;
+// Each frame adds a tenth to the history: about ten frames of samples, few enough to follow changes quickly.
+const CURRENT_FRAME_WEIGHT: f32 = 0.1;
+// A history is settled once what it held before carries less than this share of the result.
+const SETTLED_HISTORY_SHARE: f32 = 0.01;
 
 // Temporal anti-aliasing: blends each jittered frame into a history reprojected along the motion vectors. The history
 // pair alternates between being read as last frame's result and written as this frame's.
@@ -43,6 +47,11 @@ impl TaaPass {
         });
 
         Ok(TaaPass { pipeline, history })
+    }
+
+    // Frames until the history has replaced all but SETTLED_HISTORY_SHARE of what it held before.
+    pub fn settling_frames() -> u32 {
+        (SETTLED_HISTORY_SHARE.ln() / (1.0 - CURRENT_FRAME_WEIGHT).ln()).ceil() as u32
     }
 
     pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
@@ -89,7 +98,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for TaaPass {
                 output_image: frame.storage_image(pass, history.current, HISTORY_LEVEL),
                 history_valid: u32::from(temporal.is_valid()),
                 history_exposure_scale: temporal.history_exposure_scale(),
-                padding: 0,
+                current_frame_weight: CURRENT_FRAME_WEIGHT,
             },
         );
         recorder.dispatch(pass.extent(history.current), WORKGROUP_SIZE);

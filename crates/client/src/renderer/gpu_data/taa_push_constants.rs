@@ -13,7 +13,7 @@ pub(in crate::renderer) struct TaaPushConstants {
     pub output_image: u32,
     pub history_valid: u32,
     pub history_exposure_scale: f32,
-    pub padding: u32,
+    pub current_frame_weight: f32,
 }
 
 const _: () = assert!(size_of::<TaaPushConstants>() == 40);

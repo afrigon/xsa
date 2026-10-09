@@ -19,14 +19,13 @@ struct TaaConstants {
     uint outputImage;
     uint historyValid;
     float historyExposureScale;
+    float currentFrameWeight;
 };
 
 [[vk::push_constant]]
 ConstantBuffer<TaaConstants> constants;
 
 static const float3 luminanceWeights = float3(0.2126, 0.7152, 0.0722);
-// Each frame adds a tenth to the history: about ten frames of samples, few enough to follow changes quickly.
-static const float currentFrameWeight = 0.1;
 // History further than this many standard deviations from the neighborhood mean is pulled back to it.
 static const float clipStandardDeviations = 1.0;
 static const float minimumClipExtent = 1e-5;
@@ -128,8 +127,8 @@ void computeMain(uint3 pixel: SV_DispatchThreadID) {
     history = fromYCoCg(clipToBox(toYCoCg(history), mean, deviation * clipStandardDeviations));
 
     // Weighting by inverse luminance blends as if tonemapped, so one very bright sample cannot dominate the pixel.
-    float currentWeight = currentFrameWeight / (1.0 + luminance(current));
-    float historyWeight = (1.0 - currentFrameWeight) / (1.0 + luminance(history));
+    float currentWeight = constants.currentFrameWeight / (1.0 + luminance(current));
+    float historyWeight = (1.0 - constants.currentFrameWeight) / (1.0 + luminance(history));
     float3 resolved = (current * currentWeight + history * historyWeight) / (currentWeight + historyWeight);
     output[pixel.xy] = float4(resolved, 1.0);
 }
