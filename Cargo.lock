@@ -1908,6 +1908,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "render-graph"
+version = "0.0.1"
+dependencies = [
+ "ash",
+ "gpu-allocator",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3159,6 +3167,7 @@ dependencies = [
  "gpu-allocator",
  "image",
  "kdl",
+ "render-graph",
  "tokio",
  "tracing",
  "winit",

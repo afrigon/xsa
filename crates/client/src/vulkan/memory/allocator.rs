@@ -23,6 +23,10 @@ impl Allocator {
         Ok(Self { allocator })
     }
 
+    pub fn gpu_allocator(&mut self) -> &mut gpu_allocator::vulkan::Allocator {
+        &mut self.allocator
+    }
+
     pub(super) fn allocate(
         &mut self,
         name: &str,

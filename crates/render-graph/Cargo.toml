@@ -1,0 +1,8 @@
+[package]
+name = "render-graph"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ash.workspace = true
+gpu-allocator.workspace = true

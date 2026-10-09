@@ -10,6 +10,7 @@ glam.workspace = true
 image = { workspace = true, features = ["png"] }
 gpu-allocator.workspace = true
 kdl = "6.7.1"
+render-graph.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 winit.workspace = true

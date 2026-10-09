@@ -1,145 +1,99 @@
-use ash::vk;
+mod taa_resources;
 
-use crate::config::AntialiasingKind;
+pub(in crate::renderer) use taa_resources::TaaResources;
+
+use ash::vk;
+use render_graph::{
+    GraphImageDescription, HistoryId, ImageSize, PassContext, PassDeclaration, PassError, RenderGraph, RenderPass,
+    Stage,
+};
+
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::TaaPushConstants;
-use crate::renderer::render_pass::RenderPass;
-use crate::renderer::render_targets::RenderTargets;
-use crate::renderer::temporal_history::HISTORY_IMAGE_COUNT;
-use crate::vulkan::{ComputePipeline, Image, ImageDescription};
+use crate::renderer::passes::ForwardResources;
+use crate::vulkan::ComputePipeline;
 
 const HISTORY_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+const HISTORY_LEVEL: u32 = 0;
 // Must match the workgroup size in taa.slang.
 const WORKGROUP_SIZE: u32 = 8;
 
-// Temporal anti-aliasing: blends each jittered frame into a history reprojected along the motion vectors. The two
-// history images alternate between being read as last frame's result and written as this frame's.
+// Temporal anti-aliasing: blends each jittered frame into a history reprojected along the motion vectors. The history
+// pair alternates between being read as last frame's result and written as this frame's.
 pub(in crate::renderer) struct TaaPass {
     pipeline: ComputePipeline,
-    history: Vec<Image>,
-    textures: Vec<u32>,
-    storage_images: Vec<u32>,
+    history: HistoryId,
 }
 
 impl TaaPass {
-    pub fn new(gpu: &mut GpuContext, binaries: &ShaderBinaries, extent: vk::Extent2D) -> anyhow::Result<TaaPass> {
+    pub fn new(gpu: &GpuContext, graph: &mut RenderGraph, binaries: &ShaderBinaries) -> anyhow::Result<TaaPass> {
         let pipeline = ComputePipeline::new(
             &gpu.device,
             &binaries.taa,
             size_of::<TaaPushConstants>() as u32,
             &[gpu.bindless.layout()],
         )?;
-        let history = TaaPass::create_history(gpu, extent)?;
-        let textures = history
-            .iter()
-            .map(|image| {
-                gpu.bindless
-                    .add_texture(&gpu.device, image.view(), vk::ImageLayout::GENERAL)
-            })
-            .collect::<anyhow::Result<_>>()?;
-        let storage_images = history
-            .iter()
-            .map(|image| gpu.bindless.add_storage_image(&gpu.device, image.view()))
-            .collect::<anyhow::Result<_>>()?;
+        let history = graph.create_history(GraphImageDescription {
+            name: "taa history",
+            format: HISTORY_FORMAT,
+            size: ImageSize::Output,
+            mip_levels: 1,
+        });
 
-        Ok(TaaPass {
-            pipeline,
-            history,
-            textures,
-            storage_images,
-        })
+        Ok(TaaPass { pipeline, history })
     }
 
-    pub fn textures(&self) -> Vec<u32> {
-        self.textures.clone()
-    }
-
-    fn create_history(gpu: &mut GpuContext, extent: vk::Extent2D) -> anyhow::Result<Vec<Image>> {
-        (0..HISTORY_IMAGE_COUNT)
-            .map(|_| {
-                Image::new(
-                    &gpu.device,
-                    &mut gpu.allocator,
-                    &ImageDescription {
-                        name: "taa history",
-                        extent,
-                        format: HISTORY_FORMAT,
-                        usage: vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
-                        aspect: vk::ImageAspectFlags::COLOR,
-                        mip_levels: 1,
-                        cube: false,
-                    },
-                )
-            })
-            .collect()
-    }
-
-    unsafe fn destroy_history(gpu: &mut GpuContext, history: &mut [Image]) {
-        for image in history {
-            unsafe { image.destroy(&gpu.device, &mut gpu.allocator) };
-        }
+    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
+        unsafe { self.pipeline.destroy(&gpu.device) };
     }
 }
 
-impl RenderPass for TaaPass {
-    fn record(&mut self, frame: &FrameContext) -> anyhow::Result<()> {
-        if frame.render.antialiasing.kind != Some(AntialiasingKind::Taa) {
-            return Ok(());
-        }
+impl<'frame> RenderPass<FrameContext<'frame>> for TaaPass {
+    const NAME: &'static str = "taa";
 
+    type Inputs = ForwardResources;
+    type Resources = TaaResources;
+
+    fn declare(&self, pass: &mut PassDeclaration, forward: ForwardResources) -> TaaResources {
+        let history = pass.history(self.history);
+        pass.sampled(forward.hdr, Stage::Compute);
+        pass.sampled(forward.motion, Stage::Compute);
+        pass.sampled(forward.depth, Stage::Compute);
+        pass.sampled(history.previous, Stage::Compute);
+        pass.storage_write(history.current, Stage::Compute);
+
+        TaaResources { forward, history }
+    }
+
+    fn record(
+        &mut self,
+        frame: &FrameContext<'frame>,
+        pass: &PassContext,
+        resources: &TaaResources,
+    ) -> Result<(), PassError> {
         let recorder = &frame.recorder;
         let temporal = frame.temporal;
-        let current = temporal.current();
-        let previous = temporal.previous();
-        recorder.history_start(self.history[current].handle());
-
-        if temporal.is_valid() {
-            recorder.history_previous_to_compute(self.history[previous].handle());
-        }
-
+        let forward = resources.forward;
+        let history = resources.history;
         recorder.bind_compute(&self.pipeline, frame.descriptor_set);
         recorder.push_compute_constants(
             &self.pipeline,
             &TaaPushConstants {
                 frame: frame.frame.frame_data.device_address(),
-                color_texture: frame.targets.hdr_texture,
-                motion_texture: frame.targets.motion_texture,
-                depth_texture: frame.targets.depth_texture,
-                history_texture: self.textures[previous],
-                output_image: self.storage_images[current],
+                color_texture: frame.texture(pass, forward.hdr),
+                motion_texture: frame.texture(pass, forward.motion),
+                depth_texture: frame.texture(pass, forward.depth),
+                history_texture: frame.texture(pass, history.previous),
+                output_image: frame.storage_image(pass, history.current, HISTORY_LEVEL),
                 history_valid: u32::from(temporal.is_valid()),
                 history_exposure_scale: temporal.history_exposure_scale(),
                 padding: 0,
             },
         );
-        recorder.dispatch(frame.targets.extent, WORKGROUP_SIZE);
-        recorder.history_to_readers(self.history[current].handle());
+        recorder.dispatch(pass.extent(history.current), WORKGROUP_SIZE);
 
         Ok(())
-    }
-
-    fn resize(&mut self, gpu: &mut GpuContext, targets: &RenderTargets) -> anyhow::Result<()> {
-        let history = TaaPass::create_history(gpu, targets.extent)?;
-
-        for ((texture, storage_image), image) in self.textures.iter().zip(&self.storage_images).zip(&history) {
-            gpu.bindless
-                .set_texture(&gpu.device, *texture, image.view(), vk::ImageLayout::GENERAL);
-            gpu.bindless
-                .set_storage_image(&gpu.device, *storage_image, image.view());
-        }
-
-        let mut old = std::mem::replace(&mut self.history, history);
-        unsafe { TaaPass::destroy_history(gpu, &mut old) };
-
-        Ok(())
-    }
-
-    unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe {
-            self.pipeline.destroy(&gpu.device);
-            TaaPass::destroy_history(gpu, &mut self.history);
-        }
     }
 }

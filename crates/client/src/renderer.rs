@@ -4,14 +4,15 @@ mod command_recorder;
 mod culler;
 mod frame;
 mod frame_context;
+mod frame_inputs;
 mod frame_statistics;
 mod frustum;
 mod gpu_context;
 mod gpu_data;
+mod graph_textures;
 mod material;
 mod passes;
-mod render_pass;
-mod render_targets;
+mod render_passes;
 mod scene;
 mod shader_binaries;
 mod temporal_history;
@@ -32,6 +33,7 @@ use std::path::Path;
 
 use ash::vk;
 use glam::{Mat4, Vec2, Vec3};
+use render_graph::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 use xui::DrawList;
@@ -44,12 +46,12 @@ use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
 use frame_context::FrameContext;
+use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData};
+use graph_textures::GraphTextures;
 use material::MaterialData;
-use passes::{BloomPass, CapturePass, ForwardPass, HistogramPass, TaaPass, TonemapPass, UserInterfacePass};
-use render_pass::RenderPass;
-use render_targets::RenderTargets;
+use render_passes::RenderPasses;
 use temporal_history::TemporalHistory;
 use texture::DdsImage;
 
@@ -60,6 +62,26 @@ const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 const STARLIGHT_ILLUMINANCE: f32 = 2e-4;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const MATERIAL_CAPACITY: usize = 256;
+// Presentation waits on the acquire semaphore at the color attachment output stage.
+const SWAPCHAIN_ACQUIRED: ImageState = ImageState {
+    stages: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+    access: vk::AccessFlags2::NONE,
+    layout: vk::ImageLayout::UNDEFINED,
+};
+const SWAPCHAIN_PRESENTABLE: ImageState = ImageState {
+    stages: vk::PipelineStageFlags2::NONE,
+    access: vk::AccessFlags2::NONE,
+    layout: vk::ImageLayout::PRESENT_SRC_KHR,
+};
+// The CPU reads a frame's readback buffers only after waiting on its fence.
+const READ_BACK_AFTER_FENCE: BufferState = BufferState {
+    stages: vk::PipelineStageFlags2::NONE,
+    access: vk::AccessFlags2::NONE,
+};
+const HOST_READABLE: BufferState = BufferState {
+    stages: vk::PipelineStageFlags2::HOST,
+    access: vk::AccessFlags2::HOST_READ,
+};
 
 pub struct Renderer {
     scene: Scene,
@@ -74,12 +96,11 @@ pub struct Renderer {
     visible_objects: Vec<ObjectHandle>,
     material_data: Vec<MaterialData>,
     object_capacity: usize,
-    bloom_texture: u32,
-    history_textures: Vec<u32>,
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
-    passes: Vec<Box<dyn RenderPass>>,
-    targets: RenderTargets,
+    passes: RenderPasses,
+    graph: RenderGraph,
+    graph_textures: GraphTextures,
     temporal: TemporalHistory,
     frames: Vec<Frame>,
     frame_index: usize,
@@ -103,20 +124,8 @@ impl Renderer {
         let frames = (0..FRAMES_IN_FLIGHT)
             .map(|_| Frame::new(&gpu.device, &mut gpu.allocator, INITIAL_OBJECT_CAPACITY))
             .collect::<anyhow::Result<_>>()?;
-        let targets = RenderTargets::new(&mut gpu, swapchain.extent())?;
-        let bloom = BloomPass::new(&mut gpu, shaders, swapchain.extent())?;
-        let bloom_texture = bloom.texture();
-        let taa = TaaPass::new(&mut gpu, shaders, swapchain.extent())?;
-        let history_textures = taa.textures();
-        let passes: Vec<Box<dyn RenderPass>> = vec![
-            Box::new(ForwardPass::new(&mut gpu, shaders)?),
-            Box::new(taa),
-            Box::new(HistogramPass::new(&gpu, shaders)?),
-            Box::new(bloom),
-            Box::new(TonemapPass::new(&gpu, shaders, swapchain.format())?),
-            Box::new(UserInterfacePass::new(&gpu, swapchain.format(), FRAMES_IN_FLIGHT)?),
-            Box::new(CapturePass),
-        ];
+        let mut graph = RenderGraph::new(swapchain.extent());
+        let passes = RenderPasses::new(&mut gpu, &mut graph, shaders, swapchain.format(), FRAMES_IN_FLIGHT)?;
 
         Ok(Self {
             scene: Scene::default(),
@@ -131,12 +140,11 @@ impl Renderer {
             visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
-            bloom_texture,
-            history_textures,
             cube_maps: Vec::new(),
             textures: Vec::new(),
             passes,
-            targets,
+            graph,
+            graph_textures: GraphTextures::default(),
             temporal: TemporalHistory::default(),
             frames,
             frame_index: 0,
@@ -386,13 +394,9 @@ impl Renderer {
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             jitter,
             exposure: self.exposure.exposure(),
-            scene_color_texture: self.scene_color_texture(),
             tonemapper: self.render.tonemapper.shader_id(),
             starlight_illuminance: STARLIGHT_ILLUMINANCE,
-            bloom_texture: self.bloom_texture,
-            bloom_strength: self.render.bloom.effective_strength(),
             shading_model: self.debug.shading_model.shader_id(),
-            padding: [0; 1],
         };
 
         self.object_data.clear();
@@ -425,14 +429,6 @@ impl Renderer {
         frame.materials.write(&self.material_data)
     }
 
-    fn scene_color_texture(&self) -> u32 {
-        if self.render.antialiasing.kind == Some(AntialiasingKind::Taa) {
-            self.history_textures[self.temporal.current()]
-        } else {
-            self.targets.hdr_texture
-        }
-    }
-
     fn cull_objects(&mut self, camera: &Camera) {
         let culler = Culler::new(camera, self.swapchain.extent());
         self.visible_objects.clear();
@@ -447,43 +443,70 @@ impl Renderer {
     }
 
     fn record_frame(&mut self, image_index: u32) -> anyhow::Result<()> {
-        let device = self.gpu.device.handle();
+        let GpuContext {
+            bindless,
+            allocator,
+            device,
+            ..
+        } = &mut self.gpu;
         let frame = &self.frames[self.frame_index];
 
         unsafe {
-            device.reset_command_pool(frame.command_pool, vk::CommandPoolResetFlags::empty())?;
+            device
+                .handle()
+                .reset_command_pool(frame.command_pool, vk::CommandPoolResetFlags::empty())?;
             let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            device.begin_command_buffer(frame.command_buffer, &begin_info)?;
+            device
+                .handle()
+                .begin_command_buffer(frame.command_buffer, &begin_info)?;
         }
 
+        let mut graph = self.graph.begin_frame();
+        let inputs = FrameInputs {
+            output: graph.import_image(ImportedImage {
+                name: "swapchain",
+                image: self.swapchain.image(image_index),
+                view: self.swapchain.image_view(image_index),
+                extent: self.swapchain.extent(),
+                aspect: vk::ImageAspectFlags::COLOR,
+                initial: SWAPCHAIN_ACQUIRED,
+                final_state: SWAPCHAIN_PRESENTABLE,
+            }),
+            histogram: graph.import_buffer(ImportedBuffer {
+                name: "luminance histogram",
+                buffer: frame.histogram.handle(),
+                initial: READ_BACK_AFTER_FENCE,
+                final_state: HOST_READABLE,
+            }),
+            capture: self.capture.as_ref().map(|capture| {
+                graph.import_buffer(ImportedBuffer {
+                    name: "capture",
+                    buffer: capture.handle(),
+                    initial: READ_BACK_AFTER_FENCE,
+                    final_state: HOST_READABLE,
+                })
+            }),
+        };
+        self.passes.add_to(&mut graph, &self.render, inputs);
+        let compiled = graph.compile(device.handle(), allocator.gpu_allocator())?;
+        self.graph_textures
+            .register(device, bindless, compiled.graph(), compiled.created_images())?;
         let context = FrameContext {
-            recorder: CommandRecorder::new(&self.gpu.device, frame.command_buffer),
+            recorder: CommandRecorder::new(device, frame.command_buffer),
             frame,
             frame_slot: self.frame_index,
-            targets: &self.targets,
+            textures: &self.graph_textures,
             temporal: &self.temporal,
-            scene_color_texture: self.scene_color_texture(),
             render: &self.render,
             debug: &self.debug,
             scene: &self.scene,
             visible_objects: &self.visible_objects,
-            descriptor_set: self.gpu.bindless.set(),
-            output_image: self.swapchain.image(image_index),
-            output_view: self.swapchain.image_view(image_index),
-            output_extent: self.swapchain.extent(),
-            capture: self.capture.as_ref(),
+            descriptor_set: bindless.set(),
             user_interface: &self.user_interface,
             triangles: Cell::new(0),
         };
-
-        context.recorder.to_color_attachment(context.output_image);
-
-        for pass in &mut self.passes {
-            pass.record(&context)?;
-        }
-
-        context.recorder.to_present(context.output_image);
-        unsafe { device.end_command_buffer(frame.command_buffer) }?;
+        compiled.execute(device.handle(), frame.command_buffer, &context)?;
+        unsafe { device.handle().end_command_buffer(frame.command_buffer) }?;
         self.statistics = FrameStatistics {
             triangles: context.triangles.get(),
         };
@@ -561,12 +584,17 @@ impl Renderer {
         let mut old_swapchain = std::mem::replace(&mut self.swapchain, swapchain);
         unsafe { old_swapchain.destroy(&self.gpu.device) };
 
-        self.targets.recreate(&mut self.gpu, self.swapchain.extent())?;
+        let gpu = &mut self.gpu;
+        let recreated = unsafe {
+            self.graph.resize(
+                gpu.device.handle(),
+                gpu.allocator.gpu_allocator(),
+                self.swapchain.extent(),
+            )
+        }?;
+        self.graph_textures
+            .register(&gpu.device, &mut gpu.bindless, &self.graph, &recreated)?;
         self.temporal.reset();
-
-        for pass in &mut self.passes {
-            pass.resize(&mut self.gpu, &self.targets)?;
-        }
 
         self.swapchain_outdated = false;
 
@@ -587,15 +615,15 @@ impl Drop for Renderer {
         let gpu = &mut self.gpu;
 
         unsafe {
-            for pass in &mut self.passes {
-                pass.destroy(gpu);
+            self.passes.destroy(gpu);
+
+            if let Err(err) = self.graph.destroy(gpu.device.handle(), gpu.allocator.gpu_allocator()) {
+                tracing::error!("destroying the render graph: {err}");
             }
 
             for image in self.cube_maps.iter_mut().chain(&mut self.textures) {
                 image.destroy(&gpu.device, &mut gpu.allocator);
             }
-
-            self.targets.destroy(gpu);
 
             for frame in &mut self.frames {
                 frame.destroy(&gpu.device, &mut gpu.allocator);

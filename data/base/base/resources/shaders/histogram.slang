@@ -11,6 +11,7 @@ static const float maximumLog2Luminance = 32.0;
 struct HistogramConstants {
     FrameData *frame;
     uint *histogram;
+    uint sceneColorTexture;
 };
 
 [[vk::push_constant]]
@@ -35,7 +36,7 @@ void computeMain(uint3 pixel: SV_DispatchThreadID, uint threadIndex: SV_GroupInd
 
     FrameData frame = *constants.frame;
     if (all(pixel.xy < uint2(frame.viewportSize))) {
-        float3 color = textures[frame.sceneColorTexture].Load(int3(int2(pixel.xy), 0)).rgb;
+        float3 color = textures[constants.sceneColorTexture].Load(int3(int2(pixel.xy), 0)).rgb;
         float luminance = dot(color, float3(0.2126, 0.7152, 0.0722)) / frame.exposure;
         InterlockedAdd(localBins[binIndex(luminance)], 1);
     }
