@@ -5,6 +5,7 @@ use super::Transition;
 pub(crate) struct ActiveTransition {
     pub transition: Box<dyn Transition>,
     pub elapsed: f32,
+    pub duration: f32,
     pub outgoing: u64,
     pub incoming: u64,
     pub visible_before: Vec<u64>,
@@ -13,12 +14,10 @@ pub(crate) struct ActiveTransition {
 
 impl ActiveTransition {
     pub fn progress(&self) -> f32 {
-        let duration = self.transition.duration();
-
-        if duration <= 0.0 {
+        if self.duration <= 0.0 {
             1.0
         } else {
-            (self.elapsed / duration).min(1.0)
+            (self.elapsed / self.duration).min(1.0)
         }
     }
 }

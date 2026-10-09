@@ -10,7 +10,7 @@ use super::gpu_data::PushConstants;
 use super::graph_textures::GraphTextures;
 use super::temporal_history::TemporalHistory;
 use super::{ObjectHandle, Scene};
-use crate::config::{DebugConfig, RenderConfig};
+use crate::config::RenderConfig;
 use crate::vulkan::GraphicsPipeline;
 
 pub(super) struct FrameContext<'a> {
@@ -20,7 +20,6 @@ pub(super) struct FrameContext<'a> {
     pub textures: &'a GraphTextures,
     pub temporal: &'a TemporalHistory,
     pub render: &'a RenderConfig,
-    pub debug: &'a DebugConfig,
     pub scene: &'a Scene,
     pub visible_objects: &'a [ObjectHandle],
     pub descriptor_set: vk::DescriptorSet,

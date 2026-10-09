@@ -20,6 +20,7 @@ pub struct NavigationController {
     transition: Option<ActiveTransition>,
     requests: Rc<RefCell<Vec<NavigationRequest>>>,
     messages: Rc<RefCell<Vec<ControllerMessage>>>,
+    duration_scale: f32,
 }
 
 impl Default for NavigationController {
@@ -39,7 +40,13 @@ impl NavigationController {
             transition: None,
             requests: Rc::default(),
             messages: Rc::default(),
+            duration_scale: 1.0,
         }
+    }
+
+    // Multiplies the duration of every transition that starts afterwards; 0 makes them instant.
+    pub fn set_duration_scale(&mut self, duration_scale: f32) {
+        self.duration_scale = duration_scale;
     }
 
     pub fn navigation(&self) -> Navigation {
@@ -276,9 +283,11 @@ impl NavigationController {
         let transition = self
             .delegate
             .transition(operation, self.controller(outgoing), self.controller(incoming));
+        let duration = transition.duration() * self.duration_scale;
         self.transition = Some(ActiveTransition {
             transition,
             elapsed: 0.0,
+            duration,
             outgoing,
             incoming,
             visible_before,

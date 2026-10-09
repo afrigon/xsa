@@ -1,5 +1,5 @@
 use super::{
-    AdaptationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, DebugDocument,
+    AdaptationDocument, AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind,
     ExposureDocument, RenderDocument,
 };
 
@@ -22,9 +22,10 @@ impl ConfigKey {
         AdaptationDocument::DARK_TO_LIGHT,
         AdaptationDocument::LIGHT_TO_DARK,
         AntialiasingDocument::KIND,
-        DebugDocument::SHADER,
-        DebugDocument::SHADING,
-        DebugDocument::WIREFRAME,
+        RenderDocument::WIREFRAME,
+        RenderDocument::SHADER_OVERRIDE,
+        RenderDocument::SHADING_MODEL,
+        AnimationDocument::DURATION_SCALE,
     ];
 
     pub fn all() -> Vec<ConfigKey> {

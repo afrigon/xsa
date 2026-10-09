@@ -175,14 +175,20 @@ renderer uses it like an external library, through its public API only.
   or a `CommandTask` that `App` polls once per frame after drawing, replying
   when it finishes. Commands that finish at once implement
   `ImmediateCommandHandler`; binds start tasks too, logging their result.
-- `camera snap [--output <path>] [--region x,y:widthxheight] [--delay 5s]`
-  waits the delay in real time while the game keeps rendering, then renders a
-  frame, copies the presented image back from the GPU and writes a PNG before
-  it replies (the game pauses while it encodes). Without `--output` it goes to
-  `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`.
+- `camera snap [--output <path>] [--region x,y:widthxheight]` keeps rendering
+  until temporal effects (exposure metering, anti-aliasing history) reflect the
+  scene, then renders a frame, copies the presented image back from the GPU and
+  writes a PNG before it replies (the game pauses while it encodes). Without
+  `--output` it goes to `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. It
+  does not wait for animations: set `animations.duration-scale 0` first so
+  camera transitions, eye adaptation and interface transitions finish at once.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
+- Agents driving the game start their own instance with a unique name
+  (`mise run client -- --instance agent-<task>`) and pass that `--instance` to
+  every `mise run ipc`, and stop it with `exit` when done. Other instances may
+  be the user's: never send them commands.
 
 ## Dependencies and assets
 
@@ -201,15 +207,17 @@ renderer uses it like an external library, through its public API only.
 
 - The client's settings live in `$XDG_CONFIG_HOME/xsa/config.kdl` (falling back
   to `~/.config/xsa/config.kdl`), read at startup and by `config reload`.
-  Dotted keys are nested nodes: `render.bloom.strength` is
-  `render { bloom { strength 0.05 } }`. A repeated block is read last-wins.
+  Dotted keys are nested nodes: `render.bloom.enabled` is
+  `render { bloom { enabled #false } }`. A repeated block is read last-wins.
 - Two models: `crates/client/src/document/config/` holds the document models (KDL,
   key paths, text values, every `ConfigKey`), `crates/client/src/config/` the runtime
   `Config` the renderer and input read. Converting a document into the runtime
   model fills in the defaults, all of which live in `config/default_config.rs`.
 - `config set|toggle` edit the document and rebuild `Config`; `--save` and
   `config save` write the file non-destructively (comments and layout kept,
-  defaults removed rather than written). `debug.*` is never saved.
+  defaults removed rather than written). Session keys (`ConfigKey::session`:
+  tuning and debug settings) last only for the session: never saved, and
+  ignored in the file so players cannot set them.
 - Binds are `bind.<category>.<action>` keys holding a key chord (`f4`,
   `shift+tab`, `` ` ``). Each action runs a typed action directly (the same
   command structs the text commands parse into), never command text.
@@ -221,7 +229,7 @@ scroll zooms; the debug camera (`camera mode debug`) flies with WASD,
 Space/Shift and mouse look (click to capture), and scroll sets its speed. The
 camera gets input only while the game view controller is on top; menus release the
 mouse. Debug toggles are commands (`config toggle render.stars`,
-`config set debug.shader normals`, …), not binds. The default binds:
+`config set render.shader.override normals`, …), not binds. The default binds:
 
 | Key | Bind | Action |
 | --- | --- | --- |
@@ -238,6 +246,6 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
   release).
 - On Wayland a window appears only once a frame is presented: an invisible
   window means presentation is broken.
-- Agent screenshots of the game window are unreliable (Hyprland retiles it, it
-  may be on another workspace). Verify rendering numerically and ask the user
-  to confirm what is on screen.
+- Screenshots of the game window taken from outside the game are unreliable
+  (Hyprland retiles it, it may be on another workspace). Use `camera snap`,
+  which reads the presented image back from the GPU.

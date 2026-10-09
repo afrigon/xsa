@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use winit::keyboard::KeyCode;
 
 use super::{
-    AdaptationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, DebugConfig,
-    ExposureConfig, ExposureMode, KeyChord, RenderConfig,
+    AdaptationConfig, AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig,
+    Config, ExposureConfig, ExposureMode, KeyChord, RenderConfig,
 };
 use crate::renderer::{ShadingModel, Tonemapper};
 
@@ -14,6 +14,7 @@ const MANUAL_EV100: f32 = 15.0;
 // Eyes adapt to brighter scenes far faster than to darker ones.
 const DARK_TO_LIGHT_HALF_LIFE_SECONDS: f32 = 0.1;
 const LIGHT_TO_DARK_HALF_LIFE_SECONDS: f32 = 1.5;
+const ANIMATION_DURATION_SCALE: f32 = 1.0;
 
 struct DefaultBind {
     action: BindAction,
@@ -73,14 +74,15 @@ impl Default for Config {
                 antialiasing: AntialiasingConfig {
                     kind: Some(AntialiasingKind::Taa),
                 },
+                wireframe: false,
+                shader_override: None,
+                shading_model: ShadingModel::HapkeSol,
             },
             bind: BindConfig {
                 keys: DefaultBind::keys(),
             },
-            debug: DebugConfig {
-                shader_override: None,
-                shading_model: ShadingModel::HapkeSol,
-                wireframe: false,
+            animations: AnimationConfig {
+                duration_scale: ANIMATION_DURATION_SCALE,
             },
         }
     }

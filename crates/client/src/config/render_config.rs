@@ -1,5 +1,5 @@
 use super::{AntialiasingConfig, BloomConfig, ExposureConfig};
-use crate::renderer::Tonemapper;
+use crate::renderer::{Shader, ShadingModel, Tonemapper};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderConfig {
@@ -8,4 +8,7 @@ pub struct RenderConfig {
     pub bloom: BloomConfig,
     pub exposure: ExposureConfig,
     pub antialiasing: AntialiasingConfig,
+    pub wireframe: bool,
+    pub shader_override: Option<Shader>,
+    pub shading_model: ShadingModel,
 }

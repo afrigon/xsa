@@ -145,6 +145,7 @@ impl App {
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
         self.cameras = Some(CameraController::new(window.inner_size()));
         window.request_redraw();
+        self.apply_config();
 
         Ok(())
     }
@@ -264,7 +265,7 @@ impl App {
         let mut description = format!("{key} {}", self.config_document.get(key)?);
 
         if save && ConfigKey::find(key).is_some_and(|key| !key.persisted) {
-            description.push_str(" (debug settings are never saved)");
+            description.push_str(" (not saved: this setting only lasts for the session)");
         } else if save {
             self.config_document.save()?;
             description.push_str(&format!(" (saved to {})", self.config_document.path().display()));
@@ -274,11 +275,18 @@ impl App {
     }
 
     fn apply_config(&mut self) {
+        let animation_duration_scale = self.config.animations.duration_scale;
+        self.navigation.set_duration_scale(animation_duration_scale);
+
+        if let Some(cameras) = &mut self.cameras {
+            cameras.set_animation_duration_scale(f64::from(animation_duration_scale));
+        }
+
         let Some(renderer) = &mut self.renderer else {
             return;
         };
 
-        renderer.configure(&self.config.render, &self.config.debug);
+        renderer.configure(&self.config.render, &self.config.animations);
         let skybox = self.world.as_ref().and_then(ClientWorld::skybox);
         renderer.scene_mut().skybox = if self.config.render.stars { skybox } else { None };
     }

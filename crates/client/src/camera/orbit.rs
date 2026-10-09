@@ -28,25 +28,21 @@ const TRANSITION_SECONDS_PER_PATH_LENGTH: f64 = 0.25;
 const MINIMUM_TRANSITION_SECONDS: f64 = 0.75;
 const MAXIMUM_TRANSITION_SECONDS: f64 = 2.5;
 const ARC_CURVATURE: f64 = SQRT_2;
-const DIRECT_CURVATURE: f64 = 0.5;
 
 pub struct OrbitCamera {
-    pub smooth_transitions: bool,
-    pub arc_transitions: bool,
     target: BodyIndex,
     distance: f64,
     yaw: f64,
     pitch: f64,
     transition: Option<Transition>,
     current: ViewPoint,
+    duration_scale: f64,
 }
 
 impl OrbitCamera {
     pub fn new(target: BodyIndex, target_radius: f64) -> Self {
         let distance = target_radius * FRAMING_DISTANCE_IN_RADII;
         Self {
-            smooth_transitions: true,
-            arc_transitions: true,
             target,
             distance,
             yaw: 0.0,
@@ -56,6 +52,7 @@ impl OrbitCamera {
                 focus: DVec3::ZERO,
                 distance,
             },
+            duration_scale: 1.0,
         }
     }
 
@@ -87,6 +84,10 @@ impl OrbitCamera {
         self.yaw = yaw;
     }
 
+    pub fn set_duration_scale(&mut self, duration_scale: f64) {
+        self.duration_scale = duration_scale;
+    }
+
     pub fn set_target(&mut self, target: BodyIndex, target_position: DVec3, target_radius: f64) {
         self.target = target;
         self.distance = target_radius * FRAMING_DISTANCE_IN_RADII;
@@ -94,21 +95,15 @@ impl OrbitCamera {
             focus: target_position,
             distance: self.distance,
         };
-        self.transition = self.smooth_transitions.then(|| {
-            let curvature = if self.arc_transitions {
-                ARC_CURVATURE
-            } else {
-                DIRECT_CURVATURE
-            };
-            let path = ZoomPath::new(self.current, end, curvature);
-            let duration = (path.length * TRANSITION_SECONDS_PER_PATH_LENGTH)
-                .clamp(MINIMUM_TRANSITION_SECONDS, MAXIMUM_TRANSITION_SECONDS);
-            Transition {
-                path,
-                end,
-                elapsed: 0.0,
-                duration,
-            }
+        let path = ZoomPath::new(self.current, end, ARC_CURVATURE);
+        let duration = (path.length * TRANSITION_SECONDS_PER_PATH_LENGTH)
+            .clamp(MINIMUM_TRANSITION_SECONDS, MAXIMUM_TRANSITION_SECONDS)
+            * self.duration_scale;
+        self.transition = Some(Transition {
+            path,
+            end,
+            elapsed: 0.0,
+            duration,
         });
     }
 

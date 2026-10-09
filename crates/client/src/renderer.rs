@@ -39,7 +39,7 @@ use winit::window::Window;
 use xui::DrawList;
 
 use crate::camera::Camera;
-use crate::config::{AntialiasingKind, Config, DebugConfig, RenderConfig};
+use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
 use crate::vulkan::{Buffer, Image, MemoryLocation, SAMPLED_LAYOUT, Swapchain};
 use auto_exposure::HISTOGRAM_BINS;
 use command_recorder::CommandRecorder;
@@ -51,6 +51,7 @@ use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData};
 use graph_textures::GraphTextures;
 use material::MaterialData;
+use passes::TaaPass;
 use render_passes::RenderPasses;
 use temporal_history::TemporalHistory;
 use texture::DdsImage;
@@ -86,7 +87,6 @@ const HOST_READABLE: BufferState = BufferState {
 pub struct Renderer {
     scene: Scene,
     render: RenderConfig,
-    debug: DebugConfig,
     exposure: AutoExposure,
     capture: Option<Buffer>,
     user_interface: DrawList,
@@ -130,7 +130,6 @@ impl Renderer {
         Ok(Self {
             scene: Scene::default(),
             render: config.render.clone(),
-            debug: config.debug.clone(),
             exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
             capture: None,
             user_interface: DrawList::default(),
@@ -171,20 +170,29 @@ impl Renderer {
         self.user_interface = draw_list;
     }
 
-    pub fn configure(&mut self, render: &RenderConfig, debug: &DebugConfig) {
+    pub fn configure(&mut self, render: &RenderConfig, animations: &AnimationConfig) {
         self.render = render.clone();
-        self.debug = debug.clone();
-        self.exposure.configure(&render.exposure);
+        self.exposure.configure(&render.exposure, animations.duration_scale);
 
-        if debug.wireframe && !self.supports_wireframe() {
+        if render.wireframe && !self.supports_wireframe() {
             tracing::warn!("wireframe is unsupported by this device");
-            self.debug.wireframe = false;
+            self.render.wireframe = false;
         }
     }
 
     // For a camera cut: the accumulated image no longer matches anything on screen.
     pub fn reset_history(&mut self) {
         self.temporal.reset();
+    }
+
+    // Frames to render after a change before the image reflects it: temporal effects carry earlier frames forward.
+    pub fn settling_frames(&self) -> u32 {
+        let antialiasing = match self.render.antialiasing.kind {
+            Some(AntialiasingKind::Taa) => TaaPass::settling_frames(),
+            _ => 0,
+        };
+
+        antialiasing.max(self.exposure.settling_frames())
     }
 
     // Wireframe needs the polygon mode to be dynamic state.
@@ -396,7 +404,7 @@ impl Renderer {
             exposure: self.exposure.exposure(),
             tonemapper: self.render.tonemapper.shader_id(),
             starlight_illuminance: STARLIGHT_ILLUMINANCE,
-            shading_model: self.debug.shading_model.shader_id(),
+            shading_model: self.render.shading_model.shader_id(),
         };
 
         self.object_data.clear();
@@ -498,7 +506,6 @@ impl Renderer {
             textures: &self.graph_textures,
             temporal: &self.temporal,
             render: &self.render,
-            debug: &self.debug,
             scene: &self.scene,
             visible_objects: &self.visible_objects,
             descriptor_set: bindless.set(),
