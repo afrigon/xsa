@@ -12,12 +12,12 @@ Agency, written in Rust on Vulkan.
 4. **Code quality.** The project is built to grow large: clean architecture,
    small focused files, modern tech.
 
-The roadmap lives in the `xsa-roadmap` GitHub project
-(https://github.com/users/afrigon/projects/7): milestones, one issue per item.
-Known deferred work and loose ideas live in `.todo`. Read both before proposing
-what to build next. Design documents live in `docs/` (`docs/packs.md`: how game
-content is packaged and loaded; `docs/xui.md`: the vision and design of xui, the
-UI framework; read it before changing xui or the game's interface).
+The roadmap, known deferred work and loose ideas live in the `xsa-roadmap` GitHub
+project (https://github.com/users/afrigon/projects/7): milestones, one issue per
+item. Read it before proposing what to build next. Design documents live in
+`docs/` (`docs/packs.md`: how game content is packaged and loaded; `docs/xui.md`:
+the vision and design of xui, the UI framework; read it before changing xui or
+the game's interface).
 
 Linux (Wayland, Hyprland) is the primary and tested platform. Windows must
 build, but X11 and Windows are not a testing focus.
