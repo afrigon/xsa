@@ -14,7 +14,7 @@ use glam::{Mat3, Mat4, Vec3, Vec4};
 use super::{CubeMapHandle, TextureHandle};
 use hapke_data::HapkeData;
 
-const NO_TEXTURE: u32 = u32::MAX;
+pub(in crate::renderer) const NO_TEXTURE: u32 = u32::MAX;
 
 #[derive(Clone, Copy)]
 pub enum Material {

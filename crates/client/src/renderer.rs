@@ -10,11 +10,13 @@ mod frustum;
 mod gpu_context;
 mod gpu_data;
 mod graph_textures;
+mod lens;
 mod material;
 mod passes;
 mod render_passes;
 mod scene;
 mod shader_binaries;
+mod star_projection;
 mod star_visibility;
 mod temporal_history;
 mod texture;
@@ -40,6 +42,8 @@ use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
+use xsa_packs::LensDefinition;
+
 use crate::camera::Camera;
 use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
 use crate::vulkan::{Buffer, Image, MemoryLocation, SAMPLED_LAYOUT, Swapchain};
@@ -49,11 +53,13 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, StarData};
+use gpu_data::{FrameData, ObjectData, ProjectedStarData, StarData};
 use graph_textures::GraphTextures;
+use lens::Lens;
 use material::MaterialData;
 use passes::TaaPass;
 use render_passes::RenderPasses;
+use star_projection::StarProjection;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use texture::DdsImage;
@@ -97,12 +103,15 @@ pub struct Renderer {
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     star_data: Vec<StarData>,
+    projected_star_data: Vec<ProjectedStarData>,
+    focal_length_pixels: f32,
     visible_objects: Vec<ObjectHandle>,
     material_data: Vec<MaterialData>,
     object_capacity: usize,
     star_capacity: usize,
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
+    lens: Option<Lens>,
     passes: RenderPasses,
     graph: RenderGraph,
     graph_textures: GraphTextures,
@@ -151,12 +160,15 @@ impl Renderer {
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
+            projected_star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
+            focal_length_pixels: 0.0,
             visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
             cube_maps: Vec::new(),
             textures: Vec::new(),
+            lens: None,
             passes,
             graph,
             graph_textures: GraphTextures::default(),
@@ -254,6 +266,19 @@ impl Renderer {
                 Err(err)
             }
         }
+    }
+
+    pub fn load_lens(&mut self, definition: &LensDefinition) -> anyhow::Result<()> {
+        if let Some(mut lens) = self.lens.take() {
+            self.gpu.wait_idle()?;
+            unsafe { lens.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+        }
+
+        let mut lens = Lens::new(definition, |name, path| self.load_texture(name, path, ColorSpace::Srgb))?;
+        lens.upload(&self.gpu.device, &mut self.gpu.allocator)?;
+        self.lens = Some(lens);
+
+        Ok(())
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -456,6 +481,9 @@ impl Renderer {
         }
 
         self.star_data.clear();
+        self.projected_star_data.clear();
+        let projection = StarProjection::new(camera, extent);
+        self.focal_length_pixels = projection.focal_length_pixels();
 
         for star in self.scene.stars() {
             let object = self.scene.object(star.object);
@@ -464,6 +492,11 @@ impl Renderer {
                 position_and_radius: camera_relative.as_vec3().extend(object.bounding_radius as f32),
                 intensity: star.intensity.extend(0.0),
             });
+            self.projected_star_data.extend(projection.project(
+                camera_relative,
+                object.bounding_radius,
+                star.intensity,
+            ));
         }
 
         anyhow::ensure!(
@@ -478,6 +511,7 @@ impl Renderer {
         frame.frame_data.write(&[frame_data])?;
         frame.objects.write(&self.object_data)?;
         frame.stars.write(&self.star_data)?;
+        frame.projected_stars.write(&self.projected_star_data)?;
 
         frame.materials.write(&self.material_data)
     }
@@ -539,6 +573,8 @@ impl Renderer {
                     final_state: HOST_READABLE,
                 })
             }),
+            projected_star_count: self.projected_star_data.len() as u32,
+            lens_loaded: self.lens.is_some(),
         };
         self.passes.add_to(&mut graph, &self.render, inputs);
         let compiled = graph.compile(device.handle(), allocator.gpu_allocator())?;
@@ -552,6 +588,8 @@ impl Renderer {
             temporal: &self.temporal,
             render: &self.render,
             scene: &self.scene,
+            lens: self.lens.as_ref(),
+            focal_length_pixels: self.focal_length_pixels,
             visible_objects: &self.visible_objects,
             descriptor_set: bindless.set(),
             user_interface: &self.user_interface,
@@ -642,6 +680,10 @@ impl Renderer {
             let stars = Frame::create_star_buffer(&self.gpu.device, &mut self.gpu.allocator, self.star_capacity)?;
             let mut old_stars = std::mem::replace(&mut frame.stars, stars);
             unsafe { old_stars.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+            let projected_stars =
+                Frame::create_projected_star_buffer(&self.gpu.device, &mut self.gpu.allocator, self.star_capacity)?;
+            let mut old_projected_stars = std::mem::replace(&mut frame.projected_stars, projected_stars);
+            unsafe { old_projected_stars.destroy(&self.gpu.device, &mut self.gpu.allocator) };
         }
 
         Ok(())
@@ -698,6 +740,10 @@ impl Drop for Renderer {
 
             for image in self.cube_maps.iter_mut().chain(&mut self.textures) {
                 image.destroy(&gpu.device, &mut gpu.allocator);
+            }
+
+            if let Some(lens) = &mut self.lens {
+                lens.destroy(&gpu.device, &mut gpu.allocator);
             }
 
             for frame in &mut self.frames {

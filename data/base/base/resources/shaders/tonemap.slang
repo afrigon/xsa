@@ -20,6 +20,7 @@ struct TonemapConstants {
     uint sceneColorTexture;
     uint bloomTexture;
     float bloomStrength;
+    uint lensTexture;
 };
 
 [[vk::push_constant]]
@@ -91,6 +92,10 @@ float4 fragmentMain(FullscreenOutput input) : SV_Target {
         float2 uv = input.position.xy / frame.viewportSize;
         float3 bloom = textures[constants.bloomTexture].SampleLevel(clampingSampler, uv, 0.0).rgb / bloomWeightSum;
         color = lerp(color, bloom, constants.bloomStrength);
+    }
+
+    if (constants.lensTexture != noTexture) {
+        color += textures[constants.lensTexture].Load(int3(int2(input.position.xy), 0)).rgb;
     }
     switch (frame.tonemapper) {
     case tonemapperAgx:

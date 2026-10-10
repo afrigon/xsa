@@ -1,3 +1,6 @@
+// Must match NO_TEXTURE in client/src/renderer/material.rs.
+static const uint noTexture = 0xFFFFFFFF;
+
 // Positions are relative to the camera.
 struct StarData {
     float4 positionAndRadius;

@@ -224,7 +224,7 @@ impl App {
 
     fn join(&mut self, state: &WorldState) -> anyhow::Result<()> {
         let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
-        let world = ClientWorld::load(&self.packs_directory, state, renderer)?;
+        let world = ClientWorld::load(&self.packs_directory, state, &self.config.render.lens.profile, renderer)?;
         let cameras = self.cameras.as_mut().context("the cameras are not ready")?;
         cameras.focus(&world);
         self.world = Some(world);

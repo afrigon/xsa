@@ -5,7 +5,7 @@ use glam::{DVec3, Vec3};
 use xsa_commands::completion::CompletionCandidate;
 use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
-use xsa_packs::{Id, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition};
+use xsa_packs::{Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition};
 use xsa_proto::event::WorldState;
 use xsa_units::SimulationTime;
 
@@ -26,7 +26,12 @@ pub(super) struct ClientWorld {
 }
 
 impl ClientWorld {
-    pub fn load(packs_directory: &Path, world: &WorldState, renderer: &mut Renderer) -> anyhow::Result<ClientWorld> {
+    pub fn load(
+        packs_directory: &Path,
+        world: &WorldState,
+        lens_profile: &Id,
+        renderer: &mut Renderer,
+    ) -> anyhow::Result<ClientWorld> {
         let pack_ids: Vec<String> = world.packs.iter().map(|pack| pack.id.clone()).collect();
         let stack = PackStack::load(packs_directory, &pack_ids)?;
 
@@ -88,6 +93,7 @@ impl ClientWorld {
 
         let skybox = ClientWorld::load_skybox(&stack, &simulation_id, renderer)?;
         renderer.scene_mut().skybox = skybox;
+        ClientWorld::load_lens(&stack, lens_profile, renderer);
 
         Ok(ClientWorld {
             simulation_id,
@@ -196,6 +202,14 @@ impl ClientWorld {
             object.orientation = state.orientation;
             object.scale = body.radius;
             object.bounding_radius = body.radius;
+        }
+    }
+
+    fn load_lens(stack: &PackStack, profile: &Id, renderer: &mut Renderer) {
+        let loaded = LensDefinition::load(stack, profile).and_then(|definition| renderer.load_lens(&definition));
+
+        if let Err(err) = loaded {
+            tracing::warn!("skipping lens effects: lens {profile}: {err:#}");
         }
     }
 

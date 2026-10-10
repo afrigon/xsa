@@ -13,6 +13,8 @@ const HISTOGRAM_SHADER_PATH: &str = "histogram";
 const BLOOM_DOWNSAMPLE_SHADER_PATH: &str = "bloom-downsample";
 const BLOOM_UPSAMPLE_SHADER_PATH: &str = "bloom-upsample";
 const TAA_SHADER_PATH: &str = "taa";
+const STAR_VISIBILITY_SHADER_PATH: &str = "star-visibility";
+const LENS_SHADER_PATH: &str = "lens";
 
 pub struct ShaderBinaries {
     pub shaders: Vec<Vec<u8>>,
@@ -21,6 +23,8 @@ pub struct ShaderBinaries {
     pub bloom_downsample: Vec<u8>,
     pub bloom_upsample: Vec<u8>,
     pub taa: Vec<u8>,
+    pub star_visibility: Vec<u8>,
+    pub lens: Vec<u8>,
 }
 
 impl ShaderBinaries {
@@ -47,6 +51,8 @@ impl ShaderBinaries {
             bloom_downsample: read(BLOOM_DOWNSAMPLE_SHADER_PATH)?,
             bloom_upsample: read(BLOOM_UPSAMPLE_SHADER_PATH)?,
             taa: read(TAA_SHADER_PATH)?,
+            star_visibility: read(STAR_VISIBILITY_SHADER_PATH)?,
+            lens: read(LENS_SHADER_PATH)?,
         })
     }
 }

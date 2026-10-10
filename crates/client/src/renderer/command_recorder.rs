@@ -67,6 +67,22 @@ impl<'a> CommandRecorder<'a> {
         };
     }
 
+    pub fn draw_fullscreen_instances(&self, instance_count: u32) {
+        unsafe {
+            self.device
+                .handle()
+                .cmd_draw(self.command_buffer, FULLSCREEN_VERTEX_COUNT, instance_count, 0, 0)
+        };
+    }
+
+    pub fn dispatch_groups(&self, group_count: u32) {
+        unsafe {
+            self.device
+                .handle()
+                .cmd_dispatch(self.command_buffer, group_count, 1, 1)
+        };
+    }
+
     pub fn dispatch(&self, extent: vk::Extent2D, workgroup_size: u32) {
         unsafe {
             self.device.handle().cmd_dispatch(
