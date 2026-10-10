@@ -1,12 +1,12 @@
 mod material_handle;
 mod object_handle;
 mod scene_object;
+mod star;
 
 pub use material_handle::MaterialHandle;
 pub use object_handle::ObjectHandle;
 pub use scene_object::SceneObject;
-
-use glam::{DVec3, Vec3};
+pub use star::Star;
 
 use super::Material;
 
@@ -14,8 +14,7 @@ use super::Material;
 pub struct Scene {
     objects: Vec<SceneObject>,
     materials: Vec<Material>,
-    pub sun_position: DVec3,
-    pub sun_intensity: Vec3,
+    stars: Vec<Star>,
     pub skybox: Option<MaterialHandle>,
 }
 
@@ -25,6 +24,10 @@ impl Scene {
         ObjectHandle {
             index: self.objects.len() - 1,
         }
+    }
+
+    pub fn object(&self, handle: ObjectHandle) -> &SceneObject {
+        &self.objects[handle.index]
     }
 
     pub fn object_mut(&mut self, handle: ObjectHandle) -> &mut SceneObject {
@@ -48,5 +51,13 @@ impl Scene {
 
     pub fn materials(&self) -> &[Material] {
         &self.materials
+    }
+
+    pub fn add_star(&mut self, star: Star) {
+        self.stars.push(star);
+    }
+
+    pub fn stars(&self) -> &[Star] {
+        &self.stars
     }
 }

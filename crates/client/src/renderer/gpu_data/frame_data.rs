@@ -1,4 +1,5 @@
-use glam::{Mat4, Vec2, Vec4};
+use ash::vk;
+use glam::{Mat4, Vec2};
 
 use super::GpuData;
 
@@ -8,8 +9,9 @@ pub(in crate::renderer) struct FrameData {
     pub view_projection: Mat4,
     pub world_from_clip: Mat4,
     pub previous_view_projection: Mat4,
-    pub sun_position: Vec4,
-    pub sun_intensity: Vec4,
+    pub stars: vk::DeviceAddress,
+    pub star_count: u32,
+    pub padding: u32,
     pub viewport_size: Vec2,
     pub jitter: Vec2,
     pub exposure: f32,
@@ -18,6 +20,6 @@ pub(in crate::renderer) struct FrameData {
     pub shading_model: u32,
 }
 
-const _: () = assert!(size_of::<FrameData>() == 256);
+const _: () = assert!(size_of::<FrameData>() == 240);
 
 unsafe impl GpuData for FrameData {}

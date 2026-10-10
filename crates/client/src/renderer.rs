@@ -23,7 +23,7 @@ pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
 pub use frame_statistics::FrameStatistics;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
-pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject};
+pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject, Star};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
@@ -48,7 +48,7 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData};
+use gpu_data::{FrameData, ObjectData, StarData};
 use graph_textures::GraphTextures;
 use material::MaterialData;
 use passes::TaaPass;
@@ -62,6 +62,7 @@ const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 // Background light from stars and zodiacal light, in lux.
 const STARLIGHT_ILLUMINANCE: f32 = 2e-4;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
+const INITIAL_STAR_CAPACITY: usize = 4;
 const MATERIAL_CAPACITY: usize = 256;
 // Presentation waits on the acquire semaphore at the color attachment output stage.
 const SWAPCHAIN_ACQUIRED: ImageState = ImageState {
@@ -93,9 +94,11 @@ pub struct Renderer {
     statistics: FrameStatistics,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
+    star_data: Vec<StarData>,
     visible_objects: Vec<ObjectHandle>,
     material_data: Vec<MaterialData>,
     object_capacity: usize,
+    star_capacity: usize,
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
     passes: RenderPasses,
@@ -122,7 +125,14 @@ impl Renderer {
             vk::SwapchainKHR::null(),
         )?;
         let frames = (0..FRAMES_IN_FLIGHT)
-            .map(|_| Frame::new(&gpu.device, &mut gpu.allocator, INITIAL_OBJECT_CAPACITY))
+            .map(|_| {
+                Frame::new(
+                    &gpu.device,
+                    &mut gpu.allocator,
+                    INITIAL_OBJECT_CAPACITY,
+                    INITIAL_STAR_CAPACITY,
+                )
+            })
             .collect::<anyhow::Result<_>>()?;
         let mut graph = RenderGraph::new(swapchain.extent());
         let passes = RenderPasses::new(&mut gpu, &mut graph, shaders, swapchain.format(), FRAMES_IN_FLIGHT)?;
@@ -136,9 +146,11 @@ impl Renderer {
             statistics: FrameStatistics::default(),
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
+            star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
             visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
+            star_capacity: INITIAL_STAR_CAPACITY,
             cube_maps: Vec::new(),
             textures: Vec::new(),
             passes,
@@ -248,6 +260,7 @@ impl Renderer {
         }
 
         self.ensure_object_capacity()?;
+        self.ensure_star_capacity()?;
 
         let Some(image_index) = self.acquire_image()? else {
             return Ok(());
@@ -393,12 +406,14 @@ impl Renderer {
             Vec2::ZERO
         };
         let view_projection = Mat4::from_translation(jitter.extend(0.0)) * unjittered_view_projection;
+        let stars = self.frames[self.frame_index].stars.device_address();
         let frame_data = FrameData {
             view_projection,
             world_from_clip: view_projection.inverse(),
             previous_view_projection: self.temporal.previous_view_projection(),
-            sun_position: (self.scene.sun_position - camera.position).as_vec3().extend(1.0),
-            sun_intensity: self.scene.sun_intensity.extend(0.0),
+            stars,
+            star_count: self.scene.stars().len() as u32,
+            padding: 0,
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             jitter,
             exposure: self.exposure.exposure(),
@@ -422,6 +437,17 @@ impl Renderer {
             });
         }
 
+        self.star_data.clear();
+
+        for star in self.scene.stars() {
+            let object = self.scene.object(star.object);
+            let camera_relative = object.position - camera.position;
+            self.star_data.push(StarData {
+                position_and_radius: camera_relative.as_vec3().extend(object.bounding_radius as f32),
+                intensity: star.intensity.extend(0.0),
+            });
+        }
+
         anyhow::ensure!(
             self.scene.materials().len() <= MATERIAL_CAPACITY,
             "the scene has more than {MATERIAL_CAPACITY} materials"
@@ -433,6 +459,7 @@ impl Renderer {
         let frame = &mut self.frames[self.frame_index];
         frame.frame_data.write(&[frame_data])?;
         frame.objects.write(&self.object_data)?;
+        frame.stars.write(&self.star_data)?;
 
         frame.materials.write(&self.material_data)
     }
@@ -574,6 +601,25 @@ impl Renderer {
             let objects = Frame::create_object_buffer(&self.gpu.device, &mut self.gpu.allocator, self.object_capacity)?;
             let mut old_objects = std::mem::replace(&mut frame.objects, objects);
             unsafe { old_objects.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+        }
+
+        Ok(())
+    }
+
+    fn ensure_star_capacity(&mut self) -> anyhow::Result<()> {
+        let star_count = self.scene.stars().len();
+
+        if star_count <= self.star_capacity {
+            return Ok(());
+        }
+
+        self.gpu.wait_idle()?;
+        self.star_capacity = star_count.next_power_of_two();
+
+        for frame in &mut self.frames {
+            let stars = Frame::create_star_buffer(&self.gpu.device, &mut self.gpu.allocator, self.star_capacity)?;
+            let mut old_stars = std::mem::replace(&mut frame.stars, stars);
+            unsafe { old_stars.destroy(&self.gpu.device, &mut self.gpu.allocator) };
         }
 
         Ok(())

@@ -99,15 +99,15 @@ VertexOutput transformVertex(VertexInput input) {
     return output;
 }
 
-float sunCosine(float3 worldPosition, float3 normal) {
-    float3 toSun = normalize(constants.frame.sunPosition.xyz - worldPosition);
-    return max(dot(normal, toSun), 0.0);
+float starCosine(StarData star, float3 worldPosition, float3 normal) {
+    float3 toStar = normalize(star.positionAndRadius.xyz - worldPosition);
+    return max(dot(normal, toStar), 0.0);
 }
 
 // Lux per color channel: the star's luminous intensity falls off with the square of the distance.
-float3 sunIlluminance(float3 worldPosition) {
-    float3 toSun = constants.frame.sunPosition.xyz - worldPosition;
-    return constants.frame.sunIntensity.rgb / dot(toSun, toSun);
+float3 starIlluminance(StarData star, float3 worldPosition) {
+    float3 toStar = star.positionAndRadius.xyz - worldPosition;
+    return star.intensity.rgb / dot(toStar, toStar);
 }
 
 // cd/m² reflected from the faint starlight arriving from every direction.
@@ -115,7 +115,7 @@ float3 starlightLuminance(float3 albedo) {
     return albedo / pi * constants.frame.starlightIlluminance;
 }
 
-// cd/m² reflected by a Lambertian surface of the given albedo, including starlight.
+// cd/m² reflected by a Lambertian surface of the given albedo.
 float3 lambertLuminance(float3 albedo, float3 illuminance, float cosine) {
-    return albedo / pi * illuminance * cosine + starlightLuminance(albedo);
+    return albedo / pi * illuminance * cosine;
 }

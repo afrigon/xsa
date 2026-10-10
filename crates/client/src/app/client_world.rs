@@ -9,7 +9,9 @@ use xsa_proto::event::WorldState;
 use xsa_units::SimulationTime;
 
 use super::body_step::BodyStep;
-use crate::renderer::{ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject};
+use crate::renderer::{
+    ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Star,
+};
 use crate::star_light::StarLight;
 
 const DEFAULT_NAMESPACE: &str = "base";
@@ -19,7 +21,6 @@ pub(super) struct ClientWorld {
     simulation: Simulation,
     state: SimulationState,
     body_objects: Vec<ObjectHandle>,
-    light_body: Option<BodyIndex>,
     skybox: Option<MaterialHandle>,
 }
 
@@ -60,7 +61,7 @@ impl ClientWorld {
         simulation.state_at(world.time, &mut state);
 
         let scene = renderer.scene_mut();
-        let body_objects = simulation
+        let body_objects: Vec<ObjectHandle> = simulation
             .bodies()
             .iter()
             .zip(&materials)
@@ -77,15 +78,14 @@ impl ClientWorld {
                 })
             })
             .collect();
-        let light_body = star_lights
-            .iter()
-            .position(Option::is_some)
-            .map(|value| BodyIndex { value });
 
-        if let Some(index) = light_body
-            && let Some(star_light) = &star_lights[index.value]
-        {
-            scene.sun_intensity = star_light.color * star_light.luminous_intensity as f32;
+        for (star_light, &object) in star_lights.iter().zip(&body_objects) {
+            if let Some(star_light) = star_light {
+                scene.add_star(Star {
+                    object,
+                    intensity: star_light.color * star_light.luminous_intensity as f32,
+                });
+            }
         }
 
         let skybox = ClientWorld::load_skybox(&stack, &simulation_id, renderer)?;
@@ -96,7 +96,6 @@ impl ClientWorld {
             simulation,
             state,
             body_objects,
-            light_body,
             skybox,
         })
     }
@@ -193,10 +192,6 @@ impl ClientWorld {
             object.orientation = state.orientation;
             object.scale = body.radius;
             object.bounding_radius = body.radius;
-        }
-
-        if let Some(light_body) = self.light_body {
-            scene.sun_position = self.state.body(light_body).position;
         }
     }
 

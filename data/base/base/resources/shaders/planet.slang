@@ -96,6 +96,37 @@ float3 textbookAlbedo(MaterialData material, SurfaceCoordinates coordinates, flo
     return singleScatteringAlbedo * color / regionalLuminance;
 }
 
+// cd/m² the surface reflects from one star.
+float3 reflectedLuminance(StarData star, MaterialData material, SurfaceCoordinates coordinates, VertexOutput input,
+                          float3 worldNormal, float3 albedo) {
+    float facingStar = starCosine(star, input.worldPosition, normalize(input.normal)) > 0.0 ? 1.0 : 0.0;
+    float cosine = starCosine(star, input.worldPosition, worldNormal) * facingStar;
+    float3 illuminance = starIlluminance(star, input.worldPosition);
+    uint shading = constants.frame.shadingModel;
+    bool hapke =
+        material.hapke.scatterTexture != noTexture && (shading == shadingHapkeSol || shading == shadingHapkeTextbook);
+
+    if (!hapke || cosine <= 0.0) {
+        return lambertLuminance(albedo, illuminance, cosine);
+    }
+
+    float3 toCamera = normalize(-input.worldPosition);
+    float3 toStar = normalize(star.positionAndRadius.xyz - input.worldPosition);
+    HapkeGeometry geometry;
+    geometry.incidenceCosine = clamp(dot(toStar, worldNormal), 1e-4, 1.0);
+    geometry.emissionCosine = clamp(dot(toCamera, worldNormal), 1e-4, 1.0);
+    geometry.phaseAngle = acos(clamp(dot(toStar, toCamera), -1.0, 1.0));
+    HapkeSurface surface = hapkeSurface(material, coordinates, albedo);
+
+    if (shading == shadingHapkeSol) {
+        return hapkeSol(surface, geometry, material.hapke.blend, material.hapke.lightBoost, material.hapke.gammaBoost) *
+               illuminance;
+    }
+
+    surface.albedo = textbookAlbedo(material, coordinates, albedo, surface.singleScatteringAlbedo);
+    return hapkeTextbook(surface, geometry) * illuminance;
+}
+
 [shader("fragment")]
 SurfaceOutput fragmentMain(VertexOutput input) {
     MaterialData material = currentMaterial();
@@ -104,35 +135,18 @@ SurfaceOutput fragmentMain(VertexOutput input) {
 
     float3 normal = surfaceNormal(material, modelNormal, coordinates);
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
-    float facingSun = sunCosine(input.worldPosition, normalize(input.normal)) > 0.0 ? 1.0 : 0.0;
-    float cosine = sunCosine(input.worldPosition, worldNormal) * facingSun;
-
     float3 albedo = sampleSurface(material.texture, coordinates).rgb;
-    float3 illuminance = sunIlluminance(input.worldPosition);
-    float3 luminance = lambertLuminance(albedo, illuminance, cosine);
-    uint shading = constants.frame.shadingModel;
-    if (material.hapke.scatterTexture != noTexture && cosine > 0.0 &&
-        (shading == shadingHapkeSol || shading == shadingHapkeTextbook)) {
-        float3 toCamera = normalize(-input.worldPosition);
-        float3 toSun = normalize(constants.frame.sunPosition.xyz - input.worldPosition);
-        HapkeGeometry geometry;
-        geometry.incidenceCosine = clamp(dot(toSun, worldNormal), 1e-4, 1.0);
-        geometry.emissionCosine = clamp(dot(toCamera, worldNormal), 1e-4, 1.0);
-        geometry.phaseAngle = acos(clamp(dot(toSun, toCamera), -1.0, 1.0));
-        HapkeSurface surface = hapkeSurface(material, coordinates, albedo);
-        float3 reflectance;
-        if (shading == shadingHapkeSol) {
-            reflectance =
-                hapkeSol(surface, geometry, material.hapke.blend, material.hapke.lightBoost, material.hapke.gammaBoost);
-        } else {
-            surface.albedo = textbookAlbedo(material, coordinates, albedo, surface.singleScatteringAlbedo);
-            reflectance = hapkeTextbook(surface, geometry);
-        }
-        luminance = reflectance * illuminance + starlightLuminance(albedo);
+    float3 luminance = starlightLuminance(albedo);
+
+    for (uint index = 0; index < constants.frame.starCount; index++) {
+        luminance +=
+            reflectedLuminance(constants.frame.stars[index], material, coordinates, input, worldNormal, albedo);
     }
+
     if (material.emissiveTexture != noTexture) {
         luminance += sampleSurface(material.emissiveTexture, coordinates).rgb * material.luminance;
     }
+
     float3 color = luminance * constants.frame.exposure;
     return surfaceOutput(float4(color, 1.0), input);
 }
