@@ -2,7 +2,7 @@ use ash::vk;
 
 use super::MATERIAL_CAPACITY;
 use super::auto_exposure::HISTOGRAM_BINS;
-use super::gpu_data::{FrameData, ObjectData};
+use super::gpu_data::{FrameData, ObjectData, StarData};
 use super::material::MaterialData;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
 
@@ -13,15 +13,22 @@ pub(super) struct Frame {
     pub in_flight: vk::Fence,
     pub frame_data: Buffer,
     pub objects: Buffer,
+    pub stars: Buffer,
     pub materials: Buffer,
     pub histogram: Buffer,
     pub histogram_ready: bool,
 }
 
 impl Frame {
-    pub fn new(device: &Device, allocator: &mut Allocator, object_capacity: usize) -> anyhow::Result<Self> {
+    pub fn new(
+        device: &Device,
+        allocator: &mut Allocator,
+        object_capacity: usize,
+        star_capacity: usize,
+    ) -> anyhow::Result<Self> {
         let frame_data = Frame::create_shader_buffer(device, allocator, "frame data", size_of::<FrameData>())?;
         let objects = Frame::create_object_buffer(device, allocator, object_capacity)?;
+        let stars = Frame::create_star_buffer(device, allocator, star_capacity)?;
         let materials = Frame::create_shader_buffer(
             device,
             allocator,
@@ -60,6 +67,7 @@ impl Frame {
             in_flight,
             frame_data,
             objects,
+            stars,
             materials,
             histogram,
             histogram_ready: false,
@@ -70,6 +78,7 @@ impl Frame {
         unsafe {
             self.frame_data.destroy(device, allocator);
             self.objects.destroy(device, allocator);
+            self.stars.destroy(device, allocator);
             self.materials.destroy(device, allocator);
             self.histogram.destroy(device, allocator);
             let device = device.handle();
@@ -81,6 +90,10 @@ impl Frame {
 
     pub fn create_object_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {
         Frame::create_shader_buffer(device, allocator, "object data", capacity * size_of::<ObjectData>())
+    }
+
+    pub fn create_star_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(device, allocator, "star data", capacity * size_of::<StarData>())
     }
 
     fn create_shader_buffer(
