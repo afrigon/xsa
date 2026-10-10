@@ -1,6 +1,6 @@
 aperture blades=6 rotation=15
 
-glare intensity=10.0 falloff=2.0
+glare intensity=0.03 falloff=2.0
 
 spikes intensity=1.0 length=4.0 {
     computed width=0.02 dispersion=0.15
