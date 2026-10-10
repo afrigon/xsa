@@ -5,10 +5,7 @@ pub(in crate::renderer) use lens_inputs::LensInputs;
 pub(in crate::renderer) use lens_resources::LensResources;
 
 use ash::vk;
-use render_graph::{
-    Attachment, BufferUsage, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass,
-    Stage,
-};
+use render_graph::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
 
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
@@ -76,12 +73,10 @@ impl<'frame> RenderPass<FrameContext<'frame>> for LensPass {
             size: ImageSize::Output,
             mip_levels: 1,
         });
-        pass.buffer(inputs.visibility, BufferUsage::StorageRead(Stage::Fragment));
         pass.color_attachment(lens, Attachment::ClearColor(CLEAR));
 
         LensResources {
             lens,
-            visibility: inputs.visibility,
             star_count: inputs.star_count,
         }
     }
@@ -97,7 +92,6 @@ impl<'frame> RenderPass<FrameContext<'frame>> for LensPass {
         let constants = LensPushConstants {
             frame: frame.frame.frame_data.device_address(),
             stars: frame.frame.projected_stars.device_address(),
-            visibility: pass.device_address(resources.visibility),
             ghosts: lens.ghosts(),
             glare_intensity: lens.glare_intensity,
             glare_falloff: lens.glare_falloff,

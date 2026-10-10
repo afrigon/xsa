@@ -45,6 +45,6 @@ float4 fragmentMain(SpikesOutput input) : SV_Target {
     float across = angle * sin(fromRay);
     float3 lengths = constants.spikesLength * (1.0 + constants.spikesDispersion * spikesDispersionOffsets);
     float3 shape = exp(-along / lengths) * exp(-fullWidthScale * pow(across / constants.spikesWidth, 2.0));
-    float3 luminance = constants.spikesIntensity * star.illuminance * constants.visibility[input.star] * shape;
+    float3 luminance = constants.spikesIntensity * star.illuminance * star.visibility * shape;
     return float4(luminance * constants.frame->exposure, 1.0);
 }

@@ -129,6 +129,6 @@ float4 fragmentMain(GhostOutput input) : SV_Target {
 
     float3 shape = ghost.shape == ghostShapeRing ? ringShape(input.local, ghost) : polygonShape(input.local, ghost);
     ProjectedStarData star = constants.stars[input.star];
-    float3 luminance = ghost.intensity * ghost.tint * star.illuminance * constants.visibility[input.star] * shape;
+    float3 luminance = ghost.intensity * ghost.tint * star.illuminance * star.visibility * shape;
     return float4(luminance * constants.frame->exposure, 1.0);
 }

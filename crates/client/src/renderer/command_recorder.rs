@@ -84,14 +84,6 @@ impl<'a> CommandRecorder<'a> {
         };
     }
 
-    pub fn dispatch_groups(&self, group_count: u32) {
-        unsafe {
-            self.device
-                .handle()
-                .cmd_dispatch(self.command_buffer, group_count, 1, 1)
-        };
-    }
-
     pub fn dispatch(&self, extent: vk::Extent2D, workgroup_size: u32) {
         unsafe {
             self.device.handle().cmd_dispatch(

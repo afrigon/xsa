@@ -15,6 +15,7 @@ pub struct Scene {
     objects: Vec<SceneObject>,
     materials: Vec<Material>,
     stars: Vec<Star>,
+    occluders: Vec<ObjectHandle>,
     pub skybox: Option<MaterialHandle>,
 }
 
@@ -59,5 +60,14 @@ impl Scene {
 
     pub fn stars(&self) -> &[Star] {
         &self.stars
+    }
+
+    // Objects whose sphere (of radius `scale`) hides the stars behind it.
+    pub fn add_occluder(&mut self, object: ObjectHandle) {
+        self.occluders.push(object);
+    }
+
+    pub fn occluders(&self) -> &[ObjectHandle] {
+        &self.occluders
     }
 }

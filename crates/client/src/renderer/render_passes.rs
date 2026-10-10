@@ -7,7 +7,7 @@ use super::frame_inputs::FrameInputs;
 use super::gpu_context::GpuContext;
 use super::passes::{
     BloomPass, CaptureInputs, CapturePass, ForwardPass, HistogramInputs, HistogramPass, LensInputs, LensPass,
-    SkyboxPass, StarVisibilityInputs, StarVisibilityPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass,
+    SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass,
 };
 use crate::config::{AntialiasingKind, RenderConfig};
 
@@ -18,7 +18,6 @@ pub(super) struct RenderPasses {
     skybox: SkyboxPass,
     taa: TaaPass,
     bloom: BloomPass,
-    star_visibility: StarVisibilityPass,
     lens: LensPass,
     tonemap: TonemapPass,
     user_interface: UserInterfacePass,
@@ -39,7 +38,6 @@ impl RenderPasses {
             skybox: SkyboxPass::new(gpu, shaders)?,
             taa: TaaPass::new(gpu, graph, shaders)?,
             bloom: BloomPass::new(gpu, shaders)?,
-            star_visibility: StarVisibilityPass::new(gpu, shaders)?,
             lens: LensPass::new(gpu, shaders)?,
             tonemap: TonemapPass::new(gpu, shaders, output_format)?,
             user_interface: UserInterfacePass::new(gpu, output_format, frames_in_flight)?,
@@ -71,19 +69,8 @@ impl RenderPasses {
             .enabled
             .then(|| graph.add(&mut self.bloom, scene_color).bloom);
         let star_count = inputs.projected_star_count;
-        let lens = (render.lens.enabled && inputs.lens_loaded && star_count > 0).then(|| {
-            let visibility = graph
-                .add(
-                    &mut self.star_visibility,
-                    StarVisibilityInputs {
-                        depth: forward.depth,
-                        star_count,
-                    },
-                )
-                .visibility;
-
-            graph.add(&mut self.lens, LensInputs { visibility, star_count }).lens
-        });
+        let lens = (render.lens.enabled && inputs.lens_loaded && star_count > 0)
+            .then(|| graph.add(&mut self.lens, LensInputs { star_count }).lens);
         graph.add(
             &mut self.tonemap,
             TonemapInputs {
@@ -114,7 +101,6 @@ impl RenderPasses {
             self.skybox.destroy(gpu);
             self.taa.destroy(gpu);
             self.bloom.destroy(gpu);
-            self.star_visibility.destroy(gpu);
             self.lens.destroy(gpu);
             self.tonemap.destroy(gpu);
             self.user_interface.destroy();

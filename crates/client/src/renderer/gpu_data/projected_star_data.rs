@@ -6,11 +6,11 @@ use super::GpuData;
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct ProjectedStarData {
     pub screen_position: Vec2,
-    pub pixel_radius: f32,
-    // Depth-buffer value above which a sample hides the star.
-    pub occlusion_depth: f32,
-    pub illuminance: Vec3,
+    // Fraction of the star's disk no body hides.
+    pub visibility: f32,
     pub angular_radius: f32,
+    pub illuminance: Vec3,
+    pub padding: u32,
 }
 
 const _: () = assert!(size_of::<ProjectedStarData>() == 32);

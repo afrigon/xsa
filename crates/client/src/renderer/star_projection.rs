@@ -6,7 +6,6 @@ use crate::camera::Camera;
 
 pub(in crate::renderer) struct StarProjection {
     view_projection: DMat4,
-    near: f64,
     extent: DVec2,
     focal_length_pixels: f64,
 }
@@ -18,7 +17,6 @@ impl StarProjection {
 
         StarProjection {
             view_projection: clip_from_view * camera.view_rotation().as_dmat4(),
-            near: f64::from(camera.near),
             extent: DVec2::new(f64::from(extent.width), height),
             // Negative in Vulkan projections, which flip Y.
             focal_length_pixels: clip_from_view.y_axis.y.abs() * height / 2.0,
@@ -29,20 +27,8 @@ impl StarProjection {
         self.focal_length_pixels as f32
     }
 
-    // The star's own sphere writes depth: only samples more than one stellar radius in front of its surface hide
-    // it, which keeps depth precision from hiding the star behind itself. Reverse-Z infinite depth is near / depth.
-    fn occlusion_depth(&self, view_depth: f64, radius: f64) -> f32 {
-        let occluder_depth = view_depth - 2.0 * radius;
-
-        if occluder_depth <= 0.0 {
-            return f32::MAX;
-        }
-
-        (self.near / occluder_depth) as f32
-    }
-
     // `position` is relative to the camera; `None` when the star is behind the camera or surrounds it.
-    pub fn project(&self, position: DVec3, radius: f64, intensity: Vec3) -> Option<ProjectedStarData> {
+    pub fn project(&self, position: DVec3, radius: f64, intensity: Vec3, visibility: f32) -> Option<ProjectedStarData> {
         let distance = position.length();
         let clip = self.view_projection * position.extend(1.0);
 
@@ -55,10 +41,10 @@ impl StarProjection {
 
         Some(ProjectedStarData {
             screen_position: ((normalized * 0.5 + 0.5) * self.extent).as_vec2(),
-            pixel_radius: (angular_radius.tan() * self.focal_length_pixels) as f32,
-            occlusion_depth: self.occlusion_depth(clip.w, radius),
-            illuminance: intensity / (distance * distance) as f32,
+            visibility,
             angular_radius: angular_radius as f32,
+            illuminance: intensity / (distance * distance) as f32,
+            padding: 0,
         })
     }
 }
@@ -85,7 +71,7 @@ mod tests {
     #[test]
     fn a_star_straight_ahead_lands_on_the_screen_center() {
         let star = projection()
-            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE)
+            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0)
             .unwrap();
 
         assert!((star.screen_position.x - 960.0).abs() < 0.5, "{}", star.screen_position);
@@ -95,7 +81,7 @@ mod tests {
     #[test]
     fn the_sun_from_earth_is_about_a_quarter_degree_wide() {
         let star = projection()
-            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE)
+            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0)
             .unwrap();
         let degrees = star.angular_radius.to_degrees();
 
@@ -106,7 +92,7 @@ mod tests {
     fn a_star_behind_the_camera_is_not_projected() {
         assert!(
             projection()
-                .project(DVec3::new(0.0, -ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE)
+                .project(DVec3::new(0.0, -ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0)
                 .is_none()
         );
     }

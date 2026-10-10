@@ -7,7 +7,6 @@ use super::GpuData;
 pub(in crate::renderer) struct LensPushConstants {
     pub frame: vk::DeviceAddress,
     pub stars: vk::DeviceAddress,
-    pub visibility: vk::DeviceAddress,
     pub ghosts: vk::DeviceAddress,
     pub glare_intensity: f32,
     pub glare_falloff: f32,
@@ -23,6 +22,6 @@ pub(in crate::renderer) struct LensPushConstants {
     pub ghost_count: u32,
 }
 
-const _: () = assert!(size_of::<LensPushConstants>() == 80);
+const _: () = assert!(size_of::<LensPushConstants>() == 72);
 
 unsafe impl GpuData for LensPushConstants {}

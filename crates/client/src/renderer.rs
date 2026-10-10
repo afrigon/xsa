@@ -16,6 +16,7 @@ mod passes;
 mod render_passes;
 mod scene;
 mod shader_binaries;
+mod star_occlusion;
 mod star_projection;
 mod star_visibility;
 mod temporal_history;
@@ -59,6 +60,7 @@ use lens::Lens;
 use material::MaterialData;
 use passes::TaaPass;
 use render_passes::RenderPasses;
+use star_occlusion::StarOcclusion;
 use star_projection::StarProjection;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
@@ -104,6 +106,7 @@ pub struct Renderer {
     object_data: Vec<ObjectData>,
     star_data: Vec<StarData>,
     projected_star_data: Vec<ProjectedStarData>,
+    star_occlusion: StarOcclusion,
     focal_length_pixels: f32,
     visible_objects: Vec<ObjectHandle>,
     material_data: Vec<MaterialData>,
@@ -161,6 +164,7 @@ impl Renderer {
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
             projected_star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
+            star_occlusion: StarOcclusion::new(),
             focal_length_pixels: 0.0,
             visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
@@ -492,10 +496,21 @@ impl Renderer {
                 position_and_radius: camera_relative.as_vec3().extend(object.bounding_radius as f32),
                 intensity: star.intensity.extend(0.0),
             });
+            let occluders = self
+                .scene
+                .occluders()
+                .iter()
+                .filter(|&&occluder| occluder != star.object)
+                .map(|&occluder| self.scene.object(occluder))
+                .map(|occluder| (occluder.position - camera.position, occluder.scale));
+            let visibility = self
+                .star_occlusion
+                .visibility(camera_relative, object.bounding_radius, occluders);
             self.projected_star_data.extend(projection.project(
                 camera_relative,
                 object.bounding_radius,
                 star.intensity,
+                visibility,
             ));
         }
 

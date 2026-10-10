@@ -72,13 +72,15 @@ impl ClientWorld {
             .map(|((body, material), body_state)| {
                 let material = scene.add_material(*material);
 
-                scene.add(SceneObject {
+                let object = scene.add(SceneObject {
                     position: body_state.position,
                     orientation: body_state.orientation,
                     scale: body.radius,
                     bounding_radius: body.radius,
                     material,
-                })
+                });
+                scene.add_occluder(object);
+                object
             })
             .collect();
 

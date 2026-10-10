@@ -3,11 +3,11 @@ import common.frame;
 // Must match ProjectedStarData in client/src/renderer/gpu_data/projected_star_data.rs.
 struct ProjectedStarData {
     float2 screenPosition;
-    float pixelRadius;
-    // Depth-buffer value above which a sample hides the star.
-    float occlusionDepth;
-    float3 illuminance;
+    // Fraction of the star's disk no body hides.
+    float visibility;
     float angularRadius;
+    float3 illuminance;
+    uint padding;
 };
 
 // Must match the ghost shapes in client/src/renderer/lens.rs.
@@ -37,7 +37,6 @@ struct GhostData {
 struct LensConstants {
     FrameData *frame;
     ProjectedStarData *stars;
-    float *visibility;
     GhostData *ghosts;
     float glareIntensity;
     float glareFalloff;
