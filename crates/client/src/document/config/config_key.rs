@@ -1,4 +1,6 @@
-use super::{AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, RenderDocument};
+use super::{
+    AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, LensDocument, RenderDocument,
+};
 
 #[derive(Clone, Copy)]
 pub struct ConfigKey {
@@ -13,6 +15,8 @@ impl ConfigKey {
         RenderDocument::STARS,
         BloomDocument::ENABLED,
         BloomDocument::STRENGTH,
+        LensDocument::ENABLED,
+        LensDocument::PROFILE,
         AntialiasingDocument::KIND,
         RenderDocument::WIREFRAME,
         RenderDocument::SHADER_OVERRIDE,

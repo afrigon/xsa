@@ -9,6 +9,7 @@ mod config_layer;
 mod config_value_kind;
 mod config_values;
 mod key_chord_name;
+mod lens_document;
 mod number_range;
 mod render_document;
 mod shader_choice;
@@ -20,6 +21,7 @@ pub use bloom_document::BloomDocument;
 pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;
 pub use config_value_kind::ConfigValueKind;
+pub use lens_document::LensDocument;
 pub use number_range::NumberRange;
 pub use render_document::RenderDocument;
 
@@ -371,6 +373,19 @@ mod tests {
         assert_eq!(config.render.tonemapper, Tonemapper::AgxPunchy);
         assert!(!config.render.stars);
         assert!(document.toggle("render.bloom.strength").is_err());
+    }
+
+    #[test]
+    fn identifiers_must_name_their_namespace() {
+        let file = TestFile::new("identifier", None);
+        let mut document = ConfigDocument::load(file.path()).unwrap();
+        document.set("render.lens.profile", "system-solar:comparison").unwrap();
+        assert_eq!(
+            document.config().render.lens.profile.to_string(),
+            "system-solar:comparison"
+        );
+        assert!(document.set("render.lens.profile", "comparison").is_err());
+        assert!(document.toggle("render.lens.profile").is_err());
     }
 
     #[test]

@@ -1,5 +1,6 @@
-use anyhow::{Context, bail};
+use anyhow::{Context, bail, ensure};
 use kdl::KdlValue;
+use xsa_packs::{Id, NAMESPACE_SEPARATOR};
 
 use super::NumberRange;
 use crate::config::KeyChord;
@@ -15,6 +16,7 @@ pub enum ConfigValueKind {
     Number { range: NumberRange },
     Choice { names: fn() -> Vec<&'static str> },
     KeyChord,
+    Id,
 }
 
 impl ConfigValueKind {
@@ -55,6 +57,15 @@ impl ConfigValueKind {
 
                 Ok(KdlValue::String(chord.config_name()))
             }
+            ConfigValueKind::Id => {
+                ensure!(
+                    text.contains(NAMESPACE_SEPARATOR),
+                    "{text:?} is not a full identifier like base:default"
+                );
+                let id = Id::parse(text, "")?;
+
+                Ok(KdlValue::String(id.to_string()))
+            }
         }
     }
 
@@ -68,7 +79,7 @@ impl ConfigValueKind {
     pub fn values(self) -> Vec<&'static str> {
         match self {
             ConfigValueKind::Bool => vec![TRUE_WORDS[0], FALSE_WORDS[0]],
-            ConfigValueKind::Number { .. } => Vec::new(),
+            ConfigValueKind::Number { .. } | ConfigValueKind::Id => Vec::new(),
             ConfigValueKind::Choice { names } => names(),
             ConfigValueKind::KeyChord => KeyChord::key_names(),
         }
@@ -81,14 +92,14 @@ impl ConfigValueKind {
                 ConfigValueKind::as_chord(first).is_some()
                     && ConfigValueKind::as_chord(first) == ConfigValueKind::as_chord(second)
             }
-            ConfigValueKind::Bool | ConfigValueKind::Choice { .. } => first == second,
+            ConfigValueKind::Bool | ConfigValueKind::Choice { .. } | ConfigValueKind::Id => first == second,
         }
     }
 
     pub fn toggled(self, current: &KdlValue) -> anyhow::Result<KdlValue> {
         match self {
             ConfigValueKind::Bool => Ok(KdlValue::Bool(!current.as_bool().unwrap_or(false))),
-            ConfigValueKind::Number { .. } | ConfigValueKind::KeyChord => {
+            ConfigValueKind::Number { .. } | ConfigValueKind::KeyChord | ConfigValueKind::Id => {
                 bail!("only on/off and choice settings toggle")
             }
             ConfigValueKind::Choice { names } => {

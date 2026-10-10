@@ -1,4 +1,5 @@
 use kdl::KdlValue;
+use xsa_packs::{Id, NAMESPACE_SEPARATOR};
 
 use super::{ConfigChoice, ConfigKey, ConfigLayer};
 use crate::config::KeyChord;
@@ -42,6 +43,17 @@ impl ConfigValues<'_> {
     pub fn key_chord(&self, key: ConfigKey) -> Option<KeyChord> {
         let value = self.value(key)?;
         let parsed = value.as_string().and_then(KeyChord::from_config_name);
+        ConfigValues::warn_if_invalid(key, value, parsed.is_some());
+
+        parsed
+    }
+
+    pub fn id(&self, key: ConfigKey) -> Option<Id> {
+        let value = self.value(key)?;
+        let parsed = value
+            .as_string()
+            .filter(|text| text.contains(NAMESPACE_SEPARATOR))
+            .and_then(|text| Id::parse(text, "").ok());
         ConfigValues::warn_if_invalid(key, value, parsed.is_some());
 
         parsed
