@@ -14,10 +14,7 @@ Orbits, physical properties and rotation of the bodies are facts, taken from:
   fitted to Horizons positions.
 - The IAU WGCCRE report on cartographic coordinates and rotational elements
   (Archinal et al. 2018, Celestial Mechanics and Dynamical Astronomy 130:22).
-- Sol by RSS-Reborn (see below), for values neither source provides: rotation
-  periods of Hyperion, Nereid, Pallas, Psyche, Ryugu, Arrokoth, Nix, Hydra,
-  Kerberos and Styx; the orbit and size of Dactyl; the gravitational parameters
-  of Puck, Nereid, Arrokoth and Dactyl.
+- Sol by RSS-Reborn (see below), for a few values neither source provides.
 
 Skybox (system-solar/resources/textures/skyboxes/)
 --------------------------------------------------
@@ -27,23 +24,21 @@ Studio (https://svs.gsfc.nasa.gov/4851). Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2,
 Tycho-2: ESA. Used under the NASA media usage guidelines; the cube map is
 converted from the source EXR.
 
-Body textures and Hapke parameters (system-solar/resources/)
------------------------------------------------------------
+Textures
+--------
 
-The body textures (textures/bodies/) and the Hapke shading parameters in the
-materials (materials/, the `hapke` nodes: porosity, roughness, blend,
-light-boost, gamma-boost) are from Sol 0.9.5 by RSS-Reborn
-(https://github.com/RSS-Reborn), licensed under the Creative Commons
-Attribution-NonCommercial-ShareAlike 4.0 International license (CC BY-NC-SA
-4.0), reproduced below. Authors and sources of each texture are credited in
-Sol's credits file:
-https://github.com/RSS-Reborn/Sol-Configs/blob/f9e6fdf4e26c4a5ba1364ba93babfa2ada3e5a5c/Sol-Configs/Credits-License.md
+Textures from third-party works that may not be redistributed are not part
+of this pack; players obtain them from their authors' own releases.
 
-Changes: texture files are renamed and reorganized into this pack's layout,
-their contents unmodified; the Hapke parameters are copied from Sol's
-Parallax configuration files into this pack's material format.
+Material parameters (system-solar/resources/materials/)
+-------------------------------------------------------
 
-No commercial use. Derived textures must be shared under the same license.
+Some material parameters are adapted from Sol by RSS-Reborn
+(https://github.com/RSS-Reborn), whose configs are licensed under the
+Creative Commons Attribution-NonCommercial-ShareAlike license (CC BY-NC-SA,
+no version named); the 4.0 International text is reproduced below.
+
+No commercial use. Derived work must be shared under the same license.
 
 =======================================================================
 
