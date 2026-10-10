@@ -41,7 +41,7 @@ impl<'frame> PassContext<'frame> {
     }
 
     pub fn image(&self, image: impl Into<Subresource>) -> vk::Image {
-        self.recorder.resolved[image.into().image].image
+        self.recorder.resolved_images[image.into().image].image
     }
 
     /// The graph's id for an image this pass declared.
@@ -50,7 +50,7 @@ impl<'frame> PassContext<'frame> {
     ///
     /// If no running pass uses the image, which means this pass uses it without declaring it.
     pub fn image_id(&self, image: ImageHandle) -> ImageId {
-        let resolved = &self.recorder.resolved[image.index];
+        let resolved = &self.recorder.resolved_images[image.index];
 
         resolved
             .id
@@ -59,10 +59,10 @@ impl<'frame> PassContext<'frame> {
 
     pub fn view(&self, subresource: impl Into<Subresource>) -> vk::ImageView {
         let subresource = subresource.into();
-        let resolved = &self.recorder.resolved[subresource.image];
+        let resolved = &self.recorder.resolved_images[subresource.image];
 
         match (subresource.level, resolved.id) {
-            (Some(level), Some(id)) => self.recorder.pool.image(id).level_view(level),
+            (Some(level), Some(id)) => self.recorder.image_pool.image(id).level_view(level),
             _ => resolved.view,
         }
     }
@@ -70,11 +70,11 @@ impl<'frame> PassContext<'frame> {
     pub fn extent(&self, subresource: impl Into<Subresource>) -> vk::Extent2D {
         let subresource = subresource.into();
 
-        self.recorder.resolved[subresource.image].level_extent(subresource.level.unwrap_or(0))
+        self.recorder.resolved_images[subresource.image].level_extent(subresource.level.unwrap_or(0))
     }
 
     pub fn buffer(&self, buffer: impl Into<BufferResource>) -> vk::Buffer {
-        self.recorder.buffers[buffer.into().buffer].buffer
+        self.recorder.resolved_buffers[buffer.into().buffer].buffer
     }
 
     /// The device address shaders reach a buffer this pass declared through.
@@ -83,7 +83,7 @@ impl<'frame> PassContext<'frame> {
     ///
     /// If no running pass uses the buffer, which means this pass uses it without declaring it.
     pub fn device_address(&self, buffer: BufferHandle) -> vk::DeviceAddress {
-        let resolved = &self.recorder.buffers[buffer.index];
+        let resolved = &self.recorder.resolved_buffers[buffer.index];
         let id = resolved
             .id
             .unwrap_or_else(|| panic!("{} is not used by any running pass", resolved.name));
@@ -102,9 +102,9 @@ impl<'frame> PassContext<'frame> {
         let mut extent = vk::Extent2D::default();
 
         for attachment in &step.attachments {
-            let resolved = &self.recorder.resolved[attachment.image];
+            let resolved = &self.recorder.resolved_images[attachment.image];
             let view = match resolved.id {
-                Some(id) => self.recorder.pool.image(id).level_view(attachment.level),
+                Some(id) => self.recorder.image_pool.image(id).level_view(attachment.level),
                 None => resolved.view,
             };
             let info = vk::RenderingAttachmentInfo::default()

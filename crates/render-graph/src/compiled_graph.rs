@@ -13,8 +13,8 @@ pub(crate) struct CompiledGraph {
     pub passes: Vec<CompiledPass>,
     pub final_image_barriers: Vec<CompiledBarrier>,
     pub final_buffer_barriers: Vec<CompiledBufferBarrier>,
-    pub end_states: Vec<EndState>,
-    pub usage_flags: Vec<vk::ImageUsageFlags>,
+    pub image_end_states: Vec<EndState>,
+    pub image_usage_flags: Vec<vk::ImageUsageFlags>,
     pub buffer_end_states: Vec<BufferEndState>,
     pub buffer_usage_flags: Vec<vk::BufferUsageFlags>,
 }
@@ -23,7 +23,7 @@ impl CompiledGraph {
     pub fn new(
         declaration: &FrameDeclaration,
         live_passes: &[usize],
-        usage_flags: Vec<vk::ImageUsageFlags>,
+        image_usage_flags: Vec<vk::ImageUsageFlags>,
         buffer_usage_flags: Vec<vk::BufferUsageFlags>,
     ) -> Self {
         let passes = live_passes
@@ -38,8 +38,8 @@ impl CompiledGraph {
             passes,
             final_image_barriers: Vec::new(),
             final_buffer_barriers: Vec::new(),
-            end_states: Vec::new(),
-            usage_flags,
+            image_end_states: Vec::new(),
+            image_usage_flags,
             buffer_end_states: Vec::new(),
             buffer_usage_flags,
         }

@@ -15,9 +15,9 @@ use crate::{BufferState, ImageState};
 pub(crate) struct BarrierRecorder<'frame> {
     pub device: &'frame ash::Device,
     pub command_buffer: vk::CommandBuffer,
-    pub resolved: &'frame [ResolvedImage],
-    pub pool: &'frame ImagePool,
-    pub buffers: &'frame [ResolvedBuffer],
+    pub resolved_images: &'frame [ResolvedImage],
+    pub image_pool: &'frame ImagePool,
+    pub resolved_buffers: &'frame [ResolvedBuffer],
     pub buffer_pool: &'frame BufferPool,
     pub image_barriers: &'frame RefCell<Vec<vk::ImageMemoryBarrier2<'static>>>,
     pub buffer_barriers: &'frame RefCell<Vec<vk::BufferMemoryBarrier2<'static>>>,
@@ -31,7 +31,7 @@ impl BarrierRecorder<'_> {
         buffer_barriers.clear();
 
         for barrier in images {
-            let resolved = &self.resolved[barrier.image];
+            let resolved = &self.resolved_images[barrier.image];
             let source = match barrier.source {
                 BarrierSource::Known(state) => state,
                 BarrierSource::PreviousFrame { discard } => self.previous_state(resolved, barrier, discard),
@@ -61,7 +61,7 @@ impl BarrierRecorder<'_> {
         }
 
         for barrier in buffers {
-            let resolved = &self.buffers[barrier.buffer];
+            let resolved = &self.resolved_buffers[barrier.buffer];
             let source = match barrier.source {
                 BufferBarrierSource::Known(state) => state,
                 BufferBarrierSource::PreviousFrame => self.previous_buffer_state(resolved),
@@ -98,7 +98,7 @@ impl BarrierRecorder<'_> {
             return ImageState::UNUSED;
         };
         let levels = barrier.base_level as usize..(barrier.base_level + barrier.level_count) as usize;
-        let previous = self.pool.image(id).states[levels]
+        let previous = self.image_pool.image(id).states[levels]
             .iter()
             .fold(ImageState::UNUSED, |union, state| ImageState {
                 stages: union.stages | state.stages,

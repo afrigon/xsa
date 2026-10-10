@@ -29,11 +29,11 @@ pub struct RenderGraph {
     imported_buffers: Vec<ImportedBuffer>,
     histories: Vec<GraphImageDescription>,
     history_images: Vec<Option<[ImageId; HISTORY_IMAGE_COUNT]>>,
-    pool: ImagePool,
+    image_pool: ImagePool,
     buffer_pool: BufferPool,
     cache: Vec<CompiledEntry>,
     last_entry: Option<usize>,
-    resolved: Vec<ResolvedImage>,
+    resolved_images: Vec<ResolvedImage>,
     resolved_buffers: Vec<ResolvedBuffer>,
     image_barriers: RefCell<Vec<vk::ImageMemoryBarrier2<'static>>>,
     buffer_barriers: RefCell<Vec<vk::BufferMemoryBarrier2<'static>>>,
@@ -49,11 +49,11 @@ impl RenderGraph {
             imported_buffers: Vec::new(),
             histories: Vec::new(),
             history_images: Vec::new(),
-            pool: ImagePool::new(output),
+            image_pool: ImagePool::new(output),
             buffer_pool: BufferPool::default(),
             cache: Vec::new(),
             last_entry: None,
-            resolved: Vec::new(),
+            resolved_images: Vec::new(),
             resolved_buffers: Vec::new(),
             image_barriers: RefCell::new(Vec::new()),
             buffer_barriers: RefCell::new(Vec::new()),
@@ -86,28 +86,28 @@ impl RenderGraph {
         allocator: &mut Allocator,
         output: vk::Extent2D,
     ) -> Result<Vec<ImageId>, RenderGraphError> {
-        unsafe { self.pool.resize(device, allocator, output) }
+        unsafe { self.image_pool.resize(device, allocator, output) }
     }
 
     pub fn image_view(&self, id: ImageId) -> vk::ImageView {
-        self.pool.image(id).view
+        self.image_pool.image(id).view
     }
 
     pub fn level_view(&self, id: ImageId, level: u32) -> vk::ImageView {
-        self.pool.image(id).level_view(level)
+        self.image_pool.image(id).level_view(level)
     }
 
     pub fn mip_levels(&self, id: ImageId) -> u32 {
-        self.pool.image(id).description.mip_levels
+        self.image_pool.image(id).description.mip_levels
     }
 
     pub fn usage(&self, id: ImageId) -> vk::ImageUsageFlags {
-        self.pool.image(id).usage
+        self.image_pool.image(id).usage
     }
 
     /// The layout every shader samples the image in, which a bindless descriptor for it must name.
     pub fn sampled_layout(&self, id: ImageId) -> vk::ImageLayout {
-        self.pool.image(id).sampled_layout()
+        self.image_pool.image(id).sampled_layout()
     }
 
     /// # Safety
@@ -118,7 +118,7 @@ impl RenderGraph {
         self.last_entry = None;
         self.history_images.fill(None);
 
-        unsafe { self.pool.destroy(device, allocator) }?;
+        unsafe { self.image_pool.destroy(device, allocator) }?;
 
         unsafe { self.buffer_pool.destroy(device, allocator) }
     }
@@ -192,9 +192,9 @@ impl RenderGraph {
         let recorder = BarrierRecorder {
             device,
             command_buffer,
-            resolved: &self.resolved,
-            pool: &self.pool,
-            buffers: &self.resolved_buffers,
+            resolved_images: &self.resolved_images,
+            image_pool: &self.image_pool,
+            resolved_buffers: &self.resolved_buffers,
             buffer_pool: &self.buffer_pool,
             image_barriers: &self.image_barriers,
             buffer_barriers: &self.buffer_barriers,
@@ -225,9 +225,9 @@ impl RenderGraph {
             &entry.compiled.final_buffer_barriers,
         );
 
-        for end in &entry.compiled.end_states {
-            if let Some(id) = self.resolved[end.image].id {
-                self.pool.image_mut(id).states[end.level as usize] = end.state;
+        for end in &entry.compiled.image_end_states {
+            if let Some(id) = self.resolved_images[end.image].id {
+                self.image_pool.image_mut(id).states[end.level as usize] = end.state;
             }
         }
 
@@ -259,8 +259,8 @@ impl RenderGraph {
     ) -> Result<usize, RenderGraphError> {
         let compiled = GraphCompiler::new(&self.frame).compile()?;
         let image_slots =
-            self.pool
-                .assign_transients(device, allocator, &self.frame, &compiled.usage_flags, created)?;
+            self.image_pool
+                .assign_transients(device, allocator, &self.frame, &compiled.image_usage_flags, created)?;
         let buffer_slots =
             self.buffer_pool
                 .assign_transients(device, allocator, &self.frame, &compiled.buffer_usage_flags)?;
@@ -288,14 +288,14 @@ impl RenderGraph {
     ) -> Result<(), RenderGraphError> {
         let entry = &self.cache[entry];
 
-        for (image, usage) in entry.declaration.images.iter().zip(&entry.compiled.usage_flags) {
+        for (image, usage) in entry.declaration.images.iter().zip(&entry.compiled.image_usage_flags) {
             if let DeclaredImage::History { id, description, .. } = image
                 && !usage.is_empty()
             {
                 let pair = &mut self.history_images[id.index];
 
                 if self
-                    .pool
+                    .image_pool
                     .ensure_history(device, allocator, *id, *description, *usage, pair)?
                     && let Some(ids) = pair
                 {
@@ -311,7 +311,7 @@ impl RenderGraph {
     // swap roles every frame.
     fn resolve(&mut self, entry: usize) {
         let entry = &self.cache[entry];
-        self.resolved.clear();
+        self.resolved_images.clear();
 
         for (index, image) in entry.declaration.images.iter().enumerate() {
             let id = match image {
@@ -319,15 +319,15 @@ impl RenderGraph {
                 DeclaredImage::History { id, previous, .. } => self.history_images[id.index]
                     .map(|pair| pair[(self.frame_number + usize::from(*previous)) % HISTORY_IMAGE_COUNT]),
                 DeclaredImage::Imported { import, .. } => {
-                    self.resolved
+                    self.resolved_images
                         .push(ResolvedImage::imported(&self.imported_images[*import]));
                     continue;
                 }
             };
             let resolved = id.map_or(ResolvedImage::unused(image.name()), |id| {
-                ResolvedImage::physical(id, self.pool.image(id))
+                ResolvedImage::physical(id, self.image_pool.image(id))
             });
-            self.resolved.push(resolved);
+            self.resolved_images.push(resolved);
         }
 
         self.resolved_buffers.clear();

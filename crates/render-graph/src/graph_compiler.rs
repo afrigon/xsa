@@ -154,7 +154,7 @@ impl<'declaration> GraphCompiler<'declaration> {
                     }
 
                     if !matches!(image, DeclaredImage::Imported { .. }) {
-                        compiled.end_states.push(EndState {
+                        compiled.image_end_states.push(EndState {
                             image: index,
                             level,
                             state: last.image_state(),
@@ -769,7 +769,7 @@ mod tests {
         let compiled = compile(&frame).unwrap();
 
         assert_eq!(compiled.passes.len(), 2);
-        assert!(compiled.usage_flags[image.index].is_empty());
+        assert!(compiled.image_usage_flags[image.index].is_empty());
     }
 
     #[test]
@@ -1057,7 +1057,7 @@ mod tests {
         let read = compiled.passes[0].steps[1].image_barriers[0];
         assert_eq!(read.new_layout, vk::ImageLayout::GENERAL);
         assert_eq!(
-            compiled.usage_flags[image.index],
+            compiled.image_usage_flags[image.index],
             vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED
         );
     }
@@ -1091,11 +1091,14 @@ mod tests {
         assert_eq!(previous.new_layout, vk::ImageLayout::GENERAL);
 
         let flags = vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED;
-        assert_eq!(compiled.usage_flags[history.previous.index], flags);
-        assert_eq!(compiled.usage_flags[history.current.index], flags);
+        assert_eq!(compiled.image_usage_flags[history.previous.index], flags);
+        assert_eq!(compiled.image_usage_flags[history.current.index], flags);
         assert!(
-            compiled.end_states.iter().any(|end| end.image == history.current.index
-                && end.state.stages == vk::PipelineStageFlags2::FRAGMENT_SHADER)
+            compiled
+                .image_end_states
+                .iter()
+                .any(|end| end.image == history.current.index
+                    && end.state.stages == vk::PipelineStageFlags2::FRAGMENT_SHADER)
         );
     }
 
