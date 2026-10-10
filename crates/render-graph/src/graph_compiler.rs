@@ -1,17 +1,17 @@
 use ash::vk;
 
 use crate::access::Access;
-use crate::barrier_source::BarrierSource;
 use crate::buffer_barrier_source::BufferBarrierSource;
 use crate::buffer_end_state::BufferEndState;
 use crate::compiled_attachment::CompiledAttachment;
-use crate::compiled_barrier::CompiledBarrier;
 use crate::compiled_buffer_barrier::CompiledBufferBarrier;
 use crate::compiled_graph::CompiledGraph;
+use crate::compiled_image_barrier::CompiledImageBarrier;
 use crate::declared_buffer::DeclaredBuffer;
 use crate::declared_image::DeclaredImage;
-use crate::end_state::EndState;
 use crate::frame_declaration::FrameDeclaration;
+use crate::image_barrier_source::ImageBarrierSource;
+use crate::image_end_state::ImageEndState;
 use crate::{BufferState, ImageState, RenderGraphError, ResourceUsage};
 
 pub(crate) const MAX_COLOR_ATTACHMENTS: usize = 8;
@@ -154,7 +154,7 @@ impl<'declaration> GraphCompiler<'declaration> {
                     }
 
                     if !matches!(image, DeclaredImage::Imported { .. }) {
-                        compiled.image_end_states.push(EndState {
+                        compiled.image_end_states.push(ImageEndState {
                             image: index,
                             level,
                             state: last.image_state(),
@@ -393,14 +393,14 @@ impl<'declaration> GraphCompiler<'declaration> {
 
         for group in groups {
             let source = match (previous, image) {
-                (Some(previous), _) => BarrierSource::Known(previous.image_state()),
-                (None, DeclaredImage::Transient(_)) => BarrierSource::PreviousFrame { discard: true },
-                (None, DeclaredImage::History { .. }) => BarrierSource::PreviousFrame { discard: !group.reads },
-                (None, DeclaredImage::Imported { initial, .. }) => BarrierSource::Known(*initial),
+                (Some(previous), _) => ImageBarrierSource::Known(previous.image_state()),
+                (None, DeclaredImage::Transient(_)) => ImageBarrierSource::PreviousFrame { discard: true },
+                (None, DeclaredImage::History { .. }) => ImageBarrierSource::PreviousFrame { discard: !group.reads },
+                (None, DeclaredImage::Imported { initial, .. }) => ImageBarrierSource::Known(*initial),
             };
             compiled.passes[group.pass].steps[group.step as usize]
                 .image_barriers
-                .push(CompiledBarrier {
+                .push(CompiledImageBarrier {
                     image: index,
                     base_level: level,
                     level_count: 1,
@@ -417,11 +417,11 @@ impl<'declaration> GraphCompiler<'declaration> {
         } = image
         {
             let source = previous.map_or(*initial, AccessGroup::image_state);
-            compiled.final_image_barriers.push(CompiledBarrier {
+            compiled.final_image_barriers.push(CompiledImageBarrier {
                 image: index,
                 base_level: level,
                 level_count: 1,
-                source: BarrierSource::Known(source),
+                source: ImageBarrierSource::Known(source),
                 destination_stages: final_state.stages,
                 destination_access: final_state.access,
                 new_layout: final_state.layout,
@@ -547,12 +547,12 @@ mod tests {
     use ash::vk;
 
     use super::GraphCompiler;
-    use crate::barrier_source::BarrierSource;
     use crate::buffer_barrier_source::BufferBarrierSource;
     use crate::compiled_graph::CompiledGraph;
     use crate::declared_buffer::DeclaredBuffer;
     use crate::declared_image::DeclaredImage;
     use crate::frame_declaration::FrameDeclaration;
+    use crate::image_barrier_source::ImageBarrierSource;
     use crate::{
         Attachment, BufferState, BufferUsage, GraphBufferDescription, GraphImageDescription, HistoryId, ImageHandle,
         ImageSize, ImageState, ImportedBufferHandle, ImportedImageHandle, PassDeclaration, RenderGraphError, Stage,
@@ -654,12 +654,12 @@ mod tests {
 
         let forward = &compiled.passes[0].steps[0].image_barriers;
         assert_eq!(forward.len(), 1);
-        assert_eq!(forward[0].source, BarrierSource::PreviousFrame { discard: true });
+        assert_eq!(forward[0].source, ImageBarrierSource::PreviousFrame { discard: true });
         assert_eq!(forward[0].new_layout, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
 
         let tonemap = &compiled.passes[1].steps[0].image_barriers;
         let read = tonemap.iter().find(|barrier| barrier.image == scene.index).unwrap();
-        assert_eq!(read.source, BarrierSource::Known(COLOR_WRITTEN));
+        assert_eq!(read.source, ImageBarrierSource::Known(COLOR_WRITTEN));
         assert_eq!(read.destination_stages, vk::PipelineStageFlags2::FRAGMENT_SHADER);
         assert_eq!(read.destination_access, vk::AccessFlags2::SHADER_SAMPLED_READ);
         assert_eq!(read.new_layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
@@ -676,11 +676,11 @@ mod tests {
             .iter()
             .find(|barrier| barrier.image == 0)
             .unwrap();
-        assert_eq!(first.source, BarrierSource::Known(SWAPCHAIN_ACQUIRED));
+        assert_eq!(first.source, ImageBarrierSource::Known(SWAPCHAIN_ACQUIRED));
 
         assert_eq!(compiled.final_image_barriers.len(), 1);
         let present = compiled.final_image_barriers[0];
-        assert_eq!(present.source, BarrierSource::Known(COLOR_WRITTEN));
+        assert_eq!(present.source, ImageBarrierSource::Known(COLOR_WRITTEN));
         assert_eq!(present.new_layout, vk::ImageLayout::PRESENT_SRC_KHR);
     }
 
@@ -1013,7 +1013,7 @@ mod tests {
             let read = barriers.iter().find(|barrier| barrier.base_level == level - 1).unwrap();
             assert_eq!(
                 read.source,
-                BarrierSource::Known(ImageState {
+                ImageBarrierSource::Known(ImageState {
                     stages: vk::PipelineStageFlags2::COMPUTE_SHADER,
                     access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
                     layout: vk::ImageLayout::GENERAL,
@@ -1021,7 +1021,7 @@ mod tests {
             );
             assert_eq!(read.destination_access, vk::AccessFlags2::SHADER_SAMPLED_READ);
             assert!(barriers.iter().any(|barrier| barrier.base_level == level
-                && barrier.source == BarrierSource::PreviousFrame { discard: true }));
+                && barrier.source == ImageBarrierSource::PreviousFrame { discard: true }));
         }
 
         let whole = &compiled.passes[3].steps[0]
@@ -1086,8 +1086,8 @@ mod tests {
             .iter()
             .find(|barrier| barrier.image == history.current.index)
             .unwrap();
-        assert_eq!(previous.source, BarrierSource::PreviousFrame { discard: false });
-        assert_eq!(current.source, BarrierSource::PreviousFrame { discard: true });
+        assert_eq!(previous.source, ImageBarrierSource::PreviousFrame { discard: false });
+        assert_eq!(current.source, ImageBarrierSource::PreviousFrame { discard: true });
         assert_eq!(previous.new_layout, vk::ImageLayout::GENERAL);
 
         let flags = vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED;

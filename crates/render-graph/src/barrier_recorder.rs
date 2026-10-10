@@ -2,11 +2,11 @@ use std::cell::RefCell;
 
 use ash::vk;
 
-use crate::barrier_source::BarrierSource;
 use crate::buffer_barrier_source::BufferBarrierSource;
 use crate::buffer_pool::BufferPool;
-use crate::compiled_barrier::CompiledBarrier;
 use crate::compiled_buffer_barrier::CompiledBufferBarrier;
+use crate::compiled_image_barrier::CompiledImageBarrier;
+use crate::image_barrier_source::ImageBarrierSource;
 use crate::image_pool::ImagePool;
 use crate::resolved_buffer::ResolvedBuffer;
 use crate::resolved_image::ResolvedImage;
@@ -24,7 +24,7 @@ pub(crate) struct BarrierRecorder<'frame> {
 }
 
 impl BarrierRecorder<'_> {
-    pub fn record(&self, images: &[CompiledBarrier], buffers: &[CompiledBufferBarrier]) {
+    pub fn record(&self, images: &[CompiledImageBarrier], buffers: &[CompiledBufferBarrier]) {
         let mut image_barriers = self.image_barriers.borrow_mut();
         let mut buffer_barriers = self.buffer_barriers.borrow_mut();
         image_barriers.clear();
@@ -33,8 +33,8 @@ impl BarrierRecorder<'_> {
         for barrier in images {
             let resolved = &self.resolved_images[barrier.image];
             let source = match barrier.source {
-                BarrierSource::Known(state) => state,
-                BarrierSource::PreviousFrame { discard } => self.previous_state(resolved, barrier, discard),
+                ImageBarrierSource::Known(state) => state,
+                ImageBarrierSource::PreviousFrame { discard } => self.previous_state(resolved, barrier, discard),
             };
 
             if source.stages == vk::PipelineStageFlags2::NONE && source.layout == barrier.new_layout {
@@ -93,7 +93,7 @@ impl BarrierRecorder<'_> {
     }
 
     // Discarding barriers may span levels left in different states; the others always cover one level.
-    fn previous_state(&self, resolved: &ResolvedImage, barrier: &CompiledBarrier, discard: bool) -> ImageState {
+    fn previous_state(&self, resolved: &ResolvedImage, barrier: &CompiledImageBarrier, discard: bool) -> ImageState {
         let Some(id) = resolved.id else {
             return ImageState::UNUSED;
         };
