@@ -21,15 +21,23 @@ const CLEAR: [f32; 4] = [0.0; 4];
 
 // Draws what the camera's lens adds to the image around each star, in exposed luminance like the scene.
 pub(in crate::renderer) struct LensPass {
-    pipeline: GraphicsPipeline,
+    glare_pipeline: GraphicsPipeline,
+    ghosts_pipeline: GraphicsPipeline,
 }
 
 impl LensPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<LensPass> {
-        let pipeline = GraphicsPipeline::new(
+        Ok(LensPass {
+            glare_pipeline: LensPass::pipeline(gpu, &binaries.lens_glare)?,
+            ghosts_pipeline: LensPass::pipeline(gpu, &binaries.lens_ghosts)?,
+        })
+    }
+
+    fn pipeline(gpu: &GpuContext, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
+        GraphicsPipeline::new(
             &gpu.device,
             &GraphicsPipelineDescription {
-                spirv: &binaries.lens,
+                spirv,
                 color_formats: &[LENS_FORMAT],
                 depth_format: None,
                 depth_compare_op: vk::CompareOp::ALWAYS,
@@ -41,13 +49,14 @@ impl LensPass {
                 push_constant_size: size_of::<LensPushConstants>() as u32,
                 descriptor_set_layouts: &[gpu.bindless.layout()],
             },
-        )?;
-
-        Ok(LensPass { pipeline })
+        )
     }
 
     pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe { self.pipeline.destroy(&gpu.device) };
+        unsafe {
+            self.glare_pipeline.destroy(&gpu.device);
+            self.ghosts_pipeline.destroy(&gpu.device);
+        }
     }
 }
 
@@ -82,30 +91,35 @@ impl<'frame> RenderPass<FrameContext<'frame>> for LensPass {
     ) -> Result<(), PassError> {
         let lens = frame.lens.expect("the lens pass is only added with a lens loaded");
         let recorder = &frame.recorder;
+        let constants = LensPushConstants {
+            frame: frame.frame.frame_data.device_address(),
+            stars: frame.frame.projected_stars.device_address(),
+            visibility: pass.device_address(resources.visibility),
+            ghosts: lens.ghosts(),
+            glare_intensity: lens.glare_intensity,
+            glare_falloff: lens.glare_falloff,
+            focal_length_pixels: frame.focal_length_pixels,
+            star_count: resources.star_count,
+            spikes_intensity: lens.spikes_intensity,
+            spikes_length: lens.spikes_length,
+            spikes_width: lens.spikes_width,
+            spikes_dispersion: lens.spikes_dispersion,
+            spikes_texture: lens.spikes_texture,
+            blades: lens.blades,
+            rotation: lens.rotation,
+            ghost_count: lens.ghost_count,
+        };
         pass.begin_rendering();
-        recorder.bind_graphics(&self.pipeline, frame.descriptor_set);
-        recorder.push_graphics_constants(
-            &self.pipeline,
-            &LensPushConstants {
-                frame: frame.frame.frame_data.device_address(),
-                stars: frame.frame.projected_stars.device_address(),
-                visibility: pass.device_address(resources.visibility),
-                ghosts: lens.ghosts(),
-                glare_intensity: lens.glare_intensity,
-                glare_falloff: lens.glare_falloff,
-                focal_length_pixels: frame.focal_length_pixels,
-                star_count: resources.star_count,
-                spikes_intensity: lens.spikes_intensity,
-                spikes_length: lens.spikes_length,
-                spikes_width: lens.spikes_width,
-                spikes_dispersion: lens.spikes_dispersion,
-                spikes_texture: lens.spikes_texture,
-                blades: lens.blades,
-                rotation: lens.rotation,
-                ghost_count: lens.ghost_count,
-            },
-        );
+        recorder.bind_graphics(&self.glare_pipeline, frame.descriptor_set);
+        recorder.push_graphics_constants(&self.glare_pipeline, &constants);
         recorder.draw_fullscreen_instances(resources.star_count);
+
+        if lens.ghost_count > 0 {
+            recorder.bind_graphics(&self.ghosts_pipeline, frame.descriptor_set);
+            recorder.push_graphics_constants(&self.ghosts_pipeline, &constants);
+            recorder.draw_quad_instances(resources.star_count * lens.ghost_count);
+        }
+
         pass.end_rendering();
 
         Ok(())
