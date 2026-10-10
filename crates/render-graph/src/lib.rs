@@ -1,23 +1,28 @@
 //! A render graph for Vulkan 1.3 with synchronization2 and dynamic rendering.
 //!
 //! Passes declare the images and buffers each of their steps uses and how; the graph culls passes nothing needs,
-//! derives every barrier, layout transition and attachment load and store operation, allocates the images passes
-//! create and keeps history images across frames. A frame whose declarations match an earlier one reuses its
+//! derives every barrier, layout transition and attachment load and store operation, allocates the images and buffers
+//! passes create and keeps history images across frames. A frame whose declarations match an earlier one reuses its
 //! compiled result.
 
 mod access;
 mod attachment;
 mod barrier_recorder;
-mod barrier_source;
+mod buffer_barrier_source;
+mod buffer_end_state;
 mod buffer_handle;
+mod buffer_id;
+mod buffer_pool;
+mod buffer_resource;
 mod buffer_state;
+mod buffer_transient_key;
 mod buffer_usage;
 mod compiled_attachment;
-mod compiled_barrier;
 mod compiled_buffer_barrier;
 mod compiled_entry;
 mod compiled_frame;
 mod compiled_graph;
+mod compiled_image_barrier;
 mod compiled_pass;
 mod compiled_step;
 mod declared_buffer;
@@ -25,42 +30,49 @@ mod declared_buffer_usage;
 mod declared_image;
 mod declared_image_usage;
 mod declared_pass;
-mod end_state;
 mod frame_declaration;
+mod graph_buffer_description;
 mod graph_builder;
 mod graph_compiler;
 mod graph_image_description;
 mod history_id;
 mod history_image;
+mod image_barrier_source;
+mod image_end_state;
 mod image_handle;
 mod image_id;
 mod image_owner;
 mod image_pool;
 mod image_size;
 mod image_state;
+mod image_transient_key;
 mod imported_buffer;
+mod imported_buffer_handle;
 mod imported_image;
 mod imported_image_handle;
 mod pass_context;
 mod pass_declaration;
 mod pass_error;
 mod pass_recording;
+mod physical_buffer;
 mod physical_image;
 mod recorded_pass;
 mod render_graph;
 mod render_graph_error;
 mod render_pass;
+mod resolved_buffer;
 mod resolved_image;
 mod resource_usage;
 mod stage;
 mod subresource;
-mod transient_key;
 
 pub use attachment::Attachment;
 pub use buffer_handle::BufferHandle;
+pub use buffer_resource::BufferResource;
 pub use buffer_state::BufferState;
 pub use buffer_usage::BufferUsage;
 pub use compiled_frame::CompiledFrame;
+pub use graph_buffer_description::GraphBufferDescription;
 pub use graph_builder::GraphBuilder;
 pub use graph_image_description::GraphImageDescription;
 pub use history_id::HistoryId;
@@ -70,6 +82,7 @@ pub use image_id::ImageId;
 pub use image_size::ImageSize;
 pub use image_state::ImageState;
 pub use imported_buffer::ImportedBuffer;
+pub use imported_buffer_handle::ImportedBufferHandle;
 pub use imported_image::ImportedImage;
 pub use imported_image_handle::ImportedImageHandle;
 pub use pass_context::PassContext;

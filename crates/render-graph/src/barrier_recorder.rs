@@ -2,35 +2,39 @@ use std::cell::RefCell;
 
 use ash::vk;
 
-use crate::barrier_source::BarrierSource;
-use crate::compiled_barrier::CompiledBarrier;
+use crate::buffer_barrier_source::BufferBarrierSource;
+use crate::buffer_pool::BufferPool;
 use crate::compiled_buffer_barrier::CompiledBufferBarrier;
+use crate::compiled_image_barrier::CompiledImageBarrier;
+use crate::image_barrier_source::ImageBarrierSource;
 use crate::image_pool::ImagePool;
+use crate::resolved_buffer::ResolvedBuffer;
 use crate::resolved_image::ResolvedImage;
-use crate::{ImageState, ImportedBuffer};
+use crate::{BufferState, ImageState};
 
 pub(crate) struct BarrierRecorder<'frame> {
     pub device: &'frame ash::Device,
     pub command_buffer: vk::CommandBuffer,
-    pub resolved: &'frame [ResolvedImage],
-    pub pool: &'frame ImagePool,
-    pub buffers: &'frame [ImportedBuffer],
+    pub resolved_images: &'frame [ResolvedImage],
+    pub image_pool: &'frame ImagePool,
+    pub resolved_buffers: &'frame [ResolvedBuffer],
+    pub buffer_pool: &'frame BufferPool,
     pub image_barriers: &'frame RefCell<Vec<vk::ImageMemoryBarrier2<'static>>>,
     pub buffer_barriers: &'frame RefCell<Vec<vk::BufferMemoryBarrier2<'static>>>,
 }
 
 impl BarrierRecorder<'_> {
-    pub fn record(&self, images: &[CompiledBarrier], buffers: &[CompiledBufferBarrier]) {
+    pub fn record(&self, images: &[CompiledImageBarrier], buffers: &[CompiledBufferBarrier]) {
         let mut image_barriers = self.image_barriers.borrow_mut();
         let mut buffer_barriers = self.buffer_barriers.borrow_mut();
         image_barriers.clear();
         buffer_barriers.clear();
 
         for barrier in images {
-            let resolved = &self.resolved[barrier.image];
+            let resolved = &self.resolved_images[barrier.image];
             let source = match barrier.source {
-                BarrierSource::Known(state) => state,
-                BarrierSource::PreviousFrame { discard } => self.previous_state(resolved, barrier, discard),
+                ImageBarrierSource::Known(state) => state,
+                ImageBarrierSource::PreviousFrame { discard } => self.previous_state(resolved, barrier, discard),
             };
 
             if source.stages == vk::PipelineStageFlags2::NONE && source.layout == barrier.new_layout {
@@ -57,13 +61,23 @@ impl BarrierRecorder<'_> {
         }
 
         for barrier in buffers {
+            let resolved = &self.resolved_buffers[barrier.buffer];
+            let source = match barrier.source {
+                BufferBarrierSource::Known(state) => state,
+                BufferBarrierSource::PreviousFrame => self.previous_buffer_state(resolved),
+            };
+
+            if source.stages == vk::PipelineStageFlags2::NONE {
+                continue;
+            }
+
             buffer_barriers.push(
                 vk::BufferMemoryBarrier2::default()
-                    .src_stage_mask(barrier.source_stages)
-                    .src_access_mask(barrier.source_access)
+                    .src_stage_mask(source.stages)
+                    .src_access_mask(source.access)
                     .dst_stage_mask(barrier.destination_stages)
                     .dst_access_mask(barrier.destination_access)
-                    .buffer(self.buffers[barrier.buffer].buffer)
+                    .buffer(resolved.buffer)
                     .size(vk::WHOLE_SIZE),
             );
         }
@@ -79,12 +93,12 @@ impl BarrierRecorder<'_> {
     }
 
     // Discarding barriers may span levels left in different states; the others always cover one level.
-    fn previous_state(&self, resolved: &ResolvedImage, barrier: &CompiledBarrier, discard: bool) -> ImageState {
+    fn previous_state(&self, resolved: &ResolvedImage, barrier: &CompiledImageBarrier, discard: bool) -> ImageState {
         let Some(id) = resolved.id else {
             return ImageState::UNUSED;
         };
         let levels = barrier.base_level as usize..(barrier.base_level + barrier.level_count) as usize;
-        let previous = self.pool.image(id).states[levels]
+        let previous = self.image_pool.image(id).states[levels]
             .iter()
             .fold(ImageState::UNUSED, |union, state| ImageState {
                 stages: union.stages | state.stages,
@@ -100,5 +114,11 @@ impl BarrierRecorder<'_> {
         } else {
             previous
         }
+    }
+
+    fn previous_buffer_state(&self, resolved: &ResolvedBuffer) -> BufferState {
+        resolved
+            .id
+            .map_or(BufferState::UNUSED, |id| self.buffer_pool.buffer(id).state)
     }
 }

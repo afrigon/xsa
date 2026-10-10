@@ -31,6 +31,16 @@ impl BufferUsage {
         }
     }
 
+    pub(crate) fn buffer_usage(self) -> vk::BufferUsageFlags {
+        match self {
+            BufferUsage::StorageRead(_) | BufferUsage::StorageWrite(_) | BufferUsage::StorageReadWrite(_) => {
+                vk::BufferUsageFlags::STORAGE_BUFFER
+            }
+            BufferUsage::TransferSource => vk::BufferUsageFlags::TRANSFER_SRC,
+            BufferUsage::TransferDestination => vk::BufferUsageFlags::TRANSFER_DST,
+        }
+    }
+
     pub(crate) fn access(self) -> Access {
         let (stages, access) = match self {
             BufferUsage::StorageRead(stage) => (stage.pipeline_stages(), vk::AccessFlags2::SHADER_STORAGE_READ),

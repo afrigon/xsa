@@ -6,8 +6,8 @@ use gpu_allocator::vulkan::Allocator;
 use crate::declared_image::DeclaredImage;
 use crate::frame_declaration::FrameDeclaration;
 use crate::image_owner::ImageOwner;
+use crate::image_transient_key::ImageTransientKey;
 use crate::physical_image::PhysicalImage;
-use crate::transient_key::TransientKey;
 use crate::{GraphImageDescription, HistoryId, ImageId, ImageSize, RenderGraphError};
 
 pub(crate) const HISTORY_IMAGE_COUNT: usize = 2;
@@ -16,7 +16,7 @@ pub(crate) const HISTORY_IMAGE_COUNT: usize = 2;
 pub(crate) struct ImagePool {
     output: vk::Extent2D,
     images: Vec<PhysicalImage>,
-    transients: HashMap<TransientKey, Vec<ImageId>>,
+    transients: HashMap<ImageTransientKey, Vec<ImageId>>,
 }
 
 impl ImagePool {
@@ -46,7 +46,7 @@ impl ImagePool {
         usage_flags: &[vk::ImageUsageFlags],
         created: &mut Vec<ImageId>,
     ) -> Result<Vec<Option<ImageId>>, RenderGraphError> {
-        let mut used: HashMap<TransientKey, usize> = HashMap::new();
+        let mut used: HashMap<ImageTransientKey, usize> = HashMap::new();
         let mut slots = Vec::with_capacity(declaration.images.len());
 
         for (image, usage) in declaration.images.iter().zip(usage_flags) {
@@ -60,7 +60,7 @@ impl ImagePool {
                 continue;
             }
 
-            let key = TransientKey {
+            let key = ImageTransientKey {
                 description: *description,
                 usage: *usage,
             };

@@ -3,8 +3,8 @@ use gpu_allocator::vulkan::Allocator;
 use crate::pass_recording::PassRecording;
 use crate::recorded_pass::RecordedPass;
 use crate::{
-    BufferHandle, CompiledFrame, ImportedBuffer, ImportedImage, ImportedImageHandle, RenderGraph, RenderGraphError,
-    RenderPass,
+    CompiledFrame, ImportedBuffer, ImportedBufferHandle, ImportedImage, ImportedImageHandle, RenderGraph,
+    RenderGraphError, RenderPass,
 };
 
 /// Collects one frame's passes, in the order they run.
@@ -27,7 +27,7 @@ impl<'graph, 'passes, Context> GraphBuilder<'graph, 'passes, Context> {
         self.graph.import_image(image)
     }
 
-    pub fn import_buffer(&mut self, buffer: ImportedBuffer) -> BufferHandle {
+    pub fn import_buffer(&mut self, buffer: ImportedBuffer) -> ImportedBufferHandle {
         self.graph.import_buffer(buffer)
     }
 

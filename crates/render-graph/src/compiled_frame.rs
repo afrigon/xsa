@@ -36,6 +36,9 @@ impl<'graph, 'passes, Context> CompiledFrame<'graph, 'passes, Context> {
     }
 
     /// Records every pass that runs, with the barriers before each step and the final transitions of imports.
+    ///
+    /// A frame whose execution fails must not be submitted: the graph keeps the state its images and buffers ended
+    /// the previous frame in, and the next frame's barriers start from it.
     pub fn execute(
         mut self,
         device: &ash::Device,
