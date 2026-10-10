@@ -23,6 +23,7 @@ const CLEAR: [f32; 4] = [0.0; 4];
 pub(in crate::renderer) struct LensPass {
     glare_pipeline: GraphicsPipeline,
     ghosts_pipeline: GraphicsPipeline,
+    spikes_pipeline: GraphicsPipeline,
 }
 
 impl LensPass {
@@ -30,6 +31,7 @@ impl LensPass {
         Ok(LensPass {
             glare_pipeline: LensPass::pipeline(gpu, &binaries.lens_glare)?,
             ghosts_pipeline: LensPass::pipeline(gpu, &binaries.lens_ghosts)?,
+            spikes_pipeline: LensPass::pipeline(gpu, &binaries.lens_spikes)?,
         })
     }
 
@@ -56,6 +58,7 @@ impl LensPass {
         unsafe {
             self.glare_pipeline.destroy(&gpu.device);
             self.ghosts_pipeline.destroy(&gpu.device);
+            self.spikes_pipeline.destroy(&gpu.device);
         }
     }
 }
@@ -112,6 +115,9 @@ impl<'frame> RenderPass<FrameContext<'frame>> for LensPass {
         pass.begin_rendering();
         recorder.bind_graphics(&self.glare_pipeline, frame.descriptor_set);
         recorder.push_graphics_constants(&self.glare_pipeline, &constants);
+        recorder.draw_fullscreen_instances(resources.star_count);
+        recorder.bind_graphics(&self.spikes_pipeline, frame.descriptor_set);
+        recorder.push_graphics_constants(&self.spikes_pipeline, &constants);
         recorder.draw_fullscreen_instances(resources.star_count);
 
         if lens.ghost_count > 0 {

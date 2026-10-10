@@ -35,7 +35,7 @@ impl Lens {
         mut load_texture: impl FnMut(&str, &Path) -> anyhow::Result<TextureHandle>,
     ) -> anyhow::Result<Lens> {
         let (spikes_width, spikes_dispersion, spikes_texture) = match &definition.spikes.shape {
-            SpikesShape::Computed { width, dispersion } => (*width, *dispersion, NO_TEXTURE),
+            SpikesShape::Computed { width, dispersion } => (width.to_radians(), *dispersion, NO_TEXTURE),
             SpikesShape::Texture(path) => (0.0, 0.0, load_texture("lens spikes", path)?.index()),
         };
         let ghost_data = definition
