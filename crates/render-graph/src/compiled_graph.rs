@@ -1,5 +1,6 @@
 use ash::vk;
 
+use crate::buffer_end_state::BufferEndState;
 use crate::compiled_barrier::CompiledBarrier;
 use crate::compiled_buffer_barrier::CompiledBufferBarrier;
 use crate::compiled_pass::CompiledPass;
@@ -14,10 +15,17 @@ pub(crate) struct CompiledGraph {
     pub final_buffer_barriers: Vec<CompiledBufferBarrier>,
     pub end_states: Vec<EndState>,
     pub usage_flags: Vec<vk::ImageUsageFlags>,
+    pub buffer_end_states: Vec<BufferEndState>,
+    pub buffer_usage_flags: Vec<vk::BufferUsageFlags>,
 }
 
 impl CompiledGraph {
-    pub fn new(declaration: &FrameDeclaration, live_passes: &[usize], usage_flags: Vec<vk::ImageUsageFlags>) -> Self {
+    pub fn new(
+        declaration: &FrameDeclaration,
+        live_passes: &[usize],
+        usage_flags: Vec<vk::ImageUsageFlags>,
+        buffer_usage_flags: Vec<vk::BufferUsageFlags>,
+    ) -> Self {
         let passes = live_passes
             .iter()
             .map(|pass| CompiledPass {
@@ -32,6 +40,8 @@ impl CompiledGraph {
             final_buffer_barriers: Vec::new(),
             end_states: Vec::new(),
             usage_flags,
+            buffer_end_states: Vec::new(),
+            buffer_usage_flags,
         }
     }
 

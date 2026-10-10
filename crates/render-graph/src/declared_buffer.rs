@@ -1,8 +1,25 @@
-use crate::BufferState;
+use crate::{BufferState, GraphBufferDescription};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct DeclaredBuffer {
-    pub name: &'static str,
-    pub initial: BufferState,
-    pub final_state: BufferState,
+pub(crate) enum DeclaredBuffer {
+    Transient(GraphBufferDescription),
+    Imported {
+        import: usize,
+        name: &'static str,
+        initial: BufferState,
+        final_state: BufferState,
+    },
+}
+
+impl DeclaredBuffer {
+    pub fn name(&self) -> &'static str {
+        match self {
+            DeclaredBuffer::Transient(description) => description.name,
+            DeclaredBuffer::Imported { name, .. } => name,
+        }
+    }
+
+    pub fn persists(&self) -> bool {
+        !matches!(self, DeclaredBuffer::Transient(_))
+    }
 }

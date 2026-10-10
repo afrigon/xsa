@@ -3,18 +3,22 @@ use std::cell::RefCell;
 use ash::vk;
 
 use crate::barrier_source::BarrierSource;
+use crate::buffer_barrier_source::BufferBarrierSource;
+use crate::buffer_pool::BufferPool;
 use crate::compiled_barrier::CompiledBarrier;
 use crate::compiled_buffer_barrier::CompiledBufferBarrier;
 use crate::image_pool::ImagePool;
+use crate::resolved_buffer::ResolvedBuffer;
 use crate::resolved_image::ResolvedImage;
-use crate::{ImageState, ImportedBuffer};
+use crate::{BufferState, ImageState};
 
 pub(crate) struct BarrierRecorder<'frame> {
     pub device: &'frame ash::Device,
     pub command_buffer: vk::CommandBuffer,
     pub resolved: &'frame [ResolvedImage],
     pub pool: &'frame ImagePool,
-    pub buffers: &'frame [ImportedBuffer],
+    pub buffers: &'frame [ResolvedBuffer],
+    pub buffer_pool: &'frame BufferPool,
     pub image_barriers: &'frame RefCell<Vec<vk::ImageMemoryBarrier2<'static>>>,
     pub buffer_barriers: &'frame RefCell<Vec<vk::BufferMemoryBarrier2<'static>>>,
 }
@@ -57,13 +61,23 @@ impl BarrierRecorder<'_> {
         }
 
         for barrier in buffers {
+            let resolved = &self.buffers[barrier.buffer];
+            let source = match barrier.source {
+                BufferBarrierSource::Known(state) => state,
+                BufferBarrierSource::PreviousFrame => self.previous_buffer_state(resolved),
+            };
+
+            if source.stages == vk::PipelineStageFlags2::NONE {
+                continue;
+            }
+
             buffer_barriers.push(
                 vk::BufferMemoryBarrier2::default()
-                    .src_stage_mask(barrier.source_stages)
-                    .src_access_mask(barrier.source_access)
+                    .src_stage_mask(source.stages)
+                    .src_access_mask(source.access)
                     .dst_stage_mask(barrier.destination_stages)
                     .dst_access_mask(barrier.destination_access)
-                    .buffer(self.buffers[barrier.buffer].buffer)
+                    .buffer(resolved.buffer)
                     .size(vk::WHOLE_SIZE),
             );
         }
@@ -100,5 +114,11 @@ impl BarrierRecorder<'_> {
         } else {
             previous
         }
+    }
+
+    fn previous_buffer_state(&self, resolved: &ResolvedBuffer) -> BufferState {
+        resolved
+            .id
+            .map_or(BufferState::UNUSED, |id| self.buffer_pool.buffer(id).state)
     }
 }

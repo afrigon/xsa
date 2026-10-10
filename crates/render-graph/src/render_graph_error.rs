@@ -33,6 +33,12 @@ pub enum RenderGraphError {
         creation: Box<RenderGraphError>,
         cleanup: Box<RenderGraphError>,
     },
+    /// Creating a buffer failed, then destroying what was already created failed too.
+    BufferCleanup {
+        buffer: &'static str,
+        creation: Box<RenderGraphError>,
+        cleanup: Box<RenderGraphError>,
+    },
     Vulkan(vk::Result),
     Allocation(AllocationError),
 }
@@ -59,6 +65,12 @@ impl fmt::Display for RenderGraphError {
                     "creating {image} failed, then destroying its parts failed: {cleanup}"
                 )
             }
+            RenderGraphError::BufferCleanup { buffer, cleanup, .. } => {
+                write!(
+                    formatter,
+                    "creating {buffer} failed, then destroying its parts failed: {cleanup}"
+                )
+            }
             RenderGraphError::Vulkan(result) => write!(formatter, "a Vulkan call failed: {result}"),
             RenderGraphError::Allocation(error) => write!(formatter, "allocating GPU memory: {error}"),
         }
@@ -69,7 +81,9 @@ impl Error for RenderGraphError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             RenderGraphError::Pass { source, .. } => Some(source.as_ref()),
-            RenderGraphError::ImageCleanup { creation, .. } => Some(creation.as_ref()),
+            RenderGraphError::ImageCleanup { creation, .. } | RenderGraphError::BufferCleanup { creation, .. } => {
+                Some(creation.as_ref())
+            }
             RenderGraphError::Vulkan(result) => Some(result),
             RenderGraphError::Allocation(error) => Some(error),
             RenderGraphError::Declaration { .. }

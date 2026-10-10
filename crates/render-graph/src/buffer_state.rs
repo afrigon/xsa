@@ -6,3 +6,10 @@ pub struct BufferState {
     pub stages: vk::PipelineStageFlags2,
     pub access: vk::AccessFlags2,
 }
+
+impl BufferState {
+    pub(crate) const UNUSED: BufferState = BufferState {
+        stages: vk::PipelineStageFlags2::NONE,
+        access: vk::AccessFlags2::NONE,
+    };
+}

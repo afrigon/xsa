@@ -5,7 +5,7 @@ use ash::vk;
 use crate::barrier_recorder::BarrierRecorder;
 use crate::compiled_pass::CompiledPass;
 use crate::graph_compiler::MAX_COLOR_ATTACHMENTS;
-use crate::{BufferHandle, ImageHandle, ImageId, Subresource};
+use crate::{BufferHandle, BufferResource, ImageHandle, ImageId, Subresource};
 
 const VIEWPORT_MIN_DEPTH: f32 = 0.0;
 const VIEWPORT_MAX_DEPTH: f32 = 1.0;
@@ -73,8 +73,22 @@ impl<'frame> PassContext<'frame> {
         self.recorder.resolved[subresource.image].level_extent(subresource.level.unwrap_or(0))
     }
 
-    pub fn buffer(&self, buffer: BufferHandle) -> vk::Buffer {
-        self.recorder.buffers[buffer.index].buffer
+    pub fn buffer(&self, buffer: impl Into<BufferResource>) -> vk::Buffer {
+        self.recorder.buffers[buffer.into().buffer].buffer
+    }
+
+    /// The device address shaders reach a buffer this pass declared through.
+    ///
+    /// # Panics
+    ///
+    /// If no running pass uses the buffer, which means this pass uses it without declaring it.
+    pub fn device_address(&self, buffer: BufferHandle) -> vk::DeviceAddress {
+        let resolved = &self.recorder.buffers[buffer.index];
+        let id = resolved
+            .id
+            .unwrap_or_else(|| panic!("{} is not used by any running pass", resolved.name));
+
+        self.recorder.buffer_pool.buffer(id).address
     }
 
     /// Begins rendering to the current step's attachments, with the viewport and scissor covering them.

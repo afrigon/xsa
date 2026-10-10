@@ -2,10 +2,13 @@ use ash::vk;
 
 use crate::access::Access;
 use crate::barrier_source::BarrierSource;
+use crate::buffer_barrier_source::BufferBarrierSource;
+use crate::buffer_end_state::BufferEndState;
 use crate::compiled_attachment::CompiledAttachment;
 use crate::compiled_barrier::CompiledBarrier;
 use crate::compiled_buffer_barrier::CompiledBufferBarrier;
 use crate::compiled_graph::CompiledGraph;
+use crate::declared_buffer::DeclaredBuffer;
 use crate::declared_image::DeclaredImage;
 use crate::end_state::EndState;
 use crate::frame_declaration::FrameDeclaration;
@@ -120,7 +123,12 @@ impl<'declaration> GraphCompiler<'declaration> {
     pub fn compile(&self) -> Result<CompiledGraph, RenderGraphError> {
         self.validate_levels()?;
         let usage_flags = self.usage_flags();
-        let mut compiled = CompiledGraph::new(self.declaration, &self.live_passes, usage_flags.clone());
+        let mut compiled = CompiledGraph::new(
+            self.declaration,
+            &self.live_passes,
+            usage_flags.clone(),
+            self.buffer_usage_flags(),
+        );
         let mut store_ops = vec![vk::AttachmentStoreOp::STORE; self.declaration.image_usages.len()];
 
         for (index, image) in self.declaration.images.iter().enumerate() {
@@ -158,29 +166,19 @@ impl<'declaration> GraphCompiler<'declaration> {
 
         for (index, buffer) in self.declaration.buffers.iter().enumerate() {
             let accesses = self.buffer_accesses(index);
-            let groups = self.group(buffer.name, &accesses)?;
-            let mut source = buffer.initial;
+            let groups = self.group(buffer.name(), &accesses)?;
 
-            for group in &groups {
-                compiled.passes[group.pass].steps[group.step as usize]
-                    .buffer_barriers
-                    .push(CompiledBufferBarrier {
-                        buffer: index,
-                        source_stages: source.stages,
-                        source_access: source.access,
-                        destination_stages: group.access.stages,
-                        destination_access: group.access.access,
-                    });
-                source = group.buffer_state();
+            if let (DeclaredBuffer::Transient(description), Some(first)) = (buffer, groups.first()) {
+                if description.size == 0 {
+                    return Err(self.error(first.pass, format!("uses {}, which has a size of 0", buffer.name())));
+                }
+
+                if first.reads {
+                    return Err(self.error(first.pass, format!("reads {} before any pass writes it", buffer.name())));
+                }
             }
 
-            compiled.final_buffer_barriers.push(CompiledBufferBarrier {
-                buffer: index,
-                source_stages: source.stages,
-                source_access: source.access,
-                destination_stages: buffer.final_state.stages,
-                destination_access: buffer.final_state.access,
-            });
+            self.place_buffer_barriers(&mut compiled, index, buffer, &groups);
         }
 
         self.place_attachments(&mut compiled, &store_ops, &usage_flags)?;
@@ -193,6 +191,7 @@ impl<'declaration> GraphCompiler<'declaration> {
     fn cull(&mut self) {
         let declaration = self.declaration;
         let mut live_images = vec![false; declaration.images.len()];
+        let mut live_buffers = vec![false; declaration.buffers.len()];
 
         for pass in (0..declaration.passes.len()).rev() {
             let image_usages = || {
@@ -200,19 +199,28 @@ impl<'declaration> GraphCompiler<'declaration> {
                     .iter()
                     .map(|index| &declaration.image_usages[*index])
             };
-            let writes_buffer = self.buffer_usages_by_pass[pass]
-                .iter()
-                .any(|index| declaration.buffer_usages[*index].usage.writes());
+            let buffer_usages = || {
+                self.buffer_usages_by_pass[pass]
+                    .iter()
+                    .map(|index| &declaration.buffer_usages[*index])
+            };
+            let writes_needed_buffer = buffer_usages().any(|usage| {
+                usage.usage.writes() && (declaration.buffers[usage.buffer].persists() || live_buffers[usage.buffer])
+            });
             let writes_needed_image = image_usages().any(|usage| {
                 usage.usage.writes() && (declaration.images[usage.image].persists() || live_images[usage.image])
             });
 
-            if !declaration.passes[pass].keep && !writes_buffer && !writes_needed_image {
+            if !declaration.passes[pass].keep && !writes_needed_buffer && !writes_needed_image {
                 continue;
             }
 
             for usage in image_usages().filter(|usage| usage.usage.reads()) {
                 live_images[usage.image] = true;
+            }
+
+            for usage in buffer_usages().filter(|usage| usage.usage.reads()) {
+                live_buffers[usage.buffer] = true;
             }
 
             self.live_passes.push(pass);
@@ -275,6 +283,21 @@ impl<'declaration> GraphCompiler<'declaration> {
             if let DeclaredImage::History { id, .. } = image {
                 flags[index] = history_flags[id.index];
             }
+        }
+
+        flags
+    }
+
+    fn buffer_usage_flags(&self) -> Vec<vk::BufferUsageFlags> {
+        let declaration = self.declaration;
+        let mut flags = vec![vk::BufferUsageFlags::empty(); declaration.buffers.len()];
+
+        for usage in declaration
+            .buffer_usages
+            .iter()
+            .filter(|usage| self.positions[usage.pass].is_some())
+        {
+            flags[usage.buffer] |= usage.usage.buffer_usage();
         }
 
         flags
@@ -406,6 +429,55 @@ impl<'declaration> GraphCompiler<'declaration> {
         }
     }
 
+    fn place_buffer_barriers(
+        &self,
+        compiled: &mut CompiledGraph,
+        index: usize,
+        buffer: &DeclaredBuffer,
+        groups: &[AccessGroup],
+    ) {
+        let mut previous: Option<&AccessGroup> = None;
+
+        for group in groups {
+            let source = match (previous, buffer) {
+                (Some(previous), _) => BufferBarrierSource::Known(previous.buffer_state()),
+                (None, DeclaredBuffer::Transient(_)) => BufferBarrierSource::PreviousFrame,
+                (None, DeclaredBuffer::Imported { initial, .. }) => BufferBarrierSource::Known(*initial),
+            };
+            compiled.passes[group.pass].steps[group.step as usize]
+                .buffer_barriers
+                .push(CompiledBufferBarrier {
+                    buffer: index,
+                    source,
+                    destination_stages: group.access.stages,
+                    destination_access: group.access.access,
+                });
+            previous = Some(group);
+        }
+
+        match buffer {
+            DeclaredBuffer::Transient(_) => {
+                if let Some(last) = previous {
+                    compiled.buffer_end_states.push(BufferEndState {
+                        buffer: index,
+                        state: last.buffer_state(),
+                    });
+                }
+            }
+            DeclaredBuffer::Imported {
+                initial, final_state, ..
+            } => {
+                let source = previous.map_or(*initial, AccessGroup::buffer_state);
+                compiled.final_buffer_barriers.push(CompiledBufferBarrier {
+                    buffer: index,
+                    source: BufferBarrierSource::Known(source),
+                    destination_stages: final_state.stages,
+                    destination_access: final_state.access,
+                });
+            }
+        }
+    }
+
     fn place_attachments(
         &self,
         compiled: &mut CompiledGraph,
@@ -476,17 +548,20 @@ mod tests {
 
     use super::GraphCompiler;
     use crate::barrier_source::BarrierSource;
+    use crate::buffer_barrier_source::BufferBarrierSource;
     use crate::compiled_graph::CompiledGraph;
     use crate::declared_buffer::DeclaredBuffer;
     use crate::declared_image::DeclaredImage;
     use crate::frame_declaration::FrameDeclaration;
     use crate::{
-        Attachment, BufferHandle, BufferState, BufferUsage, GraphImageDescription, HistoryId, ImageHandle, ImageSize,
-        ImageState, ImportedImageHandle, PassDeclaration, RenderGraphError, Stage,
+        Attachment, BufferState, BufferUsage, GraphBufferDescription, GraphImageDescription, HistoryId, ImageHandle,
+        ImageSize, ImageState, ImportedBufferHandle, ImportedImageHandle, PassDeclaration, RenderGraphError, Stage,
     };
 
     const COLOR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
     const BLOOM_LEVELS: u32 = 3;
+    const STAR_COUNT: u64 = 64;
+    const VISIBILITY_SIZE: u64 = STAR_COUNT * size_of::<f32>() as u64;
     const SWAPCHAIN_ACQUIRED: ImageState = ImageState {
         stages: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
         access: vk::AccessFlags2::NONE,
@@ -530,8 +605,16 @@ mod tests {
         })
     }
 
-    fn import_readback(frame: &mut FrameDeclaration) -> BufferHandle {
-        frame.add_buffer(DeclaredBuffer {
+    fn visibility(size: u64) -> GraphBufferDescription {
+        GraphBufferDescription {
+            name: "visibility",
+            size,
+        }
+    }
+
+    fn import_readback(frame: &mut FrameDeclaration) -> ImportedBufferHandle {
+        frame.add_imported_buffer(DeclaredBuffer::Imported {
+            import: 0,
             name: "readback",
             initial: UNUSED_BUFFER,
             final_state: HOST_READ,
@@ -700,15 +783,130 @@ mod tests {
         let compiled = compile(&frame).unwrap();
 
         let steps = &compiled.passes[0].steps;
-        assert_eq!(steps[0].buffer_barriers[0].source_stages, vk::PipelineStageFlags2::NONE);
+        assert_eq!(
+            steps[0].buffer_barriers[0].source,
+            BufferBarrierSource::Known(UNUSED_BUFFER)
+        );
         let between = steps[1].buffer_barriers[0];
-        assert_eq!(between.source_access, vk::AccessFlags2::TRANSFER_WRITE);
+        assert_eq!(
+            between.source,
+            BufferBarrierSource::Known(BufferState {
+                stages: vk::PipelineStageFlags2::COPY | vk::PipelineStageFlags2::CLEAR,
+                access: vk::AccessFlags2::TRANSFER_WRITE,
+            })
+        );
         assert_eq!(between.destination_stages, vk::PipelineStageFlags2::COMPUTE_SHADER);
 
         let host = compiled.final_buffer_barriers[0];
-        assert_eq!(host.source_access, vk::AccessFlags2::SHADER_STORAGE_WRITE);
+        assert_eq!(
+            host.source,
+            BufferBarrierSource::Known(BufferState {
+                stages: vk::PipelineStageFlags2::COMPUTE_SHADER,
+                access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+            })
+        );
         assert_eq!(host.destination_stages, vk::PipelineStageFlags2::HOST);
         assert_eq!(host.destination_access, vk::AccessFlags2::HOST_READ);
+    }
+
+    // Visibility is written per star in compute, then read by the lens pass drawing into the swapchain.
+    #[test]
+    fn a_graph_buffer_waits_on_the_previous_frame_then_on_its_writer() {
+        let mut frame = FrameDeclaration::default();
+        let swapchain = import_swapchain(&mut frame);
+        let mut stars = PassDeclaration::new(&mut frame, &[], "star visibility");
+        let buffer = stars.create_buffer(visibility(VISIBILITY_SIZE));
+        stars.buffer(buffer, BufferUsage::StorageWrite(Stage::Compute));
+        let mut lens = PassDeclaration::new(&mut frame, &[], "lens");
+        lens.buffer(buffer, BufferUsage::StorageRead(Stage::Fragment));
+        lens.color_attachment(swapchain, Attachment::DontCare);
+        let compiled = compile(&frame).unwrap();
+
+        let written = compiled.passes[0].steps[0].buffer_barriers[0];
+        assert_eq!(written.source, BufferBarrierSource::PreviousFrame);
+        assert_eq!(written.destination_access, vk::AccessFlags2::SHADER_STORAGE_WRITE);
+
+        let read = compiled.passes[1].steps[0].buffer_barriers[0];
+        let compute_written = BufferState {
+            stages: vk::PipelineStageFlags2::COMPUTE_SHADER,
+            access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+        };
+        assert_eq!(read.source, BufferBarrierSource::Known(compute_written));
+        assert_eq!(read.destination_stages, vk::PipelineStageFlags2::FRAGMENT_SHADER);
+        assert_eq!(read.destination_access, vk::AccessFlags2::SHADER_STORAGE_READ);
+
+        assert!(compiled.final_buffer_barriers.is_empty());
+        assert_eq!(compiled.buffer_end_states.len(), 1);
+        assert_eq!(
+            compiled.buffer_end_states[0].state,
+            BufferState {
+                stages: vk::PipelineStageFlags2::FRAGMENT_SHADER,
+                access: vk::AccessFlags2::NONE,
+            }
+        );
+        assert_eq!(
+            compiled.buffer_usage_flags[buffer.index],
+            vk::BufferUsageFlags::STORAGE_BUFFER
+        );
+    }
+
+    #[test]
+    fn a_pass_writing_a_graph_buffer_nothing_reads_is_culled() {
+        let mut frame = FrameDeclaration::default();
+        forward_and_tonemap(&mut frame);
+        let mut stars = PassDeclaration::new(&mut frame, &[], "star visibility");
+        let buffer = stars.create_buffer(visibility(VISIBILITY_SIZE));
+        stars.buffer(buffer, BufferUsage::StorageWrite(Stage::Compute));
+        let compiled = compile(&frame).unwrap();
+
+        assert_eq!(compiled.passes.len(), 2);
+        assert!(compiled.buffer_usage_flags[buffer.index].is_empty());
+        assert!(compiled.buffer_end_states.is_empty());
+    }
+
+    #[test]
+    fn transfer_usages_add_their_flags_to_a_graph_buffer() {
+        let mut frame = FrameDeclaration::default();
+        let mut lights = PassDeclaration::new(&mut frame, &[], "light lists");
+        let buffer = lights.create_buffer(visibility(VISIBILITY_SIZE));
+        lights.buffer(buffer, BufferUsage::TransferDestination);
+        lights.next_step();
+        lights.buffer(buffer, BufferUsage::StorageReadWrite(Stage::Compute));
+        lights.keep();
+        let compiled = compile(&frame).unwrap();
+
+        assert_eq!(
+            compiled.buffer_usage_flags[buffer.index],
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::STORAGE_BUFFER
+        );
+    }
+
+    #[test]
+    fn reading_a_graph_buffer_before_any_write_is_rejected() {
+        let mut frame = FrameDeclaration::default();
+        let mut lens = PassDeclaration::new(&mut frame, &[], "lens");
+        let buffer = lens.create_buffer(visibility(VISIBILITY_SIZE));
+        lens.buffer(buffer, BufferUsage::StorageRead(Stage::Fragment));
+        lens.keep();
+
+        assert_eq!(
+            declaration_reason(compile(&frame)),
+            "reads visibility before any pass writes it"
+        );
+    }
+
+    #[test]
+    fn an_empty_graph_buffer_is_rejected() {
+        let mut frame = FrameDeclaration::default();
+        let mut stars = PassDeclaration::new(&mut frame, &[], "star visibility");
+        let buffer = stars.create_buffer(visibility(0));
+        stars.buffer(buffer, BufferUsage::StorageWrite(Stage::Compute));
+        stars.keep();
+
+        assert_eq!(
+            declaration_reason(compile(&frame)),
+            "uses visibility, which has a size of 0"
+        );
     }
 
     #[test]

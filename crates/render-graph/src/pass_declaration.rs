@@ -1,11 +1,12 @@
+use crate::declared_buffer::DeclaredBuffer;
 use crate::declared_buffer_usage::DeclaredBufferUsage;
 use crate::declared_image::DeclaredImage;
 use crate::declared_image_usage::DeclaredImageUsage;
 use crate::declared_pass::DeclaredPass;
 use crate::frame_declaration::FrameDeclaration;
 use crate::{
-    Attachment, BufferHandle, BufferUsage, GraphImageDescription, HistoryId, HistoryImage, ImageHandle, ResourceUsage,
-    Stage, Subresource,
+    Attachment, BufferHandle, BufferResource, BufferUsage, GraphBufferDescription, GraphImageDescription, HistoryId,
+    HistoryImage, ImageHandle, ResourceUsage, Stage, Subresource,
 };
 
 /// What a pass creates and uses this frame. Usages apply to the current step; `next_step` starts another.
@@ -41,6 +42,10 @@ impl<'frame> PassDeclaration<'frame> {
         self.frame.add_image(DeclaredImage::Transient(description))
     }
 
+    pub fn create_buffer(&mut self, description: GraphBufferDescription) -> BufferHandle {
+        self.frame.add_buffer(DeclaredBuffer::Transient(description))
+    }
+
     pub fn history(&mut self, id: HistoryId) -> HistoryImage {
         self.frame.history(id, self.histories[id.index])
     }
@@ -67,11 +72,11 @@ impl<'frame> PassDeclaration<'frame> {
         });
     }
 
-    pub fn buffer(&mut self, buffer: BufferHandle, usage: BufferUsage) {
+    pub fn buffer(&mut self, buffer: impl Into<BufferResource>, usage: BufferUsage) {
         self.frame.buffer_usages.push(DeclaredBufferUsage {
             pass: self.pass,
             step: self.step,
-            buffer: buffer.index,
+            buffer: buffer.into().buffer,
             usage,
         });
     }

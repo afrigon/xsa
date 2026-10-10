@@ -4,6 +4,7 @@ use ash::vk;
 use gpu_allocator::vulkan::Allocator;
 
 use crate::barrier_recorder::BarrierRecorder;
+use crate::buffer_pool::BufferPool;
 use crate::compiled_entry::CompiledEntry;
 use crate::declared_buffer::DeclaredBuffer;
 use crate::declared_image::DeclaredImage;
@@ -11,15 +12,16 @@ use crate::frame_declaration::FrameDeclaration;
 use crate::graph_compiler::GraphCompiler;
 use crate::image_pool::{HISTORY_IMAGE_COUNT, ImagePool};
 use crate::recorded_pass::RecordedPass;
+use crate::resolved_buffer::ResolvedBuffer;
 use crate::resolved_image::ResolvedImage;
 use crate::{
-    BufferHandle, GraphBuilder, GraphImageDescription, HistoryId, ImageId, ImportedBuffer, ImportedImage,
+    GraphBuilder, GraphImageDescription, HistoryId, ImageId, ImportedBuffer, ImportedBufferHandle, ImportedImage,
     ImportedImageHandle, PassContext, PassDeclaration, RenderGraphError, RenderPass,
 };
 
 const COMPILED_GRAPH_CAPACITY: usize = 16;
 
-/// Owns the images passes create, the history images kept across frames and the compiled frames to reuse.
+/// Owns the images and buffers passes create, the history images kept across frames and the compiled frames to reuse.
 pub struct RenderGraph {
     frame_number: usize,
     frame: FrameDeclaration,
@@ -28,9 +30,11 @@ pub struct RenderGraph {
     histories: Vec<GraphImageDescription>,
     history_images: Vec<Option<[ImageId; HISTORY_IMAGE_COUNT]>>,
     pool: ImagePool,
+    buffer_pool: BufferPool,
     cache: Vec<CompiledEntry>,
     last_entry: Option<usize>,
     resolved: Vec<ResolvedImage>,
+    resolved_buffers: Vec<ResolvedBuffer>,
     image_barriers: RefCell<Vec<vk::ImageMemoryBarrier2<'static>>>,
     buffer_barriers: RefCell<Vec<vk::BufferMemoryBarrier2<'static>>>,
 }
@@ -46,9 +50,11 @@ impl RenderGraph {
             histories: Vec::new(),
             history_images: Vec::new(),
             pool: ImagePool::new(output),
+            buffer_pool: BufferPool::default(),
             cache: Vec::new(),
             last_entry: None,
             resolved: Vec::new(),
+            resolved_buffers: Vec::new(),
             image_barriers: RefCell::new(Vec::new()),
             buffer_barriers: RefCell::new(Vec::new()),
         }
@@ -112,7 +118,9 @@ impl RenderGraph {
         self.last_entry = None;
         self.history_images.fill(None);
 
-        unsafe { self.pool.destroy(device, allocator) }
+        unsafe { self.pool.destroy(device, allocator) }?;
+
+        unsafe { self.buffer_pool.destroy(device, allocator) }
     }
 
     pub(crate) fn begin_declaration(&mut self) {
@@ -134,10 +142,11 @@ impl RenderGraph {
         })
     }
 
-    pub(crate) fn import_buffer(&mut self, buffer: ImportedBuffer) -> BufferHandle {
+    pub(crate) fn import_buffer(&mut self, buffer: ImportedBuffer) -> ImportedBufferHandle {
         self.imported_buffers.push(buffer);
 
-        self.frame.add_buffer(DeclaredBuffer {
+        self.frame.add_imported_buffer(DeclaredBuffer::Imported {
+            import: self.imported_buffers.len() - 1,
             name: buffer.name,
             initial: buffer.initial,
             final_state: buffer.final_state,
@@ -185,7 +194,8 @@ impl RenderGraph {
             command_buffer,
             resolved: &self.resolved,
             pool: &self.pool,
-            buffers: &self.imported_buffers,
+            buffers: &self.resolved_buffers,
+            buffer_pool: &self.buffer_pool,
             image_barriers: &self.image_barriers,
             buffer_barriers: &self.buffer_barriers,
         };
@@ -221,6 +231,12 @@ impl RenderGraph {
             }
         }
 
+        for end in &entry.compiled.buffer_end_states {
+            if let Some(id) = self.resolved_buffers[end.buffer].id {
+                self.buffer_pool.buffer_mut(id).state = end.state;
+            }
+        }
+
         Ok(())
     }
 
@@ -245,6 +261,9 @@ impl RenderGraph {
         let image_slots =
             self.pool
                 .assign_transients(device, allocator, &self.frame, &compiled.usage_flags, created)?;
+        let buffer_slots =
+            self.buffer_pool
+                .assign_transients(device, allocator, &self.frame, &compiled.buffer_usage_flags)?;
 
         if self.cache.len() == COMPILED_GRAPH_CAPACITY {
             self.cache.remove(0);
@@ -254,6 +273,7 @@ impl RenderGraph {
             declaration: self.frame.clone(),
             compiled,
             image_slots,
+            buffer_slots,
         });
 
         Ok(self.cache.len() - 1)
@@ -287,8 +307,8 @@ impl RenderGraph {
         Ok(())
     }
 
-    // Images a pass declared this frame become the pooled or imported images recorded with; history images swap
-    // roles every frame.
+    // Images and buffers a pass declared this frame become the pooled or imported ones recorded with; history images
+    // swap roles every frame.
     fn resolve(&mut self, entry: usize) {
         let entry = &self.cache[entry];
         self.resolved.clear();
@@ -308,6 +328,19 @@ impl RenderGraph {
                 ResolvedImage::physical(id, self.pool.image(id))
             });
             self.resolved.push(resolved);
+        }
+
+        self.resolved_buffers.clear();
+
+        for (index, buffer) in entry.declaration.buffers.iter().enumerate() {
+            let resolved = match buffer {
+                DeclaredBuffer::Transient(_) => entry.buffer_slots[index]
+                    .map_or(ResolvedBuffer::unused(buffer.name()), |id| {
+                        ResolvedBuffer::physical(id, self.buffer_pool.buffer(id))
+                    }),
+                DeclaredBuffer::Imported { import, .. } => ResolvedBuffer::imported(&self.imported_buffers[*import]),
+            };
+            self.resolved_buffers.push(resolved);
         }
     }
 }
