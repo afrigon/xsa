@@ -7,7 +7,7 @@ import numpy as np
 import design
 import quality
 from blur import disk_blur
-from starburst import HALF_EXTENT_DEGREES, LOGPOLAR_INNER_DEGREES, LOGPOLAR_EXTENT_DEGREES
+from starburst import HALF_EXTENT_DEGREES, LOGPOLAR_INNER_DEGREES, LOGPOLAR_EXTENT_DEGREES, PUPIL_RADIUS, WAVELENGTHS
 
 RESOURCES = os.path.join(quality.SCRIPTS, "../../base/resources")
 TEXTURE_FOLDER = "lens"
@@ -44,6 +44,8 @@ RING_SIZE = 0.4
 # The game's screen spans 2 tan(vertical FOV / 2) in tangent units: 1080 px at 805.5 px per unit.
 SCREEN_HEIGHT_TANGENT = 1080 / 805.5
 DXGI_FORMAT_R16G16B16A16_FLOAT = 10
+# The diffraction core reaches the third dark ring of the Airy pattern, at 3.24 wavelengths per aperture diameter.
+AIRY_THIRD_ZERO = 3.24
 
 def scatter_constant():
     theta = np.linspace(0, SCATTER_REACH, 200000)
@@ -74,9 +76,16 @@ def blurred_ghosts():
     return ghosts, star_y
 
 def blurred_starburst():
+    """The light the aperture scatters around the Sun: the diffraction core is the Sun's own image, which the scene
+    draws, so it is left out before the disk blur."""
     starburst = np.load(quality.starburst_file())
-    texels_per_degree = starburst.shape[0] / 2 / HALF_EXTENT_DEGREES
-    return np.clip(disk_blur(starburst, design.SUN_ANGULAR_RADIUS_DEGREES * texels_per_degree), 0, None)
+    size = starburst.shape[0]
+    texels_per_degree = size / 2 / HALF_EXTENT_DEGREES
+    core_degrees = np.degrees(AIRY_THIRD_ZERO * WAVELENGTHS.max() / (2 * PUPIL_RADIUS))
+    texel = (np.arange(size) + 0.5 - size / 2) / texels_per_degree
+    x, y = np.meshgrid(texel, texel)
+    scattered = np.where((np.hypot(x, y) > core_degrees)[..., None], starburst, 0.0)
+    return np.clip(disk_blur(scattered, design.SUN_ANGULAR_RADIUS_DEGREES * texels_per_degree), 0, None)
 
 def write_dds(path, rgb):
     """Writes a linear RGB image as R16G16B16A16_FLOAT with a full mip chain."""
