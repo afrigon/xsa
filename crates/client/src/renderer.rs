@@ -11,13 +11,13 @@ mod gpu_context;
 mod gpu_data;
 mod graph_textures;
 mod lens;
+mod light_occlusion;
+mod light_projection;
 mod material;
 mod passes;
 mod render_passes;
 mod scene;
 mod shader_binaries;
-mod star_occlusion;
-mod star_projection;
 mod star_visibility;
 mod temporal_history;
 mod texture;
@@ -27,7 +27,7 @@ pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
 pub use frame_statistics::FrameStatistics;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
-pub use scene::{MaterialHandle, ObjectHandle, Scene, SceneObject, Star};
+pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
@@ -54,14 +54,14 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedStarData, StarData};
+use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData};
 use graph_textures::GraphTextures;
 use lens::Lens;
+use light_occlusion::LightOcclusion;
+use light_projection::LightProjection;
 use material::MaterialData;
 use passes::TaaPass;
 use render_passes::RenderPasses;
-use star_occlusion::StarOcclusion;
-use star_projection::StarProjection;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use texture::DdsImage;
@@ -71,6 +71,7 @@ const BYTES_PER_PIXEL: usize = 4;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_STAR_CAPACITY: usize = 4;
+const INITIAL_LIGHT_CAPACITY: usize = 4;
 const MATERIAL_CAPACITY: usize = 256;
 // Presentation waits on the acquire semaphore at the color attachment output stage.
 const SWAPCHAIN_ACQUIRED: ImageState = ImageState {
@@ -105,13 +106,14 @@ pub struct Renderer {
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     star_data: Vec<StarData>,
-    projected_star_data: Vec<ProjectedStarData>,
-    star_occlusion: StarOcclusion,
+    projected_light_data: Vec<ProjectedLightData>,
+    light_occlusion: LightOcclusion,
     focal_length_pixels: f32,
     visible_objects: Vec<ObjectHandle>,
     material_data: Vec<MaterialData>,
     object_capacity: usize,
     star_capacity: usize,
+    light_capacity: usize,
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
     lens: Option<Lens>,
@@ -145,6 +147,7 @@ impl Renderer {
                     &mut gpu.allocator,
                     INITIAL_OBJECT_CAPACITY,
                     INITIAL_STAR_CAPACITY,
+                    INITIAL_LIGHT_CAPACITY,
                 )
             })
             .collect::<anyhow::Result<_>>()?;
@@ -163,13 +166,14 @@ impl Renderer {
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
-            projected_star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
-            star_occlusion: StarOcclusion::new(),
+            projected_light_data: Vec::with_capacity(INITIAL_LIGHT_CAPACITY),
+            light_occlusion: LightOcclusion::new(),
             focal_length_pixels: 0.0,
             visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
+            light_capacity: INITIAL_LIGHT_CAPACITY,
             cube_maps: Vec::new(),
             textures: Vec::new(),
             lens: None,
@@ -301,6 +305,7 @@ impl Renderer {
 
         self.ensure_object_capacity()?;
         self.ensure_star_capacity()?;
+        self.ensure_light_capacity()?;
 
         let Some(image_index) = self.acquire_image()? else {
             return Ok(());
@@ -485,31 +490,38 @@ impl Renderer {
         }
 
         self.star_data.clear();
-        self.projected_star_data.clear();
-        let projection = StarProjection::new(camera, extent);
+        self.projected_light_data.clear();
+        let projection = LightProjection::new(camera, extent);
         self.focal_length_pixels = projection.focal_length_pixels();
 
         for star in self.scene.stars() {
-            let object = self.scene.object(star.object);
-            let camera_relative = object.position - camera.position;
+            let light = self.scene.light_source(star.light);
+            let object = self.scene.object(light.object);
             self.star_data.push(StarData {
-                position_and_radius: camera_relative.as_vec3().extend(object.bounding_radius as f32),
-                intensity: star.intensity.extend(0.0),
+                position_and_radius: (object.position - camera.position)
+                    .as_vec3()
+                    .extend(object.bounding_radius as f32),
+                intensity: light.intensity.extend(0.0),
             });
+        }
+
+        for light in self.scene.light_sources() {
+            let object = self.scene.object(light.object);
+            let camera_relative = object.position - camera.position;
             let occluders = self
                 .scene
                 .occluders()
                 .iter()
-                .filter(|&&occluder| occluder != star.object)
+                .filter(|&&occluder| occluder != light.object)
                 .map(|&occluder| self.scene.object(occluder))
                 .map(|occluder| (occluder.position - camera.position, occluder.scale));
             let visibility = self
-                .star_occlusion
+                .light_occlusion
                 .visibility(camera_relative, object.bounding_radius, occluders);
-            self.projected_star_data.extend(projection.project(
+            self.projected_light_data.extend(projection.project(
                 camera_relative,
                 object.bounding_radius,
-                star.intensity,
+                light.intensity,
                 visibility,
             ));
         }
@@ -526,7 +538,7 @@ impl Renderer {
         frame.frame_data.write(&[frame_data])?;
         frame.objects.write(&self.object_data)?;
         frame.stars.write(&self.star_data)?;
-        frame.projected_stars.write(&self.projected_star_data)?;
+        frame.projected_lights.write(&self.projected_light_data)?;
 
         frame.materials.write(&self.material_data)
     }
@@ -588,7 +600,7 @@ impl Renderer {
                     final_state: HOST_READABLE,
                 })
             }),
-            projected_star_count: self.projected_star_data.len() as u32,
+            projected_light_count: self.projected_light_data.len() as u32,
             lens_loaded: self.lens.is_some(),
         };
         self.passes.add_to(&mut graph, &self.render, inputs);
@@ -695,10 +707,26 @@ impl Renderer {
             let stars = Frame::create_star_buffer(&self.gpu.device, &mut self.gpu.allocator, self.star_capacity)?;
             let mut old_stars = std::mem::replace(&mut frame.stars, stars);
             unsafe { old_stars.destroy(&self.gpu.device, &mut self.gpu.allocator) };
-            let projected_stars =
-                Frame::create_projected_star_buffer(&self.gpu.device, &mut self.gpu.allocator, self.star_capacity)?;
-            let mut old_projected_stars = std::mem::replace(&mut frame.projected_stars, projected_stars);
-            unsafe { old_projected_stars.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+        }
+
+        Ok(())
+    }
+
+    fn ensure_light_capacity(&mut self) -> anyhow::Result<()> {
+        let light_count = self.scene.light_sources().len();
+
+        if light_count <= self.light_capacity {
+            return Ok(());
+        }
+
+        self.gpu.wait_idle()?;
+        self.light_capacity = light_count.next_power_of_two();
+
+        for frame in &mut self.frames {
+            let projected_lights =
+                Frame::create_projected_light_buffer(&self.gpu.device, &mut self.gpu.allocator, self.light_capacity)?;
+            let mut old_projected_lights = std::mem::replace(&mut frame.projected_lights, projected_lights);
+            unsafe { old_projected_lights.destroy(&self.gpu.device, &mut self.gpu.allocator) };
         }
 
         Ok(())

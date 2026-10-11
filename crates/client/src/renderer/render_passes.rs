@@ -68,9 +68,9 @@ impl RenderPasses {
             .bloom
             .enabled
             .then(|| graph.add(&mut self.bloom, scene_color).bloom);
-        let star_count = inputs.projected_star_count;
-        let lens = (render.lens.enabled && inputs.lens_loaded && star_count > 0)
-            .then(|| graph.add(&mut self.lens, LensInputs { star_count }).lens);
+        let light_count = inputs.projected_light_count;
+        let lens = (render.lens.enabled && inputs.lens_loaded && light_count > 0)
+            .then(|| graph.add(&mut self.lens, LensInputs { light_count }).lens);
         graph.add(
             &mut self.tonemap,
             TonemapInputs {

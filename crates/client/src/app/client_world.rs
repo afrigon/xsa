@@ -11,7 +11,7 @@ use xsa_units::SimulationTime;
 
 use super::body_step::BodyStep;
 use crate::renderer::{
-    ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Star,
+    ColorSpace, HapkeParameters, LightSource, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Star,
 };
 
 const DEFAULT_NAMESPACE: &str = "base";
@@ -86,10 +86,11 @@ impl ClientWorld {
 
         for (value, &object) in body_objects.iter().enumerate() {
             if let Some(star_light) = illumination.star_light(BodyIndex { value }) {
-                scene.add_star(Star {
+                let light = scene.add_light_source(LightSource {
                     object,
                     intensity: star_light.color * star_light.luminous_intensity as f32,
                 });
+                scene.add_star(Star { light });
             }
         }
 

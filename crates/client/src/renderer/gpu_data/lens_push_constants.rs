@@ -6,12 +6,12 @@ use super::GpuData;
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct LensPushConstants {
     pub frame: vk::DeviceAddress,
-    pub stars: vk::DeviceAddress,
+    pub lights: vk::DeviceAddress,
     pub ghosts: vk::DeviceAddress,
     pub glare_intensity: f32,
     pub glare_falloff: f32,
     pub focal_length_pixels: f32,
-    pub star_count: u32,
+    pub light_count: u32,
     pub spikes_intensity: f32,
     pub spikes_length: f32,
     pub spikes_width: f32,

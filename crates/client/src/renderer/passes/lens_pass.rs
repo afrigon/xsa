@@ -16,7 +16,7 @@ use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 const LENS_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 const CLEAR: [f32; 4] = [0.0; 4];
 
-// Draws what the camera's lens adds to the image around each star, in exposed luminance like the scene.
+// Draws what the camera's lens adds to the image around each light source, in exposed luminance like the scene.
 pub(in crate::renderer) struct LensPass {
     glare_pipeline: GraphicsPipeline,
     ghosts_pipeline: GraphicsPipeline,
@@ -77,7 +77,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for LensPass {
 
         LensResources {
             lens,
-            star_count: inputs.star_count,
+            light_count: inputs.light_count,
         }
     }
 
@@ -91,12 +91,12 @@ impl<'frame> RenderPass<FrameContext<'frame>> for LensPass {
         let recorder = &frame.recorder;
         let constants = LensPushConstants {
             frame: frame.frame.frame_data.device_address(),
-            stars: frame.frame.projected_stars.device_address(),
+            lights: frame.frame.projected_lights.device_address(),
             ghosts: lens.ghosts(),
             glare_intensity: lens.glare_intensity,
             glare_falloff: lens.glare_falloff,
             focal_length_pixels: frame.focal_length_pixels,
-            star_count: resources.star_count,
+            light_count: resources.light_count,
             spikes_intensity: lens.spikes_intensity,
             spikes_length: lens.spikes_length,
             spikes_width: lens.spikes_width,
@@ -109,15 +109,15 @@ impl<'frame> RenderPass<FrameContext<'frame>> for LensPass {
         pass.begin_rendering();
         recorder.bind_graphics(&self.glare_pipeline, frame.descriptor_set);
         recorder.push_graphics_constants(&self.glare_pipeline, &constants);
-        recorder.draw_fullscreen_instances(resources.star_count);
+        recorder.draw_fullscreen_instances(resources.light_count);
         recorder.bind_graphics(&self.spikes_pipeline, frame.descriptor_set);
         recorder.push_graphics_constants(&self.spikes_pipeline, &constants);
-        recorder.draw_fullscreen_instances(resources.star_count);
+        recorder.draw_fullscreen_instances(resources.light_count);
 
         if lens.ghost_count > 0 {
             recorder.bind_graphics(&self.ghosts_pipeline, frame.descriptor_set);
             recorder.push_graphics_constants(&self.ghosts_pipeline, &constants);
-            recorder.draw_quad_instances(resources.star_count * lens.ghost_count);
+            recorder.draw_quad_instances(resources.light_count * lens.ghost_count);
         }
 
         pass.end_rendering();

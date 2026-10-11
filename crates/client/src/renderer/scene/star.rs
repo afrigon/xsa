@@ -1,9 +1,6 @@
-use glam::Vec3;
+use super::LightSourceHandle;
 
-use super::ObjectHandle;
-
+// A light source that also lights the scene.
 pub struct Star {
-    pub object: ObjectHandle,
-    // Candela per color channel: illuminance at a distance d is intensity / d².
-    pub intensity: Vec3,
+    pub light: LightSourceHandle,
 }

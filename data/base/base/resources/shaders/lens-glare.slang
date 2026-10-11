@@ -12,7 +12,7 @@ ConstantBuffer<LensConstants> constants;
 
 struct GlareOutput {
     float4 position : SV_Position;
-    nointerpolation uint star : STAR;
+    nointerpolation uint light : LIGHT;
 };
 
 [shader("vertex")]
@@ -20,19 +20,19 @@ GlareOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_Ins
     float2 clip = float2((vertexIndex << 1) & 2, vertexIndex & 2) * 2.0 - 1.0;
     GlareOutput output;
     output.position = float4(clip, 0.0, 1.0);
-    output.star = instanceIndex;
+    output.light = instanceIndex;
     return output;
 }
 
-// Veiling glare falls off with a power of the angle from the star, and stays flat across the star's own disk.
+// Veiling glare falls off with a power of the angle from the light, and stays flat across the light's own disk.
 [shader("fragment")]
 float4 fragmentMain(GlareOutput input) : SV_Target {
-    ProjectedStarData star = constants.stars[input.star];
+    ProjectedLightData light = constants.lights[input.light];
     float3 toPixel = pixelRay(input.position.xy, constants.frame->viewportSize, constants.focalLengthPixels);
-    float3 toStar = pixelRay(star.screenPosition, constants.frame->viewportSize, constants.focalLengthPixels);
-    float angle = atan2(length(cross(toPixel, toStar)), dot(toPixel, toStar));
-    float degreesFromStar = degrees(max(angle, star.angularRadius));
+    float3 toLight = pixelRay(light.screenPosition, constants.frame->viewportSize, constants.focalLengthPixels);
+    float angle = atan2(length(cross(toPixel, toLight)), dot(toPixel, toLight));
+    float degreesFromLight = degrees(max(angle, light.angularRadius));
     float3 luminance =
-        constants.glareIntensity * star.illuminance * star.visibility / pow(degreesFromStar, constants.glareFalloff);
+        constants.glareIntensity * light.illuminance * light.visibility / pow(degreesFromLight, constants.glareFalloff);
     return float4(luminance * constants.frame->exposure, 1.0);
 }

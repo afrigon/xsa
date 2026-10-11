@@ -1,9 +1,9 @@
 import common.frame;
 
-// Must match ProjectedStarData in client/src/renderer/gpu_data/projected_star_data.rs.
-struct ProjectedStarData {
+// Must match ProjectedLightData in client/src/renderer/gpu_data/projected_light_data.rs.
+struct ProjectedLightData {
     float2 screenPosition;
-    // Fraction of the star's disk no body hides.
+    // Fraction of the light's disk no body hides.
     float visibility;
     float angularRadius;
     float3 illuminance;
@@ -36,12 +36,12 @@ struct GhostData {
 // Must match LensPushConstants in client/src/renderer/gpu_data/lens_push_constants.rs.
 struct LensConstants {
     FrameData *frame;
-    ProjectedStarData *stars;
+    ProjectedLightData *lights;
     GhostData *ghosts;
     float glareIntensity;
     float glareFalloff;
     float focalLengthPixels;
-    uint starCount;
+    uint lightCount;
     float spikesIntensity;
     float spikesLength;
     float spikesWidth;

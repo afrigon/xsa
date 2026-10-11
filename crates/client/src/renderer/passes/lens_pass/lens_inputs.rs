@@ -1,4 +1,4 @@
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct LensInputs {
-    pub star_count: u32,
+    pub light_count: u32,
 }

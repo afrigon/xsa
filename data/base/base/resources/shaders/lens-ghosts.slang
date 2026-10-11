@@ -22,26 +22,26 @@ static const float2 quadCorners[6] = {
 struct GhostOutput {
     float4 position : SV_Position;
     float2 local : LOCAL;
-    nointerpolation uint star : STAR;
+    nointerpolation uint light : LIGHT;
     nointerpolation uint ghost : GHOST;
 };
 
-// Ghosts sit on the line from the star through the screen center: position 0 is the star, 1 the center.
+// Ghosts sit on the line from the light through the screen center: position 0 is the light, 1 the center.
 [shader("vertex")]
 GhostOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_InstanceID) {
-    uint starIndex = instanceIndex / constants.ghostCount;
+    uint lightIndex = instanceIndex / constants.ghostCount;
     uint ghostIndex = instanceIndex % constants.ghostCount;
-    ProjectedStarData star = constants.stars[starIndex];
+    ProjectedLightData light = constants.lights[lightIndex];
     GhostData ghost = constants.ghosts[ghostIndex];
     float2 viewportSize = constants.frame->viewportSize;
-    float2 center = lerp(star.screenPosition, viewportSize * 0.5, ghost.position);
+    float2 center = lerp(light.screenPosition, viewportSize * 0.5, ghost.position);
     float halfHeight = ghost.size * viewportSize.y * 0.5;
     float2 corner = quadCorners[vertexIndex];
     float2 extent = corner * float2(halfHeight * ghost.aspectRatio, halfHeight);
 
-    // Traced ghosts are baked with their local x axis along the line from the screen center toward the star.
+    // Traced ghosts are baked with their local x axis along the line from the screen center toward the light.
     if (ghost.shape == ghostShapeTexture) {
-        float2 fromCenter = star.screenPosition - viewportSize * 0.5;
+        float2 fromCenter = light.screenPosition - viewportSize * 0.5;
         float2 axis = length(fromCenter) > 0.0 ? normalize(fromCenter) : float2(1.0, 0.0);
         extent = axis * extent.x + float2(-axis.y, axis.x) * extent.y;
     }
@@ -50,7 +50,7 @@ GhostOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_Ins
     GhostOutput output;
     output.position = float4(pixel / viewportSize * 2.0 - 1.0, 0.0, 1.0);
     output.local = corner;
-    output.star = starIndex;
+    output.light = lightIndex;
     output.ghost = ghostIndex;
     return output;
 }
@@ -153,7 +153,7 @@ float4 fragmentMain(GhostOutput input) : SV_Target {
         shape = polygonShape(input.local, ghost);
     }
 
-    ProjectedStarData star = constants.stars[input.star];
-    float3 luminance = ghost.intensity * ghost.tint * star.illuminance * star.visibility * shape;
+    ProjectedLightData light = constants.lights[input.light];
+    float3 luminance = ghost.intensity * ghost.tint * light.illuminance * light.visibility * shape;
     return float4(luminance * constants.frame->exposure, 1.0);
 }

@@ -17,7 +17,7 @@ static const float fullWidthScale = 4.0 * log(2.0);
 
 struct SpikesOutput {
     float4 position : SV_Position;
-    nointerpolation uint star : STAR;
+    nointerpolation uint light : LIGHT;
 };
 
 [shader("vertex")]
@@ -25,7 +25,7 @@ SpikesOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_In
     float2 clip = float2((vertexIndex << 1) & 2, vertexIndex & 2) * 2.0 - 1.0;
     SpikesOutput output;
     output.position = float4(clip, 0.0, 1.0);
-    output.star = instanceIndex;
+    output.light = instanceIndex;
     return output;
 }
 
@@ -33,19 +33,19 @@ SpikesOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_In
 // per blade, an odd one two.
 [shader("fragment")]
 float4 fragmentMain(SpikesOutput input) : SV_Target {
-    ProjectedStarData star = constants.stars[input.star];
+    ProjectedLightData light = constants.lights[input.light];
     float2 viewportSize = constants.frame->viewportSize;
     float3 toPixel = pixelRay(input.position.xy, viewportSize, constants.focalLengthPixels);
-    float3 toStar = pixelRay(star.screenPosition, viewportSize, constants.focalLengthPixels);
-    float angle = atan2(length(cross(toPixel, toStar)), dot(toPixel, toStar));
+    float3 toLight = pixelRay(light.screenPosition, viewportSize, constants.focalLengthPixels);
+    float angle = atan2(length(cross(toPixel, toLight)), dot(toPixel, toLight));
 
-    // The star's own disk is drawn by the scene; the lens adds only what lies outside it.
-    if (angle < star.angularRadius) {
+    // The light's own disk is drawn by the scene; the lens adds only what lies outside it.
+    if (angle < light.angularRadius) {
         discard;
     }
 
     if (constants.spikesTexture != noTexture) {
-        float2 offset = input.position.xy - star.screenPosition;
+        float2 offset = input.position.xy - light.screenPosition;
         float2 uv = 0.5 + normalize(offset) * angle / (2.0 * constants.spikesLength);
 
         if (any(uv < 0.0) || any(uv > 1.0)) {
@@ -53,19 +53,19 @@ float4 fragmentMain(SpikesOutput input) : SV_Target {
         }
 
         float3 sampled = textures[constants.spikesTexture].Sample(clampingSampler, uv).rgb;
-        float3 textured = constants.spikesIntensity * star.illuminance * star.visibility * sampled;
+        float3 textured = constants.spikesIntensity * light.illuminance * light.visibility * sampled;
         return float4(textured * constants.frame->exposure, 1.0);
     }
 
     uint rayCount = constants.blades % 2 == 0 ? constants.blades : constants.blades * 2;
     float raySpacing = radians(360.0) / rayCount;
-    float2 offset = input.position.xy - star.screenPosition;
+    float2 offset = input.position.xy - light.screenPosition;
     float direction = atan2(offset.y, offset.x) - constants.rotation - radians(180.0) / constants.blades;
     float fromRay = direction - raySpacing * round(direction / raySpacing);
     float along = angle * cos(fromRay);
     float across = angle * sin(fromRay);
     float3 lengths = constants.spikesLength * (1.0 + constants.spikesDispersion * spikesDispersionOffsets);
     float3 shape = exp(-along / lengths) * exp(-fullWidthScale * pow(across / constants.spikesWidth, 2.0));
-    float3 luminance = constants.spikesIntensity * star.illuminance * star.visibility * shape;
+    float3 luminance = constants.spikesIntensity * light.illuminance * light.visibility * shape;
     return float4(luminance * constants.frame->exposure, 1.0);
 }

@@ -4,15 +4,15 @@ const SAMPLE_COUNT: usize = 256;
 // The golden angle spreads consecutive samples of a Vogel spiral evenly around the disk.
 const GOLDEN_ANGLE: f64 = 2.399_963_229_728_653;
 
-// Measures how much of a star's disk the bodies in front of it hide, by casting a fixed pattern of rays from the
+// Measures how much of a light source's disk the bodies in front of it hide, by casting a fixed pattern of rays from the
 // camera across the disk: the pattern never moves, so the result is stable from frame to frame.
-pub(in crate::renderer) struct StarOcclusion {
+pub(in crate::renderer) struct LightOcclusion {
     // Evenly spread over the unit disk.
     samples: Vec<DVec2>,
 }
 
-impl StarOcclusion {
-    pub fn new() -> StarOcclusion {
+impl LightOcclusion {
+    pub fn new() -> LightOcclusion {
         let samples = (0..SAMPLE_COUNT)
             .map(|index| {
                 let radius = ((index as f64 + 0.5) / SAMPLE_COUNT as f64).sqrt();
@@ -21,17 +21,17 @@ impl StarOcclusion {
             })
             .collect();
 
-        StarOcclusion { samples }
+        LightOcclusion { samples }
     }
 
     // Positions are relative to the camera; occluders are spheres given as (center, radius).
-    pub fn visibility(&self, star: DVec3, star_radius: f64, occluders: impl Iterator<Item = (DVec3, f64)>) -> f32 {
-        let star_distance = star.length();
-        let direction = star / star_distance;
-        let star_angular_radius = (star_radius / star_distance).asin();
+    pub fn visibility(&self, light: DVec3, light_radius: f64, occluders: impl Iterator<Item = (DVec3, f64)>) -> f32 {
+        let light_distance = light.length();
+        let direction = light / light_distance;
+        let light_angular_radius = (light_radius / light_distance).asin();
         let in_front: Vec<(DVec3, f64)> = occluders
             .filter(|&(center, radius)| {
-                StarOcclusion::may_cover(direction, star_distance, star_angular_radius, center, radius)
+                LightOcclusion::may_cover(direction, light_distance, light_angular_radius, center, radius)
             })
             .collect();
 
@@ -44,7 +44,7 @@ impl StarOcclusion {
         }
 
         let (tangent, bitangent) = direction.any_orthonormal_pair();
-        let spread = star_angular_radius.tan();
+        let spread = light_angular_radius.tan();
         let visible = self
             .samples
             .iter()
@@ -53,31 +53,31 @@ impl StarOcclusion {
 
                 !in_front
                     .iter()
-                    .any(|&(center, radius)| StarOcclusion::hits(ray, star_distance, center, radius))
+                    .any(|&(center, radius)| LightOcclusion::hits(ray, light_distance, center, radius))
             })
             .count();
 
         visible as f32 / SAMPLE_COUNT as f32
     }
 
-    fn may_cover(direction: DVec3, star_distance: f64, star_angular_radius: f64, center: DVec3, radius: f64) -> bool {
+    fn may_cover(direction: DVec3, light_distance: f64, light_angular_radius: f64, center: DVec3, radius: f64) -> bool {
         let distance = center.length();
 
         if distance <= radius {
             return true;
         }
 
-        if distance - radius >= star_distance {
+        if distance - radius >= light_distance {
             return false;
         }
 
         let separation = direction.angle_between(center / distance);
 
-        separation < star_angular_radius + (radius / distance).asin()
+        separation < light_angular_radius + (radius / distance).asin()
     }
 
-    // Whether a ray from the camera meets the sphere before reaching the star.
-    fn hits(ray: DVec3, star_distance: f64, center: DVec3, radius: f64) -> bool {
+    // Whether a ray from the camera meets the sphere before reaching the light.
+    fn hits(ray: DVec3, light_distance: f64, center: DVec3, radius: f64) -> bool {
         let closest_approach = ray.dot(center);
 
         if closest_approach <= 0.0 {
@@ -87,7 +87,7 @@ impl StarOcclusion {
         let miss_squared = center.length_squared() - closest_approach * closest_approach;
         let radius_squared = radius * radius;
 
-        miss_squared < radius_squared && closest_approach - (radius_squared - miss_squared).sqrt() < star_distance
+        miss_squared < radius_squared && closest_approach - (radius_squared - miss_squared).sqrt() < light_distance
     }
 }
 
@@ -115,21 +115,21 @@ mod tests {
 
     #[test]
     fn an_unobstructed_star_is_fully_visible() {
-        let visibility = StarOcclusion::new().visibility(sun(), SUN_RADIUS, std::iter::once(earth_with_limb_at(2.0)));
+        let visibility = LightOcclusion::new().visibility(sun(), SUN_RADIUS, std::iter::once(earth_with_limb_at(2.0)));
 
         assert_eq!(visibility, 1.0);
     }
 
     #[test]
     fn a_star_behind_a_body_is_hidden() {
-        let visibility = StarOcclusion::new().visibility(sun(), SUN_RADIUS, std::iter::once(earth_with_limb_at(-2.0)));
+        let visibility = LightOcclusion::new().visibility(sun(), SUN_RADIUS, std::iter::once(earth_with_limb_at(-2.0)));
 
         assert_eq!(visibility, 0.0);
     }
 
     #[test]
     fn a_limb_through_the_center_hides_half_the_disk() {
-        let visibility = StarOcclusion::new().visibility(sun(), SUN_RADIUS, std::iter::once(earth_with_limb_at(0.0)));
+        let visibility = LightOcclusion::new().visibility(sun(), SUN_RADIUS, std::iter::once(earth_with_limb_at(0.0)));
 
         assert!((visibility - 0.5).abs() < 0.03, "{visibility}");
     }
@@ -139,7 +139,7 @@ mod tests {
         let behind = (sun() * 2.0, EARTH_RADIUS * 1000.0);
 
         assert_eq!(
-            StarOcclusion::new().visibility(sun(), SUN_RADIUS, std::iter::once(behind)),
+            LightOcclusion::new().visibility(sun(), SUN_RADIUS, std::iter::once(behind)),
             1.0
         );
     }
