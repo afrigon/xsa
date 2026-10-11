@@ -1,4 +1,3 @@
-mod adaptation_config;
 mod animation_config;
 mod antialiasing_config;
 mod antialiasing_kind;
@@ -11,7 +10,6 @@ mod exposure_mode;
 mod key_chord;
 mod render_config;
 
-pub use adaptation_config::AdaptationConfig;
 pub use animation_config::AnimationConfig;
 pub use antialiasing_config::AntialiasingConfig;
 pub use antialiasing_kind::AntialiasingKind;

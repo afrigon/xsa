@@ -1,11 +1,13 @@
-use super::{AdaptationDocument, ConfigChoice, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues};
+use super::{ConfigChoice, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues, NumberRange};
 use crate::config::{ExposureConfig, ExposureMode};
+
+// Below the light of the night sky, above the brightest sunlit scene.
+const MINIMUM_EV100: f32 = -15.0;
+const MAXIMUM_EV100: f32 = 25.0;
 
 pub struct ExposureDocument {
     mode: Option<ExposureMode>,
     ev100: Option<f32>,
-    compensation: Option<f32>,
-    adaptation: AdaptationDocument,
 }
 
 impl ExposureDocument {
@@ -15,15 +17,17 @@ impl ExposureDocument {
             names: <ExposureMode as ConfigChoice>::names,
         },
     );
-    pub const EV100: ConfigKey = ConfigKey::session("render.exposure.ev100", ConfigValueKind::NUMBER);
-    pub const COMPENSATION: ConfigKey = ConfigKey::session("render.exposure.compensation", ConfigValueKind::NUMBER);
+    pub const EV100: ConfigKey = ConfigKey::session(
+        "render.exposure.ev100",
+        ConfigValueKind::Number {
+            range: NumberRange::between(MINIMUM_EV100, MAXIMUM_EV100),
+        },
+    );
 
     pub fn read(values: &ConfigValues) -> ExposureDocument {
         ExposureDocument {
             mode: values.choice(ExposureDocument::MODE),
             ev100: values.number(ExposureDocument::EV100),
-            compensation: values.number(ExposureDocument::COMPENSATION),
-            adaptation: AdaptationDocument::read(values),
         }
     }
 
@@ -31,18 +35,11 @@ impl ExposureDocument {
         ExposureConfig {
             mode: self.mode.unwrap_or(defaults.mode),
             ev100: self.ev100.unwrap_or(defaults.ev100),
-            compensation: self.compensation.unwrap_or(defaults.compensation),
-            adaptation: self.adaptation.into_config(&defaults.adaptation),
         }
     }
 
     pub fn write(config: &ExposureConfig, layer: &mut ConfigLayer) {
         layer.set(ExposureDocument::MODE.path, config.mode.config_name().into());
         layer.set(ExposureDocument::EV100.path, ConfigValueKind::number(config.ev100));
-        layer.set(
-            ExposureDocument::COMPENSATION.path,
-            ConfigValueKind::number(config.compensation),
-        );
-        AdaptationDocument::write(&config.adaptation, layer);
     }
 }

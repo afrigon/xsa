@@ -1,6 +1,6 @@
 use super::{
-    AdaptationDocument, AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind,
-    ExposureDocument, RenderDocument,
+    AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, ExposureDocument,
+    RenderDocument,
 };
 
 #[derive(Clone, Copy)]
@@ -18,9 +18,6 @@ impl ConfigKey {
         BloomDocument::STRENGTH,
         ExposureDocument::MODE,
         ExposureDocument::EV100,
-        ExposureDocument::COMPENSATION,
-        AdaptationDocument::DARK_TO_LIGHT,
-        AdaptationDocument::LIGHT_TO_DARK,
         AntialiasingDocument::KIND,
         RenderDocument::WIREFRAME,
         RenderDocument::SHADER_OVERRIDE,

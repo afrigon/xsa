@@ -16,7 +16,6 @@ pub(super) struct Frame {
     pub stars: Buffer,
     pub materials: Buffer,
     pub histogram: Buffer,
-    pub histogram_ready: bool,
 }
 
 impl Frame {
@@ -70,7 +69,6 @@ impl Frame {
             stars,
             materials,
             histogram,
-            histogram_ready: false,
         })
     }
 

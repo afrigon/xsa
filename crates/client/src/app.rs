@@ -294,12 +294,13 @@ impl App {
     fn capture(&mut self) -> anyhow::Result<CapturedImage> {
         self.update_user_interface()?;
         let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
+        let cameras = self.cameras.as_ref().context("the cameras are not ready")?;
 
         if let Some(world) = &self.world {
             world.sync(renderer);
+            renderer.set_illuminance(world.illuminance_at(cameras.camera().position) as f32);
         }
 
-        let cameras = self.cameras.as_ref().context("the cameras are not ready")?;
         renderer.capture(cameras.camera())
     }
 
@@ -311,6 +312,7 @@ impl App {
 
         if let Some(world) = &self.world {
             world.sync(renderer);
+            renderer.set_illuminance(world.illuminance_at(cameras.camera().position) as f32);
         }
 
         renderer.draw(cameras.camera())
@@ -342,6 +344,8 @@ impl App {
             DebugOverlayView {
                 frames_per_second: self.frame_rate.frames_per_second(),
                 triangles: renderer.statistics().triangles,
+                ev100: renderer.statistics().ev100,
+                anchor_ev100: renderer.statistics().anchor_ev100,
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
         });

@@ -36,12 +36,12 @@ use glam::{Mat4, Vec2, Vec3};
 use render_graph::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
+use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
 use crate::camera::Camera;
 use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
 use crate::vulkan::{Buffer, Image, MemoryLocation, SAMPLED_LAYOUT, Swapchain};
-use auto_exposure::HISTOGRAM_BINS;
 use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
@@ -59,8 +59,6 @@ use texture::DdsImage;
 const FRAMES_IN_FLIGHT: usize = 2;
 const BYTES_PER_PIXEL: usize = 4;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
-// Background light from stars and zodiacal light, in lux.
-const STARLIGHT_ILLUMINANCE: f32 = 2e-4;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_STAR_CAPACITY: usize = 4;
 const MATERIAL_CAPACITY: usize = 256;
@@ -89,10 +87,10 @@ pub struct Renderer {
     scene: Scene,
     render: RenderConfig,
     exposure: AutoExposure,
+    illuminance: Option<f32>,
     capture: Option<Buffer>,
     user_interface: DrawList,
     statistics: FrameStatistics,
-    histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     star_data: Vec<StarData>,
     visible_objects: Vec<ObjectHandle>,
@@ -141,10 +139,10 @@ impl Renderer {
             scene: Scene::default(),
             render: config.render.clone(),
             exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
+            illuminance: None,
             capture: None,
             user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
-            histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
             visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
@@ -174,6 +172,11 @@ impl Renderer {
         self.statistics
     }
 
+    // Illuminance at the camera, in lux.
+    pub fn set_illuminance(&mut self, illuminance: f32) {
+        self.illuminance = Some(illuminance);
+    }
+
     // Atlas updates no frame has recorded yet carry over, or their glyphs would stay blank.
     pub fn set_user_interface(&mut self, mut draw_list: DrawList) {
         draw_list
@@ -199,12 +202,10 @@ impl Renderer {
 
     // Frames to render after a change before the image reflects it: temporal effects carry earlier frames forward.
     pub fn settling_frames(&self) -> u32 {
-        let antialiasing = match self.render.antialiasing.kind {
+        match self.render.antialiasing.kind {
             Some(AntialiasingKind::Taa) => TaaPass::settling_frames(),
             _ => 0,
-        };
-
-        antialiasing.max(self.exposure.settling_frames())
+        }
     }
 
     // Wireframe needs the polygon mode to be dynamic state.
@@ -270,12 +271,11 @@ impl Renderer {
             self.temporal.reset();
         }
 
-        self.update_exposure()?;
+        self.update_exposure();
         self.write_frame_data(camera)?;
         self.cull_objects(camera);
         self.record_frame(image_index)?;
         self.submit_and_present(image_index)?;
-        self.frames[self.frame_index].histogram_ready = true;
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
 
         Ok(())
@@ -355,15 +355,10 @@ impl Renderer {
         Ok(pixels)
     }
 
-    fn update_exposure(&mut self) -> anyhow::Result<()> {
-        let frame = &self.frames[self.frame_index];
-
-        if frame.histogram_ready {
-            frame.histogram.read(&mut self.histogram)?;
-            self.exposure.update(&self.histogram);
+    fn update_exposure(&mut self) {
+        if let Some(illuminance) = self.illuminance {
+            self.exposure.update(illuminance);
         }
-
-        Ok(())
     }
 
     fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
@@ -418,7 +413,7 @@ impl Renderer {
             jitter,
             exposure: self.exposure.exposure(),
             tonemapper: self.render.tonemapper.shader_id(),
-            starlight_illuminance: STARLIGHT_ILLUMINANCE,
+            starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             shading_model: self.render.shading_model.shader_id(),
         };
 
@@ -543,6 +538,8 @@ impl Renderer {
         unsafe { device.handle().end_command_buffer(frame.command_buffer) }?;
         self.statistics = FrameStatistics {
             triangles: context.triangles.get(),
+            ev100: self.exposure.ev100(),
+            anchor_ev100: self.exposure.anchor_ev100(),
         };
         self.user_interface.atlas_updates.clear();
 

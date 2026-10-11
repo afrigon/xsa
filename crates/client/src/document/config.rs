@@ -1,4 +1,3 @@
-mod adaptation_document;
 mod animation_document;
 mod antialiasing_document;
 mod antialiasing_kind_choice;
@@ -27,7 +26,6 @@ pub use exposure_document::ExposureDocument;
 pub use number_range::NumberRange;
 pub use render_document::RenderDocument;
 
-use adaptation_document::AdaptationDocument;
 use animation_document::AnimationDocument;
 use bind_document::BindDocument;
 use config_layer::ConfigLayer;
@@ -362,17 +360,11 @@ mod tests {
         let file = TestFile::new("range", None);
         let mut document = ConfigDocument::load(file.path()).unwrap();
         assert!(document.set("animations.duration-scale", "-1").is_err());
-        assert!(document.set("render.exposure.adaptation.light-to-dark", "11").is_err());
-        document.set("render.exposure.adaptation.light-to-dark", "10").unwrap();
-        assert_eq!(
-            document
-                .config()
-                .render
-                .exposure
-                .adaptation
-                .light_to_dark_half_life_seconds,
-            10.0
-        );
+        document.set("animations.duration-scale", "0").unwrap();
+        assert_eq!(document.config().animations.duration_scale, 0.0);
+        assert!(document.set("render.exposure.ev100", "26").is_err());
+        document.set("render.exposure.ev100", "25").unwrap();
+        assert_eq!(document.config().render.exposure.ev100, 25.0);
     }
 
     #[test]
@@ -393,10 +385,7 @@ mod tests {
         let document = ConfigDocument::load(file.path()).unwrap();
         let listing = document.get("render.exposure").unwrap();
         assert!(listing.contains("render.exposure.mode eye-adaptation"), "{listing}");
-        assert!(
-            listing.contains("render.exposure.adaptation.light-to-dark 1.5"),
-            "{listing}"
-        );
+        assert!(listing.contains("render.exposure.ev100 15"), "{listing}");
         assert!(document.get("render.nothing").is_err());
     }
 }
