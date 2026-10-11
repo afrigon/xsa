@@ -11,6 +11,7 @@ mod gpu_context;
 mod gpu_data;
 mod graph_textures;
 mod lens;
+mod lens_lights;
 mod light_occlusion;
 mod light_projection;
 mod material;
@@ -26,6 +27,7 @@ mod tonemapper;
 pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
 pub use frame_statistics::FrameStatistics;
+pub use lens_lights::LensLights;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star};
 pub use shader_binaries::ShaderBinaries;
@@ -103,6 +105,7 @@ pub struct Renderer {
     capture: Option<Buffer>,
     user_interface: DrawList,
     statistics: FrameStatistics,
+    lens_lights: LensLights,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     star_data: Vec<StarData>,
@@ -163,6 +166,7 @@ impl Renderer {
             capture: None,
             user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
+            lens_lights: LensLights::default(),
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
@@ -496,6 +500,7 @@ impl Renderer {
 
         self.star_data.clear();
         self.projected_light_data.clear();
+        self.lens_lights = LensLights::default();
         let projection = LightProjection::new(camera, extent);
         self.focal_length_pixels = projection.focal_length_pixels();
         let viewport = Vec2::new(extent.width as f32, extent.height as f32);
@@ -525,18 +530,24 @@ impl Renderer {
                 .light_occlusion
                 .visibility(camera_relative, object.bounding_radius, occluders);
             if let Some(lens) = &self.lens {
-                let projected = projection
-                    .project(
-                        camera_relative,
-                        object.bounding_radius,
-                        light.intensity,
-                        visibility,
-                        lens.vignetting_exponent,
-                    )
-                    .filter(|projected| {
-                        lens.reaches_screen(projected, frame_data.exposure, viewport, self.focal_length_pixels)
-                    });
-                self.projected_light_data.extend(projected);
+                let projected = projection.project(
+                    camera_relative,
+                    object.bounding_radius,
+                    light.intensity,
+                    visibility,
+                    lens.vignetting_exponent,
+                );
+
+                match projected {
+                    None => self.lens_lights.behind += 1,
+                    Some(projected)
+                        if lens.reaches_screen(&projected, frame_data.exposure, viewport, self.focal_length_pixels) =>
+                    {
+                        self.lens_lights.drawn += 1;
+                        self.projected_light_data.push(projected);
+                    }
+                    Some(_) => self.lens_lights.culled += 1,
+                }
             }
         }
 
@@ -644,6 +655,7 @@ impl Renderer {
             anchor_ev100: self.exposure.anchor_ev100(),
             star_visibility: self.star_visibility.visibility(),
             light: self.star_visibility.light(),
+            lens_lights: self.lens_lights,
         };
         self.user_interface.atlas_updates.clear();
 

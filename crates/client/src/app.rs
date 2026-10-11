@@ -348,6 +348,7 @@ impl App {
                 anchor_ev100: renderer.statistics().anchor_ev100,
                 star_visibility: renderer.statistics().star_visibility,
                 light: renderer.statistics().light,
+                lens_lights: renderer.statistics().lens_lights,
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
         });
