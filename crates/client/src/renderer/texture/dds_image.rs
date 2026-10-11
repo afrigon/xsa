@@ -16,6 +16,7 @@ const FOURCC_OFFSET: usize = 84;
 const DXGI_FORMAT_OFFSET: usize = 128;
 const MISC_FLAGS_OFFSET: usize = 136;
 const WORD_BYTES: usize = 4;
+const DXGI_FORMAT_R16G16B16A16_FLOAT: u32 = 10;
 const DXGI_FORMAT_R8G8B8A8_UNORM: u32 = 28;
 const DXGI_FORMAT_R8G8B8A8_UNORM_SRGB: u32 = 29;
 const DXGI_FORMAT_BC4_UNORM: u32 = 80;
@@ -28,6 +29,7 @@ const BLOCK_SIZE: usize = 4;
 const BC4_BLOCK_BYTES: usize = 8;
 const BC5_BC7_BLOCK_BYTES: usize = 16;
 const RGBA8_PIXEL_BYTES: usize = 4;
+const RGBA16_FLOAT_PIXEL_BYTES: usize = 8;
 
 pub(in crate::renderer) struct DdsImage {
     format: vk::Format,
@@ -57,6 +59,7 @@ impl DdsImage {
         let mip_levels = word(MIP_COUNT_OFFSET).max(1);
         let srgb = color_space == ColorSpace::Srgb;
         let format = match word(DXGI_FORMAT_OFFSET) {
+            DXGI_FORMAT_R16G16B16A16_FLOAT => vk::Format::R16G16B16A16_SFLOAT,
             DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB if srgb => vk::Format::R8G8B8A8_SRGB,
             DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => vk::Format::R8G8B8A8_UNORM,
             DXGI_FORMAT_BC7_UNORM | DXGI_FORMAT_BC7_UNORM_SRGB if srgb => vk::Format::BC7_SRGB_BLOCK,
@@ -156,6 +159,7 @@ impl DdsImage {
             vk::Format::BC5_UNORM_BLOCK | vk::Format::BC7_UNORM_BLOCK | vk::Format::BC7_SRGB_BLOCK => {
                 blocks * BC5_BC7_BLOCK_BYTES
             }
+            vk::Format::R16G16B16A16_SFLOAT => width * height * RGBA16_FLOAT_PIXEL_BYTES,
             _ => width * height * RGBA8_PIXEL_BYTES,
         }
     }

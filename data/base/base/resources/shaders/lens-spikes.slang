@@ -1,6 +1,12 @@
 import common.frame;
 import common.lens;
 
+[[vk::binding(0, 0)]]
+SamplerState clampingSampler;
+
+[[vk::binding(3, 0)]]
+Texture2D textures[];
+
 [[vk::push_constant]]
 ConstantBuffer<LensConstants> constants;
 
@@ -27,15 +33,30 @@ SpikesOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_In
 // per blade, an odd one two.
 [shader("fragment")]
 float4 fragmentMain(SpikesOutput input) : SV_Target {
-    if (constants.spikesTexture != noTexture) {
-        discard;
-    }
-
     ProjectedStarData star = constants.stars[input.star];
     float2 viewportSize = constants.frame->viewportSize;
     float3 toPixel = pixelRay(input.position.xy, viewportSize, constants.focalLengthPixels);
     float3 toStar = pixelRay(star.screenPosition, viewportSize, constants.focalLengthPixels);
     float angle = atan2(length(cross(toPixel, toStar)), dot(toPixel, toStar));
+
+    // The star's own disk is drawn by the scene; the lens adds only what lies outside it.
+    if (angle < star.angularRadius) {
+        discard;
+    }
+
+    if (constants.spikesTexture != noTexture) {
+        float2 offset = input.position.xy - star.screenPosition;
+        float2 uv = 0.5 + normalize(offset) * angle / (2.0 * constants.spikesLength);
+
+        if (any(uv < 0.0) || any(uv > 1.0)) {
+            discard;
+        }
+
+        float3 sampled = textures[constants.spikesTexture].Sample(clampingSampler, uv).rgb;
+        float3 textured = constants.spikesIntensity * star.illuminance * star.visibility * sampled;
+        return float4(textured * constants.frame->exposure, 1.0);
+    }
+
     uint rayCount = constants.blades % 2 == 0 ? constants.blades : constants.blades * 2;
     float raySpacing = radians(360.0) / rayCount;
     float2 offset = input.position.xy - star.screenPosition;

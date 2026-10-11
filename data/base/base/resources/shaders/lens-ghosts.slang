@@ -1,6 +1,12 @@
 import common.frame;
 import common.lens;
 
+[[vk::binding(0, 0)]]
+SamplerState clampingSampler;
+
+[[vk::binding(3, 0)]]
+Texture2D textures[];
+
 [[vk::push_constant]]
 ConstantBuffer<LensConstants> constants;
 
@@ -27,7 +33,16 @@ GhostOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_Ins
     float2 center = lerp(star.screenPosition, viewportSize * 0.5, ghost.position);
     float halfHeight = ghost.size * viewportSize.y * 0.5;
     float2 corner = quadCorners[vertexIndex];
-    float2 pixel = center + corner * float2(halfHeight * ghost.aspectRatio, halfHeight);
+    float2 extent = corner * float2(halfHeight * ghost.aspectRatio, halfHeight);
+
+    // Traced ghosts are baked with their local x axis along the line from the screen center toward the star.
+    if (ghost.shape == ghostShapeTexture) {
+        float2 fromCenter = star.screenPosition - viewportSize * 0.5;
+        float2 axis = length(fromCenter) > 0.0 ? normalize(fromCenter) : float2(1.0, 0.0);
+        extent = axis * extent.x + float2(-axis.y, axis.x) * extent.y;
+    }
+
+    float2 pixel = center + extent;
     GhostOutput output;
     output.position = float4(pixel / viewportSize * 2.0 - 1.0, 0.0, 1.0);
     output.local = corner;
@@ -123,11 +138,17 @@ float3 ringShape(float2 local, GhostData ghost) {
 float4 fragmentMain(GhostOutput input) : SV_Target {
     GhostData ghost = constants.ghosts[input.ghost];
 
+    float3 shape;
+
     if (ghost.shape == ghostShapeTexture) {
-        discard;
+        float2 uv = input.local * 0.5 + 0.5;
+        shape = textures[NonUniformResourceIndex(ghost.texture)].Sample(clampingSampler, uv).rgb;
+    } else if (ghost.shape == ghostShapeRing) {
+        shape = ringShape(input.local, ghost);
+    } else {
+        shape = polygonShape(input.local, ghost);
     }
 
-    float3 shape = ghost.shape == ghostShapeRing ? ringShape(input.local, ghost) : polygonShape(input.local, ghost);
     ProjectedStarData star = constants.stars[input.star];
     float3 luminance = ghost.intensity * ghost.tint * star.illuminance * star.visibility * shape;
     return float4(luminance * constants.frame->exposure, 1.0);
