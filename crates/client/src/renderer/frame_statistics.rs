@@ -4,4 +4,5 @@ pub struct FrameStatistics {
     pub ev100: f32,
     pub anchor_ev100: f32,
     pub star_visibility: f32,
+    pub light: f32,
 }

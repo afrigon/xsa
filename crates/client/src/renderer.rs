@@ -564,6 +564,7 @@ impl Renderer {
             ev100: self.exposure.ev100(),
             anchor_ev100: self.exposure.anchor_ev100(),
             star_visibility: self.star_visibility.visibility(),
+            light: self.star_visibility.light(),
         };
         self.user_interface.atlas_updates.clear();
 
