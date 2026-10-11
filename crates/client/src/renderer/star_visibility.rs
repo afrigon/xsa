@@ -14,7 +14,7 @@ const STARS_HIDDEN_BRIGHTNESS: f32 = 0.3;
 const STARS_FADE_IN_HALF_LIFE_SECONDS: f32 = 2.0;
 const STARS_FADE_OUT_HALF_LIFE_SECONDS: f32 = 0.1;
 // The starfield's own exposure, chosen for looks rather than physics: it does not follow the scene's.
-const STARFIELD_EV100: f32 = -7.0;
+const STARFIELD_EV100: f32 = -6.0;
 
 pub struct StarVisibility {
     visibility: Option<f32>,
