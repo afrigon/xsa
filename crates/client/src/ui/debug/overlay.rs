@@ -9,6 +9,7 @@ pub struct DebugOverlayView {
     pub triangles: u64,
     pub ev100: f32,
     pub anchor_ev100: f32,
+    pub star_visibility: f32,
 }
 
 impl View for DebugOverlayView {
@@ -18,8 +19,8 @@ impl View for DebugOverlayView {
             .map_or_else(|| "–".to_string(), |rate| format!("{rate:.0}"));
 
         Text::new(format!(
-            "{frames_per_second} fps\n{} triangles\nEV {:.1} · anchor {:.1}",
-            self.triangles, self.ev100, self.anchor_ev100
+            "{frames_per_second} fps\n{} triangles\nEV {:.1} · anchor {:.1} · stars {:.2}",
+            self.triangles, self.ev100, self.anchor_ev100, self.star_visibility
         ))
         .text_style("telemetry")
         .padding(EdgeInsets::all(PADDING))

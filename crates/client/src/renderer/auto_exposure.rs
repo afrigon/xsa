@@ -1,7 +1,5 @@
 use std::time::Instant;
 
-// Must match histogram.slang.
-pub(in crate::renderer) const HISTOGRAM_BINS: usize = 256;
 const ISO_SENSITIVITY: f32 = 100.0;
 // The incident-light meter calibration constant C, in lux·s.
 const INCIDENT_METER_CALIBRATION: f32 = 250.0;
@@ -54,7 +52,11 @@ impl AutoExposure {
 
     // Scales luminance (cd/m²) so that a scene metered at this EV100 lands mid-range, as a camera with ISO 100 would.
     pub fn exposure(&self) -> f32 {
-        1.0 / (EXPOSURE_SCALE * self.ev100.exp2())
+        AutoExposure::exposure_for(self.ev100)
+    }
+
+    pub fn exposure_for(ev100: f32) -> f32 {
+        1.0 / (EXPOSURE_SCALE * ev100.exp2())
     }
 
     fn transition(&self, current: f32, target: f32, seconds: f32) -> f32 {

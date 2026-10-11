@@ -31,7 +31,7 @@ SurfaceOutput fragmentMain(SkyOutput input) {
     float3 cubeDirection = mul(material.transform, float4(direction, 0.0)).xyz;
     float3 sky = cubeTextures[material.texture].Sample(linearSampler, cubeDirection).rgb;
     SurfaceOutput output;
-    output.color = float4(sky * material.luminance * constants.frame.exposure, 1.0);
+    output.color = float4(sky * material.luminance * constants.frame.starfieldExposure, 1.0);
     output.motion = motionVector(currentClip, previousClip);
     return output;
 }

@@ -1,9 +1,9 @@
 use ash::vk;
 
 use super::MATERIAL_CAPACITY;
-use super::auto_exposure::HISTOGRAM_BINS;
 use super::gpu_data::{FrameData, ObjectData, StarData};
 use super::material::MaterialData;
+use super::star_visibility::HISTOGRAM_BINS;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
 
 pub(super) struct Frame {
@@ -16,6 +16,7 @@ pub(super) struct Frame {
     pub stars: Buffer,
     pub materials: Buffer,
     pub histogram: Buffer,
+    pub histogram_ready: bool,
 }
 
 impl Frame {
@@ -69,6 +70,7 @@ impl Frame {
             stars,
             materials,
             histogram,
+            histogram_ready: false,
         })
     }
 

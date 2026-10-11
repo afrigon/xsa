@@ -15,6 +15,7 @@ mod passes;
 mod render_passes;
 mod scene;
 mod shader_binaries;
+mod star_visibility;
 mod temporal_history;
 mod texture;
 mod tonemapper;
@@ -53,6 +54,7 @@ use graph_textures::GraphTextures;
 use material::MaterialData;
 use passes::TaaPass;
 use render_passes::RenderPasses;
+use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use texture::DdsImage;
 
@@ -88,9 +90,11 @@ pub struct Renderer {
     render: RenderConfig,
     exposure: AutoExposure,
     illuminance: Option<f32>,
+    star_visibility: StarVisibility,
     capture: Option<Buffer>,
     user_interface: DrawList,
     statistics: FrameStatistics,
+    histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
     star_data: Vec<StarData>,
     visible_objects: Vec<ObjectHandle>,
@@ -140,9 +144,11 @@ impl Renderer {
             render: config.render.clone(),
             exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
             illuminance: None,
+            star_visibility: StarVisibility::new(),
             capture: None,
             user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
+            histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
             visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
@@ -188,6 +194,7 @@ impl Renderer {
     pub fn configure(&mut self, render: &RenderConfig, animations: &AnimationConfig) {
         self.render = render.clone();
         self.exposure.configure(animations.duration_scale);
+        self.star_visibility.configure(animations.duration_scale);
 
         if render.wireframe && !self.supports_wireframe() {
             tracing::warn!("wireframe is unsupported by this device");
@@ -202,10 +209,13 @@ impl Renderer {
 
     // Frames to render after a change before the image reflects it: temporal effects carry earlier frames forward.
     pub fn settling_frames(&self) -> u32 {
-        match self.render.antialiasing.kind {
+        let antialiasing = match self.render.antialiasing.kind {
             Some(AntialiasingKind::Taa) => TaaPass::settling_frames(),
             _ => 0,
-        }
+        };
+
+        // A frame's histogram is read back when its frame slot comes round again.
+        antialiasing.max(FRAMES_IN_FLIGHT as u32)
     }
 
     // Wireframe needs the polygon mode to be dynamic state.
@@ -272,10 +282,12 @@ impl Renderer {
         }
 
         self.update_exposure();
+        self.update_star_visibility()?;
         self.write_frame_data(camera)?;
         self.cull_objects(camera);
         self.record_frame(image_index)?;
         self.submit_and_present(image_index)?;
+        self.frames[self.frame_index].histogram_ready = true;
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
 
         Ok(())
@@ -361,6 +373,17 @@ impl Renderer {
         }
     }
 
+    fn update_star_visibility(&mut self) -> anyhow::Result<()> {
+        let frame = &self.frames[self.frame_index];
+
+        if frame.histogram_ready {
+            frame.histogram.read(&mut self.histogram)?;
+            self.star_visibility.update(&self.histogram);
+        }
+
+        Ok(())
+    }
+
     fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
         let device = self.gpu.device.handle();
         let frame = &self.frames[self.frame_index];
@@ -408,7 +431,7 @@ impl Renderer {
             previous_view_projection: self.temporal.previous_view_projection(),
             stars,
             star_count: self.scene.stars().len() as u32,
-            padding: 0,
+            starfield_exposure: self.star_visibility.starfield_exposure(),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             jitter,
             exposure: self.exposure.exposure(),
@@ -540,6 +563,7 @@ impl Renderer {
             triangles: context.triangles.get(),
             ev100: self.exposure.ev100(),
             anchor_ev100: self.exposure.anchor_ev100(),
+            star_visibility: self.star_visibility.visibility(),
         };
         self.user_interface.atlas_updates.clear();
 

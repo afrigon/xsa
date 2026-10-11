@@ -346,6 +346,7 @@ impl App {
                 triangles: renderer.statistics().triangles,
                 ev100: renderer.statistics().ev100,
                 anchor_ev100: renderer.statistics().anchor_ev100,
+                star_visibility: renderer.statistics().star_visibility,
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
         });

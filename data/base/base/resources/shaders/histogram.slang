@@ -3,7 +3,7 @@ import common.frame;
 [[vk::binding(3, 0)]]
 Texture2D textures[];
 
-// Must match the histogram constants in client/src/renderer/exposure.rs.
+// Must match the histogram constants in client/src/renderer/star_visibility.rs.
 static const uint binCount = 256;
 static const float minimumLog2Luminance = -16.0;
 static const float maximumLog2Luminance = 32.0;
@@ -37,7 +37,7 @@ void computeMain(uint3 pixel: SV_DispatchThreadID, uint threadIndex: SV_GroupInd
     FrameData frame = *constants.frame;
     if (all(pixel.xy < uint2(frame.viewportSize))) {
         float3 color = textures[constants.sceneColorTexture].Load(int3(int2(pixel.xy), 0)).rgb;
-        float luminance = dot(color, float3(0.2126, 0.7152, 0.0722)) / frame.exposure;
+        float luminance = dot(color, float3(0.2126, 0.7152, 0.0722));
         InterlockedAdd(localBins[binIndex(luminance)], 1);
     }
     GroupMemoryBarrierWithGroupSync();
