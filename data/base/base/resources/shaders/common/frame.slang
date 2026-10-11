@@ -10,7 +10,7 @@ struct FrameData {
     float4x4 previousViewProjection;
     StarData *stars;
     uint starCount;
-    uint padding;
+    float starfieldExposure;
     float2 viewportSize;
     float2 jitter;
     float exposure;

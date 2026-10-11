@@ -5,7 +5,7 @@ use crate::command::{Routable, Route};
 
 #[derive(Subcommands)]
 pub enum ConfigAction {
-    /// Show a setting, every setting below a prefix such as render.exposure, or all of them
+    /// Show a setting, every setting below a prefix such as render.bloom, or all of them
     Get(ConfigGetCommand),
     /// Change a setting, e.g. config set render.bloom.strength 0.05
     Set(ConfigSetCommand),

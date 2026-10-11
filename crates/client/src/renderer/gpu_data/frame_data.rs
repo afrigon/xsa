@@ -11,7 +11,7 @@ pub(in crate::renderer) struct FrameData {
     pub previous_view_projection: Mat4,
     pub stars: vk::DeviceAddress,
     pub star_count: u32,
-    pub padding: u32,
+    pub starfield_exposure: f32,
     pub viewport_size: Vec2,
     pub jitter: Vec2,
     pub exposure: f32,

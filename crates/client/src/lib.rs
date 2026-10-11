@@ -8,7 +8,6 @@ mod input;
 mod mesh;
 mod remote_server;
 mod renderer;
-mod star_light;
 mod theme;
 mod ui;
 mod vulkan;

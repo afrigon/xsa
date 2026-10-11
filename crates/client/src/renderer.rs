@@ -15,6 +15,7 @@ mod passes;
 mod render_passes;
 mod scene;
 mod shader_binaries;
+mod star_visibility;
 mod temporal_history;
 mod texture;
 mod tonemapper;
@@ -36,12 +37,12 @@ use glam::{Mat4, Vec2, Vec3};
 use render_graph::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
+use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
 use crate::camera::Camera;
 use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
 use crate::vulkan::{Buffer, Image, MemoryLocation, SAMPLED_LAYOUT, Swapchain};
-use auto_exposure::HISTOGRAM_BINS;
 use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
@@ -53,14 +54,13 @@ use graph_textures::GraphTextures;
 use material::MaterialData;
 use passes::TaaPass;
 use render_passes::RenderPasses;
+use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use texture::DdsImage;
 
 const FRAMES_IN_FLIGHT: usize = 2;
 const BYTES_PER_PIXEL: usize = 4;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
-// Background light from stars and zodiacal light, in lux.
-const STARLIGHT_ILLUMINANCE: f32 = 2e-4;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_STAR_CAPACITY: usize = 4;
 const MATERIAL_CAPACITY: usize = 256;
@@ -89,6 +89,8 @@ pub struct Renderer {
     scene: Scene,
     render: RenderConfig,
     exposure: AutoExposure,
+    illuminance: Option<f32>,
+    star_visibility: StarVisibility,
     capture: Option<Buffer>,
     user_interface: DrawList,
     statistics: FrameStatistics,
@@ -140,7 +142,9 @@ impl Renderer {
         Ok(Self {
             scene: Scene::default(),
             render: config.render.clone(),
-            exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
+            exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
+            illuminance: None,
+            star_visibility: StarVisibility::new(),
             capture: None,
             user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
@@ -174,6 +178,11 @@ impl Renderer {
         self.statistics
     }
 
+    // Illuminance at the camera, in lux.
+    pub fn set_illuminance(&mut self, illuminance: f32) {
+        self.illuminance = Some(illuminance);
+    }
+
     // Atlas updates no frame has recorded yet carry over, or their glyphs would stay blank.
     pub fn set_user_interface(&mut self, mut draw_list: DrawList) {
         draw_list
@@ -184,7 +193,8 @@ impl Renderer {
 
     pub fn configure(&mut self, render: &RenderConfig, animations: &AnimationConfig) {
         self.render = render.clone();
-        self.exposure.configure(&render.exposure, animations.duration_scale);
+        self.exposure.configure(animations.duration_scale);
+        self.star_visibility.configure(animations.duration_scale);
 
         if render.wireframe && !self.supports_wireframe() {
             tracing::warn!("wireframe is unsupported by this device");
@@ -204,7 +214,8 @@ impl Renderer {
             _ => 0,
         };
 
-        antialiasing.max(self.exposure.settling_frames())
+        // A frame's histogram is read back when its frame slot comes round again.
+        antialiasing.max(FRAMES_IN_FLIGHT as u32)
     }
 
     // Wireframe needs the polygon mode to be dynamic state.
@@ -270,7 +281,8 @@ impl Renderer {
             self.temporal.reset();
         }
 
-        self.update_exposure()?;
+        self.update_exposure();
+        self.update_star_visibility()?;
         self.write_frame_data(camera)?;
         self.cull_objects(camera);
         self.record_frame(image_index)?;
@@ -355,12 +367,18 @@ impl Renderer {
         Ok(pixels)
     }
 
-    fn update_exposure(&mut self) -> anyhow::Result<()> {
+    fn update_exposure(&mut self) {
+        if let Some(illuminance) = self.illuminance {
+            self.exposure.update(illuminance);
+        }
+    }
+
+    fn update_star_visibility(&mut self) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
 
         if frame.histogram_ready {
             frame.histogram.read(&mut self.histogram)?;
-            self.exposure.update(&self.histogram);
+            self.star_visibility.update(&self.histogram);
         }
 
         Ok(())
@@ -413,12 +431,12 @@ impl Renderer {
             previous_view_projection: self.temporal.previous_view_projection(),
             stars,
             star_count: self.scene.stars().len() as u32,
-            padding: 0,
+            starfield_exposure: self.star_visibility.starfield_exposure(),
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             jitter,
             exposure: self.exposure.exposure(),
             tonemapper: self.render.tonemapper.shader_id(),
-            starlight_illuminance: STARLIGHT_ILLUMINANCE,
+            starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             shading_model: self.render.shading_model.shader_id(),
         };
 
@@ -543,6 +561,10 @@ impl Renderer {
         unsafe { device.handle().end_command_buffer(frame.command_buffer) }?;
         self.statistics = FrameStatistics {
             triangles: context.triangles.get(),
+            ev100: self.exposure.ev100(),
+            anchor_ev100: self.exposure.anchor_ev100(),
+            star_visibility: self.star_visibility.visibility(),
+            light: self.star_visibility.light(),
         };
         self.user_interface.atlas_updates.clear();
 

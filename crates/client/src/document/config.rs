@@ -1,4 +1,3 @@
-mod adaptation_document;
 mod animation_document;
 mod antialiasing_document;
 mod antialiasing_kind_choice;
@@ -9,8 +8,6 @@ mod config_key;
 mod config_layer;
 mod config_value_kind;
 mod config_values;
-mod exposure_document;
-mod exposure_mode_choice;
 mod key_chord_name;
 mod number_range;
 mod render_document;
@@ -23,11 +20,9 @@ pub use bloom_document::BloomDocument;
 pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;
 pub use config_value_kind::ConfigValueKind;
-pub use exposure_document::ExposureDocument;
 pub use number_range::NumberRange;
 pub use render_document::RenderDocument;
 
-use adaptation_document::AdaptationDocument;
 use animation_document::AnimationDocument;
 use bind_document::BindDocument;
 use config_layer::ConfigLayer;
@@ -125,7 +120,7 @@ impl ConfigDocument {
         }
     }
 
-    // A key prints its value; a prefix such as `render.exposure` prints every key below it.
+    // A key prints its value; a prefix such as `render.bloom` prints every key below it.
     pub fn get(&self, path: &str) -> anyhow::Result<String> {
         if let Some(key) = ConfigKey::find(path) {
             return Ok(ConfigValueKind::text(self.value(key)));
@@ -362,17 +357,8 @@ mod tests {
         let file = TestFile::new("range", None);
         let mut document = ConfigDocument::load(file.path()).unwrap();
         assert!(document.set("animations.duration-scale", "-1").is_err());
-        assert!(document.set("render.exposure.adaptation.light-to-dark", "11").is_err());
-        document.set("render.exposure.adaptation.light-to-dark", "10").unwrap();
-        assert_eq!(
-            document
-                .config()
-                .render
-                .exposure
-                .adaptation
-                .light_to_dark_half_life_seconds,
-            10.0
-        );
+        document.set("animations.duration-scale", "0").unwrap();
+        assert_eq!(document.config().animations.duration_scale, 0.0);
     }
 
     #[test]
@@ -391,12 +377,9 @@ mod tests {
     fn a_prefix_lists_every_key_below_it() {
         let file = TestFile::new("prefix", None);
         let document = ConfigDocument::load(file.path()).unwrap();
-        let listing = document.get("render.exposure").unwrap();
-        assert!(listing.contains("render.exposure.mode eye-adaptation"), "{listing}");
-        assert!(
-            listing.contains("render.exposure.adaptation.light-to-dark 1.5"),
-            "{listing}"
-        );
+        let listing = document.get("render.bloom").unwrap();
+        assert!(listing.contains("render.bloom.enabled true"), "{listing}");
+        assert!(listing.contains("render.bloom.strength 0.02"), "{listing}");
         assert!(document.get("render.nothing").is_err());
     }
 }

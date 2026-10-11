@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, bail, ensure};
 use glam::{DVec3, Vec3};
 use xsa_commands::completion::CompletionCandidate;
+use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
 use xsa_packs::{Id, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition};
 use xsa_proto::event::WorldState;
@@ -12,7 +13,6 @@ use super::body_step::BodyStep;
 use crate::renderer::{
     ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Star,
 };
-use crate::star_light::StarLight;
 
 const DEFAULT_NAMESPACE: &str = "base";
 
@@ -20,6 +20,7 @@ pub(super) struct ClientWorld {
     simulation_id: Id,
     simulation: Simulation,
     state: SimulationState,
+    illumination: Illumination,
     body_objects: Vec<ObjectHandle>,
     skybox: Option<MaterialHandle>,
 }
@@ -41,19 +42,16 @@ impl ClientWorld {
 
         let simulation_id = Id::parse(&world.simulation, DEFAULT_NAMESPACE)?;
         let simulation = stack.load_data::<SimulationDefinition>(&simulation_id)?.build(&stack)?;
-        let star_lights: Vec<Option<StarLight>> = simulation
-            .bodies()
-            .iter()
-            .map(|body| body.star.map(|star| StarLight::of_star(&star, body.radius)))
-            .collect();
+        let illumination = Illumination::new(simulation.bodies());
         let materials = simulation
             .bodies()
             .iter()
-            .zip(&star_lights)
-            .map(|(body, star_light)| {
+            .enumerate()
+            .map(|(value, body)| {
                 let definition =
                     MaterialDefinition::load_for_body(&stack, &Id::parse(&body.id.value, DEFAULT_NAMESPACE)?)?;
-                ClientWorld::create_material(renderer, &body.id, definition, star_light.as_ref())
+                let star_light = illumination.star_light(BodyIndex { value });
+                ClientWorld::create_material(renderer, &body.id, definition, star_light)
                     .with_context(|| format!("loading the material of {}", body.id))
             })
             .collect::<anyhow::Result<Vec<Material>>>()?;
@@ -79,8 +77,8 @@ impl ClientWorld {
             })
             .collect();
 
-        for (star_light, &object) in star_lights.iter().zip(&body_objects) {
-            if let Some(star_light) = star_light {
+        for (value, &object) in body_objects.iter().enumerate() {
+            if let Some(star_light) = illumination.star_light(BodyIndex { value }) {
                 scene.add_star(Star {
                     object,
                     intensity: star_light.color * star_light.luminous_intensity as f32,
@@ -95,6 +93,7 @@ impl ClientWorld {
             simulation_id,
             simulation,
             state,
+            illumination,
             body_objects,
             skybox,
         })
@@ -132,6 +131,11 @@ impl ClientWorld {
         self.simulation
             .find_body(&id)
             .with_context(|| format!("no body {id} in {}", self.simulation_id))
+    }
+
+    pub fn illuminance_at(&self, position: DVec3) -> f64 {
+        self.illumination
+            .illuminance_at(self.simulation.bodies(), &self.state.bodies, position)
     }
 
     pub fn nearest_surface_distance(&self, position: DVec3) -> f64 {

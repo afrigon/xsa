@@ -6,16 +6,17 @@ use super::frame_context::FrameContext;
 use super::frame_inputs::FrameInputs;
 use super::gpu_context::GpuContext;
 use super::passes::{
-    BloomPass, CaptureInputs, CapturePass, ForwardPass, HistogramInputs, HistogramPass, TaaPass, TonemapInputs,
-    TonemapPass, UserInterfacePass,
+    BloomPass, CaptureInputs, CapturePass, ForwardPass, HistogramInputs, HistogramPass, SkyboxPass, TaaPass,
+    TonemapInputs, TonemapPass, UserInterfacePass,
 };
 use crate::config::{AntialiasingKind, RenderConfig};
 
 // Every pass of the renderer, and the order a frame runs them in.
 pub(super) struct RenderPasses {
     forward: ForwardPass,
-    taa: TaaPass,
     histogram: HistogramPass,
+    skybox: SkyboxPass,
+    taa: TaaPass,
     bloom: BloomPass,
     tonemap: TonemapPass,
     user_interface: UserInterfacePass,
@@ -32,8 +33,9 @@ impl RenderPasses {
     ) -> anyhow::Result<RenderPasses> {
         Ok(RenderPasses {
             forward: ForwardPass::new(gpu, shaders)?,
-            taa: TaaPass::new(gpu, graph, shaders)?,
             histogram: HistogramPass::new(gpu, shaders)?,
+            skybox: SkyboxPass::new(gpu, shaders)?,
+            taa: TaaPass::new(gpu, graph, shaders)?,
             bloom: BloomPass::new(gpu, shaders)?,
             tonemap: TonemapPass::new(gpu, shaders, output_format)?,
             user_interface: UserInterfacePass::new(gpu, output_format, frames_in_flight)?,
@@ -48,17 +50,18 @@ impl RenderPasses {
         inputs: FrameInputs,
     ) {
         let forward = graph.add(&mut self.forward, ());
-        let scene_color = match render.antialiasing.kind {
-            Some(AntialiasingKind::Taa) => graph.add(&mut self.taa, forward).history.current,
-            None => forward.hdr,
-        };
         graph.add(
             &mut self.histogram,
             HistogramInputs {
-                scene_color,
+                scene_color: forward.hdr,
                 histogram: inputs.histogram,
             },
         );
+        let sky = graph.add(&mut self.skybox, forward);
+        let scene_color = match render.antialiasing.kind {
+            Some(AntialiasingKind::Taa) => graph.add(&mut self.taa, sky).history.current,
+            None => sky.hdr,
+        };
         let bloom = render
             .bloom
             .enabled
@@ -88,8 +91,9 @@ impl RenderPasses {
     pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
         unsafe {
             self.forward.destroy(gpu);
-            self.taa.destroy(gpu);
             self.histogram.destroy(gpu);
+            self.skybox.destroy(gpu);
+            self.taa.destroy(gpu);
             self.bloom.destroy(gpu);
             self.tonemap.destroy(gpu);
             self.user_interface.destroy();

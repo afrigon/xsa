@@ -7,6 +7,8 @@ use crate::config::KeyChord;
 const TRUE_WORDS: [&str; 2] = ["true", "on"];
 const FALSE_WORDS: [&str; 2] = ["false", "off"];
 
+// Building blocks for declaring settings, kept whether or not a setting uses them.
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum ConfigValueKind {
     Bool,
@@ -16,6 +18,8 @@ pub enum ConfigValueKind {
 }
 
 impl ConfigValueKind {
+    // A building block for declaring settings, kept whether or not a setting uses it.
+    #[allow(dead_code)]
     pub const NUMBER: ConfigValueKind = ConfigValueKind::Number {
         range: NumberRange::ANY,
     };
