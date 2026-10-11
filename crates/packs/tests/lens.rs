@@ -2,26 +2,15 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use xsa_packs::{GhostShape, Id, LensDefinition, PackStack, SpikesShape};
+use xsa_packs::{Id, LensDefinition, PackStack};
 
 const MANIFEST: &str = "version \"0.1.0\"\nformat 1\n";
-const LENS: &str = r#"aperture blades=6 rotation=0
-glare intensity=1.0 falloff=2.0
-spikes intensity=1.0 length=1.0 {
-    texture "lens/spikes"
-    computed width=0.02 dispersion=0.1
-}
-ghost position=0.5 size=0.1 intensity=1.0 {
+const LENS: &str = r#"glare intensity=1.0 falloff=2.2
+starburst texture="lens/starburst" inner=0.01 extent=90
+ghost position=2.0 size=8.0 {
     texture "lens/ghost"
-    ring radius=0.5 width=0.1 dispersion=0.0
 }
 "#;
-
-fn base_lens() -> LensDefinition {
-    let packs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data");
-    let stack = PackStack::load(&packs, &["base".to_string()]).unwrap();
-    LensDefinition::load(&stack, &Id::parse("default", "base").unwrap()).unwrap()
-}
 
 fn test_pack(name: &str, textures: &[&str]) -> PathBuf {
     let directory = env::temp_dir().join(format!("xsa-lens-{name}-{}", std::process::id()));
@@ -33,47 +22,34 @@ fn test_pack(name: &str, textures: &[&str]) -> PathBuf {
     fs::write(resources.join("lenses/test.kdl"), LENS).unwrap();
 
     for texture in textures {
-        fs::write(resources.join(format!("textures/lens/{texture}.png")), []).unwrap();
+        fs::write(resources.join(format!("textures/lens/{texture}.dds")), []).unwrap();
     }
 
     directory
 }
 
-fn load_test_lens(directory: &Path) -> LensDefinition {
+fn load(directory: &Path) -> anyhow::Result<LensDefinition> {
     let stack = PackStack::load(directory, &["test".to_string()]).unwrap();
-    LensDefinition::load(&stack, &Id::parse("test", "test").unwrap()).unwrap()
+    LensDefinition::load(&stack, &Id::parse("test", "test").unwrap())
 }
 
 #[test]
-fn the_base_lens_is_procedural() {
-    let lens = base_lens();
-
-    assert_eq!(lens.aperture.blades, 6);
-    assert!(matches!(lens.spikes.shape, SpikesShape::Computed { .. }));
-    assert!(matches!(lens.ghosts[0].shape, GhostShape::Ring(_)));
-    assert!(
-        lens.ghosts[1..]
-            .iter()
-            .all(|ghost| matches!(ghost.shape, GhostShape::Polygon(_)))
-    );
-}
-
-#[test]
-fn a_missing_texture_falls_through_to_the_next_shape() {
-    let directory = test_pack("missing", &[]);
-    let lens = load_test_lens(&directory);
+fn a_lens_reads_its_layers() {
+    let directory = test_pack("complete", &["starburst", "ghost"]);
+    let lens = load(&directory).unwrap();
     fs::remove_dir_all(&directory).unwrap();
 
-    assert!(matches!(lens.spikes.shape, SpikesShape::Computed { .. }));
-    assert!(matches!(lens.ghosts[0].shape, GhostShape::Ring(_)));
+    assert_eq!(lens.glare.falloff, 2.2);
+    assert_eq!(lens.starburst.extent_degrees, 90.0);
+    assert_eq!(lens.ghosts.len(), 1);
+    assert_eq!(lens.ghosts[0].size_degrees, 8.0);
 }
 
 #[test]
-fn an_available_texture_is_preferred() {
-    let directory = test_pack("available", &["spikes", "ghost"]);
-    let lens = load_test_lens(&directory);
+fn a_missing_texture_fails_to_load() {
+    let directory = test_pack("missing", &["starburst"]);
+    let result = load(&directory);
     fs::remove_dir_all(&directory).unwrap();
 
-    assert!(matches!(lens.spikes.shape, SpikesShape::Texture(_)));
-    assert!(matches!(lens.ghosts[0].shape, GhostShape::Texture(_)));
+    assert!(result.is_err());
 }

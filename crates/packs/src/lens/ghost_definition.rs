@@ -1,28 +1,31 @@
+use std::path::PathBuf;
+
+use anyhow::Context;
 use kdl::KdlNode;
 
-use super::GhostShape;
 use crate::{FromNode, NodeExtension, ParseContext};
 
-const ROUND: f64 = 1.0;
-
 pub struct GhostDefinition {
-    // 0 on the star, 1 at the screen center, beyond 1 past it.
+    // 0 on the light, 1 at the screen center, beyond 1 past it.
     pub position: f32,
-    // Fraction of the screen height.
-    pub size: f32,
-    pub aspect_ratio: f32,
-    pub intensity: f32,
-    pub shape: GhostShape,
+    // Angular diameter.
+    pub size_degrees: f32,
+    pub texture: PathBuf,
 }
 
 impl FromNode for GhostDefinition {
     fn from_node(node: &KdlNode, context: &ParseContext) -> anyhow::Result<GhostDefinition> {
+        let texture = node
+            .child_nodes()
+            .iter()
+            .find(|child| child.node_name() == "texture")
+            .context("`ghost` needs a `texture` child")?;
+        let id = context.parse_id(texture.string_argument()?)?;
+
         Ok(GhostDefinition {
             position: node.number_property("position")? as f32,
-            size: node.number_property("size")? as f32,
-            aspect_ratio: node.optional_number_property("aspect-ratio")?.unwrap_or(ROUND) as f32,
-            intensity: node.number_property("intensity")? as f32,
-            shape: GhostShape::from_node(node, context)?,
+            size_degrees: node.number_property("size")? as f32,
+            texture: context.stack.texture(&id)?.to_path_buf(),
         })
     }
 }

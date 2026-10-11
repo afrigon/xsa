@@ -1,29 +1,18 @@
 use std::path::Path;
 
 use ash::vk;
-use glam::Vec3;
-use xsa_packs::{GhostShape, LensDefinition, SpikesShape};
+use xsa_packs::LensDefinition;
 
 use super::TextureHandle;
 use super::gpu_data::GhostData;
-use super::material::NO_TEXTURE;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
-
-// Must match the ghost shapes in common/lens.slang.
-const GHOST_SHAPE_RING: u32 = 0;
-const GHOST_SHAPE_POLYGON: u32 = 1;
-const GHOST_SHAPE_TEXTURE: u32 = 2;
 
 pub(in crate::renderer) struct Lens {
     pub glare_intensity: f32,
     pub glare_falloff: f32,
-    pub spikes_intensity: f32,
-    pub spikes_length: f32,
-    pub spikes_width: f32,
-    pub spikes_dispersion: f32,
-    pub spikes_texture: u32,
-    pub blades: u32,
-    pub rotation: f32,
+    pub starburst_texture: u32,
+    pub starburst_inner: f32,
+    pub starburst_extent: f32,
     pub ghost_count: u32,
     ghost_data: Vec<GhostData>,
     ghosts: Option<Buffer>,
@@ -34,65 +23,27 @@ impl Lens {
         definition: &LensDefinition,
         mut load_texture: impl FnMut(&str, &Path) -> anyhow::Result<TextureHandle>,
     ) -> anyhow::Result<Lens> {
-        let (spikes_width, spikes_dispersion, spikes_texture) = match &definition.spikes.shape {
-            SpikesShape::Computed { width, dispersion } => (width.to_radians(), *dispersion, NO_TEXTURE),
-            SpikesShape::Texture(path) => (0.0, 0.0, load_texture("lens spikes", path)?.index()),
-        };
+        let starburst_texture = load_texture("lens starburst", &definition.starburst.texture)?.index();
         let ghost_data = definition
             .ghosts
             .iter()
             .enumerate()
             .map(|(index, ghost)| {
-                let mut data = GhostData {
+                Ok(GhostData {
                     position: ghost.position,
-                    size: ghost.size,
-                    aspect_ratio: ghost.aspect_ratio,
-                    intensity: ghost.intensity,
-                    tint: Vec3::ONE,
-                    shape: GHOST_SHAPE_RING,
-                    radius: 0.0,
-                    width: 0.0,
-                    dispersion: 0.0,
-                    softness: 0.0,
-                    streaks: 0,
-                    spots: 0.0,
-                    texture: NO_TEXTURE,
+                    size: ghost.size_degrees.to_radians(),
+                    texture: load_texture(&format!("lens ghost {index}"), &ghost.texture)?.index(),
                     padding: 0,
-                };
-
-                match &ghost.shape {
-                    GhostShape::Ring(ring) => {
-                        data.radius = ring.radius;
-                        data.width = ring.width;
-                        data.dispersion = ring.dispersion;
-                        data.streaks = ring.streaks;
-                        data.spots = ring.spots;
-                    }
-                    GhostShape::Polygon(polygon) => {
-                        data.shape = GHOST_SHAPE_POLYGON;
-                        data.softness = polygon.softness;
-                        data.tint = polygon.tint;
-                    }
-                    GhostShape::Texture(path) => {
-                        data.shape = GHOST_SHAPE_TEXTURE;
-                        data.texture = load_texture(&format!("lens ghost {index}"), path)?.index();
-                    }
-                }
-
-                Ok(data)
+                })
             })
             .collect::<anyhow::Result<Vec<GhostData>>>()?;
 
         Ok(Lens {
             glare_intensity: definition.glare.intensity,
             glare_falloff: definition.glare.falloff,
-            spikes_intensity: definition.spikes.intensity,
-            spikes_length: definition.spikes.length_degrees.to_radians(),
-            spikes_width,
-            spikes_dispersion,
-            spikes_texture,
-            blades: definition.aperture.blades,
-            rotation: definition.aperture.rotation_degrees.to_radians(),
+            starburst_texture,
+            starburst_inner: definition.starburst.inner_degrees.to_radians(),
+            starburst_extent: definition.starburst.extent_degrees.to_radians(),
             ghost_count: ghost_data.len() as u32,
             ghost_data,
             ghosts: None,

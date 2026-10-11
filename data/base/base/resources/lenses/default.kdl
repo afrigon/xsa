@@ -1,35 +1,27 @@
-aperture blades=6 rotation=15
+glare intensity=0.9329 falloff=2.2
 
-glare intensity=0.03 falloff=2.0
+starburst texture="lens/starburst" inner=0.01 extent=90
 
-spikes intensity=1.0 length=4.0 {
-    computed width=0.02 dispersion=0.15
+ghost position=2.1817 size=3.0440 {
+    texture "lens/ghost-4-8"
 }
 
-ghost position=0.2 size=0.53 aspect-ratio=0.65 intensity=0.001 {
-    ring radius=0.6 width=0.16 dispersion=0.06 streaks=180 spots=1.8
+ghost position=2.0428 size=7.8205 {
+    texture "lens/ghost-0-6"
 }
 
-ghost position=0.8 size=0.12 intensity=0.0005 {
-    polygon softness=0.15 {
-        tint 1.0 0.15 0.25
-    }
+ghost position=2.2638 size=11.4868 {
+    texture "lens/ghost-4-10"
 }
 
-ghost position=0.9 size=0.12 intensity=0.0005 {
-    polygon softness=0.15 {
-        tint 0.1 0.45 1.0
-    }
+ghost position=-0.0465 size=8.4979 {
+    texture "lens/ghost-8-10"
 }
 
-ghost position=1.2 size=0.25 intensity=0.0004 {
-    polygon softness=0.2 {
-        tint 1.0 0.15 0.25
-    }
+ghost position=1.9261 size=9.7047 {
+    texture "lens/ghost-2-6"
 }
 
-ghost position=1.35 size=0.25 intensity=0.0004 {
-    polygon softness=0.2 {
-        tint 0.1 0.45 1.0
-    }
+ghost position=0.2 size=30.0222 {
+    texture "lens/ring"
 }

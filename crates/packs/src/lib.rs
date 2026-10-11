@@ -19,10 +19,7 @@ pub use document::{Document, NodeExtension};
 pub use from_node::FromNode;
 pub use hapke_definition::HapkeDefinition;
 pub use id::{Id, NAMESPACE_SEPARATOR};
-pub use lens::{
-    ApertureDefinition, GhostDefinition, GhostShape, GlareDefinition, LensDefinition, PolygonDefinition,
-    RingDefinition, SpikesDefinition, SpikesShape,
-};
+pub use lens::{GhostDefinition, GlareDefinition, LensDefinition, StarburstDefinition};
 pub use manifest::Manifest;
 pub use material_definition::MaterialDefinition;
 pub use pack_data::PackData;

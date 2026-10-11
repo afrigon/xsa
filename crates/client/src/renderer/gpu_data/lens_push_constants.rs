@@ -12,16 +12,12 @@ pub(in crate::renderer) struct LensPushConstants {
     pub glare_falloff: f32,
     pub focal_length_pixels: f32,
     pub light_count: u32,
-    pub spikes_intensity: f32,
-    pub spikes_length: f32,
-    pub spikes_width: f32,
-    pub spikes_dispersion: f32,
-    pub spikes_texture: u32,
-    pub blades: u32,
-    pub rotation: f32,
+    pub starburst_texture: u32,
+    pub starburst_inner: f32,
+    pub starburst_extent: f32,
     pub ghost_count: u32,
 }
 
-const _: () = assert!(size_of::<LensPushConstants>() == 72);
+const _: () = assert!(size_of::<LensPushConstants>() == 56);
 
 unsafe impl GpuData for LensPushConstants {}

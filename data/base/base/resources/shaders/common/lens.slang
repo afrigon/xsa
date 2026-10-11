@@ -10,25 +10,11 @@ struct ProjectedLightData {
     uint padding;
 };
 
-// Must match the ghost shapes in client/src/renderer/lens.rs.
-static const uint ghostShapeRing = 0;
-static const uint ghostShapePolygon = 1;
-static const uint ghostShapeTexture = 2;
-
 // Must match GhostData in client/src/renderer/gpu_data/ghost_data.rs.
 struct GhostData {
     float position;
+    // Angular diameter, in radians.
     float size;
-    float aspectRatio;
-    float intensity;
-    float3 tint;
-    uint shape;
-    float radius;
-    float width;
-    float dispersion;
-    float softness;
-    uint streaks;
-    float spots;
     uint texture;
     uint padding;
 };
@@ -42,13 +28,9 @@ struct LensConstants {
     float glareFalloff;
     float focalLengthPixels;
     uint lightCount;
-    float spikesIntensity;
-    float spikesLength;
-    float spikesWidth;
-    float spikesDispersion;
-    uint spikesTexture;
-    uint blades;
-    float rotation;
+    uint starburstTexture;
+    float starburstInner;
+    float starburstExtent;
     uint ghostCount;
 };
 

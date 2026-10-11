@@ -18,17 +18,15 @@ const CLEAR: [f32; 4] = [0.0; 4];
 
 // Draws what the camera's lens adds to the image around each light source, in exposed luminance like the scene.
 pub(in crate::renderer) struct LensPass {
-    glare_pipeline: GraphicsPipeline,
+    light_pipeline: GraphicsPipeline,
     ghosts_pipeline: GraphicsPipeline,
-    spikes_pipeline: GraphicsPipeline,
 }
 
 impl LensPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<LensPass> {
         Ok(LensPass {
-            glare_pipeline: LensPass::pipeline(gpu, &binaries.lens_glare)?,
+            light_pipeline: LensPass::pipeline(gpu, &binaries.lens_light)?,
             ghosts_pipeline: LensPass::pipeline(gpu, &binaries.lens_ghosts)?,
-            spikes_pipeline: LensPass::pipeline(gpu, &binaries.lens_spikes)?,
         })
     }
 
@@ -53,9 +51,8 @@ impl LensPass {
 
     pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
         unsafe {
-            self.glare_pipeline.destroy(&gpu.device);
+            self.light_pipeline.destroy(&gpu.device);
             self.ghosts_pipeline.destroy(&gpu.device);
-            self.spikes_pipeline.destroy(&gpu.device);
         }
     }
 }
@@ -97,21 +94,14 @@ impl<'frame> RenderPass<FrameContext<'frame>> for LensPass {
             glare_falloff: lens.glare_falloff,
             focal_length_pixels: frame.focal_length_pixels,
             light_count: resources.light_count,
-            spikes_intensity: lens.spikes_intensity,
-            spikes_length: lens.spikes_length,
-            spikes_width: lens.spikes_width,
-            spikes_dispersion: lens.spikes_dispersion,
-            spikes_texture: lens.spikes_texture,
-            blades: lens.blades,
-            rotation: lens.rotation,
+            starburst_texture: lens.starburst_texture,
+            starburst_inner: lens.starburst_inner,
+            starburst_extent: lens.starburst_extent,
             ghost_count: lens.ghost_count,
         };
         pass.begin_rendering();
-        recorder.bind_graphics(&self.glare_pipeline, frame.descriptor_set);
-        recorder.push_graphics_constants(&self.glare_pipeline, &constants);
-        recorder.draw_fullscreen_instances(resources.light_count);
-        recorder.bind_graphics(&self.spikes_pipeline, frame.descriptor_set);
-        recorder.push_graphics_constants(&self.spikes_pipeline, &constants);
+        recorder.bind_graphics(&self.light_pipeline, frame.descriptor_set);
+        recorder.push_graphics_constants(&self.light_pipeline, &constants);
         recorder.draw_fullscreen_instances(resources.light_count);
 
         if lens.ghost_count > 0 {
