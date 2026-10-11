@@ -11,8 +11,12 @@ Texture2D textures[];
 ConstantBuffer<LensConstants> constants;
 
 static const float2 quadCorners[6] = {
-    float2(-1.0, -1.0), float2(1.0, -1.0), float2(1.0, 1.0),
-    float2(-1.0, -1.0), float2(1.0, 1.0), float2(-1.0, 1.0),
+    float2(-1.0, -1.0),
+    float2(1.0, -1.0),
+    float2(1.0, 1.0),
+    float2(-1.0, -1.0),
+    float2(1.0, 1.0),
+    float2(-1.0, 1.0),
 };
 
 struct GhostOutput {

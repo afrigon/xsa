@@ -32,7 +32,7 @@ float4 fragmentMain(GlareOutput input) : SV_Target {
     float3 toStar = pixelRay(star.screenPosition, constants.frame->viewportSize, constants.focalLengthPixels);
     float angle = atan2(length(cross(toPixel, toStar)), dot(toPixel, toStar));
     float degreesFromStar = degrees(max(angle, star.angularRadius));
-    float3 luminance = constants.glareIntensity * star.illuminance * star.visibility /
-                       pow(degreesFromStar, constants.glareFalloff);
+    float3 luminance =
+        constants.glareIntensity * star.illuminance * star.visibility / pow(degreesFromStar, constants.glareFalloff);
     return float4(luminance * constants.frame->exposure, 1.0);
 }
