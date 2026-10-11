@@ -261,8 +261,13 @@ impl Renderer {
     }
 
     pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
+        let image = DdsImage::read(path, color_space)?;
+        self.upload_texture(name, &image)
+    }
+
+    fn upload_texture(&mut self, name: &str, image: &DdsImage) -> anyhow::Result<TextureHandle> {
         let gpu = &mut self.gpu;
-        let mut image = DdsImage::read(path, color_space)?.upload_texture(&gpu.device, &mut gpu.allocator, name)?;
+        let mut image = image.upload_texture(&gpu.device, &mut gpu.allocator, name)?;
 
         match gpu.bindless.add_texture(&gpu.device, image.view(), SAMPLED_LAYOUT) {
             Ok(index) => {
@@ -282,7 +287,7 @@ impl Renderer {
             unsafe { lens.destroy(&self.gpu.device, &mut self.gpu.allocator) };
         }
 
-        let mut lens = Lens::new(definition, |name, path| self.load_texture(name, path, ColorSpace::Srgb))?;
+        let mut lens = Lens::new(definition, |name, image| self.upload_texture(name, image))?;
         lens.upload(&self.gpu.device, &mut self.gpu.allocator)?;
         self.lens = Some(lens);
 
@@ -493,6 +498,7 @@ impl Renderer {
         self.projected_light_data.clear();
         let projection = LightProjection::new(camera, extent);
         self.focal_length_pixels = projection.focal_length_pixels();
+        let viewport = Vec2::new(extent.width as f32, extent.height as f32);
 
         for star in self.scene.stars() {
             let light = self.scene.light_source(star.light);
@@ -518,12 +524,14 @@ impl Renderer {
             let visibility = self
                 .light_occlusion
                 .visibility(camera_relative, object.bounding_radius, occluders);
-            self.projected_light_data.extend(projection.project(
-                camera_relative,
-                object.bounding_radius,
-                light.intensity,
-                visibility,
-            ));
+            let projected = projection
+                .project(camera_relative, object.bounding_radius, light.intensity, visibility)
+                .filter(|projected| {
+                    self.lens.as_ref().is_some_and(|lens| {
+                        lens.reaches_screen(projected, frame_data.exposure, viewport, self.focal_length_pixels)
+                    })
+                });
+            self.projected_light_data.extend(projected);
         }
 
         anyhow::ensure!(
