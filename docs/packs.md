@@ -22,6 +22,7 @@ folder for another namespace only to override that pack's content.
 data/<pack>/
   pack.kdl                                  manifest
   LICENSE                                   terms of third-party content, if any
+  scripts/                                  tools that produce the pack's assets; not a namespace
   <namespace>/
     data/                                   gameplay and physics — read by the server
       bodies/                               intrinsic properties of each body
@@ -275,9 +276,8 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 ### Lenses — `<namespace>/resources/lenses/`
 
 A lens profile describes what a camera's lens adds to the image around every
-light source: a glow, a starburst and ghosts. The client config picks the
-profile (`render.lens.profile`, `base:default` by default) and can turn the
-effects off (`render.lens.enabled`).
+light source: a glow, a starburst and ghosts. The game uses `base:main`, and the
+client config can turn the effects off (`render.lens.enabled`).
 
 ```kdl
 off-axis-falloff exponent=2
@@ -286,9 +286,9 @@ glare intensity=0.9329 falloff=2.2
 
 starburst texture="lens/starburst" inner=0.01 extent=90
 
-ghost position=2.18 size=2.55 dispersion=0.1 {
+ghost position=1.42 size=1.43 dispersion-per-degree=0.0167 intensity=0.0446 {
     tint 1 1 1.3
-    texture "lens/ghost-4-8"
+    texture "lens/ghost-0-12"
 }
 ```
 
@@ -306,26 +306,47 @@ light's fade out on their own. Angles are degrees.
 - **`starburst`:** diffraction by the aperture, a texture centered on the light
   and fixed to the camera. It is stored log-polar: columns are directions
   around the light (u from 0 to 1 over a full turn, starting to the right of
-  the light and turning clockwise on screen), rows are angles from the light on a log scale from `inner`
-  to `extent` (v = log(θ / inner) / log(extent / inner)). Values are linear
-  luminance per unit illuminance; the light's own disk is drawn by the scene,
-  so the starburst starts at its edge.
+  the light and turning clockwise on screen), rows are angles from the light on
+  a log scale from `inner` to `extent` (v = log(θ / inner) / log(extent /
+  inner)); closer than `inner`, the first row holds. Values are linear
+  luminance per unit illuminance. The texture holds only the light the
+  aperture scatters, not the light's own image, which the scene draws, so it
+  also covers the light's disk: a body hiding part of the light leaves the
+  scattered light over the body.
 - **`ghost`** (any number): reflections between the lens's surfaces, each a
   texture centered on the line from the light through the screen center.
   - `position`: 0 on the light, 1 at the screen center, beyond 1 past it.
   - `size`: the texture's angular width.
   - The texture's u axis points from the screen center toward the light and v
     across it, so a ghost turns with the light around the screen. Its values
-    are linear luminance per unit illuminance, and its border must be black:
-    nothing past it is drawn.
-  - `dispersion` (optional, 0 by default): a stylized chromatic split. Red
-    moves outward along the axis and blue inward, each by this fraction of the
-    ghost's size.
+    are linear, and its border must be black: nothing past it is drawn.
+  - `intensity` (optional, 1 by default): multiplies the texture, giving
+    luminance per unit illuminance. A texture can then be stored with its
+    brightest texel at 1, readable in an image viewer, with its physical level
+    here.
+  - `dispersion-per-degree` (optional, 0 by default): a stylized chromatic
+    split. Red moves outward along the axis and blue inward, each by this
+    fraction of the ghost's size per degree the light sits off the view axis,
+    so a light at the screen center shows none.
   - `tint` (optional, 1 1 1 by default): a linear multiplier per color
     channel.
 
 A light whose glow, starburst and ghosts cannot change a pixel of the output
 is skipped.
+
+The base pack's lens is baked from a 22 mm wide-angle lens design by the
+scripts in `data/base/scripts/lens/` (Python 3 and NumPy): they trace the
+ghosts through the design, compute the aperture's diffraction, draw the ring
+ghost, and write the textures and `main.kdl`. Every value in the profile comes
+from them.
+
+```sh
+python3 data/base/scripts/lens/bake.py            # full quality, about 45 minutes
+python3 data/base/scripts/lens/bake.py --preview  # a few minutes, for tweaking
+```
+
+The design's prescription is downloaded on first use, and intermediate files
+go to `target/lens-bake/`.
 
 ### Shaders — `base/resources/shaders/`
 
@@ -438,7 +459,8 @@ into them without a format change.
 ## Distribution
 
 Pack text files (`.kdl`, `.slang`) are committed to the repository; binary
-files (`.dds`, `.spv`, …) are git-ignored. Releases publish each pack, text
-and binaries together, as a versioned `.tar.zst` archive in object storage;
+files (`.dds`, `.spv`, …) are git-ignored, except the base pack's textures,
+which no task produces. Releases publish each pack, text and binaries together
+but without its `scripts/`, as a versioned `.tar.zst` archive in object storage;
 `mise run fetch-assets` downloads the latest release and extracts the binaries
 into the working tree.
