@@ -2,6 +2,7 @@ mod forward_resources;
 
 pub(in crate::renderer) use forward_resources::ForwardResources;
 
+use std::collections::HashMap;
 use std::mem::offset_of;
 
 use ash::vk;
@@ -16,14 +17,14 @@ use crate::vulkan::{Buffer, GraphicsPipeline, GraphicsPipelineDescription};
 
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const TRIANGLE_VERTICES: u32 = 3;
-const HDR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
-const MOTION_FORMAT: vk::Format = vk::Format::R16G16_SFLOAT;
-const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
+pub(in crate::renderer) const HDR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+pub(in crate::renderer) const MOTION_FORMAT: vk::Format = vk::Format::R16G16_SFLOAT;
+pub(in crate::renderer) const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
-    pipelines: Vec<GraphicsPipeline>,
+    pipelines: HashMap<Shader, GraphicsPipeline>,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     index_count: u32,
@@ -31,9 +32,11 @@ pub(in crate::renderer) struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(gpu: &mut GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
-        let pipelines = Shader::ALL
-            .iter()
-            .map(|shader| ForwardPass::create_pipeline(gpu, *shader, &binaries.shaders[shader.index()]))
+        let pipelines = ForwardPass::object_shaders()
+            .map(|shader| {
+                let pipeline = ForwardPass::create_pipeline(gpu, &binaries.shaders[shader.index()])?;
+                Ok((shader, pipeline))
+            })
             .collect::<anyhow::Result<_>>()?;
         let sphere = Mesh::cube_sphere(1.0, SPHERE_SUBDIVISIONS);
         let vertex_buffer = Buffer::with_data(
@@ -61,7 +64,7 @@ impl ForwardPass {
 
     pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
         unsafe {
-            for pipeline in &mut self.pipelines {
+            for pipeline in self.pipelines.values_mut() {
                 pipeline.destroy(&gpu.device);
             }
 
@@ -79,8 +82,13 @@ impl ForwardPass {
         }
     }
 
+    // The skybox is drawn by its own pass.
+    fn object_shaders() -> impl Iterator<Item = Shader> {
+        Shader::ALL.iter().copied().filter(|shader| *shader != Shader::Skybox)
+    }
+
     fn pipeline(&self, shader: Shader) -> &GraphicsPipeline {
-        &self.pipelines[shader.index()]
+        &self.pipelines[&shader]
     }
 
     fn record_objects(&self, frame: &FrameContext) {
@@ -88,7 +96,7 @@ impl ForwardPass {
         recorder.set_wireframe(frame.render.wireframe);
         recorder.bind_mesh(&self.vertex_buffer, &self.index_buffer);
 
-        for shader in Shader::ALL.iter().copied().filter(|shader| *shader != Shader::Skybox) {
+        for shader in ForwardPass::object_shaders() {
             let pipeline = self.pipeline(shader);
             let mut bound = false;
 
@@ -119,17 +127,7 @@ impl ForwardPass {
         recorder.set_wireframe(false);
     }
 
-    fn record_skybox(&self, frame: &FrameContext) {
-        let Some(skybox) = frame.scene.skybox else {
-            return;
-        };
-        let pipeline = self.pipeline(Shader::Skybox);
-        frame.recorder.bind_graphics(pipeline, frame.descriptor_set);
-        frame.push_draw_constants(pipeline, 0, skybox.index());
-        frame.recorder.draw_fullscreen();
-    }
-
-    fn create_pipeline(gpu: &GpuContext, shader: Shader, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
+    fn create_pipeline(gpu: &GpuContext, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(size_of::<Vertex>() as u32)
@@ -146,7 +144,7 @@ impl ForwardPass {
                 .format(vk::Format::R32G32B32_SFLOAT)
                 .offset(offset_of!(Vertex, normal) as u32),
         ];
-        let mesh_description = GraphicsPipelineDescription {
+        let description = GraphicsPipelineDescription {
             spirv,
             color_formats: &[HDR_FORMAT, MOTION_FORMAT],
             depth_format: Some(DEPTH_FORMAT),
@@ -159,18 +157,6 @@ impl ForwardPass {
             push_constant_size: size_of::<PushConstants>() as u32,
             descriptor_set_layouts: &[gpu.bindless.layout()],
         };
-        let description = match shader {
-            Shader::Skybox => GraphicsPipelineDescription {
-                depth_compare_op: vk::CompareOp::GREATER_OR_EQUAL,
-                depth_write: false,
-                cull_mode: vk::CullModeFlags::NONE,
-                vertex_bindings: &[],
-                vertex_attributes: &[],
-                ..mesh_description
-            },
-            _ => mesh_description,
-        };
-
         GraphicsPipeline::new(&gpu.device, &description)
     }
 }
@@ -200,7 +186,6 @@ impl<'frame> RenderPass<FrameContext<'frame>> for ForwardPass {
     ) -> Result<(), PassError> {
         pass.begin_rendering();
         self.record_objects(frame);
-        self.record_skybox(frame);
         pass.end_rendering();
 
         Ok(())

@@ -1,6 +1,6 @@
 macro_rules! shaders {
     ($($variant:ident => $file:literal),+ $(,)?) => {
-        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
         pub enum Shader {
             $($variant),+
         }
