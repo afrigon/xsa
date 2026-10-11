@@ -272,6 +272,60 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
   Parallax, which Sol's textures follow). Normal maps are tangent-space with
   red toward west and green toward north; z is reconstructed.
 
+### Lenses — `<namespace>/resources/lenses/`
+
+A lens profile describes what a camera's lens adds to the image around every
+light source: a glow, a starburst and ghosts. The client config picks the
+profile (`render.lens.profile`, `base:default` by default) and can turn the
+effects off (`render.lens.enabled`).
+
+```kdl
+vignetting exponent=2
+
+glare intensity=0.9329 falloff=2.2
+
+starburst texture="lens/starburst" inner=0.01 extent=90
+
+ghost position=2.18 size=2.55 dispersion=0.1 {
+    tint 1 1 1.3
+    texture "lens/ghost-4-8"
+}
+```
+
+Every element is physical: its brightness is the light's illuminance at the
+camera (lux) times a value in luminance per unit illuminance (1/sr), so a
+light's lens effects scale with its brightness and the exposure, and a faint
+light's fade out on their own. Angles are degrees.
+
+- **`vignetting`:** the lens passes light arriving at an angle θ off its axis
+  in proportion to cos^`exponent` θ: 4 for an ideal simple lens, about 2 for a
+  wide-angle design. Every element fades by this factor.
+- **`glare`:** light scattered by the lens's surfaces, `intensity` /
+  θ^`falloff` at an angle θ from the light, flat across the light's own disk.
+- **`starburst`:** diffraction by the aperture, a texture centered on the light
+  and fixed to the camera. It is stored log-polar: columns are directions
+  around the light (u from 0 to 1 over a full turn, starting to the right of
+  the light and turning clockwise on screen), rows are angles from the light on a log scale from `inner`
+  to `extent` (v = log(θ / inner) / log(extent / inner)). Values are linear
+  luminance per unit illuminance; the light's own disk is drawn by the scene,
+  so the starburst starts at its edge.
+- **`ghost`** (any number): reflections between the lens's surfaces, each a
+  texture centered on the line from the light through the screen center.
+  - `position`: 0 on the light, 1 at the screen center, beyond 1 past it.
+  - `size`: the texture's angular width.
+  - The texture's u axis points from the screen center toward the light and v
+    across it, so a ghost turns with the light around the screen. Its values
+    are linear luminance per unit illuminance, and its border must be black:
+    nothing past it is drawn.
+  - `dispersion` (optional, 0 by default): a stylized chromatic split. Red
+    moves outward along the axis and blue inward, each by this fraction of the
+    ghost's size.
+  - `tint` (optional, 1 1 1 by default): a linear multiplier per color
+    channel.
+
+A light whose glow, starburst and ghosts cannot change a pixel of the output
+is skipped.
+
 ### Shaders — `base/resources/shaders/`
 
 The built-in shaders live in the base pack as Slang sources compiled to SPIR-V
@@ -280,8 +334,9 @@ other packs, with their own material properties, are planned.
 
 ### Textures — `<namespace>/resources/textures/`
 
-DDS files with a DX10 header (BC7, BC5, BC4 or uncompressed RGBA8), uploaded
-exactly as stored; whether a texture is sRGB or linear comes from how it is
+DDS files with a DX10 header (BC7, BC5, BC4, uncompressed RGBA8, or
+uncompressed half-float RGBA for values beyond 1, such as lens textures),
+uploaded exactly as stored; whether a texture is sRGB or linear comes from how it is
 used. Folders are organized by subject for people; a texture's purpose is
 declared by whatever references it.
 
