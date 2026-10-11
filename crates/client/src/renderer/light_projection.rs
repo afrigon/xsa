@@ -34,7 +34,7 @@ impl LightProjection {
         radius: f64,
         intensity: Vec3,
         visibility: f32,
-        vignetting_exponent: f32,
+        off_axis_exponent: f32,
     ) -> Option<ProjectedLightData> {
         let distance = position.length();
         let clip = self.view_projection * position.extend(1.0);
@@ -53,7 +53,7 @@ impl LightProjection {
             visibility,
             angular_radius: angular_radius as f32,
             illuminance: intensity / (distance * distance) as f32,
-            acceptance: (off_axis_cosine as f32).powf(vignetting_exponent),
+            acceptance: (off_axis_cosine as f32).powf(off_axis_exponent),
         })
     }
 }

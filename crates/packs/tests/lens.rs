@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use xsa_packs::{Id, LensDefinition, PackStack};
 
 const MANIFEST: &str = "version \"0.1.0\"\nformat 1\n";
-const LENS: &str = r#"vignetting exponent=2.0
+const LENS: &str = r#"off-axis-falloff exponent=2.0
 glare intensity=1.0 falloff=2.2
 starburst texture="lens/starburst" inner=0.01 extent=90
 ghost position=2.0 size=8.0 dispersion=0.1 {
@@ -44,7 +44,7 @@ fn a_lens_reads_its_layers() {
     let lens = load(&directory).unwrap();
     fs::remove_dir_all(&directory).unwrap();
 
-    assert_eq!(lens.vignetting.exponent, 2.0);
+    assert_eq!(lens.off_axis_falloff.exponent, 2.0);
     assert_eq!(lens.glare.falloff, 2.2);
     assert_eq!(lens.starburst.extent_degrees, 90.0);
     assert_eq!(lens.ghosts.len(), 2);

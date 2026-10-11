@@ -1,4 +1,4 @@
-vignetting exponent=2
+off-axis-falloff exponent=2
 
 glare intensity=0.9329 falloff=2.2
 

@@ -535,7 +535,7 @@ impl Renderer {
                     object.bounding_radius,
                     light.intensity,
                     visibility,
-                    lens.vignetting_exponent,
+                    lens.off_axis_exponent,
                 );
 
                 match projected {

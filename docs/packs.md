@@ -280,7 +280,7 @@ profile (`render.lens.profile`, `base:default` by default) and can turn the
 effects off (`render.lens.enabled`).
 
 ```kdl
-vignetting exponent=2
+off-axis-falloff exponent=2
 
 glare intensity=0.9329 falloff=2.2
 
@@ -297,9 +297,10 @@ camera (lux) times a value in luminance per unit illuminance (1/sr), so a
 light's lens effects scale with its brightness and the exposure, and a faint
 light's fade out on their own. Angles are degrees.
 
-- **`vignetting`:** the lens passes light arriving at an angle θ off its axis
-  in proportion to cos^`exponent` θ: 4 for an ideal simple lens, about 2 for a
-  wide-angle design. Every element fades by this factor.
+- **`off-axis-falloff`:** the lens passes light arriving at an angle θ off its
+  axis in proportion to cos^`exponent` θ: 4 for an ideal simple lens, about 2
+  for a wide-angle design. Every element fades by this factor; the rest of the
+  image is not darkened.
 - **`glare`:** light scattered by the lens's surfaces, `intensity` /
   θ^`falloff` at an angle θ from the light, flat across the light's own disk.
 - **`starburst`:** diffraction by the aperture, a texture centered on the light
