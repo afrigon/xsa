@@ -3,14 +3,13 @@ use std::collections::HashMap;
 use winit::keyboard::KeyCode;
 
 use super::{
-    AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, ExposureConfig,
-    ExposureMode, KeyChord, RenderConfig,
+    AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, KeyChord,
+    RenderConfig,
 };
 use crate::renderer::{ShadingModel, Tonemapper};
 
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
 const BLOOM_STRENGTH: f32 = 0.02;
-const MANUAL_EV100: f32 = 15.0;
 const ANIMATION_DURATION_SCALE: f32 = 1.0;
 
 struct DefaultBind {
@@ -58,10 +57,6 @@ impl Default for Config {
                 bloom: BloomConfig {
                     enabled: true,
                     strength: BLOOM_STRENGTH,
-                },
-                exposure: ExposureConfig {
-                    mode: ExposureMode::EyeAdaptation,
-                    ev100: MANUAL_EV100,
                 },
                 antialiasing: AntialiasingConfig {
                     kind: Some(AntialiasingKind::Taa),

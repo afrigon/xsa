@@ -138,7 +138,7 @@ impl Renderer {
         Ok(Self {
             scene: Scene::default(),
             render: config.render.clone(),
-            exposure: AutoExposure::new(config.render.exposure.clone(), INITIAL_EXPOSURE_EV100),
+            exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
             illuminance: None,
             capture: None,
             user_interface: DrawList::default(),
@@ -187,7 +187,7 @@ impl Renderer {
 
     pub fn configure(&mut self, render: &RenderConfig, animations: &AnimationConfig) {
         self.render = render.clone();
-        self.exposure.configure(&render.exposure, animations.duration_scale);
+        self.exposure.configure(animations.duration_scale);
 
         if render.wireframe && !self.supports_wireframe() {
             tracing::warn!("wireframe is unsupported by this device");
