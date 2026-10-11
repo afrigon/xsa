@@ -1,7 +1,8 @@
 use std::f64::consts::PI;
 
 use glam::{DVec3, Vec3};
-use xsa_core::simulation::Star;
+
+use crate::simulation::Star;
 
 const PLANCK: f64 = 6.626_070_15e-34;
 const SPEED_OF_LIGHT: f64 = 299_792_458.0;
