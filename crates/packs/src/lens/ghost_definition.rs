@@ -7,16 +7,20 @@ use kdl::KdlNode;
 use crate::{FromNode, NodeExtension, ParseContext};
 
 const UNTINTED: Vec3 = Vec3::ONE;
+const UNSCALED: f32 = 1.0;
 
 pub struct GhostDefinition {
     // 0 on the light, 1 at the screen center, beyond 1 past it.
     pub position: f32,
     // Angular diameter.
     pub size_degrees: f32,
-    // Red moves outward along the axis and blue inward, each by this fraction of the ghost's size.
-    pub dispersion: f32,
+    // Red moves outward along the axis and blue inward, each by this fraction of the ghost's size per degree the light
+    // sits off the view axis: color fringing grows with the angle, from none at the screen center.
+    pub dispersion_per_degree: f32,
     // Linear multiplier per color channel.
     pub tint: Vec3,
+    // Multiplies the texture, so a texture painted at full brightness gets its physical level here.
+    pub intensity: f32,
     pub texture: PathBuf,
 }
 
@@ -40,8 +44,11 @@ impl FromNode for GhostDefinition {
         Ok(GhostDefinition {
             position: node.number_property("position")? as f32,
             size_degrees: node.number_property("size")? as f32,
-            dispersion: node.optional_number_property("dispersion")?.unwrap_or(0.0) as f32,
+            dispersion_per_degree: node.optional_number_property("dispersion-per-degree")?.unwrap_or(0.0) as f32,
             tint,
+            intensity: node
+                .optional_number_property("intensity")?
+                .map_or(UNSCALED, |intensity| intensity as f32),
             texture: context.stack.texture(&id)?.to_path_buf(),
         })
     }

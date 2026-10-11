@@ -17,10 +17,12 @@ struct GhostData {
     // Angular diameter, in radians.
     float size;
     uint texture;
-    // Red moves outward along the axis and blue inward, each by this fraction of the ghost's size.
-    float dispersion;
+    // Red moves outward along the axis and blue inward, each by this fraction of the ghost's size per radian the light
+    // sits off the view axis.
+    float dispersionPerRadian;
     float3 tint;
-    uint padding;
+    // Multiplies the texture.
+    float intensity;
 };
 
 // Must match LensPushConstants in client/src/renderer/gpu_data/lens_push_constants.rs.

@@ -15,6 +15,7 @@ use crate::renderer::{
 };
 
 const DEFAULT_NAMESPACE: &str = "base";
+const MAIN_LENS: &str = "main";
 
 pub(super) struct ClientWorld {
     simulation_id: Id,
@@ -26,12 +27,7 @@ pub(super) struct ClientWorld {
 }
 
 impl ClientWorld {
-    pub fn load(
-        packs_directory: &Path,
-        world: &WorldState,
-        lens_profile: &Id,
-        renderer: &mut Renderer,
-    ) -> anyhow::Result<ClientWorld> {
+    pub fn load(packs_directory: &Path, world: &WorldState, renderer: &mut Renderer) -> anyhow::Result<ClientWorld> {
         let pack_ids: Vec<String> = world.packs.iter().map(|pack| pack.id.clone()).collect();
         let stack = PackStack::load(packs_directory, &pack_ids)?;
 
@@ -96,7 +92,7 @@ impl ClientWorld {
 
         let skybox = ClientWorld::load_skybox(&stack, &simulation_id, renderer)?;
         renderer.scene_mut().skybox = skybox;
-        ClientWorld::load_lens(&stack, lens_profile, renderer);
+        ClientWorld::load_lens(&stack, renderer);
 
         Ok(ClientWorld {
             simulation_id,
@@ -208,11 +204,13 @@ impl ClientWorld {
         }
     }
 
-    fn load_lens(stack: &PackStack, profile: &Id, renderer: &mut Renderer) {
-        let loaded = LensDefinition::load(stack, profile).and_then(|definition| renderer.load_lens(&definition));
+    fn load_lens(stack: &PackStack, renderer: &mut Renderer) {
+        let loaded = Id::parse(MAIN_LENS, DEFAULT_NAMESPACE)
+            .and_then(|profile| LensDefinition::load(stack, &profile))
+            .and_then(|definition| renderer.load_lens(&definition));
 
         if let Err(err) = loaded {
-            tracing::warn!("skipping lens effects: lens {profile}: {err:#}");
+            tracing::warn!("skipping lens effects: lens {MAIN_LENS}: {err:#}");
         }
     }
 

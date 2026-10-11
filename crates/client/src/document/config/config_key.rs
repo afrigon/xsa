@@ -16,7 +16,6 @@ impl ConfigKey {
         BloomDocument::ENABLED,
         BloomDocument::STRENGTH,
         LensDocument::ENABLED,
-        LensDocument::PROFILE,
         AntialiasingDocument::KIND,
         RenderDocument::WIREFRAME,
         RenderDocument::SHADER_OVERRIDE,

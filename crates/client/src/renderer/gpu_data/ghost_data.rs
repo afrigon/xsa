@@ -10,10 +10,12 @@ pub(in crate::renderer) struct GhostData {
     // Angular diameter, in radians.
     pub size: f32,
     pub texture: u32,
-    // Red moves outward along the axis and blue inward, each by this fraction of the ghost's size.
-    pub dispersion: f32,
+    // Red moves outward along the axis and blue inward, each by this fraction of the ghost's size per radian the light
+    // sits off the view axis.
+    pub dispersion_per_radian: f32,
     pub tint: Vec3,
-    pub padding: u32,
+    // Multiplies the texture.
+    pub intensity: f32,
 }
 
 const _: () = assert!(size_of::<GhostData>() == 32);

@@ -6,14 +6,11 @@ use super::{
     AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, KeyChord,
     LensConfig, RenderConfig,
 };
-use xsa_packs::Id;
 
 use crate::renderer::{ShadingModel, Tonemapper};
 
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
 const BLOOM_STRENGTH: f32 = 0.02;
-const LENS_PROFILE_NAMESPACE: &str = "base";
-const LENS_PROFILE_PATH: &str = "default";
 const ANIMATION_DURATION_SCALE: f32 = 1.0;
 
 struct DefaultBind {
@@ -62,13 +59,7 @@ impl Default for Config {
                     enabled: true,
                     strength: BLOOM_STRENGTH,
                 },
-                lens: LensConfig {
-                    enabled: true,
-                    profile: Id {
-                        namespace: LENS_PROFILE_NAMESPACE.to_string(),
-                        path: LENS_PROFILE_PATH.to_string(),
-                    },
-                },
+                lens: LensConfig { enabled: true },
                 antialiasing: AntialiasingConfig {
                     kind: Some(AntialiasingKind::Taa),
                 },

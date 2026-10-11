@@ -25,7 +25,7 @@ pub(in crate::renderer) struct Lens {
     pub ghost_count: u32,
     // The brightest starburst value at each log-polar row's angle or beyond.
     starburst_maxima: Vec<f32>,
-    // Each ghost's brightest texel times its tint.
+    // Each ghost's brightest texel times its intensity and tint.
     ghost_peaks: Vec<f32>,
     ghost_data: Vec<GhostData>,
     ghosts: Option<Buffer>,
@@ -48,14 +48,14 @@ impl Lens {
                 .rgb_texels()?
                 .iter()
                 .fold(0.0_f32, |peak, texel| peak.max(texel.max_element()));
-            ghost_peaks.push(peak * ghost.tint.max_element());
+            ghost_peaks.push(peak * ghost.intensity * ghost.tint.max_element());
             ghost_data.push(GhostData {
                 position: ghost.position,
                 size: ghost.size_degrees.to_radians(),
                 texture: upload(&format!("lens ghost {index}"), &image)?.index(),
-                dispersion: ghost.dispersion,
+                dispersion_per_radian: ghost.dispersion_per_degree.to_degrees(),
                 tint: ghost.tint,
-                padding: 0,
+                intensity: ghost.intensity,
             });
         }
 
@@ -129,16 +129,18 @@ impl Lens {
         self.starburst_maxima[row]
     }
 
-    // A ghost adds its peak if the circle around its quad, widened by its dispersion, touches the screen.
+    // A ghost adds its peak if the circle around its quad, widened by its color split, touches the screen.
     fn ghost_bound(&self, light: &ProjectedLightData, viewport: Vec2, focal_length: f32) -> f32 {
         let center = viewport * 0.5;
+        let off_axis = Lens::pixel_ray(light.screen_position, viewport, focal_length).angle_between(Vec3::Z);
 
         self.ghost_data
             .iter()
             .zip(&self.ghost_peaks)
             .filter(|(ghost, _)| {
                 let ghost_center = light.screen_position.lerp(center, ghost.position);
-                let half_size = (ghost.size * 0.5).tan() * focal_length * (1.0 + 2.0 * ghost.dispersion);
+                let split = ghost.dispersion_per_radian * off_axis;
+                let half_size = (ghost.size * 0.5).tan() * focal_length * (1.0 + 2.0 * split);
                 let reach = half_size * std::f32::consts::SQRT_2;
 
                 ghost_center.distance(ghost_center.clamp(Vec2::ZERO, viewport)) <= reach
@@ -249,9 +251,9 @@ mod tests {
             position: 1.0,
             size: 0.1,
             texture: 0,
-            dispersion: 0.0,
+            dispersion_per_radian: 0.0,
             tint: Vec3::ONE,
-            padding: 0,
+            intensity: 1.0,
         };
         let without = lens(vec![], vec![]);
         let with = lens(vec![ghost], vec![1.0]);

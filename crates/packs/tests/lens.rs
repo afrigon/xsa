@@ -8,7 +8,7 @@ const MANIFEST: &str = "version \"0.1.0\"\nformat 1\n";
 const LENS: &str = r#"off-axis-falloff exponent=2.0
 glare intensity=1.0 falloff=2.2
 starburst texture="lens/starburst" inner=0.01 extent=90
-ghost position=2.0 size=8.0 dispersion=0.1 {
+ghost position=2.0 size=8.0 dispersion-per-degree=0.01 intensity=0.02 {
     tint 1.0 1.0 1.3
     texture "lens/ghost"
 }
@@ -49,8 +49,9 @@ fn a_lens_reads_its_layers() {
     assert_eq!(lens.starburst.extent_degrees, 90.0);
     assert_eq!(lens.ghosts.len(), 2);
     assert_eq!(lens.ghosts[0].size_degrees, 8.0);
-    assert_eq!(lens.ghosts[0].dispersion, 0.1);
+    assert_eq!(lens.ghosts[0].dispersion_per_degree, 0.01);
     assert_eq!(lens.ghosts[0].tint.z, 1.3);
+    assert_eq!(lens.ghosts[0].intensity, 0.02);
 }
 
 #[test]
@@ -59,8 +60,9 @@ fn ghosts_are_neutral_by_default() {
     let lens = load(&directory).unwrap();
     fs::remove_dir_all(&directory).unwrap();
 
-    assert_eq!(lens.ghosts[1].dispersion, 0.0);
+    assert_eq!(lens.ghosts[1].dispersion_per_degree, 0.0);
     assert_eq!(lens.ghosts[1].tint, glam::Vec3::ONE);
+    assert_eq!(lens.ghosts[1].intensity, 1.0);
 }
 
 #[test]

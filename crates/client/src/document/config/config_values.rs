@@ -48,6 +48,8 @@ impl ConfigValues<'_> {
         parsed
     }
 
+    // A building block for declaring settings, kept whether or not a setting uses it.
+    #[allow(dead_code)]
     pub fn id(&self, key: ConfigKey) -> Option<Id> {
         let value = self.value(key)?;
         let parsed = value

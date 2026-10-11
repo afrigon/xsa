@@ -376,19 +376,6 @@ mod tests {
     }
 
     #[test]
-    fn identifiers_must_name_their_namespace() {
-        let file = TestFile::new("identifier", None);
-        let mut document = ConfigDocument::load(file.path()).unwrap();
-        document.set("render.lens.profile", "system-solar:comparison").unwrap();
-        assert_eq!(
-            document.config().render.lens.profile.to_string(),
-            "system-solar:comparison"
-        );
-        assert!(document.set("render.lens.profile", "comparison").is_err());
-        assert!(document.toggle("render.lens.profile").is_err());
-    }
-
-    #[test]
     fn a_prefix_lists_every_key_below_it() {
         let file = TestFile::new("prefix", None);
         let document = ConfigDocument::load(file.path()).unwrap();
