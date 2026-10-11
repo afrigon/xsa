@@ -1,4 +1,5 @@
 # Traces every two-reflection ghost of the lens for a distant light at the design's field angle, per wavelength.
+import os
 import time
 from multiprocessing import Pool
 import numpy as np
@@ -10,6 +11,8 @@ import design
 
 RAYS_ACROSS = quality.GHOST_RAYS_ACROSS
 WAVELENGTHS = quality.GHOST_WAVELENGTHS
+# Cores left free so the machine stays responsive during a bake.
+RESERVED_CORES = 4
 SENSOR_HALF = design.SENSOR_HALF
 BIN = design.BIN
 
@@ -152,7 +155,7 @@ if __name__ == "__main__":
     weights = color.rgb_weights(WAVELENGTHS)
     pairs = [(None, None)] + [(a, b) for ai, a in enumerate(optical) for b in optical[ai + 1:]]
     start = time.time()
-    with Pool() as pool:
+    with Pool(max(1, os.cpu_count() - RESERVED_CORES)) as pool:
         traced = pool.starmap(trace_ghost, [(first, second, field, weights) for first, second in pairs])
     results = {}
     for (first, second), rgb in zip(pairs, traced):
