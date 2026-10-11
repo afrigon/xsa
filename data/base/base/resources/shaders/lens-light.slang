@@ -25,16 +25,24 @@ LightOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_Ins
 }
 
 // The starburst is stored log-polar: u is the direction around the light, v the angle from it on a log scale
-// between the inner and outer angles.
-float3 starburst(float angle, float2 offset) {
-    float distance = log(angle / constants.starburstInner) / log(constants.starburstExtent / constants.starburstInner);
+// between the inner and outer angles. The direction wraps from +180 to -180 degrees left of the light, so its
+// gradient is given exactly rather than measured across neighboring pixels, which would see the jump and pick the
+// coarsest mip level along that line.
+float3 starburst(float angle, float2 angleGradient, float2 offset) {
+    float logRange = log(constants.starburstExtent / constants.starburstInner);
+    float distance = log(angle / constants.starburstInner) / logRange;
 
     if (distance < 0.0 || distance > 1.0) {
         return float3(0.0);
     }
 
-    float2 uv = float2(atan2(offset.y, offset.x) / radians(360.0), distance);
-    return textures[constants.starburstTexture].Sample(wrappingSampler, uv).rgb;
+    float turn = radians(360.0);
+    float2 uv = float2(atan2(offset.y, offset.x) / turn, distance);
+    float2 directionGradient = float2(-offset.y, offset.x) / (dot(offset, offset) * turn);
+    float2 distanceGradient = angleGradient / (angle * logRange);
+    float2 uvGradientX = float2(directionGradient.x, distanceGradient.x);
+    float2 uvGradientY = float2(directionGradient.y, distanceGradient.y);
+    return textures[constants.starburstTexture].SampleGrad(wrappingSampler, uv, uvGradientX, uvGradientY).rgb;
 }
 
 // Light the lens spreads around each light: a glow that falls off with a power of the angle and stays flat across the
@@ -46,11 +54,12 @@ float4 fragmentMain(LightOutput input) : SV_Target {
     float3 toPixel = pixelRay(input.position.xy, viewportSize, constants.focalLengthPixels);
     float3 toLight = pixelRay(light.screenPosition, viewportSize, constants.focalLengthPixels);
     float angle = atan2(length(cross(toPixel, toLight)), dot(toPixel, toLight));
+    float2 angleGradient = float2(ddx(angle), ddy(angle));
     float degreesFromLight = degrees(max(angle, light.angularRadius));
     float3 shape = constants.glareIntensity / pow(degreesFromLight, constants.glareFalloff);
 
     if (angle >= light.angularRadius) {
-        shape += starburst(angle, input.position.xy - light.screenPosition);
+        shape += starburst(angle, angleGradient, input.position.xy - light.screenPosition);
     }
 
     float3 luminance = light.illuminance * light.visibility * shape;
