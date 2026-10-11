@@ -4,6 +4,9 @@ use glam::{DMat4, DVec2, DVec3, Vec3};
 use super::gpu_data::ProjectedLightData;
 use crate::camera::Camera;
 
+// A lens passes light arriving at an angle θ off its axis in proportion to cos⁴ θ (natural vignetting).
+const NATURAL_VIGNETTING_EXPONENT: i32 = 4;
+
 pub(in crate::renderer) struct LightProjection {
     view_projection: DMat4,
     extent: DVec2,
@@ -44,13 +47,15 @@ impl LightProjection {
 
         let normalized = clip.truncate().truncate() / clip.w;
         let angular_radius = (radius / distance).asin();
+        // The depth along the view axis over the distance is the cosine of the angle off that axis.
+        let off_axis_cosine = clip.w / distance;
 
         Some(ProjectedLightData {
             screen_position: ((normalized * 0.5 + 0.5) * self.extent).as_vec2(),
             visibility,
             angular_radius: angular_radius as f32,
             illuminance: intensity / (distance * distance) as f32,
-            padding: 0,
+            acceptance: off_axis_cosine.powi(NATURAL_VIGNETTING_EXPONENT) as f32,
         })
     }
 }
@@ -92,6 +97,25 @@ mod tests {
         let degrees = star.angular_radius.to_degrees();
 
         assert!((0.26..0.27).contains(&degrees), "{degrees}°");
+    }
+
+    #[test]
+    fn the_lens_accepts_less_light_off_axis() {
+        let ahead = projection()
+            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0)
+            .unwrap();
+        let sixty_degrees = 60.0_f64.to_radians();
+        let aside = projection()
+            .project(
+                DVec3::new(sixty_degrees.sin(), sixty_degrees.cos(), 0.0) * ASTRONOMICAL_UNIT,
+                SUN_RADIUS,
+                Vec3::ONE,
+                1.0,
+            )
+            .unwrap();
+
+        assert!((ahead.acceptance - 1.0).abs() < 1e-6, "{}", ahead.acceptance);
+        assert!((aside.acceptance - 0.0625).abs() < 1e-4, "{}", aside.acceptance);
     }
 
     #[test]

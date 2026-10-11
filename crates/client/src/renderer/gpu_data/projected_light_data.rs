@@ -10,7 +10,8 @@ pub(in crate::renderer) struct ProjectedLightData {
     pub visibility: f32,
     pub angular_radius: f32,
     pub illuminance: Vec3,
-    pub padding: u32,
+    // Fraction of the light the lens passes at this angle off its axis.
+    pub acceptance: f32,
 }
 
 const _: () = assert!(size_of::<ProjectedLightData>() == 32);

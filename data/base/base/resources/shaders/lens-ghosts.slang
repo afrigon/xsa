@@ -61,6 +61,6 @@ float4 fragmentMain(GhostOutput input) : SV_Target {
     float green = texture.Sample(clampingSampler, uv).g;
     float blue = texture.Sample(clampingSampler, uv + shift).b;
     ProjectedLightData light = constants.lights[input.light];
-    float3 luminance = light.illuminance * light.visibility * ghost.tint * float3(red, green, blue);
+    float3 luminance = light.illuminance * light.visibility * light.acceptance * ghost.tint * float3(red, green, blue);
     return float4(luminance * constants.frame->exposure, 1.0);
 }

@@ -7,7 +7,8 @@ struct ProjectedLightData {
     float visibility;
     float angularRadius;
     float3 illuminance;
-    uint padding;
+    // Fraction of the light the lens passes at this angle off its axis.
+    float acceptance;
 };
 
 // Must match GhostData in client/src/renderer/gpu_data/ghost_data.rs.

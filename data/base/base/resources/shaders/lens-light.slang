@@ -62,6 +62,6 @@ float4 fragmentMain(LightOutput input) : SV_Target {
         shape += starburst(angle, angleGradient, input.position.xy - light.screenPosition);
     }
 
-    float3 luminance = light.illuminance * light.visibility * shape;
+    float3 luminance = light.illuminance * light.visibility * light.acceptance * shape;
     return float4(luminance * constants.frame->exposure, 1.0);
 }
