@@ -16,6 +16,9 @@ struct GhostData {
     // Angular diameter, in radians.
     float size;
     uint texture;
+    // Red moves outward along the axis and blue inward, each by this fraction of the ghost's size.
+    float dispersion;
+    float3 tint;
     uint padding;
 };
 

@@ -7,7 +7,11 @@ use xsa_packs::{Id, LensDefinition, PackStack};
 const MANIFEST: &str = "version \"0.1.0\"\nformat 1\n";
 const LENS: &str = r#"glare intensity=1.0 falloff=2.2
 starburst texture="lens/starburst" inner=0.01 extent=90
-ghost position=2.0 size=8.0 {
+ghost position=2.0 size=8.0 dispersion=0.1 {
+    tint 1.0 1.0 1.3
+    texture "lens/ghost"
+}
+ghost position=0.5 size=4.0 {
     texture "lens/ghost"
 }
 "#;
@@ -41,8 +45,20 @@ fn a_lens_reads_its_layers() {
 
     assert_eq!(lens.glare.falloff, 2.2);
     assert_eq!(lens.starburst.extent_degrees, 90.0);
-    assert_eq!(lens.ghosts.len(), 1);
+    assert_eq!(lens.ghosts.len(), 2);
     assert_eq!(lens.ghosts[0].size_degrees, 8.0);
+    assert_eq!(lens.ghosts[0].dispersion, 0.1);
+    assert_eq!(lens.ghosts[0].tint.z, 1.3);
+}
+
+#[test]
+fn ghosts_are_neutral_by_default() {
+    let directory = test_pack("neutral", &["starburst", "ghost"]);
+    let lens = load(&directory).unwrap();
+    fs::remove_dir_all(&directory).unwrap();
+
+    assert_eq!(lens.ghosts[1].dispersion, 0.0);
+    assert_eq!(lens.ghosts[1].tint, glam::Vec3::ONE);
 }
 
 #[test]

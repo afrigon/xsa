@@ -33,6 +33,8 @@ impl Lens {
                     position: ghost.position,
                     size: ghost.size_degrees.to_radians(),
                     texture: load_texture(&format!("lens ghost {index}"), &ghost.texture)?.index(),
+                    dispersion: ghost.dispersion,
+                    tint: ghost.tint,
                     padding: 0,
                 })
             })

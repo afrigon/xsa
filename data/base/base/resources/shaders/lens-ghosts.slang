@@ -37,7 +37,8 @@ GhostOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_Ins
     float2 viewportSize = constants.frame->viewportSize;
     float2 center = lerp(light.screenPosition, viewportSize * 0.5, ghost.position);
     float halfSize = tan(ghost.size * 0.5) * constants.focalLengthPixels;
-    float2 corner = quadCorners[vertexIndex];
+    // The quad widens along the axis so the shifted red and blue stay inside it.
+    float2 corner = quadCorners[vertexIndex] * float2(1.0 + 2.0 * ghost.dispersion, 1.0);
     float2 fromCenter = light.screenPosition - viewportSize * 0.5;
     float2 axis = length(fromCenter) > 0.0 ? normalize(fromCenter) : float2(1.0, 0.0);
     float2 pixel = center + (axis * corner.x + float2(-axis.y, axis.x) * corner.y) * halfSize;
@@ -52,9 +53,14 @@ GhostOutput vertexMain(uint vertexIndex: SV_VertexID, uint instanceIndex: SV_Ins
 [shader("fragment")]
 float4 fragmentMain(GhostOutput input) : SV_Target {
     GhostData ghost = constants.ghosts[input.ghost];
+    // The texture's border is black, so samples past its edge add nothing.
+    Texture2D texture = textures[NonUniformResourceIndex(ghost.texture)];
     float2 uv = input.local * 0.5 + 0.5;
-    float3 shape = textures[NonUniformResourceIndex(ghost.texture)].Sample(clampingSampler, uv).rgb;
+    float2 shift = float2(ghost.dispersion, 0.0);
+    float red = texture.Sample(clampingSampler, uv - shift).r;
+    float green = texture.Sample(clampingSampler, uv).g;
+    float blue = texture.Sample(clampingSampler, uv + shift).b;
     ProjectedLightData light = constants.lights[input.light];
-    float3 luminance = light.illuminance * light.visibility * shape;
+    float3 luminance = light.illuminance * light.visibility * ghost.tint * float3(red, green, blue);
     return float4(luminance * constants.frame->exposure, 1.0);
 }
