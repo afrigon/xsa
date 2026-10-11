@@ -4,9 +4,6 @@ use glam::{DMat4, DVec2, DVec3, Vec3};
 use super::gpu_data::ProjectedLightData;
 use crate::camera::Camera;
 
-// A lens passes light arriving at an angle θ off its axis in proportion to cos⁴ θ (natural vignetting).
-const NATURAL_VIGNETTING_EXPONENT: i32 = 4;
-
 pub(in crate::renderer) struct LightProjection {
     view_projection: DMat4,
     extent: DVec2,
@@ -37,6 +34,7 @@ impl LightProjection {
         radius: f64,
         intensity: Vec3,
         visibility: f32,
+        vignetting_exponent: f32,
     ) -> Option<ProjectedLightData> {
         let distance = position.length();
         let clip = self.view_projection * position.extend(1.0);
@@ -55,7 +53,7 @@ impl LightProjection {
             visibility,
             angular_radius: angular_radius as f32,
             illuminance: intensity / (distance * distance) as f32,
-            acceptance: off_axis_cosine.powi(NATURAL_VIGNETTING_EXPONENT) as f32,
+            acceptance: (off_axis_cosine as f32).powf(vignetting_exponent),
         })
     }
 }
@@ -82,7 +80,7 @@ mod tests {
     #[test]
     fn a_star_straight_ahead_lands_on_the_screen_center() {
         let star = projection()
-            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0)
+            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0, 4.0)
             .unwrap();
 
         assert!((star.screen_position.x - 960.0).abs() < 0.5, "{}", star.screen_position);
@@ -92,7 +90,7 @@ mod tests {
     #[test]
     fn the_sun_from_earth_is_about_a_quarter_degree_wide() {
         let star = projection()
-            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0)
+            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0, 4.0)
             .unwrap();
         let degrees = star.angular_radius.to_degrees();
 
@@ -102,7 +100,7 @@ mod tests {
     #[test]
     fn the_lens_accepts_less_light_off_axis() {
         let ahead = projection()
-            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0)
+            .project(DVec3::new(0.0, ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0, 4.0)
             .unwrap();
         let sixty_degrees = 60.0_f64.to_radians();
         let aside = projection()
@@ -111,6 +109,7 @@ mod tests {
                 SUN_RADIUS,
                 Vec3::ONE,
                 1.0,
+                4.0,
             )
             .unwrap();
 
@@ -122,7 +121,13 @@ mod tests {
     fn a_star_behind_the_camera_is_not_projected() {
         assert!(
             projection()
-                .project(DVec3::new(0.0, -ASTRONOMICAL_UNIT, 0.0), SUN_RADIUS, Vec3::ONE, 1.0)
+                .project(
+                    DVec3::new(0.0, -ASTRONOMICAL_UNIT, 0.0),
+                    SUN_RADIUS,
+                    Vec3::ONE,
+                    1.0,
+                    4.0
+                )
                 .is_none()
         );
     }

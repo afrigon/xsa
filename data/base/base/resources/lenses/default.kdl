@@ -1,3 +1,5 @@
+vignetting exponent=2
+
 glare intensity=0.9329 falloff=2.2
 
 starburst texture="lens/starburst" inner=0.01 extent=90

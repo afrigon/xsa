@@ -524,14 +524,20 @@ impl Renderer {
             let visibility = self
                 .light_occlusion
                 .visibility(camera_relative, object.bounding_radius, occluders);
-            let projected = projection
-                .project(camera_relative, object.bounding_radius, light.intensity, visibility)
-                .filter(|projected| {
-                    self.lens.as_ref().is_some_and(|lens| {
+            if let Some(lens) = &self.lens {
+                let projected = projection
+                    .project(
+                        camera_relative,
+                        object.bounding_radius,
+                        light.intensity,
+                        visibility,
+                        lens.vignetting_exponent,
+                    )
+                    .filter(|projected| {
                         lens.reaches_screen(projected, frame_data.exposure, viewport, self.focal_length_pixels)
-                    })
-                });
-            self.projected_light_data.extend(projected);
+                    });
+                self.projected_light_data.extend(projected);
+            }
         }
 
         anyhow::ensure!(

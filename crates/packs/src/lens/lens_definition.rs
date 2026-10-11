@@ -1,6 +1,6 @@
 use anyhow::{Context, bail};
 
-use super::{GhostDefinition, GlareDefinition, StarburstDefinition};
+use super::{GhostDefinition, GlareDefinition, StarburstDefinition, VignettingDefinition};
 use crate::{DOCUMENT_EXTENSION, Document, FromNode, Id, NodeExtension, PackStack, ParseContext};
 
 const LENSES: &str = "lenses";
@@ -8,6 +8,7 @@ const LENSES: &str = "lenses";
 pub struct LensDefinition {
     pub glare: GlareDefinition,
     pub starburst: StarburstDefinition,
+    pub vignetting: VignettingDefinition,
     pub ghosts: Vec<GhostDefinition>,
 }
 
@@ -24,15 +25,16 @@ impl LensDefinition {
 
         for node in document.nodes() {
             match node.node_name() {
-                "glare" | "starburst" => {}
+                "glare" | "starburst" | "vignetting" => {}
                 "ghost" => ghosts.push(GhostDefinition::from_node(node, context)?),
-                other => bail!("unknown lens node `{other}`: use `glare`, `starburst` or `ghost`"),
+                other => bail!("unknown lens node `{other}`: use `vignetting`, `glare`, `starburst` or `ghost`"),
             }
         }
 
         Ok(LensDefinition {
             glare: GlareDefinition::from_node(document.node("glare")?, context)?,
             starburst: StarburstDefinition::from_node(document.node("starburst")?, context)?,
+            vignetting: VignettingDefinition::from_node(document.node("vignetting")?, context)?,
             ghosts,
         })
     }

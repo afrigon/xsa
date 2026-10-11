@@ -16,6 +16,7 @@ const SRGB_LINEAR_SLOPE: f32 = 12.92;
 const VISIBLE_EXPOSED: f32 = 0.5 / OUTPUT_LEVELS / SRGB_LINEAR_SLOPE;
 
 pub(in crate::renderer) struct Lens {
+    pub vignetting_exponent: f32,
     pub glare_intensity: f32,
     pub glare_falloff: f32,
     pub starburst_texture: u32,
@@ -59,6 +60,7 @@ impl Lens {
         }
 
         Ok(Lens {
+            vignetting_exponent: definition.vignetting.exponent,
             glare_intensity: definition.glare.intensity,
             glare_falloff: definition.glare.falloff,
             starburst_texture,
@@ -196,6 +198,7 @@ mod tests {
 
     fn lens(ghosts: Vec<GhostData>, ghost_peaks: Vec<f32>) -> Lens {
         Lens {
+            vignetting_exponent: 2.0,
             glare_intensity: 0.93,
             glare_falloff: 2.2,
             starburst_texture: 0,
