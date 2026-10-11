@@ -11,8 +11,7 @@ pub const DOCUMENT_EXTENSION: &str = "kdl";
 const DATA_DIRECTORY: &str = "data";
 const RESOURCES_DIRECTORY: &str = "resources";
 const TEXTURES: &str = "textures";
-const COMPRESSED_TEXTURE_EXTENSION: &str = "dds";
-const IMAGE_TEXTURE_EXTENSION: &str = "png";
+const TEXTURE_EXTENSION: &str = "dds";
 const FONTS: &str = "fonts";
 const FONT_EXTENSION: &str = "ttf";
 
@@ -76,23 +75,7 @@ impl PackStack {
     }
 
     pub fn texture(&self, id: &Id) -> anyhow::Result<&Path> {
-        let compressed = self.resource(TEXTURES, id, COMPRESSED_TEXTURE_EXTENSION);
-        let image = self.resource(TEXTURES, id, IMAGE_TEXTURE_EXTENSION);
-
-        match (compressed, image) {
-            (Ok(compressed), Ok(image)) => {
-                tracing::warn!(
-                    "texture {id} exists as both {} and {}: using the .{COMPRESSED_TEXTURE_EXTENSION}",
-                    compressed.display(),
-                    image.display()
-                );
-                Ok(compressed)
-            }
-            (Ok(path), Err(_)) | (Err(_), Ok(path)) => Ok(path),
-            (Err(_), Err(_)) => bail!(
-                "no loaded pack provides texture {id} as .{COMPRESSED_TEXTURE_EXTENSION} or .{IMAGE_TEXTURE_EXTENSION}"
-            ),
-        }
+        self.resource(TEXTURES, id, TEXTURE_EXTENSION)
     }
 
     pub fn font(&self, id: &Id) -> anyhow::Result<&Path> {
