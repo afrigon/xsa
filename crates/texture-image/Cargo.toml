@@ -1,0 +1,9 @@
+[package]
+name = "texture-image"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+image = { workspace = true, features = ["png"] }
+zstd = "0.14.2"
