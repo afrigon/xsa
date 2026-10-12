@@ -16,6 +16,7 @@ mod lens_lights;
 mod light_occlusion;
 mod light_projection;
 mod material;
+mod object_pose;
 mod passes;
 mod render_passes;
 mod scene;
@@ -39,7 +40,7 @@ use std::cell::Cell;
 use std::path::Path;
 
 use ash::vk;
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2};
 use render_graph::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -63,6 +64,7 @@ use lens::Lens;
 use light_occlusion::LightOcclusion;
 use light_projection::LightProjection;
 use material::MaterialData;
+use object_pose::ObjectPose;
 use passes::TaaPass;
 use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
@@ -477,7 +479,7 @@ impl Renderer {
         let clip_from_view = camera.clip_from_view();
         let unjittered_view_projection = clip_from_view * camera.view_rotation();
         self.temporal
-            .begin_frame(unjittered_view_projection, self.exposure.exposure());
+            .begin_frame(unjittered_view_projection, self.exposure.exposure(), camera.position);
         let jitter = if self.render.antialiasing.kind == Some(AntialiasingKind::Taa) {
             self.temporal.jitter(extent)
         } else {
@@ -503,15 +505,15 @@ impl Renderer {
         self.object_data.clear();
 
         for object in self.scene.objects() {
-            let camera_relative = object.position - camera.position;
-            let world_from_model = Mat4::from_scale_rotation_translation(
-                Vec3::splat(object.scale as f32),
-                object.orientation.as_quat(),
-                camera_relative.as_vec3(),
-            );
+            let pose = ObjectPose {
+                position: object.position,
+                orientation: object.orientation,
+                scale: object.scale,
+            };
+            let previous = self.temporal.record_object(pose);
             self.object_data.push(ObjectData {
-                world_from_model,
-                previous_clip_from_model: self.temporal.record_object(world_from_model),
+                world_from_model: pose.world_from_model(camera.position),
+                previous_world_from_model: previous.world_from_model(self.temporal.previous_camera_position()),
             });
         }
 

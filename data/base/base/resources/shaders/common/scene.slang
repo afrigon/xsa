@@ -2,7 +2,7 @@ __exported import common.frame;
 
 struct ObjectData {
     float4x4 worldFromModel;
-    float4x4 previousClipFromModel;
+    float4x4 previousWorldFromModel;
 };
 
 struct HapkeData {
@@ -92,7 +92,8 @@ VertexOutput transformVertex(VertexInput input) {
     VertexOutput output;
     output.position = mul(constants.frame.viewProjection, world);
     output.currentClip = unjittered(output.position);
-    output.previousClip = mul(object.previousClipFromModel, float4(input.position, 1.0));
+    float4 previousWorld = mul(object.previousWorldFromModel, float4(input.position, 1.0));
+    output.previousClip = mul(constants.frame.previousViewProjection, previousWorld);
     output.worldPosition = world.xyz;
     output.normal = mul(object.worldFromModel, float4(input.normal, 0.0)).xyz;
     output.modelNormal = input.normal;
