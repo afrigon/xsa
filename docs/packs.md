@@ -257,10 +257,13 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 - **`shader "base:emissive"`** with optional **`color`** (a tint, white by
   default) and **`luminance`** (cd/m²). A star takes its luminance and color
   from its data and needs neither.
-- **`shader "base:planet"`** with **`color-texture`** (sRGB albedo) and
-  optional **`normal-texture`** and **`emissive-texture`** (sRGB), each a
-  texture id; an emissive texture needs **`emissive-luminance`** (cd/m² for a
-  texture value of 1).
+- **`shader "base:planet"`** with **`base-color`** (the body's average albedo,
+  linear red green blue) and optional **`color-texture`** (sRGB albedo),
+  **`normal-texture`** and **`emissive-texture`** (sRGB), each a texture id;
+  an emissive texture needs **`emissive-luminance`** (cd/m² for a texture
+  value of 1). Without a color texture the surface takes the base color. A
+  texture no loaded pack provides is skipped with a warning, as is a `hapke`
+  node missing either of its textures.
   An optional **`hapke`** node shades the surface with Hapke's model of
   particulate surfaces instead of Lambert: `scatter-texture` (red: single-
   scattering albedo w, green: phase-function lobe width b, blue: lobe balance

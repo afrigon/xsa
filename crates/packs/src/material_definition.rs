@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Context, bail, ensure};
 use glam::Vec3;
 
-use crate::{DOCUMENT_EXTENSION, Document, FromNode, HapkeDefinition, Id, NodeExtension, PackStack, ParseContext};
+use crate::{DOCUMENT_EXTENSION, Document, HapkeDefinition, Id, NodeExtension, PackStack, ParseContext};
 
 const MATERIALS: &str = "materials";
 const BODY_OBJECTS: &str = "objects/bodies";
@@ -17,7 +17,8 @@ pub enum MaterialDefinition {
         luminance: Option<f32>,
     },
     Planet {
-        color: PathBuf,
+        base_color: Vec3,
+        color: Option<PathBuf>,
         normal: Option<PathBuf>,
         emissive: Option<PathBuf>,
         emissive_luminance: f32,
@@ -55,12 +56,10 @@ impl MaterialDefinition {
                 .transpose()
         };
         let texture = |name: &str| -> anyhow::Result<Option<PathBuf>> {
-            let Some(node) = document.optional_node(name) else {
-                return Ok(None);
-            };
-            let id = context.parse_id(node.string_argument()?)?;
-
-            Ok(Some(context.stack.texture(&id)?.to_path_buf()))
+            match document.optional_node(name) {
+                Some(node) => context.available_texture(node.string_argument()?),
+                None => Ok(None),
+            }
         };
 
         match shader.to_string().as_str() {
@@ -83,14 +82,15 @@ impl MaterialDefinition {
                 );
 
                 Ok(MaterialDefinition::Planet {
-                    color: texture("color-texture")?.context("a planet material needs a `color-texture`")?,
+                    base_color: color("base-color")?,
+                    color: texture("color-texture")?,
                     normal: texture("normal-texture")?,
                     emissive,
                     emissive_luminance: emissive_luminance.unwrap_or(0.0),
-                    hapke: document
-                        .optional_node("hapke")
-                        .map(|node| HapkeDefinition::from_node(node, context))
-                        .transpose()?,
+                    hapke: match document.optional_node("hapke") {
+                        Some(node) => HapkeDefinition::parse(node, context)?,
+                        None => None,
+                    },
                 })
             }
             _ => bail!("shader {shader} is not supported by materials yet"),

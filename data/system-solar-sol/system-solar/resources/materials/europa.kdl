@@ -1,0 +1,5 @@
+shader "base:planet"
+base-color 0.3657 0.3420 0.2623
+color-texture "bodies/europa/color"
+normal-texture "bodies/europa/normal"
+hapke scatter-texture="bodies/europa/scatter" surge-texture="bodies/europa/surge" porosity=1.2 roughness=10 blend=1 light-boost=0.65 gamma-boost=0.82
