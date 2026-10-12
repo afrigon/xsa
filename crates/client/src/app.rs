@@ -349,6 +349,7 @@ impl App {
                 star_visibility: renderer.statistics().star_visibility,
                 light: renderer.statistics().light,
                 lens_lights: renderer.statistics().lens_lights,
+                gpu_milliseconds: renderer.statistics().gpu_milliseconds,
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
         });

@@ -9,6 +9,7 @@ mod frame_statistics;
 mod frustum;
 mod gpu_context;
 mod gpu_data;
+mod gpu_timer;
 mod graph_textures;
 mod lens;
 mod lens_lights;
@@ -106,6 +107,7 @@ pub struct Renderer {
     capture: Option<Buffer>,
     user_interface: DrawList,
     statistics: FrameStatistics,
+    gpu_milliseconds: Option<f32>,
     lens_lights: LensLights,
     histogram: Vec<u32>,
     object_data: Vec<ObjectData>,
@@ -167,6 +169,7 @@ impl Renderer {
             capture: None,
             user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
+            gpu_milliseconds: None,
             lens_lights: LensLights::default(),
             histogram: vec![0; HISTOGRAM_BINS],
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
@@ -327,11 +330,12 @@ impl Renderer {
 
         self.update_exposure();
         self.update_star_visibility()?;
+        self.update_gpu_time()?;
         self.write_frame_data(camera)?;
         self.cull_objects(camera);
         self.record_frame(image_index)?;
         self.submit_and_present(image_index)?;
-        self.frames[self.frame_index].histogram_ready = true;
+        self.frames[self.frame_index].submitted = true;
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
 
         Ok(())
@@ -420,9 +424,21 @@ impl Renderer {
     fn update_star_visibility(&mut self) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
 
-        if frame.histogram_ready {
+        if frame.submitted {
             frame.histogram.read(&mut self.histogram)?;
             self.star_visibility.update(&self.histogram);
+        }
+
+        Ok(())
+    }
+
+    fn update_gpu_time(&mut self) -> anyhow::Result<()> {
+        let frame = &self.frames[self.frame_index];
+
+        if let Some(timer) = &frame.timer
+            && frame.submitted
+        {
+            self.gpu_milliseconds = timer.milliseconds(&self.gpu.device)?.or(self.gpu_milliseconds);
         }
 
         Ok(())
@@ -601,6 +617,10 @@ impl Renderer {
                 .begin_command_buffer(frame.command_buffer, &begin_info)?;
         }
 
+        if let Some(timer) = &frame.timer {
+            timer.begin(device, frame.command_buffer);
+        }
+
         let mut graph = self.graph.begin_frame();
         let inputs = FrameInputs {
             output: graph.import_image(ImportedImage {
@@ -649,6 +669,11 @@ impl Renderer {
             triangles: Cell::new(0),
         };
         compiled.execute(device.handle(), frame.command_buffer, &context)?;
+
+        if let Some(timer) = &frame.timer {
+            timer.end(device, frame.command_buffer);
+        }
+
         unsafe { device.handle().end_command_buffer(frame.command_buffer) }?;
         self.statistics = FrameStatistics {
             triangles: context.triangles.get(),
@@ -657,6 +682,7 @@ impl Renderer {
             star_visibility: self.star_visibility.visibility(),
             light: self.star_visibility.light(),
             lens_lights: self.lens_lights,
+            gpu_milliseconds: self.gpu_milliseconds,
         };
         self.user_interface.atlas_updates.clear();
 

@@ -8,4 +8,5 @@ pub struct FrameStatistics {
     pub star_visibility: f32,
     pub light: f32,
     pub lens_lights: LensLights,
+    pub gpu_milliseconds: Option<f32>,
 }

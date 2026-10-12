@@ -13,6 +13,8 @@ pub struct Device {
     queue_family: u32,
     queue: vk::Queue,
     max_sampler_anisotropy: f32,
+    // Nanoseconds per timestamp tick; `None` when the queue cannot write timestamps.
+    timestamp_period: Option<f32>,
     extended_dynamic_state3: Option<ext::extended_dynamic_state3::Device>,
 }
 
@@ -70,16 +72,22 @@ impl Device {
         let queue = unsafe { device.get_device_queue(queue_family, 0) };
         let extended_dynamic_state3 =
             supports_polygon_mode.then(|| ext::extended_dynamic_state3::Device::new(instance.handle(), &device));
-        let max_sampler_anisotropy = unsafe { instance.handle().get_physical_device_properties(physical_device) }
-            .limits
-            .max_sampler_anisotropy;
+        let limits = unsafe { instance.handle().get_physical_device_properties(physical_device) }.limits;
+        let queue_families = unsafe {
+            instance
+                .handle()
+                .get_physical_device_queue_family_properties(physical_device)
+        };
+        let timestamp_period =
+            (queue_families[queue_family as usize].timestamp_valid_bits > 0).then_some(limits.timestamp_period);
 
         Ok(Self {
             physical_device,
             device,
             queue_family,
             queue,
-            max_sampler_anisotropy,
+            max_sampler_anisotropy: limits.max_sampler_anisotropy,
+            timestamp_period,
             extended_dynamic_state3,
         })
     }
@@ -102,6 +110,10 @@ impl Device {
 
     pub fn max_sampler_anisotropy(&self) -> f32 {
         self.max_sampler_anisotropy
+    }
+
+    pub fn timestamp_period(&self) -> Option<f32> {
+        self.timestamp_period
     }
 
     pub fn extended_dynamic_state3(&self) -> Option<&ext::extended_dynamic_state3::Device> {
