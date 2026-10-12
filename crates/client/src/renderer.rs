@@ -32,7 +32,9 @@ pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
 pub use frame_statistics::FrameStatistics;
 pub use lens_lights::LensLights;
-pub use material::{HapkeParameters, Material, Shader, ShadingModel};
+pub use material::{
+    EmissiveMaterial, HapkeParameters, LitMaterial, Material, PlanetMaterial, Shader, ShadingModel, SkyboxMaterial,
+};
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
@@ -65,7 +67,7 @@ use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
 use light_projection::LightProjection;
-use material::MaterialData;
+use material::MaterialBuffer;
 use object_pose::ObjectPose;
 use passes::TaaPass;
 use quad_sphere::{DetailRanges, QuadSphere, SelectedTile};
@@ -83,7 +85,6 @@ const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_TILE_CAPACITY: usize = 4096;
 const INITIAL_STAR_CAPACITY: usize = 4;
 const INITIAL_LIGHT_CAPACITY: usize = 4;
-const MATERIAL_CAPACITY: usize = 256;
 // Presentation waits on the acquire semaphore at the color attachment output stage.
 const SWAPCHAIN_ACQUIRED: ImageState = ImageState {
     stages: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
@@ -125,13 +126,13 @@ pub struct Renderer {
     selected_tiles: Vec<SelectedTile>,
     terrain_draws: Vec<TerrainDraw>,
     tile_data: Vec<TileData>,
-    material_data: Vec<MaterialData>,
     object_capacity: usize,
     tile_capacity: usize,
     star_capacity: usize,
     light_capacity: usize,
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
+    materials: Vec<MaterialBuffer>,
     lens: Option<Lens>,
     passes: RenderPasses,
     graph: RenderGraph,
@@ -191,13 +192,13 @@ impl Renderer {
             selected_tiles: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             terrain_draws: Vec::new(),
             tile_data: Vec::with_capacity(INITIAL_TILE_CAPACITY),
-            material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             tile_capacity: INITIAL_TILE_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
             light_capacity: INITIAL_LIGHT_CAPACITY,
             cube_maps: Vec::new(),
             textures: Vec::new(),
+            materials: Vec::new(),
             lens: None,
             passes,
             graph,
@@ -301,6 +302,14 @@ impl Renderer {
                 Err(err)
             }
         }
+    }
+
+    pub fn add_material<M: Material>(&mut self, name: &str, material: M) -> anyhow::Result<MaterialHandle> {
+        self.materials
+            .push(MaterialBuffer::new(&mut self.gpu, name, &material)?);
+        Ok(MaterialHandle {
+            index: self.materials.len() - 1,
+        })
     }
 
     pub fn load_lens(&mut self, definition: &LensDefinition) -> anyhow::Result<()> {
@@ -588,22 +597,12 @@ impl Renderer {
         self.write_tile_data(camera);
         self.ensure_tile_capacity()?;
 
-        anyhow::ensure!(
-            self.scene.materials().len() <= MATERIAL_CAPACITY,
-            "the scene has more than {MATERIAL_CAPACITY} materials"
-        );
-        self.material_data.clear();
-        self.material_data
-            .extend(self.scene.materials().iter().map(Material::gpu_data));
-
         let frame = &mut self.frames[self.frame_index];
         frame.frame_data.write(&[frame_data])?;
         frame.objects.write(&self.object_data)?;
         frame.tiles.write(&self.tile_data)?;
         frame.stars.write(&self.star_data)?;
-        frame.projected_lights.write(&self.projected_light_data)?;
-
-        frame.materials.write(&self.material_data)
+        frame.projected_lights.write(&self.projected_light_data)
     }
 
     fn detail_ranges(&self, radius: f64) -> DetailRanges {
@@ -750,6 +749,7 @@ impl Renderer {
             temporal: &self.temporal,
             render: &self.render,
             scene: &self.scene,
+            materials: &self.materials,
             lens: self.lens.as_ref(),
             focal_length_pixels: self.focal_length_pixels,
             terrain_draws: &self.terrain_draws,
@@ -944,6 +944,10 @@ impl Drop for Renderer {
 
             for image in self.cube_maps.iter_mut().chain(&mut self.textures) {
                 image.destroy(&gpu.device, &mut gpu.allocator);
+            }
+
+            for material in &mut self.materials {
+                material.destroy(gpu);
             }
 
             if let Some(lens) = &mut self.lens {

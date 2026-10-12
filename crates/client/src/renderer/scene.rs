@@ -16,12 +16,9 @@ pub use star::Star;
 pub use terrain::Terrain;
 pub use terrain_handle::TerrainHandle;
 
-use super::Material;
-
 #[derive(Default)]
 pub struct Scene {
     objects: Vec<SceneObject>,
-    materials: Vec<Material>,
     light_sources: Vec<LightSource>,
     stars: Vec<Star>,
     terrains: Vec<Terrain>,
@@ -47,21 +44,6 @@ impl Scene {
 
     pub fn objects(&self) -> &[SceneObject] {
         &self.objects
-    }
-
-    pub fn add_material(&mut self, material: Material) -> MaterialHandle {
-        self.materials.push(material);
-        MaterialHandle {
-            index: self.materials.len() - 1,
-        }
-    }
-
-    pub fn material(&self, handle: MaterialHandle) -> &Material {
-        &self.materials[handle.index]
-    }
-
-    pub fn materials(&self) -> &[Material] {
-        &self.materials
     }
 
     pub fn add_light_source(&mut self, light: LightSource) -> LightSourceHandle {

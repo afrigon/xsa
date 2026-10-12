@@ -105,7 +105,7 @@ impl ForwardPass {
                 let terrain_shader = frame
                     .render
                     .shader_override
-                    .unwrap_or(frame.scene.material(terrain.material).shader());
+                    .unwrap_or(frame.material(terrain.material).shader());
 
                 if terrain_shader != shader {
                     continue;
@@ -116,12 +116,7 @@ impl ForwardPass {
                     bound = true;
                 }
 
-                frame.push_draw_constants(
-                    pipeline,
-                    terrain.object.index,
-                    terrain.material.index(),
-                    draw.first_tile,
-                );
+                frame.push_draw_constants(pipeline, terrain.object.index, terrain.material, draw.first_tile);
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);
                 frame
