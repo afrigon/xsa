@@ -13,7 +13,7 @@ use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::LensPushConstants;
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
-const LENS_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+const LENS_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 const CLEAR: [f32; 4] = [0.0; 4];
 
 // Draws what the camera's lens adds to the image around each light source, in exposed luminance like the scene.

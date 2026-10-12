@@ -15,7 +15,7 @@ use crate::renderer::gpu_data::TaaPushConstants;
 use crate::renderer::passes::ForwardResources;
 use crate::vulkan::ComputePipeline;
 
-const HISTORY_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+const HISTORY_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 const HISTORY_LEVEL: u32 = 0;
 // Must match the workgroup size in taa.slang.
 const WORKGROUP_SIZE: u32 = 8;

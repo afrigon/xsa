@@ -17,7 +17,7 @@ use crate::vulkan::{Buffer, GraphicsPipeline, GraphicsPipelineDescription};
 
 const SPHERE_SUBDIVISIONS: u32 = 64;
 const TRIANGLE_VERTICES: u32 = 3;
-pub(in crate::renderer) const HDR_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+pub(in crate::renderer) const HDR_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 pub(in crate::renderer) const MOTION_FORMAT: vk::Format = vk::Format::R16G16_SFLOAT;
 pub(in crate::renderer) const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];

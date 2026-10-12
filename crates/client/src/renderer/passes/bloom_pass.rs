@@ -17,7 +17,7 @@ use bloom_step::BloomStep;
 
 // Must match bloomWeightSum in tonemap.slang.
 const BLOOM_LEVELS: u32 = 6;
-const BLOOM_FORMAT: vk::Format = vk::Format::B10G11R11_UFLOAT_PACK32;
+const BLOOM_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 const OUTPUT_DIVISOR: u32 = 2;
 const WORKGROUP_SIZE: u32 = 8;
 
