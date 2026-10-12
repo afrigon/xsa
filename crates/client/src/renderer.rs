@@ -30,7 +30,7 @@ pub use captured_image::CapturedImage;
 pub use frame_statistics::FrameStatistics;
 pub use lens_lights::LensLights;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
-pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star};
+pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
@@ -115,7 +115,7 @@ pub struct Renderer {
     projected_light_data: Vec<ProjectedLightData>,
     light_occlusion: LightOcclusion,
     focal_length_pixels: f32,
-    visible_objects: Vec<ObjectHandle>,
+    visible_terrains: Vec<TerrainHandle>,
     material_data: Vec<MaterialData>,
     object_capacity: usize,
     star_capacity: usize,
@@ -177,7 +177,7 @@ impl Renderer {
             projected_light_data: Vec::with_capacity(INITIAL_LIGHT_CAPACITY),
             light_occlusion: LightOcclusion::new(),
             focal_length_pixels: 0.0,
-            visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
+            visible_terrains: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
@@ -332,7 +332,7 @@ impl Renderer {
         self.update_star_visibility()?;
         self.update_gpu_time()?;
         self.write_frame_data(camera)?;
-        self.cull_objects(camera);
+        self.cull_terrains(camera);
         self.record_frame(image_index)?;
         self.submit_and_present(image_index)?;
         self.frames[self.frame_index].submitted = true;
@@ -585,16 +585,19 @@ impl Renderer {
         frame.materials.write(&self.material_data)
     }
 
-    fn cull_objects(&mut self, camera: &Camera) {
+    fn cull_terrains(&mut self, camera: &Camera) {
         let culler = Culler::new(camera, self.swapchain.extent());
-        self.visible_objects.clear();
-        self.visible_objects.extend(
+        self.visible_terrains.clear();
+        self.visible_terrains.extend(
             self.scene
-                .objects()
+                .terrains()
                 .iter()
                 .enumerate()
-                .filter(|(_, object)| culler.is_visible(object.position - camera.position, object.bounding_radius))
-                .map(|(index, _)| ObjectHandle { index }),
+                .filter(|(_, terrain)| {
+                    let object = self.scene.object(terrain.object);
+                    culler.is_visible(object.position - camera.position, object.bounding_radius)
+                })
+                .map(|(index, _)| TerrainHandle { index }),
         );
     }
 
@@ -663,7 +666,7 @@ impl Renderer {
             scene: &self.scene,
             lens: self.lens.as_ref(),
             focal_length_pixels: self.focal_length_pixels,
-            visible_objects: &self.visible_objects,
+            visible_terrains: &self.visible_terrains,
             descriptor_set: bindless.set(),
             user_interface: &self.user_interface,
             triangles: Cell::new(0),

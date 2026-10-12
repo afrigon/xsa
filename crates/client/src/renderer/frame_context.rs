@@ -10,7 +10,7 @@ use super::gpu_data::PushConstants;
 use super::graph_textures::GraphTextures;
 use super::lens::Lens;
 use super::temporal_history::TemporalHistory;
-use super::{ObjectHandle, Scene};
+use super::{Scene, TerrainHandle};
 use crate::config::RenderConfig;
 use crate::vulkan::GraphicsPipeline;
 
@@ -24,7 +24,7 @@ pub(super) struct FrameContext<'a> {
     pub scene: &'a Scene,
     pub lens: Option<&'a Lens>,
     pub focal_length_pixels: f32,
-    pub visible_objects: &'a [ObjectHandle],
+    pub visible_terrains: &'a [TerrainHandle],
     pub descriptor_set: vk::DescriptorSet,
     pub user_interface: &'a DrawList,
     pub triangles: Cell<u64>,

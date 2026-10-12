@@ -100,14 +100,14 @@ impl ForwardPass {
             let pipeline = self.pipeline(shader);
             let mut bound = false;
 
-            for handle in frame.visible_objects {
-                let object = &frame.scene.objects()[handle.index];
-                let object_shader = frame
+            for &handle in frame.visible_terrains {
+                let terrain = frame.scene.terrain(handle);
+                let terrain_shader = frame
                     .render
                     .shader_override
-                    .unwrap_or(frame.scene.material(object.material).shader());
+                    .unwrap_or(frame.scene.material(terrain.material).shader());
 
-                if object_shader != shader {
+                if terrain_shader != shader {
                     continue;
                 }
 
@@ -116,7 +116,7 @@ impl ForwardPass {
                     bound = true;
                 }
 
-                frame.push_draw_constants(pipeline, handle.index, object.material.index());
+                frame.push_draw_constants(pipeline, terrain.object.index, terrain.material.index());
                 recorder.draw_indexed(self.index_count);
                 frame
                     .triangles
