@@ -22,3 +22,4 @@ xsa-server.workspace = true
 xsa-units.workspace = true
 xui.workspace = true
 xui-vulkan.workspace = true
+texture-image.workspace = true

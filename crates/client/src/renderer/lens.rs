@@ -2,11 +2,11 @@ use std::path::Path;
 
 use ash::vk;
 use glam::{Vec2, Vec3};
+use texture_image::{ColorSpace, TextureImage};
 use xsa_packs::LensDefinition;
 
 use super::TextureHandle;
 use super::gpu_data::{GhostData, ProjectedLightData};
-use super::texture::{ColorSpace, DdsImage};
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
 
 // The smallest scene value that can change an 8-bit pixel: half an output step, decoded through sRGB's linear segment.
@@ -34,7 +34,7 @@ pub(in crate::renderer) struct Lens {
 impl Lens {
     pub fn new(
         definition: &LensDefinition,
-        mut upload: impl FnMut(&str, &DdsImage) -> anyhow::Result<TextureHandle>,
+        mut upload: impl FnMut(&str, &TextureImage) -> anyhow::Result<TextureHandle>,
     ) -> anyhow::Result<Lens> {
         let starburst = Lens::read(&definition.starburst.texture)?;
         let starburst_maxima = Lens::starburst_maxima(&starburst)?;
@@ -47,7 +47,7 @@ impl Lens {
             let peak = image
                 .rgb_texels()?
                 .iter()
-                .fold(0.0_f32, |peak, texel| peak.max(texel.max_element()));
+                .fold(0.0_f32, |peak, &texel| peak.max(Vec3::from(texel).max_element()));
             ghost_peaks.push(peak * ghost.intensity * ghost.tint.max_element());
             ghost_data.push(GhostData {
                 position: ghost.position,
@@ -74,15 +74,18 @@ impl Lens {
         })
     }
 
-    fn read(path: &Path) -> anyhow::Result<DdsImage> {
-        DdsImage::read(path, ColorSpace::Linear)
+    fn read(path: &Path) -> anyhow::Result<TextureImage> {
+        TextureImage::read(path, ColorSpace::Linear)
     }
 
-    fn starburst_maxima(starburst: &DdsImage) -> anyhow::Result<Vec<f32>> {
+    fn starburst_maxima(starburst: &TextureImage) -> anyhow::Result<Vec<f32>> {
         let texels = starburst.rgb_texels()?;
         let mut maxima: Vec<f32> = texels
             .chunks_exact(starburst.width() as usize)
-            .map(|row| row.iter().fold(0.0_f32, |peak, texel| peak.max(texel.max_element())))
+            .map(|row| {
+                row.iter()
+                    .fold(0.0_f32, |peak, &texel| peak.max(Vec3::from(texel).max_element()))
+            })
             .collect();
 
         for row in (0..maxima.len().saturating_sub(1)).rev() {
