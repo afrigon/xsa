@@ -196,8 +196,11 @@ renderer uses it like an external library, through its public API only.
   it first. Deliberately avoided: `ash-window` (surfaces are created by hand)
   and runtime shader compilers.
 - Game content lives in `data/`. Text files are committed; binaries (`.dds`,
-  `.spv`) are git-ignored and produced by tasks. `assets/` holds git-ignored
-  third-party source downloads.
+  `.spv`) are git-ignored and produced by tasks, except the base pack's
+  textures: no task produces them, so they are committed, and only once final,
+  never per iteration. A pack's `scripts/` holds the tools that produce its
+  assets (`data/base/scripts/lens/` bakes the lens) and is left out of
+  releases. `assets/` holds git-ignored third-party source downloads.
 - A change to any file in `data/` needs a new version of each pack it touches:
   always remind the user to publish one.
 - Every third-party asset is listed in `LICENSES.md` with source, author and

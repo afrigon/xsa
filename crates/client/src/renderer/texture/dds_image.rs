@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 use ash::vk;
+use glam::Vec3;
 
 use super::ColorSpace;
 use crate::vulkan::{Allocator, Buffer, Device, Image, ImageDescription, MemoryLocation};
@@ -16,6 +17,7 @@ const FOURCC_OFFSET: usize = 84;
 const DXGI_FORMAT_OFFSET: usize = 128;
 const MISC_FLAGS_OFFSET: usize = 136;
 const WORD_BYTES: usize = 4;
+const DXGI_FORMAT_R16G16B16A16_FLOAT: u32 = 10;
 const DXGI_FORMAT_R8G8B8A8_UNORM: u32 = 28;
 const DXGI_FORMAT_R8G8B8A8_UNORM_SRGB: u32 = 29;
 const DXGI_FORMAT_BC4_UNORM: u32 = 80;
@@ -28,6 +30,15 @@ const BLOCK_SIZE: usize = 4;
 const BC4_BLOCK_BYTES: usize = 8;
 const BC5_BC7_BLOCK_BYTES: usize = 16;
 const RGBA8_PIXEL_BYTES: usize = 4;
+const RGBA16_FLOAT_PIXEL_BYTES: usize = 8;
+const HALF_BYTES: usize = 2;
+const HALF_EXPONENT_BIAS: i32 = 15;
+const HALF_MANTISSA_BITS: u32 = 10;
+const HALF_EXPONENT_MASK: u16 = 0x1f;
+const HALF_MANTISSA_MASK: u16 = 0x3ff;
+const HALF_SIGN_SHIFT: u32 = 15;
+// The exponent that marks infinity and NaN.
+const HALF_SPECIAL_EXPONENT: i32 = 0x1f;
 
 pub(in crate::renderer) struct DdsImage {
     format: vk::Format,
@@ -57,6 +68,7 @@ impl DdsImage {
         let mip_levels = word(MIP_COUNT_OFFSET).max(1);
         let srgb = color_space == ColorSpace::Srgb;
         let format = match word(DXGI_FORMAT_OFFSET) {
+            DXGI_FORMAT_R16G16B16A16_FLOAT => vk::Format::R16G16B16A16_SFLOAT,
             DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB if srgb => vk::Format::R8G8B8A8_SRGB,
             DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => vk::Format::R8G8B8A8_UNORM,
             DXGI_FORMAT_BC7_UNORM | DXGI_FORMAT_BC7_UNORM_SRGB if srgb => vk::Format::BC7_SRGB_BLOCK,
@@ -97,6 +109,33 @@ impl DdsImage {
             mip_levels,
             layers,
         })
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    // The top mip level of a half-float image, row by row.
+    pub fn rgb_texels(&self) -> anyhow::Result<Vec<Vec3>> {
+        ensure!(
+            self.format == vk::Format::R16G16B16A16_SFLOAT,
+            "only half-float images can be read back as texels"
+        );
+        let texel_count = (self.width * self.height) as usize;
+        let channel = |texel: &[u8; RGBA16_FLOAT_PIXEL_BYTES], index: usize| {
+            half_to_f32(u16::from_le_bytes([
+                texel[index * HALF_BYTES],
+                texel[index * HALF_BYTES + 1],
+            ]))
+        };
+
+        Ok(self.layers[0]
+            .as_chunks::<RGBA16_FLOAT_PIXEL_BYTES>()
+            .0
+            .iter()
+            .take(texel_count)
+            .map(|texel| Vec3::new(channel(texel, 0), channel(texel, 1), channel(texel, 2)))
+            .collect())
     }
 
     pub fn upload_cube_map(&self, device: &Device, allocator: &mut Allocator, name: &str) -> anyhow::Result<Image> {
@@ -156,6 +195,7 @@ impl DdsImage {
             vk::Format::BC5_UNORM_BLOCK | vk::Format::BC7_UNORM_BLOCK | vk::Format::BC7_SRGB_BLOCK => {
                 blocks * BC5_BC7_BLOCK_BYTES
             }
+            vk::Format::R16G16B16A16_SFLOAT => width * height * RGBA16_FLOAT_PIXEL_BYTES,
             _ => width * height * RGBA8_PIXEL_BYTES,
         }
     }
@@ -274,5 +314,33 @@ impl DdsImage {
         unsafe { handle.destroy_command_pool(pool, None) };
 
         result
+    }
+}
+
+// IEEE 754 binary16 to binary32.
+fn half_to_f32(bits: u16) -> f32 {
+    let sign = if bits >> HALF_SIGN_SHIFT == 1 { -1.0 } else { 1.0 };
+    let exponent = ((bits >> HALF_MANTISSA_BITS) & HALF_EXPONENT_MASK) as i32;
+    let mantissa = f32::from(bits & HALF_MANTISSA_MASK) / (1 << HALF_MANTISSA_BITS) as f32;
+
+    match exponent {
+        0 => sign * mantissa * 2.0_f32.powi(1 - HALF_EXPONENT_BIAS),
+        HALF_SPECIAL_EXPONENT if mantissa == 0.0 => sign * f32::INFINITY,
+        HALF_SPECIAL_EXPONENT => f32::NAN,
+        _ => sign * (1.0 + mantissa) * 2.0_f32.powi(exponent - HALF_EXPONENT_BIAS),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn half_floats_decode_to_their_values() {
+        assert_eq!(half_to_f32(0x3c00), 1.0);
+        assert_eq!(half_to_f32(0xc000), -2.0);
+        assert_eq!(half_to_f32(0x3555), 0.333_251_95);
+        assert_eq!(half_to_f32(0x0001), 2.0_f32.powi(-24));
+        assert_eq!(half_to_f32(0x7c00), f32::INFINITY);
     }
 }

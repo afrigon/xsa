@@ -7,8 +7,6 @@ SamplerState wrappingSampler;
 [[vk::binding(3, 0)]]
 Texture2D textures[];
 
-static const uint noTexture = 0xFFFFFFFF;
-
 // Must match ShadingModel::shader_id in client/src/renderer/material.rs.
 static const uint shadingHapkeSol = 0;
 static const uint shadingHapkeTextbook = 1;

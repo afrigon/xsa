@@ -4,5 +4,6 @@ use render_graph::{ImageHandle, ImportedImageHandle};
 pub(in crate::renderer) struct TonemapInputs {
     pub scene_color: ImageHandle,
     pub bloom: Option<ImageHandle>,
+    pub lens: Option<ImageHandle>,
     pub output: ImportedImageHandle,
 }

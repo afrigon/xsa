@@ -6,8 +6,8 @@ use super::frame_context::FrameContext;
 use super::frame_inputs::FrameInputs;
 use super::gpu_context::GpuContext;
 use super::passes::{
-    BloomPass, CaptureInputs, CapturePass, ForwardPass, HistogramInputs, HistogramPass, SkyboxPass, TaaPass,
-    TonemapInputs, TonemapPass, UserInterfacePass,
+    BloomPass, CaptureInputs, CapturePass, ForwardPass, HistogramInputs, HistogramPass, LensInputs, LensPass,
+    SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass,
 };
 use crate::config::{AntialiasingKind, RenderConfig};
 
@@ -18,6 +18,7 @@ pub(super) struct RenderPasses {
     skybox: SkyboxPass,
     taa: TaaPass,
     bloom: BloomPass,
+    lens: LensPass,
     tonemap: TonemapPass,
     user_interface: UserInterfacePass,
     capture: CapturePass,
@@ -37,6 +38,7 @@ impl RenderPasses {
             skybox: SkyboxPass::new(gpu, shaders)?,
             taa: TaaPass::new(gpu, graph, shaders)?,
             bloom: BloomPass::new(gpu, shaders)?,
+            lens: LensPass::new(gpu, shaders)?,
             tonemap: TonemapPass::new(gpu, shaders, output_format)?,
             user_interface: UserInterfacePass::new(gpu, output_format, frames_in_flight)?,
             capture: CapturePass,
@@ -66,11 +68,15 @@ impl RenderPasses {
             .bloom
             .enabled
             .then(|| graph.add(&mut self.bloom, scene_color).bloom);
+        let light_count = inputs.projected_light_count;
+        let lens = (render.lens.enabled && inputs.lens_loaded && light_count > 0)
+            .then(|| graph.add(&mut self.lens, LensInputs { light_count }).lens);
         graph.add(
             &mut self.tonemap,
             TonemapInputs {
                 scene_color,
                 bloom,
+                lens,
                 output: inputs.output,
             },
         );
@@ -95,6 +101,7 @@ impl RenderPasses {
             self.skybox.destroy(gpu);
             self.taa.destroy(gpu);
             self.bloom.destroy(gpu);
+            self.lens.destroy(gpu);
             self.tonemap.destroy(gpu);
             self.user_interface.destroy();
         }

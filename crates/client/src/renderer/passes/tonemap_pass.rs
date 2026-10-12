@@ -9,6 +9,7 @@ use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::TonemapPushConstants;
+use crate::renderer::material::NO_TEXTURE;
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
 // tonemap.slang reads the bloom texture only when the bloom strength is positive.
@@ -59,6 +60,10 @@ impl<'frame> RenderPass<FrameContext<'frame>> for TonemapPass {
             pass.sampled(bloom, Stage::Fragment);
         }
 
+        if let Some(lens) = inputs.lens {
+            pass.sampled(lens, Stage::Fragment);
+        }
+
         pass.color_attachment(inputs.output, Attachment::DontCare);
 
         inputs
@@ -74,6 +79,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for TonemapPass {
             Some(bloom) => (frame.texture(pass, bloom), frame.render.bloom.strength),
             None => (UNSAMPLED_BLOOM_TEXTURE, NO_BLOOM_STRENGTH),
         };
+        let lens_texture = inputs.lens.map_or(NO_TEXTURE, |lens| frame.texture(pass, lens));
         let recorder = &frame.recorder;
         pass.begin_rendering();
         recorder.bind_graphics(&self.pipeline, frame.descriptor_set);
@@ -84,7 +90,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for TonemapPass {
                 scene_color_texture: frame.texture(pass, inputs.scene_color),
                 bloom_texture,
                 bloom_strength,
-                padding: 0,
+                lens_texture,
             },
         );
         recorder.draw_fullscreen();

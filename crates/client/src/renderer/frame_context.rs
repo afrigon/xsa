@@ -8,6 +8,7 @@ use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
 use super::gpu_data::PushConstants;
 use super::graph_textures::GraphTextures;
+use super::lens::Lens;
 use super::temporal_history::TemporalHistory;
 use super::{ObjectHandle, Scene};
 use crate::config::RenderConfig;
@@ -21,6 +22,8 @@ pub(super) struct FrameContext<'a> {
     pub temporal: &'a TemporalHistory,
     pub render: &'a RenderConfig,
     pub scene: &'a Scene,
+    pub lens: Option<&'a Lens>,
+    pub focal_length_pixels: f32,
     pub visible_objects: &'a [ObjectHandle],
     pub descriptor_set: vk::DescriptorSet,
     pub user_interface: &'a DrawList,

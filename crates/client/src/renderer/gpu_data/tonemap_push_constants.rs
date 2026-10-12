@@ -9,7 +9,7 @@ pub(in crate::renderer) struct TonemapPushConstants {
     pub scene_color_texture: u32,
     pub bloom_texture: u32,
     pub bloom_strength: f32,
-    pub padding: u32,
+    pub lens_texture: u32,
 }
 
 const _: () = assert!(size_of::<TonemapPushConstants>() == 24);

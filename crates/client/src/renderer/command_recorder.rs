@@ -4,6 +4,7 @@ use super::gpu_data::GpuData;
 use crate::vulkan::{Buffer, ComputePipeline, Device, GraphicsPipeline};
 
 const FULLSCREEN_VERTEX_COUNT: u32 = 3;
+const QUAD_VERTEX_COUNT: u32 = 6;
 const GRAPHICS_STAGES: vk::ShaderStageFlags =
     vk::ShaderStageFlags::from_raw(vk::ShaderStageFlags::VERTEX.as_raw() | vk::ShaderStageFlags::FRAGMENT.as_raw());
 pub(super) struct CommandRecorder<'a> {
@@ -64,6 +65,22 @@ impl<'a> CommandRecorder<'a> {
             self.device
                 .handle()
                 .cmd_draw(self.command_buffer, FULLSCREEN_VERTEX_COUNT, 1, 0, 0)
+        };
+    }
+
+    pub fn draw_fullscreen_instances(&self, instance_count: u32) {
+        unsafe {
+            self.device
+                .handle()
+                .cmd_draw(self.command_buffer, FULLSCREEN_VERTEX_COUNT, instance_count, 0, 0)
+        };
+    }
+
+    pub fn draw_quad_instances(&self, instance_count: u32) {
+        unsafe {
+            self.device
+                .handle()
+                .cmd_draw(self.command_buffer, QUAD_VERTEX_COUNT, instance_count, 0, 0)
         };
     }
 

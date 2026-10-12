@@ -3217,6 +3217,7 @@ dependencies = [
  "glam",
  "kdl",
  "semver",
+ "tracing",
  "xsa-core",
  "xsa-units",
 ]

@@ -9,6 +9,7 @@ mod config_layer;
 mod config_value_kind;
 mod config_values;
 mod key_chord_name;
+mod lens_document;
 mod number_range;
 mod render_document;
 mod shader_choice;
@@ -20,6 +21,7 @@ pub use bloom_document::BloomDocument;
 pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;
 pub use config_value_kind::ConfigValueKind;
+pub use lens_document::LensDocument;
 pub use number_range::NumberRange;
 pub use render_document::RenderDocument;
 

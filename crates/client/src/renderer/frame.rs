@@ -1,7 +1,7 @@
 use ash::vk;
 
 use super::MATERIAL_CAPACITY;
-use super::gpu_data::{FrameData, ObjectData, StarData};
+use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData};
 use super::material::MaterialData;
 use super::star_visibility::HISTOGRAM_BINS;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
@@ -14,6 +14,7 @@ pub(super) struct Frame {
     pub frame_data: Buffer,
     pub objects: Buffer,
     pub stars: Buffer,
+    pub projected_lights: Buffer,
     pub materials: Buffer,
     pub histogram: Buffer,
     pub histogram_ready: bool,
@@ -25,10 +26,12 @@ impl Frame {
         allocator: &mut Allocator,
         object_capacity: usize,
         star_capacity: usize,
+        light_capacity: usize,
     ) -> anyhow::Result<Self> {
         let frame_data = Frame::create_shader_buffer(device, allocator, "frame data", size_of::<FrameData>())?;
         let objects = Frame::create_object_buffer(device, allocator, object_capacity)?;
         let stars = Frame::create_star_buffer(device, allocator, star_capacity)?;
+        let projected_lights = Frame::create_projected_light_buffer(device, allocator, light_capacity)?;
         let materials = Frame::create_shader_buffer(
             device,
             allocator,
@@ -68,6 +71,7 @@ impl Frame {
             frame_data,
             objects,
             stars,
+            projected_lights,
             materials,
             histogram,
             histogram_ready: false,
@@ -79,6 +83,7 @@ impl Frame {
             self.frame_data.destroy(device, allocator);
             self.objects.destroy(device, allocator);
             self.stars.destroy(device, allocator);
+            self.projected_lights.destroy(device, allocator);
             self.materials.destroy(device, allocator);
             self.histogram.destroy(device, allocator);
             let device = device.handle();
@@ -94,6 +99,19 @@ impl Frame {
 
     pub fn create_star_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {
         Frame::create_shader_buffer(device, allocator, "star data", capacity * size_of::<StarData>())
+    }
+
+    pub fn create_projected_light_buffer(
+        device: &Device,
+        allocator: &mut Allocator,
+        capacity: usize,
+    ) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(
+            device,
+            allocator,
+            "projected light data",
+            capacity * size_of::<ProjectedLightData>(),
+        )
     }
 
     fn create_shader_buffer(

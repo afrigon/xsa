@@ -1,5 +1,6 @@
 use xui::{Context, EdgeInsets, Text, View};
 
+use crate::renderer::LensLights;
 use crate::ui::ThemedView;
 
 const PADDING: f32 = 8.0;
@@ -11,6 +12,7 @@ pub struct DebugOverlayView {
     pub anchor_ev100: f32,
     pub star_visibility: f32,
     pub light: f32,
+    pub lens_lights: LensLights,
 }
 
 impl View for DebugOverlayView {
@@ -20,8 +22,16 @@ impl View for DebugOverlayView {
             .map_or_else(|| "–".to_string(), |rate| format!("{rate:.0}"));
 
         Text::new(format!(
-            "{frames_per_second} fps\n{} triangles\nEV {:.1} · anchor {:.1} · stars {:.2} · light {:.3}",
-            self.triangles, self.ev100, self.anchor_ev100, self.star_visibility, self.light
+            "{frames_per_second} fps\n{} triangles\nEV {:.1} · anchor {:.1} · stars {:.2} · light {:.3}\n\
+             lens {} drawn · {} culled · {} behind",
+            self.triangles,
+            self.ev100,
+            self.anchor_ev100,
+            self.star_visibility,
+            self.light,
+            self.lens_lights.drawn,
+            self.lens_lights.culled,
+            self.lens_lights.behind
         ))
         .text_style("telemetry")
         .padding(EdgeInsets::all(PADDING))

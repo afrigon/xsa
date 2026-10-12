@@ -5,16 +5,17 @@ use glam::{DVec3, Vec3};
 use xsa_commands::completion::CompletionCandidate;
 use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
-use xsa_packs::{Id, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition};
+use xsa_packs::{Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition};
 use xsa_proto::event::WorldState;
 use xsa_units::SimulationTime;
 
 use super::body_step::BodyStep;
 use crate::renderer::{
-    ColorSpace, HapkeParameters, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Star,
+    ColorSpace, HapkeParameters, LightSource, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Star,
 };
 
 const DEFAULT_NAMESPACE: &str = "base";
+const MAIN_LENS: &str = "main";
 
 pub(super) struct ClientWorld {
     simulation_id: Id,
@@ -67,27 +68,31 @@ impl ClientWorld {
             .map(|((body, material), body_state)| {
                 let material = scene.add_material(*material);
 
-                scene.add(SceneObject {
+                let object = scene.add(SceneObject {
                     position: body_state.position,
                     orientation: body_state.orientation,
                     scale: body.radius,
                     bounding_radius: body.radius,
                     material,
-                })
+                });
+                scene.add_occluder(object);
+                object
             })
             .collect();
 
         for (value, &object) in body_objects.iter().enumerate() {
             if let Some(star_light) = illumination.star_light(BodyIndex { value }) {
-                scene.add_star(Star {
+                let light = scene.add_light_source(LightSource {
                     object,
                     intensity: star_light.color * star_light.luminous_intensity as f32,
                 });
+                scene.add_star(Star { light });
             }
         }
 
         let skybox = ClientWorld::load_skybox(&stack, &simulation_id, renderer)?;
         renderer.scene_mut().skybox = skybox;
+        ClientWorld::load_lens(&stack, renderer);
 
         Ok(ClientWorld {
             simulation_id,
@@ -196,6 +201,16 @@ impl ClientWorld {
             object.orientation = state.orientation;
             object.scale = body.radius;
             object.bounding_radius = body.radius;
+        }
+    }
+
+    fn load_lens(stack: &PackStack, renderer: &mut Renderer) {
+        let loaded = Id::parse(MAIN_LENS, DEFAULT_NAMESPACE)
+            .and_then(|profile| LensDefinition::load(stack, &profile))
+            .and_then(|definition| renderer.load_lens(&definition));
+
+        if let Err(err) = loaded {
+            tracing::warn!("skipping lens effects: lens {MAIN_LENS}: {err:#}");
         }
     }
 

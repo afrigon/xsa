@@ -4,8 +4,9 @@ use winit::keyboard::KeyCode;
 
 use super::{
     AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, KeyChord,
-    RenderConfig,
+    LensConfig, RenderConfig,
 };
+
 use crate::renderer::{ShadingModel, Tonemapper};
 
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
@@ -58,6 +59,7 @@ impl Default for Config {
                     enabled: true,
                     strength: BLOOM_STRENGTH,
                 },
+                lens: LensConfig { enabled: true },
                 antialiasing: AntialiasingConfig {
                     kind: Some(AntialiasingKind::Taa),
                 },
