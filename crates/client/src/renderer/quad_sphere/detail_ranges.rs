@@ -1,6 +1,6 @@
 use std::f64::consts::SQRT_2;
 
-pub(in crate::renderer) const TILE_GRID_CELLS: u32 = 32;
+const TILE_GRID_CELLS: u32 = 32;
 // Roots of distant bodies are drawn with 16, 8, 4 and down to 2 cells per side.
 pub(in crate::renderer) const COARSEST_DETAIL: i32 = -4;
 // The fraction of a level's range after which its vertices start morphing towards the coarser level's grid.

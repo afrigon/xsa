@@ -41,10 +41,16 @@ impl TemporalHistory {
 
     // Objects are recorded in scene order; one that did not exist last frame counts as unmoved.
     pub fn record_object(&mut self, pose: ObjectPose) -> ObjectPose {
-        let previous = self.previous_poses.get(self.poses.len()).copied().unwrap_or(pose);
         self.poses.push(pose);
 
-        previous
+        self.previous_pose(self.poses.len() - 1)
+    }
+
+    pub fn previous_pose(&self, object_index: usize) -> ObjectPose {
+        self.previous_poses
+            .get(object_index)
+            .copied()
+            .unwrap_or(self.poses[object_index])
     }
 
     pub fn reset(&mut self) {

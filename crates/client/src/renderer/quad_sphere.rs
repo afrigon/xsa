@@ -5,7 +5,7 @@ mod quad_sphere_tile;
 mod selected_tile;
 
 pub(in crate::renderer) use cube_face::CubeFace;
-pub(in crate::renderer) use detail_ranges::{COARSEST_DETAIL, DetailRanges, TILE_GRID_CELLS};
+pub(in crate::renderer) use detail_ranges::{COARSEST_DETAIL, DetailRanges};
 pub(in crate::renderer) use horizon_culler::HorizonCuller;
 pub(in crate::renderer) use quad_sphere_tile::QuadSphereTile;
 pub(in crate::renderer) use selected_tile::SelectedTile;

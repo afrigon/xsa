@@ -4,13 +4,14 @@ use ash::vk;
 use render_graph::{ImageHandle, PassContext};
 use xui::DrawList;
 
+use super::Scene;
 use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
 use super::gpu_data::PushConstants;
 use super::graph_textures::GraphTextures;
 use super::lens::Lens;
 use super::temporal_history::TemporalHistory;
-use super::{Scene, TerrainHandle};
+use super::terrain_draw::TerrainDraw;
 use crate::config::RenderConfig;
 use crate::vulkan::GraphicsPipeline;
 
@@ -24,14 +25,20 @@ pub(super) struct FrameContext<'a> {
     pub scene: &'a Scene,
     pub lens: Option<&'a Lens>,
     pub focal_length_pixels: f32,
-    pub visible_terrains: &'a [TerrainHandle],
+    pub terrain_draws: &'a [TerrainDraw],
     pub descriptor_set: vk::DescriptorSet,
     pub user_interface: &'a DrawList,
     pub triangles: Cell<u64>,
 }
 
 impl FrameContext<'_> {
-    pub fn push_draw_constants(&self, pipeline: &GraphicsPipeline, object_index: usize, material_index: usize) {
+    pub fn push_draw_constants(
+        &self,
+        pipeline: &GraphicsPipeline,
+        object_index: usize,
+        material_index: usize,
+        first_tile: u32,
+    ) {
         self.recorder.push_graphics_constants(
             pipeline,
             &PushConstants {
@@ -40,6 +47,9 @@ impl FrameContext<'_> {
                 materials: self.frame.materials.device_address(),
                 object_index: object_index as u32,
                 material_index: material_index as u32,
+                tiles: self.frame.tiles.device_address(),
+                first_tile,
+                padding: 0,
             },
         );
     }

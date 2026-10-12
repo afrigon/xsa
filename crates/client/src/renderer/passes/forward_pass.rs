@@ -8,15 +8,15 @@ use std::mem::offset_of;
 use ash::vk;
 use render_graph::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
 
-use crate::mesh::{Mesh, Vertex};
+use crate::mesh::{GridMesh, GridVertex};
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
+use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
 use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{Buffer, GraphicsPipeline, GraphicsPipelineDescription};
 
-const SPHERE_SUBDIVISIONS: u32 = 64;
-const TRIANGLE_VERTICES: u32 = 3;
+const TRIANGLES_PER_CELL: u64 = 2;
 pub(in crate::renderer) const HDR_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 pub(in crate::renderer) const MOTION_FORMAT: vk::Format = vk::Format::R16G16_SFLOAT;
 pub(in crate::renderer) const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
@@ -25,9 +25,9 @@ const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
     pipelines: HashMap<Shader, GraphicsPipeline>,
+    grids: GridMesh,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
-    index_count: u32,
 }
 
 impl ForwardPass {
@@ -38,27 +38,27 @@ impl ForwardPass {
                 Ok((shader, pipeline))
             })
             .collect::<anyhow::Result<_>>()?;
-        let sphere = Mesh::cube_sphere(1.0, SPHERE_SUBDIVISIONS);
+        let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
         let vertex_buffer = Buffer::with_data(
             &gpu.device,
             &mut gpu.allocator,
-            "sphere vertices",
+            "tile grid vertices",
             vk::BufferUsageFlags::VERTEX_BUFFER,
-            &sphere.vertices,
+            &grids.vertices,
         )?;
         let index_buffer = Buffer::with_data(
             &gpu.device,
             &mut gpu.allocator,
-            "sphere indices",
+            "tile grid indices",
             vk::BufferUsageFlags::INDEX_BUFFER,
-            &sphere.indices,
+            &grids.indices,
         )?;
 
         Ok(ForwardPass {
             pipelines,
+            grids,
             vertex_buffer,
             index_buffer,
-            index_count: sphere.indices.len() as u32,
         })
     }
 
@@ -100,8 +100,8 @@ impl ForwardPass {
             let pipeline = self.pipeline(shader);
             let mut bound = false;
 
-            for &handle in frame.visible_terrains {
-                let terrain = frame.scene.terrain(handle);
+            for draw in frame.terrain_draws {
+                let terrain = frame.scene.terrain(draw.terrain);
                 let terrain_shader = frame
                     .render
                     .shader_override
@@ -116,11 +116,17 @@ impl ForwardPass {
                     bound = true;
                 }
 
-                frame.push_draw_constants(pipeline, terrain.object.index, terrain.material.index());
-                recorder.draw_indexed(self.index_count);
+                frame.push_draw_constants(
+                    pipeline,
+                    terrain.object.index,
+                    terrain.material.index(),
+                    draw.first_tile,
+                );
+                recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
+                let cells = u64::from(draw.grid_cells).pow(2);
                 frame
                     .triangles
-                    .set(frame.triangles.get() + u64::from(self.index_count / TRIANGLE_VERTICES));
+                    .set(frame.triangles.get() + cells * TRIANGLES_PER_CELL * u64::from(draw.tile_count));
             }
         }
 
@@ -130,20 +136,13 @@ impl ForwardPass {
     fn create_pipeline(gpu: &GpuContext, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
             .binding(0)
-            .stride(size_of::<Vertex>() as u32)
+            .stride(size_of::<GridVertex>() as u32)
             .input_rate(vk::VertexInputRate::VERTEX)];
-        let vertex_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(offset_of!(Vertex, position) as u32),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(offset_of!(Vertex, normal) as u32),
-        ];
+        let vertex_attributes = [vk::VertexInputAttributeDescription::default()
+            .location(0)
+            .binding(0)
+            .format(vk::Format::R32G32_UINT)
+            .offset(offset_of!(GridVertex, cell) as u32)];
         let description = GraphicsPipelineDescription {
             spirv,
             color_formats: &[HDR_FORMAT, MOTION_FORMAT],
