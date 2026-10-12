@@ -12,6 +12,8 @@ struct HistogramConstants {
     FrameData *frame;
     uint *histogram;
     uint sceneColorTexture;
+    // Output resolution, which the scene image may not share.
+    uint lensTexture;
 };
 
 [[vk::push_constant]]
@@ -37,6 +39,13 @@ void computeMain(uint3 pixel: SV_DispatchThreadID, uint threadIndex: SV_GroupInd
     FrameData frame = *constants.frame;
     if (all(pixel.xy < uint2(frame.viewportSize))) {
         float3 color = textures[constants.sceneColorTexture].Load(int3(int2(pixel.xy), 0)).rgb;
+        if (constants.lensTexture != noTexture) {
+            Texture2D lens = textures[constants.lensTexture];
+            uint2 lensSize;
+            lens.GetDimensions(lensSize.x, lensSize.y);
+            uint2 lensPixel = (pixel.xy * lensSize) / uint2(frame.viewportSize);
+            color += lens.Load(int3(int2(lensPixel), 0)).rgb;
+        }
         float luminance = dot(color, float3(0.2126, 0.7152, 0.0722));
         InterlockedAdd(localBins[binIndex(luminance)], 1);
     }

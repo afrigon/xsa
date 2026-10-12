@@ -8,6 +8,7 @@ use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::HistogramPushConstants;
+use crate::renderer::material::NO_TEXTURE;
 use crate::vulkan::ComputePipeline;
 
 // Must match the workgroup size in histogram.slang.
@@ -44,6 +45,11 @@ impl<'frame> RenderPass<FrameContext<'frame>> for HistogramPass {
         pass.buffer(inputs.histogram, BufferUsage::TransferDestination);
         pass.next_step();
         pass.sampled(inputs.scene_color, Stage::Compute);
+
+        if let Some(lens) = inputs.lens {
+            pass.sampled(lens, Stage::Compute);
+        }
+
         pass.buffer(inputs.histogram, BufferUsage::StorageReadWrite(Stage::Compute));
 
         inputs
@@ -65,7 +71,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for HistogramPass {
                 frame: frame.frame.frame_data.device_address(),
                 histogram: frame.frame.histogram.device_address(),
                 scene_color_texture: frame.texture(pass, inputs.scene_color),
-                padding: 0,
+                lens_texture: inputs.lens.map_or(NO_TEXTURE, |lens| frame.texture(pass, lens)),
             },
         );
         recorder.dispatch(pass.extent(inputs.scene_color), TILE_SIZE);
