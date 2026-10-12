@@ -10,6 +10,7 @@ use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
 const NO_OBJECT: usize = 0;
+const NO_TILES: u32 = 0;
 
 pub(in crate::renderer) struct SkyboxPass {
     pipeline: GraphicsPipeline,
@@ -27,6 +28,7 @@ impl SkyboxPass {
                 depth_write: false,
                 cull_mode: vk::CullModeFlags::NONE,
                 additive_blend: false,
+                wireframe: false,
                 vertex_bindings: &[],
                 vertex_attributes: &[],
                 push_constant_size: size_of::<PushConstants>() as u32,
@@ -66,7 +68,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for SkyboxPass {
 
         if let Some(skybox) = frame.scene.skybox {
             frame.recorder.bind_graphics(&self.pipeline, frame.descriptor_set);
-            frame.push_draw_constants(&self.pipeline, NO_OBJECT, skybox.index());
+            frame.push_draw_constants(&self.pipeline, NO_OBJECT, skybox.index(), NO_TILES);
             frame.recorder.draw_fullscreen();
         }
 

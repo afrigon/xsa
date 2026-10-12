@@ -12,6 +12,7 @@ use xsa_units::SimulationTime;
 use super::body_step::BodyStep;
 use crate::renderer::{
     ColorSpace, HapkeParameters, LightSource, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Star,
+    Terrain,
 };
 
 const DEFAULT_NAMESPACE: &str = "base";
@@ -73,8 +74,8 @@ impl ClientWorld {
                     orientation: body_state.orientation,
                     scale: body.radius,
                     bounding_radius: body.radius,
-                    material,
                 });
+                scene.add_terrain(Terrain { object, material });
                 scene.add_occluder(object);
                 object
             })

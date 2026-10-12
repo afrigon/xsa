@@ -8,6 +8,7 @@ mod projected_light_data;
 mod push_constants;
 mod star_data;
 mod taa_push_constants;
+mod tile_data;
 mod tonemap_push_constants;
 
 pub(super) use bloom_push_constants::BloomPushConstants;
@@ -20,6 +21,7 @@ pub(super) use projected_light_data::ProjectedLightData;
 pub(super) use push_constants::PushConstants;
 pub(super) use star_data::StarData;
 pub(super) use taa_push_constants::TaaPushConstants;
+pub(super) use tile_data::TileData;
 pub(super) use tonemap_push_constants::TonemapPushConstants;
 
 /// # Safety

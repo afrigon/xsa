@@ -1,5 +1,7 @@
 use ash::vk;
-use glam::{Mat4, Vec2};
+use glam::{DVec3, Mat4, Vec2};
+
+use super::object_pose::ObjectPose;
 
 // Halton (2, 3) points 1 to 8: evenly spread over the pixel, and short enough to converge quickly.
 const JITTER_SAMPLE_COUNT: u32 = 8;
@@ -17,33 +19,38 @@ pub(super) struct TemporalHistory {
     history_valid: bool,
     view_projection: Option<Mat4>,
     exposure: Option<f32>,
-    world_from_model: Vec<Mat4>,
+    camera_position: Option<DVec3>,
+    poses: Vec<ObjectPose>,
     previous_view_projection: Mat4,
     previous_exposure: f32,
-    previous_world_from_model: Vec<Mat4>,
+    previous_camera_position: DVec3,
+    previous_poses: Vec<ObjectPose>,
 }
 
 impl TemporalHistory {
-    pub fn begin_frame(&mut self, view_projection: Mat4, exposure: f32) {
+    pub fn begin_frame(&mut self, view_projection: Mat4, exposure: f32, camera_position: DVec3) {
         self.frame = self.frame.wrapping_add(1);
         self.history_valid = self.history_written;
         self.history_written = true;
         self.previous_view_projection = self.view_projection.replace(view_projection).unwrap_or(view_projection);
         self.previous_exposure = self.exposure.replace(exposure).unwrap_or(exposure);
-        std::mem::swap(&mut self.world_from_model, &mut self.previous_world_from_model);
-        self.world_from_model.clear();
+        self.previous_camera_position = self.camera_position.replace(camera_position).unwrap_or(camera_position);
+        std::mem::swap(&mut self.poses, &mut self.previous_poses);
+        self.poses.clear();
     }
 
     // Objects are recorded in scene order; one that did not exist last frame counts as unmoved.
-    pub fn record_object(&mut self, world_from_model: Mat4) -> Mat4 {
-        let previous = self
-            .previous_world_from_model
-            .get(self.world_from_model.len())
-            .copied()
-            .unwrap_or(world_from_model);
-        self.world_from_model.push(world_from_model);
+    pub fn record_object(&mut self, pose: ObjectPose) -> ObjectPose {
+        self.poses.push(pose);
 
-        self.previous_view_projection * previous
+        self.previous_pose(self.poses.len() - 1)
+    }
+
+    pub fn previous_pose(&self, object_index: usize) -> ObjectPose {
+        self.previous_poses
+            .get(object_index)
+            .copied()
+            .unwrap_or(self.poses[object_index])
     }
 
     pub fn reset(&mut self) {
@@ -64,6 +71,10 @@ impl TemporalHistory {
 
     pub fn previous_view_projection(&self) -> Mat4 {
         self.previous_view_projection
+    }
+
+    pub fn previous_camera_position(&self) -> DVec3 {
+        self.previous_camera_position
     }
 
     // Colors are stored pre-exposed, so history from a frame with another exposure is rescaled to this one's.
@@ -104,7 +115,7 @@ mod tests {
         let mut history = TemporalHistory::default();
 
         for _ in 0..JITTER_SAMPLE_COUNT {
-            history.begin_frame(Mat4::IDENTITY, 1.0);
+            history.begin_frame(Mat4::IDENTITY, 1.0, DVec3::ZERO);
             let pixels = history.jitter(extent) / NDC_PER_VIEWPORT * Vec2::new(100.0, 50.0);
             assert!(pixels.abs().max_element() <= 0.5);
         }
@@ -113,12 +124,12 @@ mod tests {
     #[test]
     fn history_is_valid_from_the_second_frame_after_a_reset() {
         let mut history = TemporalHistory::default();
-        history.begin_frame(Mat4::IDENTITY, 1.0);
+        history.begin_frame(Mat4::IDENTITY, 1.0, DVec3::ZERO);
         assert!(!history.is_valid());
-        history.begin_frame(Mat4::IDENTITY, 1.0);
+        history.begin_frame(Mat4::IDENTITY, 1.0, DVec3::ZERO);
         assert!(history.is_valid());
         history.reset();
-        history.begin_frame(Mat4::IDENTITY, 1.0);
+        history.begin_frame(Mat4::IDENTITY, 1.0, DVec3::ZERO);
         assert!(!history.is_valid());
     }
 }

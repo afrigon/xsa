@@ -4,7 +4,7 @@ use winit::keyboard::KeyCode;
 
 use super::{
     AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, KeyChord,
-    LensConfig, RenderConfig,
+    LensConfig, RenderConfig, TerrainLodConfig,
 };
 
 use crate::renderer::{ShadingModel, Tonemapper};
@@ -12,6 +12,8 @@ use crate::renderer::{ShadingModel, Tonemapper};
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
 const BLOOM_STRENGTH: f32 = 0.02;
 const ANIMATION_DURATION_SCALE: f32 = 1.0;
+// A starting point to tune from, not a measured optimum.
+const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 8.0;
 
 struct DefaultBind {
     action: BindAction,
@@ -66,6 +68,10 @@ impl Default for Config {
                 wireframe: false,
                 shader_override: None,
                 shading_model: ShadingModel::HapkeSol,
+                terrain_lod: TerrainLodConfig {
+                    vertex_spacing_pixels: TERRAIN_VERTEX_SPACING_PIXELS,
+                    freeze: false,
+                },
             },
             bind: BindConfig {
                 keys: DefaultBind::keys(),

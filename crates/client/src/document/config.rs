@@ -14,6 +14,7 @@ mod number_range;
 mod render_document;
 mod shader_choice;
 mod shading_model_choice;
+mod terrain_lod_document;
 mod tonemapper_choice;
 
 pub use antialiasing_document::AntialiasingDocument;
@@ -24,6 +25,7 @@ pub use config_value_kind::ConfigValueKind;
 pub use lens_document::LensDocument;
 pub use number_range::NumberRange;
 pub use render_document::RenderDocument;
+pub use terrain_lod_document::TerrainLodDocument;
 
 use animation_document::AnimationDocument;
 use bind_document::BindDocument;

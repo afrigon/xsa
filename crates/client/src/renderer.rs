@@ -16,12 +16,15 @@ mod lens_lights;
 mod light_occlusion;
 mod light_projection;
 mod material;
+mod object_pose;
 mod passes;
+mod quad_sphere;
 mod render_passes;
 mod scene;
 mod shader_binaries;
 mod star_visibility;
 mod temporal_history;
+mod terrain_draw;
 mod texture;
 mod tonemapper;
 
@@ -30,7 +33,7 @@ pub use captured_image::CapturedImage;
 pub use frame_statistics::FrameStatistics;
 pub use lens_lights::LensLights;
 pub use material::{HapkeParameters, Material, Shader, ShadingModel};
-pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star};
+pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
@@ -39,7 +42,7 @@ use std::cell::Cell;
 use std::path::Path;
 
 use ash::vk;
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2};
 use render_graph::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -57,16 +60,19 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData};
+use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
 use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
 use light_projection::LightProjection;
 use material::MaterialData;
+use object_pose::ObjectPose;
 use passes::TaaPass;
+use quad_sphere::{DetailRanges, QuadSphere, SelectedTile};
 use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
+use terrain_draw::TerrainDraw;
 use texture::DdsImage;
 use tonemapper::NO_TONEMAPPER;
 
@@ -74,6 +80,7 @@ const FRAMES_IN_FLIGHT: usize = 2;
 const BYTES_PER_PIXEL: usize = 4;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
+const INITIAL_TILE_CAPACITY: usize = 4096;
 const INITIAL_STAR_CAPACITY: usize = 4;
 const INITIAL_LIGHT_CAPACITY: usize = 4;
 const MATERIAL_CAPACITY: usize = 256;
@@ -115,9 +122,12 @@ pub struct Renderer {
     projected_light_data: Vec<ProjectedLightData>,
     light_occlusion: LightOcclusion,
     focal_length_pixels: f32,
-    visible_objects: Vec<ObjectHandle>,
+    selected_tiles: Vec<SelectedTile>,
+    terrain_draws: Vec<TerrainDraw>,
+    tile_data: Vec<TileData>,
     material_data: Vec<MaterialData>,
     object_capacity: usize,
+    tile_capacity: usize,
     star_capacity: usize,
     light_capacity: usize,
     cube_maps: Vec<Image>,
@@ -152,6 +162,7 @@ impl Renderer {
                     &gpu.device,
                     &mut gpu.allocator,
                     INITIAL_OBJECT_CAPACITY,
+                    INITIAL_TILE_CAPACITY,
                     INITIAL_STAR_CAPACITY,
                     INITIAL_LIGHT_CAPACITY,
                 )
@@ -177,9 +188,12 @@ impl Renderer {
             projected_light_data: Vec::with_capacity(INITIAL_LIGHT_CAPACITY),
             light_occlusion: LightOcclusion::new(),
             focal_length_pixels: 0.0,
-            visible_objects: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
+            selected_tiles: Vec::with_capacity(INITIAL_TILE_CAPACITY),
+            terrain_draws: Vec::new(),
+            tile_data: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             material_data: Vec::with_capacity(MATERIAL_CAPACITY),
             object_capacity: INITIAL_OBJECT_CAPACITY,
+            tile_capacity: INITIAL_TILE_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
             light_capacity: INITIAL_LIGHT_CAPACITY,
             cube_maps: Vec::new(),
@@ -332,7 +346,6 @@ impl Renderer {
         self.update_star_visibility()?;
         self.update_gpu_time()?;
         self.write_frame_data(camera)?;
-        self.cull_objects(camera);
         self.record_frame(image_index)?;
         self.submit_and_present(image_index)?;
         self.frames[self.frame_index].submitted = true;
@@ -477,7 +490,7 @@ impl Renderer {
         let clip_from_view = camera.clip_from_view();
         let unjittered_view_projection = clip_from_view * camera.view_rotation();
         self.temporal
-            .begin_frame(unjittered_view_projection, self.exposure.exposure());
+            .begin_frame(unjittered_view_projection, self.exposure.exposure(), camera.position);
         let jitter = if self.render.antialiasing.kind == Some(AntialiasingKind::Taa) {
             self.temporal.jitter(extent)
         } else {
@@ -503,15 +516,15 @@ impl Renderer {
         self.object_data.clear();
 
         for object in self.scene.objects() {
-            let camera_relative = object.position - camera.position;
-            let world_from_model = Mat4::from_scale_rotation_translation(
-                Vec3::splat(object.scale as f32),
-                object.orientation.as_quat(),
-                camera_relative.as_vec3(),
-            );
+            let pose = ObjectPose {
+                position: object.position,
+                orientation: object.orientation,
+                scale: object.scale,
+            };
+            let previous = self.temporal.record_object(pose);
             self.object_data.push(ObjectData {
-                world_from_model,
-                previous_clip_from_model: self.temporal.record_object(world_from_model),
+                world_from_model: pose.world_from_model(camera.position),
+                previous_world_from_model: previous.world_from_model(self.temporal.previous_camera_position()),
             });
         }
 
@@ -568,6 +581,13 @@ impl Renderer {
             }
         }
 
+        if !self.render.terrain_lod.freeze {
+            self.select_tiles(camera);
+        }
+
+        self.write_tile_data(camera);
+        self.ensure_tile_capacity()?;
+
         anyhow::ensure!(
             self.scene.materials().len() <= MATERIAL_CAPACITY,
             "the scene has more than {MATERIAL_CAPACITY} materials"
@@ -579,23 +599,92 @@ impl Renderer {
         let frame = &mut self.frames[self.frame_index];
         frame.frame_data.write(&[frame_data])?;
         frame.objects.write(&self.object_data)?;
+        frame.tiles.write(&self.tile_data)?;
         frame.stars.write(&self.star_data)?;
         frame.projected_lights.write(&self.projected_light_data)?;
 
         frame.materials.write(&self.material_data)
     }
 
-    fn cull_objects(&mut self, camera: &Camera) {
+    fn detail_ranges(&self, radius: f64) -> DetailRanges {
+        DetailRanges::new(
+            radius,
+            f64::from(self.focal_length_pixels),
+            f64::from(self.render.terrain_lod.vertex_spacing_pixels),
+        )
+    }
+
+    // Tiles are grouped into one draw per terrain and grid size.
+    fn select_tiles(&mut self, camera: &Camera) {
         let culler = Culler::new(camera, self.swapchain.extent());
-        self.visible_objects.clear();
-        self.visible_objects.extend(
-            self.scene
-                .objects()
-                .iter()
-                .enumerate()
-                .filter(|(_, object)| culler.is_visible(object.position - camera.position, object.bounding_radius))
-                .map(|(index, _)| ObjectHandle { index }),
-        );
+        self.selected_tiles.clear();
+        self.terrain_draws.clear();
+
+        for (index, terrain) in self.scene.terrains().iter().enumerate() {
+            let object = self.scene.object(terrain.object);
+            let center = object.position - camera.position;
+
+            if !culler.is_visible(center, object.bounding_radius) {
+                continue;
+            }
+
+            let sphere = QuadSphere {
+                radius: object.scale,
+                center,
+                orientation: object.orientation,
+            };
+            let first_tile = self.selected_tiles.len();
+            sphere.select(&self.detail_ranges(object.scale), &culler, &mut self.selected_tiles);
+            let tiles = &mut self.selected_tiles[first_tile..];
+            tiles.sort_by_key(|tile| DetailRanges::grid_cells(tile.detail));
+            let mut run_start = first_tile;
+
+            for run in tiles.chunk_by(|first, second| {
+                DetailRanges::grid_cells(first.detail) == DetailRanges::grid_cells(second.detail)
+            }) {
+                self.terrain_draws.push(TerrainDraw {
+                    terrain: TerrainHandle { index },
+                    grid_cells: DetailRanges::grid_cells(run[0].detail),
+                    first_tile: run_start as u32,
+                    tile_count: run.len() as u32,
+                });
+                run_start += run.len();
+            }
+        }
+    }
+
+    // Tile centers are placed in f64, relative to each frame's camera, so only offsets within a tile reach f32.
+    fn write_tile_data(&mut self, camera: &Camera) {
+        self.tile_data.clear();
+        let previous_camera_position = self.temporal.previous_camera_position();
+
+        for draw in &self.terrain_draws {
+            let object_handle = self.scene.terrain(draw.terrain).object;
+            let object = self.scene.object(object_handle);
+            let previous = self.temporal.previous_pose(object_handle.index);
+            let ranges = self.detail_ranges(object.scale);
+            let first_tile = draw.first_tile as usize;
+
+            for selected in &self.selected_tiles[first_tile..first_tile + draw.tile_count as usize] {
+                let tile = selected.tile;
+                let direction = tile.cube_center().normalize();
+                let center = object.position - camera.position + object.orientation * (direction * object.scale);
+                let previous_center =
+                    previous.position - previous_camera_position + previous.orientation * (direction * previous.scale);
+                self.tile_data.push(TileData {
+                    center: center.as_vec3(),
+                    detail: selected.detail,
+                    previous_center: previous_center.as_vec3(),
+                    grid_cells: draw.grid_cells,
+                    cube_center: tile.cube_center().as_vec3(),
+                    morph_start: ranges.morph_start(selected.detail) as f32,
+                    horizontal_axis: tile.horizontal_axis().as_vec3(),
+                    morph_end: ranges.morph_end(selected.detail) as f32,
+                    vertical_axis: tile.vertical_axis().as_vec3(),
+                    padding: 0,
+                });
+            }
+        }
     }
 
     fn record_frame(&mut self, image_index: u32) -> anyhow::Result<()> {
@@ -663,7 +752,7 @@ impl Renderer {
             scene: &self.scene,
             lens: self.lens.as_ref(),
             focal_length_pixels: self.focal_length_pixels,
-            visible_objects: &self.visible_objects,
+            terrain_draws: &self.terrain_draws,
             descriptor_set: bindless.set(),
             user_interface: &self.user_interface,
             triangles: Cell::new(0),
@@ -741,6 +830,25 @@ impl Renderer {
             let objects = Frame::create_object_buffer(&self.gpu.device, &mut self.gpu.allocator, self.object_capacity)?;
             let mut old_objects = std::mem::replace(&mut frame.objects, objects);
             unsafe { old_objects.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+        }
+
+        Ok(())
+    }
+
+    fn ensure_tile_capacity(&mut self) -> anyhow::Result<()> {
+        let tile_count = self.tile_data.len();
+
+        if tile_count <= self.tile_capacity {
+            return Ok(());
+        }
+
+        self.gpu.wait_idle()?;
+        self.tile_capacity = tile_count.next_power_of_two();
+
+        for frame in &mut self.frames {
+            let tiles = Frame::create_tile_buffer(&self.gpu.device, &mut self.gpu.allocator, self.tile_capacity)?;
+            let mut old_tiles = std::mem::replace(&mut frame.tiles, tiles);
+            unsafe { old_tiles.destroy(&self.gpu.device, &mut self.gpu.allocator) };
         }
 
         Ok(())

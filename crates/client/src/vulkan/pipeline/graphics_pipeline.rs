@@ -16,7 +16,7 @@ impl GraphicsPipeline {
         let code = ash::util::read_spv(&mut Cursor::new(description.spirv)).context("reading SPIR-V")?;
         let module_info = vk::ShaderModuleCreateInfo::default().code(&code);
         let module = unsafe { device.handle().create_shader_module(&module_info, None) }?;
-        let dynamic_polygon_mode = device.extended_dynamic_state3().is_some();
+        let dynamic_polygon_mode = description.wireframe && device.extended_dynamic_state3().is_some();
         let pipeline = GraphicsPipeline::create_pipeline(device.handle(), module, description, dynamic_polygon_mode);
         unsafe { device.handle().destroy_shader_module(module, None) };
         pipeline

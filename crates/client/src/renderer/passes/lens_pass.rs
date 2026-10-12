@@ -41,6 +41,7 @@ impl LensPass {
                 depth_write: false,
                 cull_mode: vk::CullModeFlags::NONE,
                 additive_blend: true,
+                wireframe: false,
                 vertex_bindings: &[],
                 vertex_attributes: &[],
                 push_constant_size: size_of::<LensPushConstants>() as u32,

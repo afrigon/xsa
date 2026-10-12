@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use ash::vk;
 
 use super::gpu_data::GpuData;
@@ -52,11 +54,16 @@ impl<'a> CommandRecorder<'a> {
         }
     }
 
-    pub fn draw_indexed(&self, index_count: u32) {
+    pub fn draw_indexed(&self, indices: Range<u32>, instance_count: u32) {
         unsafe {
-            self.device
-                .handle()
-                .cmd_draw_indexed(self.command_buffer, index_count, 1, 0, 0, 0)
+            self.device.handle().cmd_draw_indexed(
+                self.command_buffer,
+                indices.len() as u32,
+                instance_count,
+                indices.start,
+                0,
+                0,
+            )
         };
     }
 
