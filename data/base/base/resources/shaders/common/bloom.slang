@@ -5,7 +5,7 @@ SamplerState clampingSampler;
 Texture2D textures[];
 
 [[vk::binding(4, 0)]]
-[format("r11f_g11f_b10f")]
+[format("rgba32f")]
 RWTexture2D<float4> storageImages[];
 
 struct BloomConstants {

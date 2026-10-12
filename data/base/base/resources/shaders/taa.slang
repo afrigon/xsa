@@ -7,7 +7,7 @@ SamplerState clampingSampler;
 Texture2D textures[];
 
 [[vk::binding(4, 0)]]
-[format("rgba16f")]
+[format("rgba32f")]
 RWTexture2D<float4> storageImages[];
 
 struct TaaConstants {

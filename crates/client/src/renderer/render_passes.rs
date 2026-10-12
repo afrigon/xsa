@@ -51,11 +51,15 @@ impl RenderPasses {
         render: &RenderConfig,
         inputs: FrameInputs,
     ) {
+        let light_count = inputs.projected_light_count;
+        let lens = (render.lens.enabled && inputs.lens_loaded && light_count > 0)
+            .then(|| graph.add(&mut self.lens, LensInputs { light_count }).lens);
         let forward = graph.add(&mut self.forward, ());
         graph.add(
             &mut self.histogram,
             HistogramInputs {
                 scene_color: forward.hdr,
+                lens,
                 histogram: inputs.histogram,
             },
         );
@@ -68,9 +72,6 @@ impl RenderPasses {
             .bloom
             .enabled
             .then(|| graph.add(&mut self.bloom, scene_color).bloom);
-        let light_count = inputs.projected_light_count;
-        let lens = (render.lens.enabled && inputs.lens_loaded && light_count > 0)
-            .then(|| graph.add(&mut self.lens, LensInputs { light_count }).lens);
         graph.add(
             &mut self.tonemap,
             TonemapInputs {

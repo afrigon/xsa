@@ -2,6 +2,7 @@ use ash::vk;
 
 use super::MATERIAL_CAPACITY;
 use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData};
+use super::gpu_timer::GpuTimer;
 use super::material::MaterialData;
 use super::star_visibility::HISTOGRAM_BINS;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
@@ -17,7 +18,9 @@ pub(super) struct Frame {
     pub projected_lights: Buffer,
     pub materials: Buffer,
     pub histogram: Buffer,
-    pub histogram_ready: bool,
+    pub timer: Option<GpuTimer>,
+    // A frame was submitted from this slot, so its read-backs hold results once its fence is waited on.
+    pub submitted: bool,
 }
 
 impl Frame {
@@ -50,6 +53,7 @@ impl Frame {
             MemoryLocation::GpuToCpu,
         )?;
 
+        let timer = GpuTimer::new(device)?;
         let queue_family = device.queue_family();
         let device = device.handle();
         let pool_info = vk::CommandPoolCreateInfo::default().queue_family_index(queue_family);
@@ -74,7 +78,8 @@ impl Frame {
             projected_lights,
             materials,
             histogram,
-            histogram_ready: false,
+            timer,
+            submitted: false,
         })
     }
 
@@ -86,6 +91,11 @@ impl Frame {
             self.projected_lights.destroy(device, allocator);
             self.materials.destroy(device, allocator);
             self.histogram.destroy(device, allocator);
+
+            if let Some(timer) = &mut self.timer {
+                timer.destroy(device);
+            }
+
             let device = device.handle();
             device.destroy_fence(self.in_flight, None);
             device.destroy_semaphore(self.image_acquired, None);

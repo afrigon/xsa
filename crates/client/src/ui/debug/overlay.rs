@@ -13,6 +13,7 @@ pub struct DebugOverlayView {
     pub star_visibility: f32,
     pub light: f32,
     pub lens_lights: LensLights,
+    pub gpu_milliseconds: Option<f32>,
 }
 
 impl View for DebugOverlayView {
@@ -20,9 +21,12 @@ impl View for DebugOverlayView {
         let frames_per_second = self
             .frames_per_second
             .map_or_else(|| "–".to_string(), |rate| format!("{rate:.0}"));
+        let gpu_milliseconds = self
+            .gpu_milliseconds
+            .map_or_else(|| "–".to_string(), |milliseconds| format!("{milliseconds:.2}"));
 
         Text::new(format!(
-            "{frames_per_second} fps\n{} triangles\nEV {:.1} · anchor {:.1} · stars {:.2} · light {:.3}\n\
+            "{frames_per_second} fps · GPU {gpu_milliseconds} ms\n{} triangles\nEV {:.1} · anchor {:.1} · stars {:.2} · light {:.3}\n\
              lens {} drawn · {} culled · {} behind",
             self.triangles,
             self.ev100,
