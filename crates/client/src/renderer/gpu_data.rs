@@ -27,7 +27,7 @@ pub(super) use tonemap_push_constants::TonemapPushConstants;
 /// # Safety
 ///
 /// Implementors are `#[repr(C)]` with no implicit padding, so every byte is initialized.
-pub(super) unsafe trait GpuData: Copy {
+pub unsafe trait GpuData: Copy {
     fn as_bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts((self as *const Self).cast::<u8>(), size_of::<Self>()) }
     }

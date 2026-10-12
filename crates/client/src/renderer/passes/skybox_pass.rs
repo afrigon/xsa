@@ -68,7 +68,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for SkyboxPass {
 
         if let Some(skybox) = frame.scene.skybox {
             frame.recorder.bind_graphics(&self.pipeline, frame.descriptor_set);
-            frame.push_draw_constants(&self.pipeline, NO_OBJECT, skybox.index(), NO_TILES);
+            frame.push_draw_constants(&self.pipeline, NO_OBJECT, skybox, NO_TILES);
             frame.recorder.draw_fullscreen();
         }
 

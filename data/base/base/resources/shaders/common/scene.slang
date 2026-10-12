@@ -19,36 +19,13 @@ struct TileData {
     uint padding;
 };
 
-struct HapkeData {
-    uint scatterTexture;
-    uint surgeTexture;
-    float porosity;
-    float roughness;
-    float blend;
-    float lightBoost;
-    float gammaBoost;
-    uint padding;
-};
-
-struct MaterialData {
-    float4 color;
-    float4x4 transform;
-    uint texture;
-    uint normalTexture;
-    uint emissiveTexture;
-    float luminance;
-    HapkeData hapke;
-};
-
 struct PushConstants {
     FrameData *frame;
     ObjectData *objects;
-    MaterialData *materials;
+    void *material;
     uint objectIndex;
-    uint materialIndex;
-    TileData *tiles;
     uint firstTile;
-    uint padding;
+    TileData *tiles;
 };
 
 [[vk::push_constant]]
@@ -99,8 +76,8 @@ ObjectData currentObject() {
     return constants.objects[constants.objectIndex];
 }
 
-MaterialData currentMaterial() {
-    return constants.materials[constants.materialIndex];
+T currentMaterial<T>() {
+    return *(T *)constants.material;
 }
 
 TileData currentTile(uint instance) {

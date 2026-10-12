@@ -11,8 +11,8 @@ use xsa_units::SimulationTime;
 
 use super::body_step::BodyStep;
 use crate::renderer::{
-    ColorSpace, HapkeParameters, LightSource, Material, MaterialHandle, ObjectHandle, Renderer, SceneObject, Star,
-    Terrain,
+    ColorSpace, EmissiveMaterial, HapkeParameters, LightSource, LitMaterial, MaterialHandle, ObjectHandle,
+    PlanetMaterial, Renderer, SceneObject, SkyboxMaterial, Star, Terrain,
 };
 
 const DEFAULT_NAMESPACE: &str = "base";
@@ -56,7 +56,7 @@ impl ClientWorld {
                 ClientWorld::create_material(renderer, &body.id, definition, star_light)
                     .with_context(|| format!("loading the material of {}", body.id))
             })
-            .collect::<anyhow::Result<Vec<Material>>>()?;
+            .collect::<anyhow::Result<Vec<MaterialHandle>>>()?;
         let mut state = SimulationState::default();
         simulation.state_at(world.time, &mut state);
 
@@ -66,9 +66,7 @@ impl ClientWorld {
             .iter()
             .zip(&materials)
             .zip(&state.bodies)
-            .map(|((body, material), body_state)| {
-                let material = scene.add_material(*material);
-
+            .map(|((body, &material), body_state)| {
                 let object = scene.add(SceneObject {
                     position: body_state.position,
                     orientation: body_state.orientation,
@@ -225,11 +223,14 @@ impl ClientWorld {
         };
 
         match renderer.load_cube_map("skybox", &skybox.texture) {
-            Ok(cube_map) => Ok(Some(renderer.scene_mut().add_material(Material::Skybox {
-                cube_map,
-                orientation: skybox.orientation,
-                luminance: skybox.luminance,
-            }))),
+            Ok(cube_map) => Ok(Some(renderer.add_material(
+                "skybox",
+                SkyboxMaterial {
+                    cube_map,
+                    orientation: skybox.orientation,
+                    luminance: skybox.luminance,
+                },
+            )?)),
             Err(err) => {
                 tracing::warn!("skipping the skybox: {err:#}");
                 Ok(None)
@@ -242,18 +243,23 @@ impl ClientWorld {
         body: &BodyId,
         definition: MaterialDefinition,
         star_light: Option<&StarLight>,
-    ) -> anyhow::Result<Material> {
-        Ok(match definition {
-            MaterialDefinition::Lit { base_color } => Material::Lit { base_color },
+    ) -> anyhow::Result<MaterialHandle> {
+        let name = format!("{body} material");
+
+        match definition {
+            MaterialDefinition::Lit { base_color } => renderer.add_material(&name, LitMaterial { base_color }),
             MaterialDefinition::Emissive { color, luminance } => {
                 let luminance = match star_light {
                     Some(star_light) => star_light.color * star_light.surface_luminance as f32,
                     None => Vec3::splat(luminance.context("an emissive material needs a `luminance` in cd/m²")?),
                 };
 
-                Material::Emissive {
-                    luminance: color * luminance,
-                }
+                renderer.add_material(
+                    &name,
+                    EmissiveMaterial {
+                        luminance: color * luminance,
+                    },
+                )
             }
             MaterialDefinition::Planet {
                 color,
@@ -266,7 +272,7 @@ impl ClientWorld {
                     renderer.load_texture(&format!("{body} {kind}"), path, color_space)
                 };
 
-                Material::Planet {
+                let material = PlanetMaterial {
                     color: load("color", &color, ColorSpace::Srgb)?,
                     normal: normal
                         .map(|path| load("normal", &path, ColorSpace::Linear))
@@ -288,8 +294,9 @@ impl ClientWorld {
                             })
                         })
                         .transpose()?,
-                }
+                };
+                renderer.add_material(&name, material)
             }
-        })
+        }
     }
 }

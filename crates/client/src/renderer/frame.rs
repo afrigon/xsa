@@ -1,9 +1,7 @@
 use ash::vk;
 
-use super::MATERIAL_CAPACITY;
 use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
 use super::gpu_timer::GpuTimer;
-use super::material::MaterialData;
 use super::star_visibility::HISTOGRAM_BINS;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
 
@@ -17,7 +15,6 @@ pub(super) struct Frame {
     pub tiles: Buffer,
     pub stars: Buffer,
     pub projected_lights: Buffer,
-    pub materials: Buffer,
     pub histogram: Buffer,
     pub timer: Option<GpuTimer>,
     // A frame was submitted from this slot, so its read-backs hold results once its fence is waited on.
@@ -38,12 +35,6 @@ impl Frame {
         let tiles = Frame::create_tile_buffer(device, allocator, tile_capacity)?;
         let stars = Frame::create_star_buffer(device, allocator, star_capacity)?;
         let projected_lights = Frame::create_projected_light_buffer(device, allocator, light_capacity)?;
-        let materials = Frame::create_shader_buffer(
-            device,
-            allocator,
-            "material data",
-            MATERIAL_CAPACITY * size_of::<MaterialData>(),
-        )?;
 
         let histogram = Buffer::new(
             device,
@@ -80,7 +71,6 @@ impl Frame {
             tiles,
             stars,
             projected_lights,
-            materials,
             histogram,
             timer,
             submitted: false,
@@ -94,7 +84,6 @@ impl Frame {
             self.tiles.destroy(device, allocator);
             self.stars.destroy(device, allocator);
             self.projected_lights.destroy(device, allocator);
-            self.materials.destroy(device, allocator);
             self.histogram.destroy(device, allocator);
 
             if let Some(timer) = &mut self.timer {

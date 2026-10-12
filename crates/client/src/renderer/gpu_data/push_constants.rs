@@ -7,14 +7,12 @@ use super::GpuData;
 pub(in crate::renderer) struct PushConstants {
     pub frame: vk::DeviceAddress,
     pub objects: vk::DeviceAddress,
-    pub materials: vk::DeviceAddress,
+    pub material: vk::DeviceAddress,
     pub object_index: u32,
-    pub material_index: u32,
-    pub tiles: vk::DeviceAddress,
     pub first_tile: u32,
-    pub padding: u32,
+    pub tiles: vk::DeviceAddress,
 }
 
-const _: () = assert!(size_of::<PushConstants>() == 48);
+const _: () = assert!(size_of::<PushConstants>() == 40);
 
 unsafe impl GpuData for PushConstants {}
