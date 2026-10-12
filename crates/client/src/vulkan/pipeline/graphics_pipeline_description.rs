@@ -8,6 +8,8 @@ pub struct GraphicsPipelineDescription<'a> {
     pub depth_write: bool,
     pub cull_mode: vk::CullModeFlags,
     pub additive_blend: bool,
+    // Lets the polygon mode switch to lines at draw time, where the device supports it.
+    pub wireframe: bool,
     pub vertex_bindings: &'a [vk::VertexInputBindingDescription],
     pub vertex_attributes: &'a [vk::VertexInputAttributeDescription],
     pub push_constant_size: u32,

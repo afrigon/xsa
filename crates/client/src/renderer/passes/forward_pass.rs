@@ -151,6 +151,7 @@ impl ForwardPass {
             depth_write: true,
             cull_mode: vk::CullModeFlags::BACK,
             additive_blend: false,
+            wireframe: true,
             vertex_bindings: &vertex_bindings,
             vertex_attributes: &vertex_attributes,
             push_constant_size: size_of::<PushConstants>() as u32,

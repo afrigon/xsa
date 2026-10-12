@@ -32,6 +32,7 @@ impl TonemapPass {
                 depth_write: false,
                 cull_mode: vk::CullModeFlags::NONE,
                 additive_blend: false,
+                wireframe: false,
                 vertex_bindings: &[],
                 vertex_attributes: &[],
                 push_constant_size: size_of::<TonemapPushConstants>() as u32,
