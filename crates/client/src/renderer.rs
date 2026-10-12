@@ -57,6 +57,7 @@ use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use texture::DdsImage;
+use tonemapper::NO_TONEMAPPER;
 
 const FRAMES_IN_FLIGHT: usize = 2;
 const BYTES_PER_PIXEL: usize = 4;
@@ -435,7 +436,7 @@ impl Renderer {
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             jitter,
             exposure: self.exposure.exposure(),
-            tonemapper: self.render.tonemapper.shader_id(),
+            tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             shading_model: self.render.shading_model.shader_id(),
         };

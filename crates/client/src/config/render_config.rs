@@ -3,7 +3,7 @@ use crate::renderer::{Shader, ShadingModel, Tonemapper};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderConfig {
-    pub tonemapper: Tonemapper,
+    pub tonemapper: Option<Tonemapper>,
     pub stars: bool,
     pub bloom: BloomConfig,
     pub antialiasing: AntialiasingConfig,
