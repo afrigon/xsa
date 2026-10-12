@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
+use resource_loader::texture::TEXTURE_EXTENSIONS;
 
 use crate::{Document, Id, Manifest, PackData, ParseContext};
 
@@ -11,7 +12,6 @@ pub const DOCUMENT_EXTENSION: &str = "kdl";
 const DATA_DIRECTORY: &str = "data";
 const RESOURCES_DIRECTORY: &str = "resources";
 const TEXTURES: &str = "textures";
-const TEXTURE_EXTENSION: &str = "dds";
 const FONTS: &str = "fonts";
 const FONT_EXTENSION: &str = "ttf";
 
@@ -75,7 +75,13 @@ impl PackStack {
     }
 
     pub fn texture(&self, id: &Id) -> anyhow::Result<&Path> {
-        self.resource(TEXTURES, id, TEXTURE_EXTENSION)
+        let slot = format!("{RESOURCES_DIRECTORY}/{}/{TEXTURES}/{}", id.namespace, id.path);
+        self.files.get(&slot).map(PathBuf::as_path).with_context(|| {
+            format!(
+                "no loaded pack provides texture {id} ({slot}.{{{}}})",
+                TEXTURE_EXTENSIONS.join(",")
+            )
+        })
     }
 
     pub fn font(&self, id: &Id) -> anyhow::Result<&Path> {
@@ -117,7 +123,11 @@ impl PackStack {
             .with_context(|| format!("no loaded pack provides {kind} {id} ({key})"))
     }
 
+    // A pack's files replace earlier packs' in the same slot. Texture slots leave out the extension, so a texture in
+    // any format replaces one in another.
     fn index_pack(pack_directory: &Path, files: &mut HashMap<String, PathBuf>) -> anyhow::Result<()> {
+        let mut pack_files = HashMap::new();
+
         for entry in fs::read_dir(pack_directory).with_context(|| format!("reading {}", pack_directory.display()))? {
             let namespace_directory = entry?.path();
 
@@ -137,11 +147,12 @@ impl PackStack {
                     &section_directory,
                     &section_directory,
                     &format!("{section}/{namespace}"),
-                    files,
+                    &mut pack_files,
                 )?;
             }
         }
 
+        files.extend(pack_files);
         Ok(())
     }
 
@@ -171,9 +182,56 @@ impl PackStack {
                 .map(|component| component.as_os_str().to_string_lossy())
                 .collect::<Vec<_>>()
                 .join("/");
-            files.insert(format!("{key_prefix}/{relative}"), path);
+            let key = format!("{key_prefix}/{relative}");
+
+            match PackStack::texture_slot(&key) {
+                Some(slot) => PackStack::insert_texture(files, slot, path),
+                None => {
+                    files.insert(key, path);
+                }
+            }
         }
 
         Ok(())
+    }
+
+    fn texture_slot(key: &str) -> Option<String> {
+        let (slot, extension) = key.rsplit_once('.')?;
+        let mut parts = slot.split('/');
+        let is_texture = parts.next() == Some(RESOURCES_DIRECTORY) && parts.nth(1) == Some(TEXTURES);
+
+        (is_texture && TEXTURE_EXTENSIONS.contains(&extension)).then(|| slot.to_string())
+    }
+
+    // Two files for one texture in the same pack: the earlier extension in TEXTURE_EXTENSIONS wins.
+    fn insert_texture(files: &mut HashMap<String, PathBuf>, slot: String, path: PathBuf) {
+        let preference = |path: &Path| {
+            let extension = path.extension().and_then(|extension| extension.to_str());
+            TEXTURE_EXTENSIONS
+                .iter()
+                .position(|candidate| Some(*candidate) == extension)
+        };
+
+        match files.get(&slot) {
+            Some(existing) if preference(existing) <= preference(&path) => {
+                PackStack::warn_duplicate_texture(existing, &path);
+            }
+            Some(existing) => {
+                PackStack::warn_duplicate_texture(&path, existing);
+                files.insert(slot, path);
+            }
+            None => {
+                files.insert(slot, path);
+            }
+        }
+    }
+
+    fn warn_duplicate_texture(kept: &Path, ignored: &Path) {
+        tracing::warn!(
+            "{} and {} provide the same texture; using {}",
+            kept.display(),
+            ignored.display(),
+            kept.display()
+        );
     }
 }

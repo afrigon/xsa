@@ -11,6 +11,7 @@ image = { workspace = true, features = ["png"] }
 gpu-allocator.workspace = true
 kdl = "6.7.1"
 render-graph.workspace = true
+resource-loader = { workspace = true, features = ["texture"] }
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 winit.workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "resource-loader"
+version.workspace = true
+edition.workspace = true
+
+[features]
+texture = ["dep:image", "dep:zstd"]
+
+[dependencies]
+anyhow.workspace = true
+image = { workspace = true, features = ["png"], optional = true }
+zstd = { version = "0.14.2", optional = true }
+
+[[test]]
+name = "texture"
+required-features = ["texture"]

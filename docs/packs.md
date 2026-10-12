@@ -359,10 +359,15 @@ other packs, with their own material properties, are planned.
 
 ### Textures — `<namespace>/resources/textures/`
 
-DDS files with a DX10 header (BC7, BC5, BC4, uncompressed RGBA8, or
-uncompressed half-float RGBA for values beyond 1, such as lens textures),
-uploaded exactly as stored; whether a texture is sRGB or linear comes from how it is
-used. Folders are organized by subject for people; a texture's purpose is
+KTX2 files (uncompressed or with Zstandard supercompression), DDS files with
+a DX10 header, or PNG files, uploaded exactly as stored. KTX2 and DDS hold
+BC7, BC5, BC4, RGBA8, half-float RGBA for values beyond 1 (such as lens
+textures), or 16-bit R and RG for heights; a PNG becomes one RGBA8 level
+without mipmaps. Whether a texture is sRGB or linear comes from how it is
+used. A texture id names the file without its extension: a later pack's file
+replaces an earlier pack's whatever the formats, and a pack holding the same
+texture in several formats uses the first of KTX2, DDS and PNG, with a
+warning. Folders are organized by subject for people; a texture's purpose is
 declared by whatever references it.
 
 ### Fonts — `<namespace>/resources/fonts/`

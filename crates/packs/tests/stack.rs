@@ -11,10 +11,14 @@ const WORLD_FILES: &[&str] = &[
     "world/resources/materials/earth.kdl",
     "world/resources/textures/bodies/earth/color.dds",
     "world/resources/textures/bodies/earth/normal.dds",
+    "world/resources/textures/bodies/earth/height.dds",
+    "world/resources/textures/bodies/earth/albedo.png",
+    "world/resources/textures/bodies/earth/albedo.ktx2",
 ];
 const RESKIN_FILES: &[&str] = &[
     "world/resources/materials/earth.kdl",
     "world/resources/textures/bodies/earth/color.dds",
+    "world/resources/textures/bodies/earth/height.png",
 ];
 
 // Each file holds the name of the pack that wrote it, so a lookup shows which pack won the slot.
@@ -52,6 +56,10 @@ fn color() -> Id {
 
 fn normal() -> Id {
     Id::parse("bodies/earth/normal", "world").unwrap()
+}
+
+fn texture(path: &str) -> Id {
+    Id::parse(path, "world").unwrap()
 }
 
 fn owner(path: &Path) -> String {
@@ -111,4 +119,26 @@ fn an_overlay_must_follow_the_pack_it_depends_on() {
     fs::remove_dir_all(&directory).unwrap();
 
     assert!(loaded.is_err());
+}
+
+#[test]
+fn an_overlay_texture_replaces_one_in_another_format() {
+    let directory = test_packs("format");
+    let stack = load(&directory, &["world", "reskin"]).unwrap();
+    let path = stack.texture(&texture("bodies/earth/height")).unwrap().to_path_buf();
+    let height = owner(&path);
+    fs::remove_dir_all(&directory).unwrap();
+
+    assert_eq!(height, "reskin");
+    assert_eq!(path.extension().unwrap(), "png");
+}
+
+#[test]
+fn a_pack_with_two_files_for_a_texture_uses_the_preferred_format() {
+    let directory = test_packs("preferred");
+    let stack = load(&directory, &["world"]).unwrap();
+    let path = stack.texture(&texture("bodies/earth/albedo")).unwrap().to_path_buf();
+    fs::remove_dir_all(&directory).unwrap();
+
+    assert_eq!(path.extension().unwrap(), "ktx2");
 }

@@ -37,7 +37,8 @@ pub use material::{
 };
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
-pub use texture::{ColorSpace, CubeMapHandle, TextureHandle};
+pub use texture::{CubeMapHandle, TextureHandle};
+pub use resource_loader::texture::ColorSpace;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
@@ -51,6 +52,7 @@ use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
+use resource_loader::texture::TextureImage;
 use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
@@ -75,7 +77,7 @@ use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use terrain_draw::TerrainDraw;
-use texture::DdsImage;
+use texture::TextureUpload;
 use tonemapper::NO_TONEMAPPER;
 
 const FRAMES_IN_FLIGHT: usize = 2;
@@ -268,8 +270,8 @@ impl Renderer {
 
     pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
         let gpu = &mut self.gpu;
-        let mut image =
-            DdsImage::read(path, ColorSpace::Srgb)?.upload_cube_map(&gpu.device, &mut gpu.allocator, name)?;
+        let image = TextureImage::read(path, ColorSpace::Srgb)?;
+        let mut image = TextureUpload::new(&image).cube_map(&gpu.device, &mut gpu.allocator, name)?;
 
         match gpu.bindless.add_cube(&gpu.device, image.view()) {
             Ok(index) => {
@@ -284,13 +286,13 @@ impl Renderer {
     }
 
     pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
-        let image = DdsImage::read(path, color_space)?;
+        let image = TextureImage::read(path, color_space)?;
         self.upload_texture(name, &image)
     }
 
-    fn upload_texture(&mut self, name: &str, image: &DdsImage) -> anyhow::Result<TextureHandle> {
+    fn upload_texture(&mut self, name: &str, image: &TextureImage) -> anyhow::Result<TextureHandle> {
         let gpu = &mut self.gpu;
-        let mut image = image.upload_texture(&gpu.device, &mut gpu.allocator, name)?;
+        let mut image = TextureUpload::new(image).texture(&gpu.device, &mut gpu.allocator, name)?;
 
         match gpu.bindless.add_texture(&gpu.device, image.view(), SAMPLED_LAYOUT) {
             Ok(index) => {
