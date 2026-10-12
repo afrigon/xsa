@@ -1,6 +1,6 @@
 use super::{
     AntialiasingDocument, BloomDocument, ConfigChoice, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues,
-    LensDocument,
+    LensDocument, TerrainLodDocument,
 };
 use crate::config::RenderConfig;
 use crate::renderer::{Shader, ShadingModel, Tonemapper};
@@ -14,6 +14,7 @@ pub struct RenderDocument {
     wireframe: Option<bool>,
     shader_override: Option<Option<Shader>>,
     shading_model: Option<ShadingModel>,
+    terrain_lod: TerrainLodDocument,
 }
 
 impl RenderDocument {
@@ -48,6 +49,7 @@ impl RenderDocument {
             wireframe: values.bool(RenderDocument::WIREFRAME),
             shader_override: values.choice(RenderDocument::SHADER_OVERRIDE),
             shading_model: values.choice(RenderDocument::SHADING_MODEL),
+            terrain_lod: TerrainLodDocument::read(values),
         }
     }
 
@@ -61,6 +63,7 @@ impl RenderDocument {
             wireframe: self.wireframe.unwrap_or(defaults.wireframe),
             shader_override: self.shader_override.unwrap_or(defaults.shader_override),
             shading_model: self.shading_model.unwrap_or(defaults.shading_model),
+            terrain_lod: self.terrain_lod.into_config(&defaults.terrain_lod),
         }
     }
 
@@ -79,5 +82,6 @@ impl RenderDocument {
             RenderDocument::SHADING_MODEL.path,
             config.shading_model.config_name().into(),
         );
+        TerrainLodDocument::write(&config.terrain_lod, layer);
     }
 }

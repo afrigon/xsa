@@ -8,6 +8,7 @@ mod default_config;
 mod key_chord;
 mod lens_config;
 mod render_config;
+mod terrain_lod_config;
 
 pub use animation_config::AnimationConfig;
 pub use antialiasing_config::AntialiasingConfig;
@@ -18,6 +19,7 @@ pub use bloom_config::BloomConfig;
 pub use key_chord::KeyChord;
 pub use lens_config::LensConfig;
 pub use render_config::RenderConfig;
+pub use terrain_lod_config::TerrainLodConfig;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {

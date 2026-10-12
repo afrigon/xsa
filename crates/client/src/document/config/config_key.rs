@@ -1,5 +1,6 @@
 use super::{
-    AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, LensDocument, RenderDocument,
+    AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, LensDocument,
+    RenderDocument, TerrainLodDocument,
 };
 
 #[derive(Clone, Copy)]
@@ -20,6 +21,8 @@ impl ConfigKey {
         RenderDocument::WIREFRAME,
         RenderDocument::SHADER_OVERRIDE,
         RenderDocument::SHADING_MODEL,
+        TerrainLodDocument::VERTEX_SPACING,
+        TerrainLodDocument::FREEZE,
         AnimationDocument::DURATION_SCALE,
     ];
 
