@@ -1,20 +1,20 @@
 use super::ConfigChoice;
 use crate::renderer::Tonemapper;
 
-impl ConfigChoice for Tonemapper {
+impl ConfigChoice for Option<Tonemapper> {
     const ALL: &'static [Self] = &[
-        Tonemapper::Agx,
-        Tonemapper::AgxPunchy,
-        Tonemapper::KhronosNeutral,
-        Tonemapper::Off,
+        None,
+        Some(Tonemapper::Agx),
+        Some(Tonemapper::AgxPunchy),
+        Some(Tonemapper::KhronosNeutral),
     ];
 
     fn config_name(self) -> &'static str {
         match self {
-            Tonemapper::Agx => "agx",
-            Tonemapper::AgxPunchy => "agx-punchy",
-            Tonemapper::KhronosNeutral => "khronos-pbr-neutral",
-            Tonemapper::Off => "off",
+            None => "none",
+            Some(Tonemapper::Agx) => "agx",
+            Some(Tonemapper::AgxPunchy) => "agx-punchy",
+            Some(Tonemapper::KhronosNeutral) => "khronos-pbr-neutral",
         }
     }
 }

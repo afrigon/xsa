@@ -11,9 +11,10 @@ Texture2D textures[];
 static const float bloomWeightSum = 1.96875;
 
 // Must match Tonemapper::shader_id in client/src/renderer/tonemapper.rs.
-static const uint tonemapperAgx = 0;
-static const uint tonemapperAgxPunchy = 1;
-static const uint tonemapperKhronosNeutral = 2;
+static const uint tonemapperNone = 0;
+static const uint tonemapperAgx = 1;
+static const uint tonemapperAgxPunchy = 2;
+static const uint tonemapperKhronosNeutral = 3;
 
 struct TonemapConstants {
     FrameData *frame;
@@ -107,7 +108,7 @@ float4 fragmentMain(FullscreenOutput input) : SV_Target {
     case tonemapperKhronosNeutral:
         color = khronosNeutral(color);
         break;
-    default:
+    case tonemapperNone:
         color = saturate(color);
         break;
     }

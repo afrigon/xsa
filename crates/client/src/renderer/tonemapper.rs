@@ -3,17 +3,17 @@ pub enum Tonemapper {
     Agx,
     AgxPunchy,
     KhronosNeutral,
-    Off,
 }
 
+// Matches the tonemapper constants in tonemap.slang.
+pub(super) const NO_TONEMAPPER: u32 = 0;
+
 impl Tonemapper {
-    // Matches the tonemapper constants in tonemap.slang.
     pub(super) fn shader_id(self) -> u32 {
         match self {
-            Tonemapper::Agx => 0,
-            Tonemapper::AgxPunchy => 1,
-            Tonemapper::KhronosNeutral => 2,
-            Tonemapper::Off => 3,
+            Tonemapper::Agx => 1,
+            Tonemapper::AgxPunchy => 2,
+            Tonemapper::KhronosNeutral => 3,
         }
     }
 }

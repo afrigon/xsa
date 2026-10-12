@@ -53,7 +53,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             render: RenderConfig {
-                tonemapper: Tonemapper::Agx,
+                tonemapper: Some(Tonemapper::Agx),
                 stars: true,
                 bloom: BloomConfig {
                     enabled: true,

@@ -250,10 +250,10 @@ mod tests {
     fn file_values_override_the_defaults() {
         let file = TestFile::new(
             "override",
-            Some("render {\n    tonemapper \"off\"\n    stars #false\n}\n"),
+            Some("render {\n    tonemapper \"none\"\n    stars #false\n}\n"),
         );
         let config = ConfigDocument::load(file.path()).unwrap().config();
-        assert_eq!(config.render.tonemapper, Tonemapper::Off);
+        assert_eq!(config.render.tonemapper, None);
         assert!(!config.render.stars);
         assert_eq!(config.render.bloom, Config::default().render.bloom);
     }
@@ -292,15 +292,15 @@ mod tests {
     fn a_repeated_block_is_read_last_wins() {
         let file = TestFile::new(
             "repeated",
-            Some("render { stars #false; tonemapper \"agx-punchy\" }\nrender { tonemapper \"off\" }\n"),
+            Some("render { stars #false; tonemapper \"agx-punchy\" }\nrender { tonemapper \"none\" }\n"),
         );
         let mut document = ConfigDocument::load(file.path()).unwrap();
         let config = document.config();
         assert!(!config.render.stars);
-        assert_eq!(config.render.tonemapper, Tonemapper::Off);
+        assert_eq!(config.render.tonemapper, None);
 
         document.set("render.tonemapper", "agx").unwrap();
-        assert_eq!(document.config().render.tonemapper, Tonemapper::Agx);
+        assert_eq!(document.config().render.tonemapper, Some(Tonemapper::Agx));
     }
 
     #[test]
@@ -370,7 +370,7 @@ mod tests {
         document.toggle("render.tonemapper").unwrap();
         document.toggle("render.stars").unwrap();
         let config = document.config();
-        assert_eq!(config.render.tonemapper, Tonemapper::AgxPunchy);
+        assert_eq!(config.render.tonemapper, Some(Tonemapper::AgxPunchy));
         assert!(!config.render.stars);
         assert!(document.toggle("render.bloom.strength").is_err());
     }

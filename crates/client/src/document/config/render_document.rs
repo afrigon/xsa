@@ -6,7 +6,7 @@ use crate::config::RenderConfig;
 use crate::renderer::{Shader, ShadingModel, Tonemapper};
 
 pub struct RenderDocument {
-    tonemapper: Option<Tonemapper>,
+    tonemapper: Option<Option<Tonemapper>>,
     stars: Option<bool>,
     bloom: BloomDocument,
     lens: LensDocument,
@@ -20,7 +20,7 @@ impl RenderDocument {
     pub const TONEMAPPER: ConfigKey = ConfigKey::saved(
         "render.tonemapper",
         ConfigValueKind::Choice {
-            names: <Tonemapper as ConfigChoice>::names,
+            names: <Option<Tonemapper> as ConfigChoice>::names,
         },
     );
     pub const STARS: ConfigKey = ConfigKey::saved("render.stars", ConfigValueKind::Bool);
