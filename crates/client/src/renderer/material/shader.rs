@@ -30,5 +30,6 @@ shaders! {
     Triangles => "triangles",
     Lighting => "lighting",
     Motion => "motion",
+    Lod => "lod",
     Skybox => "skybox",
 }
