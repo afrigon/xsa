@@ -1,6 +1,6 @@
 use anyhow::{bail, ensure};
 
-use crate::{ColorSpace, TextureFormat, TextureImage, TextureLoader};
+use super::{ColorSpace, TextureFormat, TextureImage, TextureLoader};
 
 const DDS_MAGIC: &[u8; 4] = b"DDS ";
 const DX10_FOURCC: &[u8; 4] = b"DX10";

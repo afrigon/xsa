@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use texture_image::TEXTURE_EXTENSIONS;
+use resource_loader::texture::TEXTURE_EXTENSIONS;
 
 use crate::{Document, Id, Manifest, PackData, ParseContext};
 

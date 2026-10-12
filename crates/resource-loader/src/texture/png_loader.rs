@@ -1,6 +1,6 @@
 use image::ImageFormat;
 
-use crate::{ColorSpace, TextureFormat, TextureImage, TextureLoader};
+use super::{ColorSpace, TextureFormat, TextureImage, TextureLoader};
 
 /// Reads PNG files as a single RGBA level.
 pub struct PngLoader;

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use ash::vk;
 use glam::{Vec2, Vec3};
-use texture_image::{ColorSpace, TextureImage};
+use resource_loader::texture::{ColorSpace, TextureImage};
 use xsa_packs::LensDefinition;
 
 use super::TextureHandle;

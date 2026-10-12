@@ -7,7 +7,7 @@ const HALF_SIGN_SHIFT: u32 = 15;
 const HALF_SPECIAL_EXPONENT: i32 = 0x1f;
 
 // IEEE 754 binary16 to binary32.
-pub(crate) fn half_to_f32(bits: u16) -> f32 {
+pub(super) fn half_to_f32(bits: u16) -> f32 {
     let sign = if bits >> HALF_SIGN_SHIFT == 1 { -1.0 } else { 1.0 };
     let exponent = ((bits >> HALF_MANTISSA_BITS) & HALF_EXPONENT_MASK) as i32;
     let mantissa = f32::from(bits & HALF_MANTISSA_MASK) / (1 << HALF_MANTISSA_BITS) as f32;

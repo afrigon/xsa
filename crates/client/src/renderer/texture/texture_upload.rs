@@ -1,6 +1,6 @@
 use anyhow::ensure;
 use ash::vk;
-use texture_image::{TextureFormat, TextureImage};
+use resource_loader::texture::{TextureFormat, TextureImage};
 
 use crate::vulkan::{Allocator, Buffer, Device, Image, ImageDescription, MemoryLocation};
 

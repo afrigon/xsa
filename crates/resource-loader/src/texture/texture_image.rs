@@ -2,19 +2,19 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use crate::half_float::half_to_f32;
-use crate::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
+use super::half_float::half_to_f32;
+use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
 
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;
 
 /// A decoded texture: one or more layers (six for a cube map), each holding its full mip chain, largest level first.
 pub struct TextureImage {
-    pub(crate) format: TextureFormat,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    pub(crate) mip_levels: u32,
-    pub(crate) layers: Vec<Vec<u8>>,
+    pub(super) format: TextureFormat,
+    pub(super) width: u32,
+    pub(super) height: u32,
+    pub(super) mip_levels: u32,
+    pub(super) layers: Vec<Vec<u8>>,
 }
 
 impl TextureImage {
@@ -79,7 +79,7 @@ impl TextureImage {
             .collect())
     }
 
-    pub(crate) fn layer_size(&self) -> usize {
+    pub(super) fn layer_size(&self) -> usize {
         (0..self.mip_levels)
             .map(|level| self.format.level_size(self.width >> level, self.height >> level))
             .sum()

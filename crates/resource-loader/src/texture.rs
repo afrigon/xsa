@@ -1,6 +1,3 @@
-//! Texture files decoded into GPU-ready images: block-compressed and plain formats with their mip chains, read from
-//! KTX2, DDS and PNG files.
-
 mod color_space;
 mod dds_loader;
 mod half_float;

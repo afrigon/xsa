@@ -38,7 +38,7 @@ pub use material::{
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{CubeMapHandle, TextureHandle};
-pub use texture_image::ColorSpace;
+pub use resource_loader::texture::ColorSpace;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
@@ -52,7 +52,7 @@ use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
-use texture_image::TextureImage;
+use resource_loader::texture::TextureImage;
 use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;

@@ -50,6 +50,9 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 incubated here to become its own repository (`xui-rs`), and the game uses them
 like any external library. `render-graph` depends on no xsa crate either: the
 renderer uses it like an external library, through its public API only.
+`resource-loader` depends on no xsa crate: it decodes resource files, one module
+per kind of file behind a feature of the same name (`texture`), so each crate
+enables only the kinds it reads.
 
 | Crate | Responsibility |
 | --- | --- |
@@ -64,6 +67,7 @@ renderer uses it like an external library, through its public API only.
 | `tools` | Offline asset tools (`convert-skybox`) |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, given raw Vulkan handles |
+| `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains |
 | `render-graph` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images and transient buffers |
 
 ## Architecture

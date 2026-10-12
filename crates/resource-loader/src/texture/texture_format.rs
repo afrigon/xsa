@@ -1,6 +1,6 @@
 use anyhow::bail;
 
-use crate::ColorSpace;
+use super::ColorSpace;
 
 const BLOCK_SIZE: usize = 4;
 const BC4_BLOCK_BYTES: usize = 8;
@@ -43,7 +43,7 @@ impl TextureFormat {
 
     // The color space comes from how a texture is used, not from its file: a color texture samples sRGB-decoded, and
     // formats that hold data cannot.
-    pub(crate) fn in_color_space(self, color_space: ColorSpace) -> anyhow::Result<TextureFormat> {
+    pub(super) fn in_color_space(self, color_space: ColorSpace) -> anyhow::Result<TextureFormat> {
         Ok(match (self, color_space) {
             (TextureFormat::Bc7Unorm | TextureFormat::Bc7Srgb, ColorSpace::Srgb) => TextureFormat::Bc7Srgb,
             (TextureFormat::Bc7Unorm | TextureFormat::Bc7Srgb, ColorSpace::Linear) => TextureFormat::Bc7Unorm,

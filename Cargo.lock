@@ -1916,6 +1916,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "resource-loader"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "image",
+ "zstd",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2310,15 +2319,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
-]
-
-[[package]]
-name = "texture-image"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "image",
- "zstd",
 ]
 
 [[package]]
@@ -3177,7 +3177,7 @@ dependencies = [
  "image",
  "kdl",
  "render-graph",
- "texture-image",
+ "resource-loader",
  "tokio",
  "tracing",
  "winit",
@@ -3226,8 +3226,8 @@ dependencies = [
  "anyhow",
  "glam",
  "kdl",
+ "resource-loader",
  "semver",
- "texture-image",
  "tracing",
  "xsa-core",
  "xsa-units",

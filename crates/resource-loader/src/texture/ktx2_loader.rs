@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use anyhow::{Context, bail, ensure};
 
-use crate::{ColorSpace, TextureFormat, TextureImage, TextureLoader};
+use super::{ColorSpace, TextureFormat, TextureImage, TextureLoader};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const VK_FORMAT_OFFSET: usize = 12;
