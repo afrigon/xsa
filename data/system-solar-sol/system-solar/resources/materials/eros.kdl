@@ -1,0 +1,5 @@
+shader "base:planet"
+base-color 0.2770 0.2444 0.1946
+color-texture "bodies/eros/color"
+normal-texture "bodies/eros/normal"
+hapke scatter-texture="bodies/eros/scatter" surge-texture="bodies/eros/surge" porosity=1.86 roughness=28 blend=1 light-boost=0.8 gamma-boost=0.86

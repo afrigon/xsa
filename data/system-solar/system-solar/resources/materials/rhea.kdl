@@ -1,4 +1,2 @@
 shader "base:planet"
-color-texture "bodies/rhea/color"
-normal-texture "bodies/rhea/normal"
-hapke scatter-texture="bodies/rhea/scatter" surge-texture="bodies/rhea/surge" porosity=1.86 roughness=31 blend=0 light-boost=0.5 gamma-boost=0.75
+base-color 0.3576 0.3537 0.3438

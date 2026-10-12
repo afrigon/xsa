@@ -1,4 +1,2 @@
 shader "base:planet"
-color-texture "bodies/styx/color"
-normal-texture "bodies/styx/normal"
-hapke scatter-texture="bodies/styx/scatter" surge-texture="bodies/styx/surge" porosity=1.86 roughness=11 blend=1 light-boost=0.3 gamma-boost=0.83
+base-color 0.6497 0.6424 0.6247

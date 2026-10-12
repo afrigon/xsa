@@ -1,0 +1,5 @@
+shader "base:planet"
+base-color 0.3116 0.2678 0.2094
+color-texture "bodies/deimos/color"
+normal-texture "bodies/deimos/normal"
+hapke scatter-texture="bodies/deimos/scatter" surge-texture="bodies/deimos/surge" porosity=1.34 roughness=10 blend=1 light-boost=0.45 gamma-boost=0.68

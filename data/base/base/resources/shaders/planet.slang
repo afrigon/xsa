@@ -19,10 +19,12 @@ struct HapkeData {
 };
 
 struct PlanetData {
+    float3 baseColor;
     uint colorTexture;
     uint normalTexture;
     uint emissiveTexture;
     float emissiveLuminance;
+    uint padding;
     HapkeData hapke;
 };
 
@@ -100,14 +102,31 @@ HapkeSurface hapkeSurface(PlanetData material, SurfaceCoordinates coordinates, f
     return surface;
 }
 
-// The scatter map gives the regional single-scattering albedo at a fraction of the colour map's resolution; the
-// colour map adds colour and fine detail as its ratio to its own average at the scatter map's resolution.
-float3 textbookAlbedo(PlanetData material, SurfaceCoordinates coordinates, float3 color, float singleScatteringAlbedo) {
+float3 surfaceColor(PlanetData material, SurfaceCoordinates coordinates) {
+    if (material.colorTexture == noTexture) {
+        return material.baseColor;
+    }
+
+    return sampleSurface(material.colorTexture, coordinates).rgb;
+}
+
+// The colour map's average at the scatter map's resolution.
+float3 regionalColor(PlanetData material, SurfaceCoordinates coordinates) {
+    if (material.colorTexture == noTexture) {
+        return material.baseColor;
+    }
+
     uint colorWidth, colorHeight, scatterWidth, scatterHeight;
     textures[material.colorTexture].GetDimensions(colorWidth, colorHeight);
     textures[material.hapke.scatterTexture].GetDimensions(scatterWidth, scatterHeight);
     float scale = max(float(colorWidth) / float(scatterWidth), 1.0);
-    float3 regional = sampleSurfaceCoarser(material.colorTexture, coordinates, scale).rgb;
+    return sampleSurfaceCoarser(material.colorTexture, coordinates, scale).rgb;
+}
+
+// The scatter map gives the regional single-scattering albedo at a fraction of the colour map's resolution; the
+// colour map adds colour and fine detail as its ratio to its own average at the scatter map's resolution.
+float3 textbookAlbedo(PlanetData material, SurfaceCoordinates coordinates, float3 color, float singleScatteringAlbedo) {
+    float3 regional = regionalColor(material, coordinates);
     float regionalLuminance = max(dot(regional, float3(0.2126, 0.7152, 0.0722)), 1e-4);
     return singleScatteringAlbedo * color / regionalLuminance;
 }
@@ -151,7 +170,7 @@ SurfaceOutput fragmentMain(VertexOutput input) {
 
     float3 normal = surfaceNormal(material, modelNormal, coordinates);
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
-    float3 albedo = sampleSurface(material.colorTexture, coordinates).rgb;
+    float3 albedo = surfaceColor(material, coordinates);
     float3 luminance = starlightLuminance(albedo);
 
     for (uint index = 0; index < constants.frame.starCount; index++) {

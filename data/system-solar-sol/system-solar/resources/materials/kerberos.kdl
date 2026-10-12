@@ -1,0 +1,5 @@
+shader "base:planet"
+base-color 0.5493 0.5490 0.5429
+color-texture "bodies/kerberos/color"
+normal-texture "bodies/kerberos/normal"
+hapke scatter-texture="bodies/kerberos/scatter" surge-texture="bodies/kerberos/surge" porosity=1.86 roughness=11 blend=1 light-boost=0.3 gamma-boost=0.81

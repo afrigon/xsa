@@ -262,6 +262,7 @@ impl ClientWorld {
                 )
             }
             MaterialDefinition::Planet {
+                base_color,
                 color,
                 normal,
                 emissive,
@@ -273,7 +274,8 @@ impl ClientWorld {
                 };
 
                 let material = PlanetMaterial {
-                    color: load("color", &color, ColorSpace::Srgb)?,
+                    base_color,
+                    color: color.map(|path| load("color", &path, ColorSpace::Srgb)).transpose()?,
                     normal: normal
                         .map(|path| load("normal", &path, ColorSpace::Linear))
                         .transpose()?,
