@@ -18,6 +18,7 @@ mod light_projection;
 mod material;
 mod object_pose;
 mod passes;
+mod quad_sphere;
 mod render_passes;
 mod scene;
 mod shader_binaries;
