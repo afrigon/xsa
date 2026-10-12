@@ -14,7 +14,7 @@ pub struct WorldArguments {
         default = "system-solar",
         help = "Packs to load, in stack order (later packs override earlier ones)"
     )]
-    pub packs: Vec<String>,
+    pub stack: Vec<String>,
     #[usage(
         long,
         help = "Simulation to run, e.g. system-solar:sol; defaults to the only one installed"
@@ -26,7 +26,7 @@ impl WorldArguments {
     pub fn into_options(self) -> WorldOptions {
         WorldOptions {
             packs_directory: self.packs_directory,
-            packs: self.packs,
+            packs: self.stack,
             simulation: self.simulation,
         }
     }
