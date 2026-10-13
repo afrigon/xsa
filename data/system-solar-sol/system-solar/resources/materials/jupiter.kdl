@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.3763 0.3392 0.3049
 color-texture "bodies/jupiter/color"
 normal-texture "bodies/jupiter/normal"
-hapke scatter-texture="bodies/jupiter/scatter" surge-texture="bodies/jupiter/surge" porosity=1.8 roughness=10 blend=0.45 light-boost=0.8 gamma-boost=0.65
+hapke medium-texture="bodies/jupiter/hapke-medium" opposition-texture="bodies/jupiter/hapke-opposition"

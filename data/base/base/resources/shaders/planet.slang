@@ -8,16 +8,8 @@ SamplerState wrappingSampler;
 Texture2D textures[];
 
 struct HapkeData {
-    uint scatterTexture;
-    uint surgeTexture;
-    float porosity;
-    float roughness;
-    float blend;
-    float lightBoost;
-    float gammaBoost;
     uint mediumTexture;
     uint oppositionTexture;
-    uint padding[3];
 };
 
 struct PlanetData {
@@ -31,9 +23,7 @@ struct PlanetData {
 };
 
 // Must match ShadingModel::shader_id in client/src/renderer/material.rs.
-static const uint shadingHapkeSol = 0;
-static const uint shadingHapkeTextbook = 1;
-static const uint shadingHapkeClean = 3;
+static const uint shadingHapke = 0;
 
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input) {
@@ -83,55 +73,12 @@ float3 surfaceNormal(PlanetData material, float3 modelNormal, SurfaceCoordinates
     return normalize(-east * tangent.x + north * tangent.y + modelNormal * outward);
 }
 
-float4 sampleSurfaceCoarser(uint texture, SurfaceCoordinates coordinates, float scale) {
-    return textures[texture].SampleGrad(
-        wrappingSampler, coordinates.uv, coordinates.uvPerPixelX * scale, coordinates.uvPerPixelY * scale);
-}
-
-HapkeSurface hapkeSurface(PlanetData material, SurfaceCoordinates coordinates, float3 albedo) {
-    float4 scatter = sampleSurface(material.hapke.scatterTexture, coordinates);
-    float4 surge = sampleSurface(material.hapke.surgeTexture, coordinates);
-    HapkeSurface surface;
-    surface.albedo = albedo;
-    surface.singleScatteringAlbedo = scatter.r;
-    surface.lobeWidth = scatter.g;
-    surface.lobeBalance = scatter.b;
-    surface.shadowHidingAmplitude = surge.r;
-    surface.shadowHidingWidth = surge.g;
-    surface.backscatterAmplitude = surge.b;
-    surface.backscatterWidth = surge.a;
-    surface.porosity = material.hapke.porosity;
-    surface.roughness = material.hapke.roughness;
-    return surface;
-}
-
 float3 surfaceColor(PlanetData material, SurfaceCoordinates coordinates) {
     if (material.colorTexture == noTexture) {
         return material.baseColor;
     }
 
     return sampleSurface(material.colorTexture, coordinates).rgb;
-}
-
-// The colour map's average at the scatter map's resolution.
-float3 regionalColor(PlanetData material, SurfaceCoordinates coordinates) {
-    if (material.colorTexture == noTexture) {
-        return material.baseColor;
-    }
-
-    uint colorWidth, colorHeight, scatterWidth, scatterHeight;
-    textures[material.colorTexture].GetDimensions(colorWidth, colorHeight);
-    textures[material.hapke.scatterTexture].GetDimensions(scatterWidth, scatterHeight);
-    float scale = max(float(colorWidth) / float(scatterWidth), 1.0);
-    return sampleSurfaceCoarser(material.colorTexture, coordinates, scale).rgb;
-}
-
-// The scatter map gives the regional single-scattering albedo at a fraction of the colour map's resolution; the
-// colour map adds colour and fine detail as its ratio to its own average at the scatter map's resolution.
-float3 textbookAlbedo(PlanetData material, SurfaceCoordinates coordinates, float3 color, float singleScatteringAlbedo) {
-    float3 regional = regionalColor(material, coordinates);
-    float regionalLuminance = max(dot(regional, float3(0.2126, 0.7152, 0.0722)), 1e-4);
-    return singleScatteringAlbedo * color / regionalLuminance;
 }
 
 // Hapke 2012's parameters at this point: w from the calibrated color map, the rest from the medium and opposition
@@ -159,9 +106,7 @@ float3 reflectedLuminance(StarData star, PlanetData material, SurfaceCoordinates
     float cosine = starCosine(star, input.worldPosition, worldNormal) * facingStar;
     float3 illuminance = starIlluminance(star, input.worldPosition);
     uint shading = constants.frame.shadingModel;
-    bool hapke = (material.hapke.scatterTexture != noTexture &&
-                  (shading == shadingHapkeSol || shading == shadingHapkeTextbook)) ||
-                 (material.hapke.mediumTexture != noTexture && shading == shadingHapkeClean);
+    bool hapke = material.hapke.mediumTexture != noTexture && shading == shadingHapke;
 
     if (!hapke || cosine <= 0.0) {
         return lambertLuminance(albedo, illuminance, cosine);
@@ -174,18 +119,7 @@ float3 reflectedLuminance(StarData star, PlanetData material, SurfaceCoordinates
     geometry.emissionCosine = clamp(dot(toCamera, worldNormal), 1e-4, 1.0);
     geometry.phaseAngle = acos(clamp(dot(toStar, toCamera), -1.0, 1.0));
 
-    if (shading == shadingHapkeClean) {
-        return hapkeReflectance(hapkeParameters(material, coordinates, albedo), geometry) * illuminance;
-    }
-    HapkeSurface surface = hapkeSurface(material, coordinates, albedo);
-
-    if (shading == shadingHapkeSol) {
-        return hapkeSol(surface, geometry, material.hapke.blend, material.hapke.lightBoost, material.hapke.gammaBoost) *
-               illuminance;
-    }
-
-    surface.albedo = textbookAlbedo(material, coordinates, albedo, surface.singleScatteringAlbedo);
-    return hapkeTextbook(surface, geometry) * illuminance;
+    return hapkeReflectance(hapkeParameters(material, coordinates, albedo), geometry) * illuminance;
 }
 
 [shader("fragment")]

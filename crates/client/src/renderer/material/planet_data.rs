@@ -15,6 +15,6 @@ pub struct PlanetData {
     pub(super) hapke: HapkeData,
 }
 
-const _: () = assert!(size_of::<PlanetData>() == 80);
+const _: () = assert!(size_of::<PlanetData>() == 40);
 
 unsafe impl GpuData for PlanetData {}

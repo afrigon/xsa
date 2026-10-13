@@ -69,7 +69,7 @@ impl Default for Config {
                 },
                 wireframe: false,
                 shader_override: None,
-                shading_model: ShadingModel::HapkeSol,
+                shading_model: ShadingModel::Hapke,
                 terrain_lod: TerrainLodConfig {
                     vertex_spacing_pixels: TERRAIN_VERTEX_SPACING_PIXELS,
                     freeze: false,

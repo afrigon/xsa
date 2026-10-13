@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.8339 0.8228 0.7998
 color-texture "bodies/hydra/color"
 normal-texture "bodies/hydra/normal"
-hapke scatter-texture="bodies/hydra/scatter" surge-texture="bodies/hydra/surge" porosity=1.86 roughness=11 blend=1 light-boost=0.3 gamma-boost=0.82
+hapke medium-texture="bodies/hydra/hapke-medium" opposition-texture="bodies/hydra/hapke-opposition"

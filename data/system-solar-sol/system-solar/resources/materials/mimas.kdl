@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.2017 0.1986 0.1953
 color-texture "bodies/mimas/color"
 normal-texture "bodies/mimas/normal"
-hapke scatter-texture="bodies/mimas/scatter" surge-texture="bodies/mimas/surge" porosity=1.86 roughness=31 blend=1 light-boost=0.85 gamma-boost=0.72
+hapke medium-texture="bodies/mimas/hapke-medium" opposition-texture="bodies/mimas/hapke-opposition"

@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.4994 0.4723 0.4144
 color-texture "bodies/ceres/color"
 normal-texture "bodies/ceres/normal"
-hapke scatter-texture="bodies/ceres/scatter" surge-texture="bodies/ceres/surge" porosity=1.86 roughness=18 blend=1 light-boost=0.45 gamma-boost=0.76
+hapke medium-texture="bodies/ceres/hapke-medium" opposition-texture="bodies/ceres/hapke-opposition"

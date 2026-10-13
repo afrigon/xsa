@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.3439 0.3258 0.3202
 color-texture "bodies/mercury/color"
 normal-texture "bodies/mercury/normal"
-hapke scatter-texture="bodies/mercury/scatter" surge-texture="bodies/mercury/surge" porosity=1.83 roughness=18 blend=1 light-boost=1.25 gamma-boost=0.76
+hapke medium-texture="bodies/mercury/hapke-medium" opposition-texture="bodies/mercury/hapke-opposition"

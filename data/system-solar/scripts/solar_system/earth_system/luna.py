@@ -122,14 +122,10 @@ class Luna(Recipe):
         hapke = self._hapke(context)
         context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
 
-    # The parameters of one band, as they are: scatter (w, b, c) and surge (B_S0, h_S, B_C0, h_C).
+    # Hapke 2012's parameters of one band, as they are, in the medium and opposition textures.
     def _hapke(self, context: BuildContext) -> HapkeMaterial:
         parameters = self._parameters(self.parameter_map.fetch(context.cache), HAPKE_WAVELENGTH).extended_toward_poles()
         maps = parameters.resampled(context.output_width(parameters.width))
-        TextureWriter.values().write(context.texture_path("bodies/luna/scatter"), [self._channels(maps, ["w", "b", "c"])])
-        TextureWriter.values().write(
-            context.texture_path("bodies/luna/surge"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
-        )
         medium = self._channels(maps, ["b", "c", "theta"])
         porosity = Luna._porosity(maps.pixels[..., PARAMETERS.index("phi")])
         TextureWriter.values().write(
@@ -139,15 +135,7 @@ class Luna(Recipe):
         TextureWriter.values().write(
             context.texture_path("bodies/luna/hapke-opposition"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
         )
-        model = self._model(parameters.pixels)
-        return HapkeMaterial(
-            scatter_texture="bodies/luna/scatter",
-            surge_texture="bodies/luna/surge",
-            medium_texture="bodies/luna/hapke-medium",
-            opposition_texture="bodies/luna/hapke-opposition",
-            porosity=model.porosity,
-            roughness_degrees=float(np.degrees(model.roughness)),
-        )
+        return HapkeMaterial("bodies/luna/hapke-medium", "bodies/luna/hapke-opposition")
 
     # The porosity coefficient K from the filling factor φ (Hapke 2012, eq. 7.45b); K tends to 1 as φ tends to 0.
     @staticmethod

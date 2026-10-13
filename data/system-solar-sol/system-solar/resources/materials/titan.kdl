@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.3408 0.2926 0.2390
 color-texture "bodies/titan/color"
 normal-texture "bodies/titan/normal"
-hapke scatter-texture="bodies/titan/scatter" surge-texture="bodies/titan/surge" porosity=1.86 roughness=6 blend=0.65 light-boost=0.85 gamma-boost=0.75
+hapke medium-texture="bodies/titan/hapke-medium" opposition-texture="bodies/titan/hapke-opposition"
