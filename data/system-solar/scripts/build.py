@@ -36,7 +36,11 @@ def main() -> None:
     if unknown:
         parser.error(f"unknown recipes: {', '.join(unknown)}")
 
-    logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.INFO, format="%(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    if arguments.verbose:
+        logging.getLogger("operations").setLevel(logging.DEBUG)
+
     context = BuildContext(PACK, TIER_WIDTH)
 
     for name in arguments.recipes or sorted(known):

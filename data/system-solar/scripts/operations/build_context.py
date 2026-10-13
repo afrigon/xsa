@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from operations.material_writer import MaterialWriter
-from operations.raster import Raster
 
 
 @dataclass(frozen=True)
@@ -26,6 +25,6 @@ class BuildContext:
         return self.resources / "textures" / f"{texture}.ktx2"
 
     # The tier's width, or the source's when it is narrower: a map is never upscaled.
-    def output_width(self, source: Path) -> int:
-        width = min(self.width, Raster.native_width(source))
+    def output_width(self, native_width: int) -> int:
+        width = min(self.width, native_width)
         return 1 << (width.bit_length() - 1)

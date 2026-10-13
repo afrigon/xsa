@@ -1,4 +1,4 @@
 shader "base:planet"
-base-color 0.5023 0.4779 0.4632
+base-color 0.1131 0.0926 0.0714
 color-texture "bodies/luna/color"
 normal-texture "bodies/luna/normal"
