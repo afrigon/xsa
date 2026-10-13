@@ -188,10 +188,17 @@ enables only the kinds it reads.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
-- Agents driving the game start their own instance with a unique name
-  (`mise run client -- --instance agent-<task>`) and pass that `--instance` to
-  every `mise run ipc`, and stop it with `exit` when done. Other instances may
-  be the user's: never send them commands.
+- Agents driving the game inside herdr use one pane per workspace, labelled
+  `xsa-game` and found by that label in `herdr pane list`; if missing, they
+  create it as a sibling (`herdr pane split --no-focus`, then
+  `herdr pane rename`). They type commands into the game's stdin with
+  `herdr pane run` and read replies with `herdr pane read`, so the user sees
+  every command. The game stays running between tests: they restart it
+  (`exit`, then `mise run client -- --instance agent-<workspace>` in the same
+  pane) only to run an updated build, and start it the same way when the pane
+  has no game running. Outside herdr they use
+  `mise run ipc --instance agent-<workspace>` and stop the game with `exit`
+  when done. Other instances may be the user's: never send them commands.
 
 ## Dependencies and assets
 
