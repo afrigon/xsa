@@ -12,6 +12,7 @@ mod parse_context;
 mod simulation_definition;
 mod skybox_definition;
 mod stack;
+mod terrain_definition;
 mod theme;
 
 pub use dependency::Dependency;
@@ -27,6 +28,7 @@ pub use parse_context::ParseContext;
 pub use simulation_definition::SimulationDefinition;
 pub use skybox_definition::SkyboxDefinition;
 pub use stack::{DOCUMENT_EXTENSION, PackStack};
+pub use terrain_definition::TerrainDefinition;
 pub use theme::{
     BackgroundColors, BorderColors, ColorRole, ForegroundColors, SrgbColor, TextCase, TextStyle, ThemeDefinition,
     ThemedColor, Typeface,
