@@ -190,8 +190,9 @@ enables only the kinds it reads.
   (named pipes on Windows).
 - Agents driving the game inside herdr use one pane per workspace, labelled
   `xsa-game` and found by that label in `herdr pane list`; if missing, they
-  create it as a sibling (`herdr pane split --no-focus`, then
-  `herdr pane rename`). The pane only hosts the game: they launch it there with
+  create it as a sibling in the bottom 20% of the workspace
+  (`herdr pane split --direction down --ratio 0.8 --no-focus`, where the ratio
+  is the share kept by the split pane, then `herdr pane rename`). The pane only hosts the game: they launch it there with
   `herdr pane run` (`mise run client -- --instance agent-<workspace>`), and
   every command, inside herdr or not, goes through
   `mise run ipc --instance agent-<workspace>`, never typed into the game's
