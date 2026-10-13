@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-use glam::{DVec3, Vec3};
+use glam::{DMat3, DVec3, Vec3};
 
 use crate::simulation::Star;
 
@@ -12,6 +12,16 @@ const MAXIMUM_LUMINOUS_EFFICACY: f64 = 683.0;
 const VISIBLE_START_NANOMETERS: f64 = 360.0;
 const VISIBLE_END_NANOMETERS: f64 = 830.0;
 const INTEGRATION_STEP_NANOMETERS: f64 = 1.0;
+// The light a human eye adapted to sunlight sees as white: a blackbody at the Sun's effective temperature. Starlight
+// is adapted from this white to sRGB's, so sunlight is (1, 1, 1) and other stars keep their color relative to it.
+const REFERENCE_WHITE_TEMPERATURE: f64 = 5772.0;
+// CIE XYZ of sRGB's D65 white point.
+const SRGB_WHITE: DVec3 = DVec3::new(0.95047, 1.0, 1.08883);
+// Bradford cone response matrix, for chromatic adaptation between white points; glam takes columns, so the published
+// rows appear transposed.
+const BRADFORD: DMat3 = DMat3::from_cols_array(&[
+    0.8951, -0.7502, 0.0389, 0.2664, 1.7135, -0.0685, -0.1614, 0.0367, 1.0296,
+]);
 
 pub struct StarLight {
     // Linear sRGB with a luminance of 1.
@@ -30,11 +40,21 @@ impl StarLight {
         let luminous_flux = star.luminosity * luminous_efficacy;
         let surface_area = 4.0 * PI * radius * radius;
         StarLight {
-            color: linear_srgb_from_xyz(spectrum / spectrum.y).max(DVec3::ZERO).as_vec3(),
+            color: linear_srgb_from_xyz(adapt_to_srgb_white(spectrum / spectrum.y))
+                .max(DVec3::ZERO)
+                .as_vec3(),
             luminous_intensity: luminous_flux / (4.0 * PI),
             surface_luminance: luminous_flux / surface_area / PI,
         }
     }
+}
+
+// Bradford chromatic adaptation of a color seen under the reference white to the color it has under sRGB's white.
+fn adapt_to_srgb_white(xyz: DVec3) -> DVec3 {
+    let reference = integrate_blackbody(REFERENCE_WHITE_TEMPERATURE);
+    let source = BRADFORD * (reference / reference.y);
+    let destination = BRADFORD * SRGB_WHITE;
+    BRADFORD.inverse() * (BRADFORD * xyz * destination / source)
 }
 
 // CIE XYZ of a blackbody's spectral radiance, per steradian and square meter.
@@ -98,8 +118,18 @@ mod tests {
     }
 
     #[test]
-    fn sunlight_is_a_slightly_warm_white() {
+    fn sunlight_is_white() {
         let color = StarLight::of_star(&SUN, SUN_RADIUS).color;
-        assert!(color.x > color.z && color.z > 0.8 * color.x, "{color}");
+        assert!((color - Vec3::ONE).abs().max_element() < 1e-3, "{color}");
+    }
+
+    #[test]
+    fn a_cooler_star_is_warmer_than_sunlight() {
+        let red_dwarf = Star {
+            luminosity: 1e24,
+            effective_temperature: 3000.0,
+        };
+        let color = StarLight::of_star(&red_dwarf, SUN_RADIUS).color;
+        assert!(color.x > color.y && color.y > color.z, "{color}");
     }
 }
