@@ -3,8 +3,12 @@ use std::time::Instant;
 const ISO_SENSITIVITY: f32 = 100.0;
 // The incident-light meter calibration constant C, in lux·s.
 const INCIDENT_METER_CALIBRATION: f32 = 250.0;
-// The exposure for an EV100 is 1 / (1.2 × 2^EV100).
-const EXPOSURE_SCALE: f32 = 1.2;
+// Standard output sensitivity (ISO 12232): the exposure H = 10 / ISO lux·s renders middle gray. Through a lens
+// transmitting q of the scene luminance L, H = q × L × 2^-EV, so middle gray is L = 10 / (ISO × q) × 2^EV.
+const STANDARD_OUTPUT_EXPOSURE: f32 = 10.0;
+const LENS_TRANSMITTANCE: f32 = 0.65;
+// Display-referred middle gray, before tone mapping.
+const MIDDLE_GRAY: f32 = 0.18;
 // Softens jumps in starlight, such as switching the target from one planet to another.
 const EXPOSURE_TRANSITION_HALF_LIFE_SECONDS: f32 = 0.5;
 
@@ -56,7 +60,8 @@ impl AutoExposure {
     }
 
     pub fn exposure_for(ev100: f32) -> f32 {
-        1.0 / (EXPOSURE_SCALE * ev100.exp2())
+        let middle_gray_luminance = STANDARD_OUTPUT_EXPOSURE / (ISO_SENSITIVITY * LENS_TRANSMITTANCE) * ev100.exp2();
+        MIDDLE_GRAY / middle_gray_luminance
     }
 
     fn transition(&self, current: f32, target: f32, seconds: f32) -> f32 {
@@ -85,6 +90,16 @@ mod tests {
             "EV100 {}",
             exposure.anchor_ev100()
         );
+    }
+
+    #[test]
+    fn a_gray_card_in_sunlight_renders_at_middle_gray() {
+        const GRAY_CARD_ALBEDO: f32 = 0.18;
+        let mut exposure = AutoExposure::new(0.0);
+        exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT);
+        let luminance = GRAY_CARD_ALBEDO * SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT / std::f32::consts::PI;
+        let display = luminance * exposure.exposure();
+        assert!((display - MIDDLE_GRAY).abs() < 0.02, "{display}");
     }
 
     #[test]
