@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.3243 0.3283 0.3339
 color-texture "bodies/miranda/color"
 normal-texture "bodies/miranda/normal"
-hapke scatter-texture="bodies/miranda/scatter" surge-texture="bodies/miranda/surge" porosity=1.86 roughness=30 blend=1 light-boost=0.5 gamma-boost=0.85
+hapke medium-texture="bodies/miranda/hapke-medium" opposition-texture="bodies/miranda/hapke-opposition"

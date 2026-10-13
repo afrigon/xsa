@@ -10,7 +10,7 @@ const MATERIAL: &str = r#"shader "base:planet"
 base-color 0.25 0.5 0.75
 color-texture "rock/color"
 normal-texture "rock/normal"
-hapke scatter-texture="rock/scatter" surge-texture="rock/surge" porosity=1 roughness=20 blend=1 light-boost=1 gamma-boost=1
+hapke medium-texture="rock/hapke-medium" opposition-texture="rock/hapke-opposition"
 "#;
 
 fn test_pack(name: &str, textures: &[&str]) -> PathBuf {
@@ -60,7 +60,7 @@ fn a_planet_material_loads_without_its_textures() {
 
 #[test]
 fn hapke_needs_both_of_its_textures() {
-    let MaterialDefinition::Planet { color, hapke, .. } = load("partial", &["color", "scatter"]) else {
+    let MaterialDefinition::Planet { color, hapke, .. } = load("partial", &["color", "hapke-medium"]) else {
         panic!("not a planet material");
     };
 
@@ -72,7 +72,7 @@ fn hapke_needs_both_of_its_textures() {
 fn a_planet_material_finds_the_textures_it_names() {
     let MaterialDefinition::Planet {
         color, normal, hapke, ..
-    } = load("complete", &["color", "normal", "scatter", "surge"])
+    } = load("complete", &["color", "normal", "hapke-medium", "hapke-opposition"])
     else {
         panic!("not a planet material");
     };

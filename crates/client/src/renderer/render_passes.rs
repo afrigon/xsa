@@ -59,10 +59,8 @@ impl RenderPasses {
             &mut self.histogram,
             HistogramInputs {
                 scene_color: forward.hdr,
-                illuminance: forward.illuminance,
                 lens,
                 histogram: inputs.histogram,
-                albedo_histogram: inputs.albedo_histogram,
             },
         );
         let sky = graph.add(&mut self.skybox, forward);

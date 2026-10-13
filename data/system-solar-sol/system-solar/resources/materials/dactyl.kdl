@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.2236 0.2002 0.1674
 color-texture "bodies/dactyl/color"
 normal-texture "bodies/dactyl/normal"
-hapke scatter-texture="bodies/dactyl/scatter" surge-texture="bodies/dactyl/surge" porosity=1.86 roughness=23 blend=1 light-boost=0.45 gamma-boost=0.75
+hapke medium-texture="bodies/dactyl/hapke-medium" opposition-texture="bodies/dactyl/hapke-opposition"

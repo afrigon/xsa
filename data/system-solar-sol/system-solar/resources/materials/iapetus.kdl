@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.2874 0.2829 0.2756
 color-texture "bodies/iapetus/color"
 normal-texture "bodies/iapetus/normal"
-hapke scatter-texture="bodies/iapetus/scatter" surge-texture="bodies/iapetus/surge" porosity=1.86 roughness=18 blend=1 light-boost=1 gamma-boost=0.85
+hapke medium-texture="bodies/iapetus/hapke-medium" opposition-texture="bodies/iapetus/hapke-opposition"

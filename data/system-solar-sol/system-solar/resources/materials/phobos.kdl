@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.2742 0.2572 0.2401
 color-texture "bodies/phobos/color"
 normal-texture "bodies/phobos/normal"
-hapke scatter-texture="bodies/phobos/scatter" surge-texture="bodies/phobos/surge" porosity=1.19 roughness=24 blend=1 light-boost=1 gamma-boost=0.75
+hapke medium-texture="bodies/phobos/hapke-medium" opposition-texture="bodies/phobos/hapke-opposition"

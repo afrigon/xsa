@@ -2,6 +2,7 @@ import numpy as np
 
 from operations.band_color import BandColor
 from operations.build_context import BuildContext
+from operations.color_grade import ColorGrade
 from operations.coverage_fill import CoverageFill
 from operations.credit import Credit
 from operations.hapke_material import HapkeMaterial
@@ -25,6 +26,9 @@ CAMERA_WAVELENGTHS = [321, 360, 415, 566, 604, 643, 689]
 PARAMETERS = ["w", "b", "c", "Bc0", "hc", "Bs0", "hs", "theta", "phi"]
 # The band LROC's photometry uses for brightness; the surface's Hapke maps hold its parameters.
 HAPKE_WAVELENGTH = 566
+# The look: the measured regolith is warm (red/blue 1.58 in sRGB); Sol's artists render it close to neutral (about
+# 1.08), which people recognize as the Moon. This saturation brings the map's mean ratio to Sol's.
+SATURATION = 0.18
 # Beyond 70° of latitude only the laser altimeter's albedo exists; it takes over across the last 10° of the mosaic.
 POLAR_OVERLAP = (60.0, 70.0)
 
@@ -118,16 +122,30 @@ class Luna(Recipe):
         hapke = self._hapke(context)
         context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
 
-    # The parameters of one band, as they are: scatter (w, b, c) and surge (B_S0, h_S, B_C0, h_C).
+    # Hapke 2012's parameters of one band, as they are, in the medium and opposition textures.
     def _hapke(self, context: BuildContext) -> HapkeMaterial:
         parameters = self._parameters(self.parameter_map.fetch(context.cache), HAPKE_WAVELENGTH).extended_toward_poles()
         maps = parameters.resampled(context.output_width(parameters.width))
-        TextureWriter.values().write(context.texture_path("bodies/luna/scatter"), [self._channels(maps, ["w", "b", "c"])])
+        medium = self._channels(maps, ["b", "c", "theta"])
+        porosity = Luna._porosity(maps.pixels[..., PARAMETERS.index("phi")])
         TextureWriter.values().write(
-            context.texture_path("bodies/luna/surge"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
+            context.texture_path("bodies/luna/hapke-medium"),
+            [Raster(np.concatenate([medium.pixels, porosity[..., None]], axis=-1))],
         )
-        model = self._model(parameters.pixels)
-        return HapkeMaterial("bodies/luna/scatter", "bodies/luna/surge", model.porosity, float(np.degrees(model.roughness)))
+        TextureWriter.values().write(
+            context.texture_path("bodies/luna/hapke-opposition"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
+        )
+        return HapkeMaterial("bodies/luna/hapke-medium", "bodies/luna/hapke-opposition")
+
+    # The porosity coefficient K from the filling factor φ (Hapke 2012, eq. 7.45b); K tends to 1 as φ tends to 0.
+    @staticmethod
+    def _porosity(filling_factor: np.ndarray) -> np.ndarray:
+        term = 1.209 * np.power(np.clip(filling_factor, 0, None), 2 / 3)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            porosity = -np.log(1 - term) / term
+
+        return np.where(term > 0, porosity, 1.0).astype(np.float32)
 
     # Each pixel's diffusive reflectance, per band, from the single-scattering albedo that reproduces the mosaic's
     # measurement with the Hapke parameters of its region; then the bands as sRGB.
@@ -146,7 +164,8 @@ class Luna(Recipe):
             reflectances.append(HapkeModel.diffusive_reflectance(albedo))
 
         color = Raster(BandColor(list(self.mosaic)).linear_srgb(np.stack(reflectances, axis=-1)).astype(np.float32))
-        return CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context, width))
+        filled = CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context, width))
+        return ColorGrade(SATURATION).apply(filled)
 
     @staticmethod
     def _channels(parameters: Raster, names: list[str]) -> Raster:

@@ -286,13 +286,8 @@ impl ClientWorld {
                     hapke: hapke
                         .map(|hapke| -> anyhow::Result<HapkeParameters> {
                             Ok(HapkeParameters {
-                                scatter: load("scatter", &hapke.scatter, ColorSpace::Linear)?,
-                                surge: load("surge", &hapke.surge, ColorSpace::Linear)?,
-                                porosity: hapke.porosity,
-                                roughness: hapke.roughness_degrees.to_radians(),
-                                blend: hapke.blend,
-                                light_boost: hapke.light_boost,
-                                gamma_boost: hapke.gamma_boost,
+                                medium: load("hapke medium", &hapke.medium, ColorSpace::Linear)?,
+                                opposition: load("hapke opposition", &hapke.opposition, ColorSpace::Linear)?,
                             })
                         })
                         .transpose()?,

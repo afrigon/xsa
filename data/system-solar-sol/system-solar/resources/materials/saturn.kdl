@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.6780 0.5459 0.3767
 color-texture "bodies/saturn/color"
 normal-texture "bodies/saturn/normal"
-hapke scatter-texture="bodies/saturn/scatter" surge-texture="bodies/saturn/surge" porosity=1.8 roughness=10 blend=0.45 light-boost=1 gamma-boost=0.75
+hapke medium-texture="bodies/saturn/hapke-medium" opposition-texture="bodies/saturn/hapke-opposition"

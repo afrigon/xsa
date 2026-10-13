@@ -40,8 +40,7 @@ class HapkeModel:
 
         phase_and_shadow_hiding = self._phase_function(g) * (1 + self.shadow_hiding_amplitude * shadow_hiding)
         multiple = self._chandrasekhar(mu0 / self.porosity, w, r0) * self._chandrasekhar(mu / self.porosity, w, r0) - 1
-        zeta = np.tan(g / 2) / self.backscatter_width
-        backscatter = 1 + self.backscatter_amplitude / (1 + (1.3 + self.porosity) * (zeta + zeta * zeta))
+        backscatter = 1 + self.backscatter_amplitude * self._coherent_backscatter(g)
         return (
             self.porosity * w / (4 * np.pi) * mu0 / (mu0 + mu) * (phase_and_shadow_hiding + multiple) * backscatter
         ) * shadowing
@@ -65,6 +64,15 @@ class HapkeModel:
     def diffusive_reflectance(albedo: np.ndarray) -> np.ndarray:
         gamma = np.sqrt(1 - albedo)
         return (1 - gamma) / (1 + gamma)
+
+    # Coherent-backscatter opposition effect (eq. 9.43); its limit at opposition is 1.
+    def _coherent_backscatter(self, phase: float) -> float:
+        zeta = np.tan(phase / 2) / self.backscatter_width
+
+        if zeta == 0:
+            return 1.0
+
+        return (1 + (1 - np.exp(-zeta)) / zeta) / (2 * (1 + zeta) ** 2)
 
     # Double-lobed Henyey-Greenstein phase function (eq. 6.7a).
     def _phase_function(self, phase: float) -> np.ndarray:

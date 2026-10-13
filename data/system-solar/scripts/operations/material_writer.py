@@ -4,9 +4,6 @@ import numpy as np
 
 from operations.hapke_material import HapkeMaterial
 
-# Sol's look trims, which only its own Hapke variant reads: 1 leaves physical data as it is.
-NEUTRAL_TRIM = 1
-
 
 class MaterialWriter:
     def __init__(self, materials: Path):
@@ -30,11 +27,7 @@ class MaterialWriter:
         )
 
         if hapke is not None:
-            text += (
-                f'hapke scatter-texture="{hapke.scatter_texture}" surge-texture="{hapke.surge_texture}" '
-                f"porosity={hapke.porosity:g} roughness={hapke.roughness_degrees:g} "
-                f"blend={NEUTRAL_TRIM} light-boost={NEUTRAL_TRIM} gamma-boost={NEUTRAL_TRIM}\n"
-            )
+            text += f'hapke medium-texture="{hapke.medium_texture}" opposition-texture="{hapke.opposition_texture}"\n'
 
         path.write_text(text)
         return path

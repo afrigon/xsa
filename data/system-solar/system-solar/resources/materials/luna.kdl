@@ -1,5 +1,5 @@
 shader "base:planet"
-base-color 0.1132 0.0927 0.0715
+base-color 0.0987 0.0950 0.0912
 color-texture "bodies/luna/color"
 normal-texture "bodies/luna/normal"
-hapke scatter-texture="bodies/luna/scatter" surge-texture="bodies/luna/surge" porosity=1 roughness=23.6566 blend=1 light-boost=1 gamma-boost=1
+hapke medium-texture="bodies/luna/hapke-medium" opposition-texture="bodies/luna/hapke-opposition"

@@ -266,13 +266,16 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
   texture no loaded pack provides is skipped with a warning, as is a `hapke`
   node missing either of its textures.
   An optional **`hapke`** node shades the surface with Hapke's model of
-  particulate surfaces instead of Lambert: `scatter-texture` (red: single-
-  scattering albedo w, green: phase-function lobe width b, blue: lobe balance
-  c) and `surge-texture` (opposition-surge amplitudes and widths: B_S0, h_S,
-  B_C0, h_C), both half-float, holding the parameters as they are; `porosity`
-  (Hapke's K) and `roughness` (mean slope angle, °); and Sol's look trims
-  `blend`, `light-boost` and `gamma-boost`, used only by the Sol-exact
-  variant.
+  particulate surfaces (Hapke 2012, eq. 12.55) instead of Lambert. The color
+  map's linear values are the diffusive reflectance r0, from which the shader
+  derives the single-scattering albedo w; the node names the textures holding
+  the other standard parameters, as published: `medium-texture` (the
+  particulate medium: phase-function lobe width b, lobe balance c, macroscopic
+  roughness θ̄ in degrees, porosity coefficient K) and `opposition-texture`
+  (the opposition effects: shadow-hiding amplitude B_S0 and width h_S,
+  coherent-backscatter amplitude B_C0 and width h_C), both half-float,
+  channels in that order. A body with one published value per parameter ships
+  them as 1×1 textures.
   Maps are equirectangular with the first row at the south pole, longitude 0
   at u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
   Parallax, which Sol's textures follow). Normal maps are tangent-space with

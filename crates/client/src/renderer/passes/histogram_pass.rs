@@ -43,17 +43,14 @@ impl<'frame> RenderPass<FrameContext<'frame>> for HistogramPass {
 
     fn declare(&self, pass: &mut PassDeclaration, inputs: HistogramInputs) -> HistogramInputs {
         pass.buffer(inputs.histogram, BufferUsage::TransferDestination);
-        pass.buffer(inputs.albedo_histogram, BufferUsage::TransferDestination);
         pass.next_step();
         pass.sampled(inputs.scene_color, Stage::Compute);
-        pass.sampled(inputs.illuminance, Stage::Compute);
 
         if let Some(lens) = inputs.lens {
             pass.sampled(lens, Stage::Compute);
         }
 
         pass.buffer(inputs.histogram, BufferUsage::StorageReadWrite(Stage::Compute));
-        pass.buffer(inputs.albedo_histogram, BufferUsage::StorageReadWrite(Stage::Compute));
 
         inputs
     }
@@ -66,7 +63,6 @@ impl<'frame> RenderPass<FrameContext<'frame>> for HistogramPass {
     ) -> Result<(), PassError> {
         let recorder = &frame.recorder;
         recorder.clear_buffer(pass.buffer(inputs.histogram));
-        recorder.clear_buffer(pass.buffer(inputs.albedo_histogram));
         pass.next_step();
         recorder.bind_compute(&self.pipeline, frame.descriptor_set);
         recorder.push_compute_constants(
@@ -74,11 +70,8 @@ impl<'frame> RenderPass<FrameContext<'frame>> for HistogramPass {
             &HistogramPushConstants {
                 frame: frame.frame.frame_data.device_address(),
                 histogram: frame.frame.histogram.device_address(),
-                albedo_histogram: frame.frame.albedo_histogram.device_address(),
                 scene_color_texture: frame.texture(pass, inputs.scene_color),
                 lens_texture: inputs.lens.map_or(NO_TEXTURE, |lens| frame.texture(pass, lens)),
-                illuminance_texture: frame.texture(pass, inputs.illuminance),
-                padding: 0,
             },
         );
         recorder.dispatch(pass.extent(inputs.scene_color), TILE_SIZE);

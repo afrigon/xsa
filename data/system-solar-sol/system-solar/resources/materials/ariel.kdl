@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.5232 0.5257 0.5254
 color-texture "bodies/ariel/color"
 normal-texture "bodies/ariel/normal"
-hapke scatter-texture="bodies/ariel/scatter" surge-texture="bodies/ariel/surge" porosity=1.86 roughness=31 blend=1 light-boost=0.45 gamma-boost=0.84
+hapke medium-texture="bodies/ariel/hapke-medium" opposition-texture="bodies/ariel/hapke-opposition"

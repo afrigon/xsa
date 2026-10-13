@@ -2,4 +2,4 @@ shader "base:planet"
 base-color 0.3148 0.3042 0.2942
 color-texture "bodies/oberon/color"
 normal-texture "bodies/oberon/normal"
-hapke scatter-texture="bodies/oberon/scatter" surge-texture="bodies/oberon/surge" porosity=1.86 roughness=15 blend=1 light-boost=0.5 gamma-boost=0.74
+hapke medium-texture="bodies/oberon/hapke-medium" opposition-texture="bodies/oberon/hapke-opposition"
