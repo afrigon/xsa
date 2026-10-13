@@ -3,7 +3,6 @@ use ash::vk;
 use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
 use super::gpu_timer::GpuTimer;
 use super::star_visibility::HISTOGRAM_BINS;
-use super::visible_albedo::ALBEDO_HISTOGRAM_BINS;
 use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
 
 pub(super) struct Frame {
@@ -17,7 +16,6 @@ pub(super) struct Frame {
     pub stars: Buffer,
     pub projected_lights: Buffer,
     pub histogram: Buffer,
-    pub albedo_histogram: Buffer,
     pub timer: Option<GpuTimer>,
     // A frame was submitted from this slot, so its read-backs hold results once its fence is waited on.
     pub submitted: bool,
@@ -49,17 +47,6 @@ impl Frame {
             MemoryLocation::GpuToCpu,
         )?;
 
-        let albedo_histogram = Buffer::new(
-            device,
-            allocator,
-            "albedo histogram",
-            (ALBEDO_HISTOGRAM_BINS * size_of::<u32>()) as u64,
-            vk::BufferUsageFlags::STORAGE_BUFFER
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                | vk::BufferUsageFlags::TRANSFER_DST,
-            MemoryLocation::GpuToCpu,
-        )?;
-
         let timer = GpuTimer::new(device)?;
         let queue_family = device.queue_family();
         let device = device.handle();
@@ -85,7 +72,6 @@ impl Frame {
             stars,
             projected_lights,
             histogram,
-            albedo_histogram,
             timer,
             submitted: false,
         })
@@ -99,7 +85,6 @@ impl Frame {
             self.stars.destroy(device, allocator);
             self.projected_lights.destroy(device, allocator);
             self.histogram.destroy(device, allocator);
-            self.albedo_histogram.destroy(device, allocator);
 
             if let Some(timer) = &mut self.timer {
                 timer.destroy(device);

@@ -132,18 +132,16 @@ SurfaceOutput fragmentMain(VertexOutput input) {
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
     float3 albedo = surfaceColor(material, coordinates);
     float3 luminance = starlightLuminance(albedo);
-    float illuminance = 0.0;
 
     for (uint index = 0; index < constants.frame.starCount; index++) {
-        StarData star = constants.frame.stars[index];
-        luminance += reflectedLuminance(star, material, coordinates, input, worldNormal, albedo);
-        illuminance += receivedIlluminance(star, input.worldPosition, worldNormal);
+        luminance +=
+            reflectedLuminance(constants.frame.stars[index], material, coordinates, input, worldNormal, albedo);
     }
 
     if (material.emissiveTexture != noTexture) {
         luminance += sampleSurface(material.emissiveTexture, coordinates).rgb * material.emissiveLuminance;
     }
 
-    float exposure = constants.frame.exposure;
-    return surfaceOutput(float4(luminance * exposure, 1.0), illuminance * exposure, input);
+    float3 color = luminance * constants.frame.exposure;
+    return surfaceOutput(float4(color, 1.0), input);
 }

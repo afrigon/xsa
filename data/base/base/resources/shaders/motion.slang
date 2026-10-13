@@ -11,5 +11,5 @@ VertexOutput vertexMain(VertexInput input) {
 [shader("fragment")]
 SurfaceOutput fragmentMain(VertexOutput input) {
     float2 pixels = abs(motionVector(input.currentClip, input.previousClip) * constants.frame.viewportSize);
-    return surfaceOutput(float4(saturate(pixels / fullBrightnessPixels), 0.0, 1.0), 0.0, input);
+    return surfaceOutput(float4(saturate(pixels / fullBrightnessPixels), 0.0, 1.0), input);
 }
