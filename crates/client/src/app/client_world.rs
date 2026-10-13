@@ -142,14 +142,6 @@ impl ClientWorld {
             .illuminance_at(self.simulation.bodies(), &self.state.bodies, position)
     }
 
-    pub fn nearest_surface_distance(&self, position: DVec3) -> f64 {
-        self.bodies()
-            .iter()
-            .zip(&self.state.bodies)
-            .map(|(body, state)| state.position.distance(position) - body.radius)
-            .fold(f64::INFINITY, f64::min)
-    }
-
     pub fn body_candidates(&self) -> Vec<CompletionCandidate> {
         self.bodies()
             .iter()

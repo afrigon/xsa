@@ -7,8 +7,8 @@ pub use camera_mode::CameraMode;
 use glam::camera::rh::proj::vulkan;
 use glam::{DQuat, DVec3, Mat4, Vec4};
 
-const NEAR_PLANE_DISTANCE_FRACTION: f64 = 0.1;
-const MINIMUM_NEAR_PLANE: f64 = 0.1;
+// Reverse-Z float depth keeps the same relative precision at every distance, so one near plane serves all scales.
+const NEAR_PLANE: f32 = 0.1;
 
 const VIEW_FROM_CAMERA: Mat4 = Mat4::from_cols(
     Vec4::new(1.0, 0.0, 0.0, 0.0),
@@ -22,7 +22,6 @@ pub struct Camera {
     pub orientation: DQuat,
     pub horizontal_fov: f32,
     pub aspect_ratio: f32,
-    pub near: f32,
 }
 
 impl Camera {
@@ -32,12 +31,7 @@ impl Camera {
             orientation: DQuat::IDENTITY,
             horizontal_fov,
             aspect_ratio,
-            near: MINIMUM_NEAR_PLANE as f32,
         }
-    }
-
-    pub fn fit_near_plane(&mut self, nearest_surface_distance: f64) {
-        self.near = (nearest_surface_distance * NEAR_PLANE_DISTANCE_FRACTION).max(MINIMUM_NEAR_PLANE) as f32;
     }
 
     pub fn view_rotation(&self) -> Mat4 {
@@ -53,6 +47,6 @@ impl Camera {
     }
 
     pub fn clip_from_view(&self) -> Mat4 {
-        vulkan::perspective_infinite_reverse(self.vertical_fov(), self.aspect_ratio, self.near)
+        vulkan::perspective_infinite_reverse(self.vertical_fov(), self.aspect_ratio, NEAR_PLANE)
     }
 }

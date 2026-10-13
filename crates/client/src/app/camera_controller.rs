@@ -110,9 +110,6 @@ impl CameraController {
             }
             CameraMode::Debug => self.debug.update(&mut self.camera, input, delta_seconds),
         }
-
-        let nearest_surface_distance = world.nearest_surface_distance(self.camera.position);
-        self.camera.fit_near_plane(nearest_surface_distance);
     }
 
     pub fn target(&mut self, command: &CameraTargetCommand, world: &ClientWorld) -> anyhow::Result<String> {

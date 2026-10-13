@@ -128,8 +128,10 @@ enables only the kinds it reads.
   barriers.
 - **Bindless:** push constants carry buffer device addresses for the frame,
   object and material buffers; textures go through one bindless descriptor set.
-- **Reverse-Z infinite depth.** Clear to 0, test `GREATER`. The near plane
-  follows the nearest body surface: depth below ~1e-8 fails the test.
+- **Reverse-Z infinite depth.** Clear to 0, test `GREATER`, `D32_SFLOAT`.
+  Depth is `near / distance`, and a float keeps the same relative precision at
+  every magnitude, so one fixed near plane (0.1 m) serves 1 m to
+  interplanetary distances.
 - **Target architecture:** clustered forward (Forward+) with a depth prepass,
   HDR targets and tonemapping. Volumetrics (atmosphere via Hillaire's LUTs,
   clouds, plumes, explosions) are ray-marched passes reading depth, cleaned up
