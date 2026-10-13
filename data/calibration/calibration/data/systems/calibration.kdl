@@ -1,0 +1,75 @@
+epoch "2000-01-01T12:00:00Z"
+star "calibration-sun" {
+    body "dark-skin" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000000000 mean-motion=0
+    }
+    body "light-skin" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000003830 mean-motion=0
+    }
+    body "blue-sky" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000007660 mean-motion=0
+    }
+    body "foliage" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000011490 mean-motion=0
+    }
+    body "blue-flower" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000015320 mean-motion=0
+    }
+    body "bluish-green" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000019150 mean-motion=0
+    }
+    body "orange" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000022980 mean-motion=0
+    }
+    body "purplish-blue" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000026810 mean-motion=0
+    }
+    body "moderate-red" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000030640 mean-motion=0
+    }
+    body "purple" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000034470 mean-motion=0
+    }
+    body "yellow-green" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000038300 mean-motion=0
+    }
+    body "orange-yellow" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000042130 mean-motion=0
+    }
+    body "blue" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000045960 mean-motion=0
+    }
+    body "green" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000049790 mean-motion=0
+    }
+    body "red" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000053620 mean-motion=0
+    }
+    body "yellow" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000057450 mean-motion=0
+    }
+    body "magenta" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000061280 mean-motion=0
+    }
+    body "cyan" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000065110 mean-motion=0
+    }
+    body "white-9-5" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000068940 mean-motion=0
+    }
+    body "neutral-8" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000072770 mean-motion=0
+    }
+    body "neutral-6-5" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000076600 mean-motion=0
+    }
+    body "neutral-5" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000080430 mean-motion=0
+    }
+    body "neutral-3-5" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000084260 mean-motion=0
+    }
+    body "black-2" {
+        orbit semi-major-axis=1.495978707e+11 eccentricity=0 inclination=0 ascending-node=0 periapsis=0 mean-anomaly=0.000088090 mean-motion=0
+    }
+}
