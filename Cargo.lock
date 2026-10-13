@@ -3262,15 +3262,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "xsa-tools"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "glam",
- "image",
-]
-
-[[package]]
 name = "xsa-units"
 version = "0.0.1"
 dependencies = [

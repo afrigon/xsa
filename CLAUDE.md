@@ -35,7 +35,7 @@ Everything runs through mise; tools are pinned in `mise.toml`.
 | `mise run build [--release]` / `build-server` | Build everything / the server-only binary |
 | `mise run test` / `fmt` / `lint` | Unit tests / format (120 columns) / Clippy with warnings as errors, full and server-only builds |
 | `mise run shaders` | Compile the Slang shaders to SPIR-V and validate them |
-| `mise run fetch-assets` / `convert-skybox` | Download third-party source assets / build the skybox cube map from them |
+| `mise run generate [-- <recipe> …]` | Generate system-solar's textures, materials and `LICENSE` from their sources (`data/system-solar/scripts/`) |
 
 Before calling a change done: `fmt`, `lint` and `test` pass, and a run of the
 game prints no validation messages.
@@ -64,7 +64,6 @@ enables only the kinds it reads.
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
 | `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
-| `tools` | Offline asset tools (`convert-skybox`) |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, given raw Vulkan handles |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains |
@@ -204,11 +203,13 @@ enables only the kinds it reads.
   textures: no task produces them, so they are committed, and only once final,
   never per iteration. A pack's `scripts/` holds the tools that produce its
   assets (`data/base/scripts/lens/` bakes the lens) and is left out of
-  releases. `assets/` holds git-ignored third-party source downloads.
+  releases; scripts cache their source downloads in the pack's git-ignored
+  `cache/`.
 - A change to any file in `data/` needs a new version of each pack it touches:
   always remind the user to publish one.
-- Every third-party asset is listed in `LICENSES.md` with source, author and
-  terms, with its license file next to its download.
+- Every third-party asset is credited with source, author and terms: content a
+  pack's scripts generate in that pack's `LICENSE`, which the scripts write,
+  everything else in `LICENSES.md`.
 
 ## Config
 

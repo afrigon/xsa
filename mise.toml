@@ -2,11 +2,9 @@
 "conda:clang-format" = "latest"
 "github:shader-slang/slang" = "latest"
 rust = "latest"
-xh = "latest"
 
 [vars]
 server_target_directory = "target/server"
-star_map_url = "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/starmap_2020_16k.exr"
 
 [tasks.build]
 description = "Build every crate in the workspace with the client and server"
@@ -104,28 +102,7 @@ if [[ "${1:-}" == "--release" ]]; then release=(--release); shift; fi
 cargo run -p xsa --no-default-features --features server --target-dir {{vars.server_target_directory}} "${release[@]}" -- server "$@"
 """
 
-[tasks.fetch-assets]
-description = "Download third-party assets into assets/"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-
-mkdir -p assets/deep-star-maps
-
-if [ ! -f assets/deep-star-maps/starmap_2020_16k.exr ]; then
-    xh --ignore-stdin --follow --download --output assets/deep-star-maps/starmap_2020_16k.exr '{{vars.star_map_url}}' 'Accept:*/*'
-fi
-cat > assets/deep-star-maps/CREDIT.txt <<'CREDIT'
-Deep Star Maps 2020
-NASA/Goddard Space Flight Center Scientific Visualization Studio
-https://svs.gsfc.nasa.gov/4851
-Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2, Tycho-2: ESA.
-CREDIT
-"""
-
-[tasks.convert-skybox]
-description = "Convert the Deep Star Maps star map into a cube map DDS"
-depends = ["fetch-assets"]
-sources = ["assets/deep-star-maps/starmap_2020_16k.exr", "crates/tools/src/main.rs"]
-outputs = ["data/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds"]
-run = "cargo run --release -p xsa-tools --bin convert-skybox -- assets/deep-star-maps/starmap_2020_16k.exr data/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds"
+[tasks.generate]
+description = "Generate system-solar's assets from their sources; recipe names after --, e.g. -- luna skybox"
+dir = "data/system-solar/scripts"
+run = "uv run build.py"

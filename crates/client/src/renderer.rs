@@ -35,10 +35,10 @@ pub use lens_lights::LensLights;
 pub use material::{
     EmissiveMaterial, HapkeParameters, LitMaterial, Material, PlanetMaterial, Shader, ShadingModel, SkyboxMaterial,
 };
+pub use resource_loader::texture::ColorSpace;
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{CubeMapHandle, TextureHandle};
-pub use resource_loader::texture::ColorSpace;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
