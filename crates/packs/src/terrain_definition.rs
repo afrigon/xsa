@@ -22,6 +22,12 @@ impl TerrainDefinition {
         let terrain = Id::parse(node.string_argument()?, &body.namespace)
             .with_context(|| format!("{}", document.path().display()))?;
 
+        // A terrain no loaded pack provides leaves a smooth body, so a body can name terrain an optional pack adds.
+        if let Err(err) = stack.data(TerrainDefinition::KIND, &terrain) {
+            tracing::warn!("{body}: {err:#}");
+            return Ok(None);
+        }
+
         stack.load_data::<TerrainDefinition>(&terrain).map(Some)
     }
 }

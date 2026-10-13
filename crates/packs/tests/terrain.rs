@@ -67,6 +67,18 @@ fn a_terrain_loads_without_its_height_map() {
 }
 
 #[test]
+fn a_body_naming_a_terrain_no_pack_provides_is_smooth() {
+    assert!(load("unprovided", Some("basalt"), TERRAIN, true).unwrap().is_none());
+}
+
+#[test]
+fn a_terrain_needs_its_height_map() {
+    let without_height_map = "minimum -10\nmaximum 10\n";
+
+    assert!(load("no-height-map", Some("rock"), without_height_map, true).is_err());
+}
+
+#[test]
 fn a_terrain_range_must_not_be_inverted() {
     let inverted = "height-map \"rock\"\nminimum 10\nmaximum -10\n";
 
