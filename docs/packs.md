@@ -23,6 +23,7 @@ data/<pack>/
   pack.kdl                                  manifest
   LICENSE                                   terms of third-party content, if any
   scripts/                                  tools that produce the pack's assets; not a namespace
+  cache/                                    the scripts' source downloads; git-ignored, never released
   <namespace>/
     data/                                   gameplay and physics — read by the server
       bodies/                               intrinsic properties of each body
@@ -66,7 +67,7 @@ dependencies {
 
 An id is `namespace:path`, where the path is the file's location inside the
 folder for its kind, without the extension:
-`data/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.dds`
+`data/system-solar/system-solar/resources/textures/skyboxes/deep-star-maps.ktx2`
 is the texture `system-solar:skyboxes/deep-star-maps`. The kind comes from
 where a reference is used — a `material` reference looks in `materials/`, a
 skybox `texture` in `textures/` — so ids never repeat it. Inside a file, a
@@ -469,6 +470,6 @@ into them without a format change.
 Pack text files (`.kdl`, `.slang`) are committed to the repository; binary
 files (`.dds`, `.spv`, …) are git-ignored, except the base pack's textures,
 which no task produces. Releases publish each pack, text and binaries together
-but without its `scripts/`, as a versioned `.tar.zst` archive in object storage;
-`mise run fetch-assets` downloads the latest release and extracts the binaries
-into the working tree.
+but without its `scripts/`, as a versioned `.tar.zst` archive in object storage.
+In the repository, system-solar's binaries come from its scripts:
+`mise run generate`.

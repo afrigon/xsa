@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/tools", "crates/xui", "crates/xui-vulkan", "crates/render-graph", "crates/resource-loader"]
+members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph", "crates/resource-loader"]
 
 [workspace.package]
 version = "0.0.1"

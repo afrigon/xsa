@@ -31,13 +31,19 @@ Data (system-solar/data/)
 Orbits, physical properties and rotation of the bodies are facts, taken from:
 
 - NASA/JPL Horizons (https://ssd.jpl.nasa.gov/horizons/) and the JPL planetary
-  satellite mean elements (https://ssd.jpl.nasa.gov/sats/elem/), NASA/JPL-Caltech
-  Solar System Dynamics Group. US government work, public domain. Orbits are
-  fitted to Horizons positions.
+  satellite mean elements (https://ssd.jpl.nasa.gov/sats/elem/),
+  NASA/JPL-Caltech Solar System Dynamics Group. US government work, public
+  domain. Orbits are fitted to Horizons positions.
 - The IAU WGCCRE report on cartographic coordinates and rotational elements
   (Archinal et al. 2018, Celestial Mechanics and Dynamical Astronomy 130:22).
 - Sol by RSS-Reborn (https://github.com/RSS-Reborn), for a few values neither
   source provides.
+
+Material base colors (system-solar/resources/materials/)
+
+For bodies whose maps these scripts do not generate: the average color of the
+body's map in Sol by RSS-Reborn (https://github.com/RSS-Reborn), measured by
+scripts/sol_base_colors.py.
 
 Skybox (system-solar/resources/textures/skyboxes/)
 
@@ -46,7 +52,11 @@ Studio (https://svs.gsfc.nasa.gov/4851). Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2,
 Tycho-2: ESA. Used under the NASA media usage guidelines; the cube map is
 converted from the source EXR.
 
-Material base colors (system-solar/resources/materials/)
+Moon textures (system-solar/resources/textures/bodies/luna/)
 
-The average color of each body's map in Sol by RSS-Reborn
-(https://github.com/RSS-Reborn), measured by scripts/sol_base_colors.py.
+CGI Moon Kit, NASA's Scientific Visualization Studio
+(https://svs.gsfc.nasa.gov/4720): color from the Lunar Reconnaissance Orbiter
+Camera Hapke-normalized Wide Angle Camera mosaic, polar latitudes from the Lunar
+Orbiter Laser Altimeter albedo map; elevation from the Lunar Orbiter Laser
+Altimeter gridded data. Used under the NASA media usage guidelines; resampled,
+and the normal map derived from the elevation.
