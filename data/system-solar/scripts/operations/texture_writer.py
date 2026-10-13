@@ -29,6 +29,11 @@ class TextureWriter:
     def sky() -> "TextureWriter":
         return TextureWriter(TextureFormat.RGBA8_SRGB, TextureWriter._srgb)
 
+    # Physical values stored as they are, up to four per texel.
+    @staticmethod
+    def values() -> "TextureWriter":
+        return TextureWriter(TextureFormat.RGBA16_SFLOAT, TextureWriter._four_channels)
+
     # One face for a 2D texture, six for a cube map.
     def write(self, path: Path, faces: list[Raster]) -> None:
         compressor = Compressor(self.format)
@@ -43,6 +48,11 @@ class TextureWriter:
     @staticmethod
     def _signed_pair(values: np.ndarray) -> np.ndarray:
         return TextureWriter._rgba(values * 0.5 + 0.5)
+
+    @staticmethod
+    def _four_channels(values: np.ndarray) -> np.ndarray:
+        height, width, channels = values.shape
+        return np.concatenate([values, np.zeros((height, width, 4 - channels), values.dtype)], axis=-1)
 
     @staticmethod
     def _rgba(unit: np.ndarray) -> np.ndarray:

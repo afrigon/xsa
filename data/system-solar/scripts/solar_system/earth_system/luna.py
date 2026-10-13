@@ -4,6 +4,7 @@ from operations.band_color import BandColor
 from operations.build_context import BuildContext
 from operations.coverage_fill import CoverageFill
 from operations.credit import Credit
+from operations.hapke_material import HapkeMaterial
 from operations.hapke_model import Geometry, HapkeModel
 from operations.raster import Raster, SourceLayout
 from operations.recipe import Recipe
@@ -22,6 +23,8 @@ STANDARD_GEOMETRY = Geometry(incidence=np.radians(60), emission=0.0, phase=np.ra
 # The parameter map holds 9 parameters for each of the camera's 7 bands, bands by increasing wavelength.
 CAMERA_WAVELENGTHS = [321, 360, 415, 566, 604, 643, 689]
 PARAMETERS = ["w", "b", "c", "Bc0", "hc", "Bs0", "hs", "theta", "phi"]
+# The band LROC's photometry uses for brightness; the surface's Hapke maps hold its parameters.
+HAPKE_WAVELENGTH = 566
 # Beyond 70° of latitude only the laser altimeter's albedo exists; it takes over across the last 10° of the mosaic.
 POLAR_OVERLAP = (60.0, 70.0)
 
@@ -112,7 +115,19 @@ class Luna(Recipe):
         heights = Raster.read(elevation_path, width, CGI_MOON_KIT, scale=METERS_PER_KILOMETER)
         TextureWriter.normal().write(context.texture_path("bodies/luna/normal"), [heights.normals(RADIUS)])
 
-        context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal")
+        hapke = self._hapke(context)
+        context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
+
+    # The parameters of one band, as they are: scatter (w, b, c) and surge (B_S0, h_S, B_C0, h_C).
+    def _hapke(self, context: BuildContext) -> HapkeMaterial:
+        parameters = self._parameters(self.parameter_map.fetch(context.cache), HAPKE_WAVELENGTH).extended_toward_poles()
+        maps = parameters.resampled(context.output_width(parameters.width))
+        TextureWriter.values().write(context.texture_path("bodies/luna/scatter"), [self._channels(maps, ["w", "b", "c"])])
+        TextureWriter.values().write(
+            context.texture_path("bodies/luna/surge"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
+        )
+        model = self._model(parameters.pixels)
+        return HapkeMaterial("bodies/luna/scatter", "bodies/luna/surge", model.porosity, float(np.degrees(model.roughness)))
 
     # Each pixel's diffusive reflectance, per band, from the single-scattering albedo that reproduces the mosaic's
     # measurement with the Hapke parameters of its region; then the bands as sRGB.
@@ -132,6 +147,10 @@ class Luna(Recipe):
 
         color = Raster(BandColor(list(self.mosaic)).linear_srgb(np.stack(reflectances, axis=-1)).astype(np.float32))
         return CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context, width))
+
+    @staticmethod
+    def _channels(parameters: Raster, names: list[str]) -> Raster:
+        return Raster(np.stack([parameters.pixels[..., PARAMETERS.index(name)] for name in names], axis=-1))
 
     def _parameters(self, path, wavelength: int) -> Raster:
         first = CAMERA_WAVELENGTHS.index(wavelength) * len(PARAMETERS) + 1

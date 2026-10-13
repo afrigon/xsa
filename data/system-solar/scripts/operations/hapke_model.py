@@ -34,9 +34,11 @@ class HapkeModel:
         mu0 = max(incidence_cosine, MINIMUM_COSINE)
         mu = max(emission_cosine, MINIMUM_COSINE)
         g = geometry.phase
-        phase_and_shadow_hiding = self._phase_function(g) * (
-            1 + self.shadow_hiding_amplitude / (1 + np.tan(g / 2) / self.shadow_hiding_width)
-        )
+        # A zero surge width divides by zero; the limit, no surge away from opposition, is exact.
+        with np.errstate(divide="ignore"):
+            shadow_hiding = 1 / (1 + np.tan(g / 2) / self.shadow_hiding_width)
+
+        phase_and_shadow_hiding = self._phase_function(g) * (1 + self.shadow_hiding_amplitude * shadow_hiding)
         multiple = self._chandrasekhar(mu0 / self.porosity, w, r0) * self._chandrasekhar(mu / self.porosity, w, r0) - 1
         zeta = np.tan(g / 2) / self.backscatter_width
         backscatter = 1 + self.backscatter_amplitude / (1 + (1.3 + self.porosity) * (zeta + zeta * zeta))

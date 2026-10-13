@@ -146,6 +146,9 @@ class Raster:
         bottom = self.pixels[y1][:, x0] * (1 - fx) + self.pixels[y1][:, x1] * fx
         return Raster((top * (1 - fy) + bottom * fy).astype(np.float32))
 
+    def resampled(self, width: int) -> "Raster":
+        return Raster(Raster._resampled(self.pixels, width))
+
     def mipmaps(self) -> list[np.ndarray]:
         levels = [self.pixels]
 

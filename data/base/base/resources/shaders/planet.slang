@@ -92,10 +92,10 @@ HapkeSurface hapkeSurface(PlanetData material, SurfaceCoordinates coordinates, f
     surface.albedo = albedo;
     surface.singleScatteringAlbedo = scatter.r;
     surface.lobeWidth = scatter.g;
-    surface.lobeBalance = 2.0 * scatter.b - 1.0;
-    surface.shadowHidingAmplitude = 2.0 * surge.r;
+    surface.lobeBalance = scatter.b;
+    surface.shadowHidingAmplitude = surge.r;
     surface.shadowHidingWidth = surge.g;
-    surface.backscatterAmplitude = 2.0 * surge.b;
+    surface.backscatterAmplitude = surge.b;
     surface.backscatterWidth = surge.a;
     surface.porosity = material.hapke.porosity;
     surface.roughness = material.hapke.roughness;

@@ -38,3 +38,16 @@ def test_cube_map_levels_hold_every_face(tmp_path):
     assert struct.unpack_from("<I", data, 36)[0] == 6
     offset, length, _ = struct.unpack_from("<3Q", data, 80)
     assert zstandard.ZstdDecompressor().decompress(data[offset : offset + length]) == b"".join(faces)
+
+
+def test_half_float_textures_record_two_byte_channels(tmp_path):
+    path = tmp_path / "values.ktx2"
+    texture_format = TextureFormat.RGBA16_SFLOAT
+    level = Compressor(texture_format).compress(np.array([[[1.5, -0.25, 2.0, 0.0]]], np.float32))
+    Ktx2Writer(texture_format).write(path, 1, 1, [[level]])
+    data = path.read_bytes()
+
+    assert struct.unpack_from("<2I", data, 12) == (97, 2)
+    offset, length, _ = struct.unpack_from("<3Q", data, 80)
+    raw = zstandard.ZstdDecompressor().decompress(data[offset : offset + length])
+    assert np.frombuffer(raw, np.float16).tolist() == [1.5, -0.25, 2.0, 0.0]

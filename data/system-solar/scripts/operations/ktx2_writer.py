@@ -12,7 +12,6 @@ DESCRIPTOR_BLOCK_HEADER_SIZE = 24
 SAMPLE_SIZE = 16
 DESCRIPTOR_VERSION = 2
 COLOR_PRIMARIES_BT709 = 1
-TYPE_SIZE = 1
 SUPERCOMPRESSION_ZSTANDARD = 2
 ZSTANDARD_LEVEL = 19
 WRITER_KEY = b"KTXwriter"
@@ -55,7 +54,7 @@ class Ktx2Writer:
         header = IDENTIFIER + struct.pack(
             "<9I4I2Q",
             self.format.value.vk_format,
-            TYPE_SIZE,
+            self.format.value.type_size,
             width,
             height,
             0,
@@ -112,7 +111,7 @@ class Ktx2Writer:
 
         for sample in description.samples:
             block += struct.pack(
-                "<HBB4BII", sample.bit_offset, sample.bit_length - 1, sample.channel, 0, 0, 0, 0, 0, sample.upper
+                "<HBB4BII", sample.bit_offset, sample.bit_length - 1, sample.channel, 0, 0, 0, 0, sample.lower, sample.upper
             )
 
         return struct.pack("<I", 4 + len(block)) + block

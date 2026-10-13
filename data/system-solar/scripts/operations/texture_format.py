@@ -10,8 +10,14 @@ TRANSFER_LINEAR = 1
 TRANSFER_SRGB = 2
 CHANNEL_ALPHA = 15
 QUALIFIER_LINEAR = 0x10
+QUALIFIER_SIGNED = 0x40
+QUALIFIER_FLOAT = 0x80
 UNSIGNED_BYTE_MAX = 255
 BLOCK_SAMPLE_MAX = 0xFFFFFFFF
+# A float sample's bounds are the bit patterns of -1.0 and 1.0.
+FLOAT_SAMPLE_LOWER = 0xBF800000
+FLOAT_SAMPLE_UPPER = 0x3F800000
+HALF_BITS = 16
 
 
 @dataclass(frozen=True)
@@ -20,6 +26,7 @@ class Sample:
     bit_length: int
     channel: int
     upper: int
+    lower: int = 0
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,11 @@ class FormatDescription:
     block_bytes: int
     samples: tuple[Sample, ...]
 
+    # KTX2's typeSize: the size of the type each channel is stored as, 1 for byte and block-compressed formats.
+    @property
+    def type_size(self) -> int:
+        return HALF_BITS // 8 if self.samples[0].channel & QUALIFIER_FLOAT else 1
+
 
 def _rgba8_samples(transfer: int) -> tuple[Sample, ...]:
     alpha = CHANNEL_ALPHA | (QUALIFIER_LINEAR if transfer == TRANSFER_SRGB else 0)
@@ -38,8 +50,18 @@ def _rgba8_samples(transfer: int) -> tuple[Sample, ...]:
     return tuple(Sample(index * 8, 8, channel, UNSIGNED_BYTE_MAX) for index, channel in enumerate(channels))
 
 
+def _rgba16_float_samples() -> tuple[Sample, ...]:
+    qualifiers = QUALIFIER_FLOAT | QUALIFIER_SIGNED
+    channels = (0, 1, 2, CHANNEL_ALPHA)
+    return tuple(
+        Sample(index * HALF_BITS, HALF_BITS, channel | qualifiers, FLOAT_SAMPLE_UPPER, FLOAT_SAMPLE_LOWER)
+        for index, channel in enumerate(channels)
+    )
+
+
 class TextureFormat(Enum):
     RGBA8_SRGB = FormatDescription(43, MODEL_RGBSDA, TRANSFER_SRGB, 1, 4, _rgba8_samples(TRANSFER_SRGB))
+    RGBA16_SFLOAT = FormatDescription(97, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 8, _rgba16_float_samples())
     BC4_UNORM = FormatDescription(139, MODEL_BC4, TRANSFER_LINEAR, 4, 8, (Sample(0, 64, 0, BLOCK_SAMPLE_MAX),))
     BC5_UNORM = FormatDescription(
         141, MODEL_BC5, TRANSFER_LINEAR, 4, 16, (Sample(0, 64, 0, BLOCK_SAMPLE_MAX), Sample(64, 64, 1, BLOCK_SAMPLE_MAX))
