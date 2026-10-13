@@ -191,14 +191,15 @@ enables only the kinds it reads.
 - Agents driving the game inside herdr use one pane per workspace, labelled
   `xsa-game` and found by that label in `herdr pane list`; if missing, they
   create it as a sibling (`herdr pane split --no-focus`, then
-  `herdr pane rename`). They type commands into the game's stdin with
-  `herdr pane run` and read replies with `herdr pane read`, so the user sees
-  every command. The game stays running between tests: they restart it
-  (`exit`, then `mise run client -- --instance agent-<workspace>` in the same
-  pane) only to run an updated build, and start it the same way when the pane
-  has no game running. Outside herdr they use
-  `mise run ipc --instance agent-<workspace>` and stop the game with `exit`
-  when done. Other instances may be the user's: never send them commands.
+  `herdr pane rename`). The pane only hosts the game: they launch it there with
+  `herdr pane run` (`mise run client -- --instance agent-<workspace>`), and
+  every command, inside herdr or not, goes through
+  `mise run ipc --instance agent-<workspace>`, never typed into the game's
+  stdin. The game stays running between tests: they restart it (`exit` over
+  IPC, then launch it again in the same pane) only to run an updated build,
+  and launch it when the pane has no game running. Outside herdr they launch
+  it themselves and stop it with `exit` when done. Other instances may be the
+  user's: never send them commands.
 
 ## Dependencies and assets
 
