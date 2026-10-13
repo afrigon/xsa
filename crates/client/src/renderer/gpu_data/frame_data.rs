@@ -1,5 +1,5 @@
 use ash::vk;
-use glam::{Mat4, Vec2};
+use glam::{Mat4, Vec2, Vec4};
 
 use super::GpuData;
 
@@ -18,8 +18,10 @@ pub(in crate::renderer) struct FrameData {
     pub tonemapper: u32,
     pub starlight_illuminance: f32,
     pub shading_model: u32,
+    // Rows of the linear sRGB white balance matrix, applied before tone mapping.
+    pub white_balance: [Vec4; 3],
 }
 
-const _: () = assert!(size_of::<FrameData>() == 240);
+const _: () = assert!(size_of::<FrameData>() == 288);
 
 unsafe impl GpuData for FrameData {}

@@ -10,7 +10,7 @@ const LENS_TRANSMITTANCE: f32 = 0.65;
 // Display-referred middle gray, before tone mapping.
 const MIDDLE_GRAY: f32 = 0.18;
 // Softens jumps in starlight, such as switching the target from one planet to another.
-const EXPOSURE_TRANSITION_HALF_LIFE_SECONDS: f32 = 0.5;
+pub(super) const EXPOSURE_TRANSITION_HALF_LIFE_SECONDS: f32 = 0.5;
 
 pub struct AutoExposure {
     anchor_ev100: f32,

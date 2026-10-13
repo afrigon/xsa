@@ -20,4 +20,5 @@ struct FrameData {
     uint tonemapper;
     float starlightIlluminance;
     uint shadingModel;
+    float4 whiteBalance[3];
 };

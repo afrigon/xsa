@@ -98,6 +98,9 @@ float4 fragmentMain(FullscreenOutput input) : SV_Target {
     if (constants.lensTexture != noTexture) {
         color += textures[constants.lensTexture].Load(int3(int2(input.position.xy), 0)).rgb;
     }
+    color = float3(dot(frame.whiteBalance[0].xyz, color),
+                   dot(frame.whiteBalance[1].xyz, color),
+                   dot(frame.whiteBalance[2].xyz, color));
     switch (frame.tonemapper) {
     case tonemapperAgx:
         color = agx(color, false);

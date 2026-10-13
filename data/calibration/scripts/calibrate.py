@@ -3,7 +3,8 @@
 # dependencies = ["colour-science", "numpy", "pillow"]
 # ///
 # Checks the renderer against known colors: one sphere per patch of a 24-patch color checker, lit by a Sun-like star
-# and seen head-on from the star's side, so each sphere's center shows its reflectance × sunlight ÷ π, exposed.
+# and seen head-on from the star's side, so each sphere's center shows its reflectance × sunlight ÷ π, exposed. The
+# camera's white balance takes the star's light as white, so each patch shows its own reflectance's color.
 #
 #   uv run calibrate.py generate            write the pack's bodies, system, simulation and materials
 #   uv run calibrate.py measure <instance>  snap every patch in a running game and compare with the prediction
@@ -26,7 +27,6 @@ CHART = "BabelColor Average"
 OBSERVER = "CIE 1931 2 Degree Standard Observer"
 SRGB = colour.RGB_COLOURSPACES["sRGB"]
 STAR = "calibration-sun"
-SUN_TEMPERATURE = 5772.0
 ASTRONOMICAL_UNIT = 1.495978707e11
 PATCH_RADIUS = 1000.0
 PATCH_SPACING = 10_000.0
@@ -35,6 +35,7 @@ CAMERA_DISTANCE = "3km"
 # the star.
 CAMERA_YAW = "-90"
 CENTER_HALF_SIZE = 8
+GRAY_CHROMA = 3.0
 
 # The renderer's exposure (crates/client/src/renderer/auto_exposure.rs), from its published standards: an incident
 # meter (ISO 2720, C = 250) and standard output sensitivity (ISO 12232). A Lambertian albedo a lit by E lux shows
@@ -63,13 +64,6 @@ def patches() -> dict[str, np.ndarray]:
     weights = colour.MSDS_CMFS[OBSERVER][wavelengths] * colour.SDS_ILLUMINANTS["D65"][wavelengths][:, None]
     weights /= weights[:, 1].sum()
     return {patch_id(name): SRGB.matrix_XYZ_to_RGB @ (sd.values @ weights) for name, sd in chart.items()}
-
-
-# The star's light as the renderer computes it: a blackbody at its temperature, linear sRGB with a luminance of 1.
-def sunlight() -> np.ndarray:
-    cmfs = colour.MSDS_CMFS[OBSERVER]
-    xyz = cmfs.values.T @ colour.sd_blackbody(SUN_TEMPERATURE, cmfs.shape).values
-    return SRGB.matrix_XYZ_to_RGB @ (xyz / xyz[1])
 
 
 def write(path: Path, text: str) -> None:
@@ -142,7 +136,6 @@ def measure(instance: str, output: Path, tonemapper: str) -> None:
 
     ipc(instance, "ui", "set", "game")
     colors = patches()
-    light = sunlight()
     measured = {}
 
     for setting in ["none", tonemapper]:
@@ -154,19 +147,24 @@ def measure(instance: str, output: Path, tonemapper: str) -> None:
             ipc(instance, "camera", "snap", "--output", str(path))
             measured[setting, patch] = center(path)
 
-    print(f"sunlight {light.round(3)}; display value per unit albedo {DISPLAY_PER_ALBEDO:.4f}\n")
+    print(f"display value per unit albedo {DISPLAY_PER_ALBEDO:.4f}\n")
     print(f"{'patch':14s} {'expected (linear)':>24s} {'measured, no tone mapping':>27s} {'ΔE':>5s}   {tonemapper}: ΔL*  chroma  hue°")
 
     for patch, color in colors.items():
-        expected = np.clip(color, 0, None) * light * DISPLAY_PER_ALBEDO
+        expected = np.clip(color, 0, None) * DISPLAY_PER_ALBEDO
         plain, mapped = measured["none", patch], measured[tonemapper, patch]
         difference = colour.delta_E(lab(expected), lab(plain), method="CIE 2000")
         lab_plain, lab_mapped = colour.Lab_to_LCHab(lab(plain)), colour.Lab_to_LCHab(lab(mapped))
-        chroma = lab_mapped[1] / lab_plain[1] if lab_plain[1] > 1 else float("nan")
-        hue = (lab_mapped[2] - lab_plain[2] + 180) % 360 - 180
+        # A gray has no hue, and its chroma is too small for a ratio to mean anything.
+        if lab_plain[1] > GRAY_CHROMA:
+            chroma = f"{lab_mapped[1] / lab_plain[1]:5.2f}"
+            hue = f"{(lab_mapped[2] - lab_plain[2] + 180) % 360 - 180:+5.1f}"
+        else:
+            chroma, hue = f"{'—':>5s}", f"{'—':>5s}"
+
         print(
             f"{patch:14s} {np.array2string(expected, precision=4):>24s} {np.array2string(plain, precision=4):>27s} "
-            f"{difference:5.2f}   {lab_mapped[0] - lab_plain[0]:+6.1f}  {chroma:5.2f}  {hue:+5.1f}"
+            f"{difference:5.2f}   {lab_mapped[0] - lab_plain[0]:+6.1f}  {chroma}  {hue}"
         )
 
 
