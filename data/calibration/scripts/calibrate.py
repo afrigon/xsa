@@ -131,7 +131,10 @@ def lab(linear: np.ndarray) -> np.ndarray:
 def measure(instance: str, output: Path, tonemapper: str) -> None:
     output.mkdir(parents=True, exist_ok=True)
 
-    for setting in ["animations.duration-scale 0", "render.bloom.enabled false", "render.lens.enabled false"]:
+    # The physical baseline: eye adaptation would expose each patch for itself.
+    baseline = ["render.eye-adaptation.enabled false", "render.bloom.enabled false", "render.lens.enabled false"]
+
+    for setting in ["animations.duration-scale 0", *baseline]:
         ipc(instance, "config", "set", *setting.split())
 
     ipc(instance, "ui", "set", "game")

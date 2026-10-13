@@ -19,6 +19,7 @@ use crate::vulkan::{Buffer, GraphicsPipeline, GraphicsPipelineDescription};
 const TRIANGLES_PER_CELL: u64 = 2;
 pub(in crate::renderer) const HDR_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 pub(in crate::renderer) const MOTION_FORMAT: vk::Format = vk::Format::R16G16_SFLOAT;
+const ILLUMINANCE_FORMAT: vk::Format = vk::Format::R16_SFLOAT;
 pub(in crate::renderer) const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
@@ -140,7 +141,7 @@ impl ForwardPass {
             .offset(offset_of!(GridVertex, cell) as u32)];
         let description = GraphicsPipelineDescription {
             spirv,
-            color_formats: &[HDR_FORMAT, MOTION_FORMAT],
+            color_formats: &[HDR_FORMAT, MOTION_FORMAT, ILLUMINANCE_FORMAT],
             depth_format: Some(DEPTH_FORMAT),
             depth_compare_op: vk::CompareOp::GREATER,
             depth_write: true,
@@ -165,12 +166,19 @@ impl<'frame> RenderPass<FrameContext<'frame>> for ForwardPass {
     fn declare(&self, pass: &mut PassDeclaration, _inputs: ()) -> ForwardResources {
         let hdr = pass.create_image(ForwardPass::target("hdr color", HDR_FORMAT));
         let motion = pass.create_image(ForwardPass::target("motion vectors", MOTION_FORMAT));
+        let illuminance = pass.create_image(ForwardPass::target("received illuminance", ILLUMINANCE_FORMAT));
         let depth = pass.create_image(ForwardPass::target("depth", DEPTH_FORMAT));
         pass.color_attachment(hdr, Attachment::ClearColor(CLEAR_COLOR));
         pass.color_attachment(motion, Attachment::ClearColor(CLEAR_COLOR));
+        pass.color_attachment(illuminance, Attachment::ClearColor(CLEAR_COLOR));
         pass.depth_attachment(depth, Attachment::ClearDepth(REVERSE_Z_FAR_DEPTH));
 
-        ForwardResources { hdr, motion, depth }
+        ForwardResources {
+            hdr,
+            motion,
+            illuminance,
+            depth,
+        }
     }
 
     fn record(

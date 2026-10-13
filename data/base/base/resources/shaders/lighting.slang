@@ -14,5 +14,5 @@ SurfaceOutput fragmentMain(VertexOutput input) {
         cosine += starCosine(constants.frame.stars[index], input.worldPosition, normal);
     }
 
-    return surfaceOutput(float4(saturate(cosine).xxx, 1.0), input);
+    return surfaceOutput(float4(saturate(cosine).xxx, 1.0), 0.0, input);
 }

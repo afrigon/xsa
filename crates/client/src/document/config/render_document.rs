@@ -1,6 +1,6 @@
 use super::{
     AntialiasingDocument, BloomDocument, ConfigChoice, ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues,
-    LensDocument, TerrainLodDocument, WhiteBalanceDocument,
+    EyeAdaptationDocument, LensDocument, TerrainLodDocument, WhiteBalanceDocument,
 };
 use crate::config::RenderConfig;
 use crate::renderer::{Shader, ShadingModel, Tonemapper};
@@ -11,6 +11,7 @@ pub struct RenderDocument {
     bloom: BloomDocument,
     lens: LensDocument,
     white_balance: WhiteBalanceDocument,
+    eye_adaptation: EyeAdaptationDocument,
     antialiasing: AntialiasingDocument,
     wireframe: Option<bool>,
     shader_override: Option<Option<Shader>>,
@@ -47,6 +48,7 @@ impl RenderDocument {
             bloom: BloomDocument::read(values),
             lens: LensDocument::read(values),
             white_balance: WhiteBalanceDocument::read(values),
+            eye_adaptation: EyeAdaptationDocument::read(values),
             antialiasing: AntialiasingDocument::read(values),
             wireframe: values.bool(RenderDocument::WIREFRAME),
             shader_override: values.choice(RenderDocument::SHADER_OVERRIDE),
@@ -62,6 +64,7 @@ impl RenderDocument {
             bloom: self.bloom.into_config(&defaults.bloom),
             lens: self.lens.into_config(&defaults.lens),
             white_balance: self.white_balance.into_config(&defaults.white_balance),
+            eye_adaptation: self.eye_adaptation.into_config(&defaults.eye_adaptation),
             antialiasing: self.antialiasing.into_config(&defaults.antialiasing),
             wireframe: self.wireframe.unwrap_or(defaults.wireframe),
             shader_override: self.shader_override.unwrap_or(defaults.shader_override),
@@ -76,6 +79,7 @@ impl RenderDocument {
         BloomDocument::write(&config.bloom, layer);
         LensDocument::write(&config.lens, layer);
         WhiteBalanceDocument::write(&config.white_balance, layer);
+        EyeAdaptationDocument::write(&config.eye_adaptation, layer);
         AntialiasingDocument::write(&config.antialiasing, layer);
         layer.set(RenderDocument::WIREFRAME.path, config.wireframe.into());
         layer.set(

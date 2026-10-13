@@ -1,3 +1,5 @@
+static const float pi = 3.14159265358979;
+
 // Must match NO_TEXTURE in client/src/renderer/material.rs.
 static const uint noTexture = 0xFFFFFFFF;
 

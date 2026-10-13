@@ -46,5 +46,5 @@ SurfaceOutput fragmentMain(LodVertexOutput input) {
     float tileEdge = lineCoverage(input.cell / float(input.gridCells), tileEdgeWidthPixels);
     color *= lerp(1.0, cellLineShade, cellLine);
     color *= lerp(1.0, tileEdgeShade, tileEdge);
-    return surfaceOutput(float4(color, 1.0), input.surface);
+    return surfaceOutput(float4(color, 1.0), 0.0, input.surface);
 }
