@@ -1,0 +1,5 @@
+category "asteroid"
+radius 1000
+gravitational-parameter 1
+rotation-period 86400
+axial-tilt 0

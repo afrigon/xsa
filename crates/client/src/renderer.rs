@@ -27,6 +27,8 @@ mod temporal_history;
 mod terrain_draw;
 mod texture;
 mod tonemapper;
+mod visible_albedo;
+mod white_balance;
 
 pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
@@ -45,7 +47,7 @@ use std::cell::Cell;
 use std::path::Path;
 
 use ash::vk;
-use glam::{Mat4, Vec2};
+use glam::{DVec3, Mat4, Vec2};
 use render_graph::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -79,6 +81,8 @@ use temporal_history::TemporalHistory;
 use terrain_draw::TerrainDraw;
 use texture::TextureUpload;
 use tonemapper::NO_TONEMAPPER;
+use visible_albedo::{ALBEDO_HISTOGRAM_BINS, VisibleAlbedo};
+use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
 const FRAMES_IN_FLIGHT: usize = 2;
 const BYTES_PER_PIXEL: usize = 4;
@@ -112,6 +116,7 @@ pub struct Renderer {
     scene: Scene,
     render: RenderConfig,
     exposure: AutoExposure,
+    white_balance: WhiteBalance,
     illuminance: Option<f32>,
     star_visibility: StarVisibility,
     capture: Option<Buffer>,
@@ -120,6 +125,8 @@ pub struct Renderer {
     gpu_milliseconds: Option<f32>,
     lens_lights: LensLights,
     histogram: Vec<u32>,
+    albedo_histogram: Vec<u32>,
+    visible_albedo: VisibleAlbedo,
     object_data: Vec<ObjectData>,
     star_data: Vec<StarData>,
     projected_light_data: Vec<ProjectedLightData>,
@@ -178,6 +185,7 @@ impl Renderer {
             scene: Scene::default(),
             render: config.render.clone(),
             exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
+            white_balance: WhiteBalance::new(),
             illuminance: None,
             star_visibility: StarVisibility::new(),
             capture: None,
@@ -186,6 +194,8 @@ impl Renderer {
             gpu_milliseconds: None,
             lens_lights: LensLights::default(),
             histogram: vec![0; HISTOGRAM_BINS],
+            albedo_histogram: vec![0; ALBEDO_HISTOGRAM_BINS],
+            visible_albedo: VisibleAlbedo::new(),
             object_data: Vec::with_capacity(INITIAL_OBJECT_CAPACITY),
             star_data: Vec::with_capacity(INITIAL_STAR_CAPACITY),
             projected_light_data: Vec::with_capacity(INITIAL_LIGHT_CAPACITY),
@@ -239,6 +249,7 @@ impl Renderer {
     pub fn configure(&mut self, render: &RenderConfig, animations: &AnimationConfig) {
         self.render = render.clone();
         self.exposure.configure(animations.duration_scale);
+        self.white_balance.configure(animations.duration_scale);
         self.star_visibility.configure(animations.duration_scale);
 
         if render.wireframe && !self.supports_wireframe() {
@@ -353,7 +364,9 @@ impl Renderer {
             self.temporal.reset();
         }
 
+        self.update_visible_albedo()?;
         self.update_exposure();
+        self.update_white_balance(camera.position);
         self.update_star_visibility()?;
         self.update_gpu_time()?;
         self.write_frame_data(camera)?;
@@ -439,9 +452,52 @@ impl Renderer {
         Ok(pixels)
     }
 
+    // A frame's albedo histogram is read back when its frame slot comes round again.
+    fn update_visible_albedo(&mut self) -> anyhow::Result<()> {
+        let frame = &self.frames[self.frame_index];
+
+        if frame.submitted {
+            frame.albedo_histogram.read(&mut self.albedo_histogram)?;
+            self.visible_albedo.update(&self.albedo_histogram);
+        }
+
+        Ok(())
+    }
+
     fn update_exposure(&mut self) {
+        let visible_albedo = self
+            .render
+            .eye_adaptation
+            .enabled
+            .then(|| self.visible_albedo.albedo())
+            .flatten();
+        self.exposure.adapt_to(visible_albedo);
+
         if let Some(illuminance) = self.illuminance {
             self.exposure.update(illuminance);
+        }
+    }
+
+    // Adapts to the star whose light is strongest at the camera.
+    fn update_white_balance(&mut self, camera_position: DVec3) {
+        let dominant = self
+            .scene
+            .stars()
+            .iter()
+            .map(|star| self.scene.light_source(star.light))
+            .map(|light| {
+                let distance_squared = self
+                    .scene
+                    .object(light.object)
+                    .position
+                    .distance_squared(camera_position);
+                let luminance = light.intensity.dot(LUMINANCE_WEIGHTS);
+                (luminance as f64 / distance_squared, light.intensity / luminance)
+            })
+            .max_by(|a, b| a.0.total_cmp(&b.0));
+
+        if let Some((_, color)) = dominant {
+            self.white_balance.update(color);
         }
     }
 
@@ -522,6 +578,7 @@ impl Renderer {
             tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             shading_model: self.render.shading_model.shader_id(),
+            white_balance: self.white_balance.rows(self.render.white_balance.enabled),
         };
 
         self.object_data.clear();
@@ -725,6 +782,12 @@ impl Renderer {
             histogram: graph.import_buffer(ImportedBuffer {
                 name: "luminance histogram",
                 buffer: frame.histogram.handle(),
+                initial: READ_BACK_AFTER_FENCE,
+                final_state: HOST_READABLE,
+            }),
+            albedo_histogram: graph.import_buffer(ImportedBuffer {
+                name: "albedo histogram",
+                buffer: frame.albedo_histogram.handle(),
                 initial: READ_BACK_AFTER_FENCE,
                 final_state: HOST_READABLE,
             }),

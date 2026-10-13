@@ -5,10 +5,12 @@ mod bind_action;
 mod bind_config;
 mod bloom_config;
 mod default_config;
+mod eye_adaptation_config;
 mod key_chord;
 mod lens_config;
 mod render_config;
 mod terrain_lod_config;
+mod white_balance_config;
 
 pub use animation_config::AnimationConfig;
 pub use antialiasing_config::AntialiasingConfig;
@@ -16,10 +18,12 @@ pub use antialiasing_kind::AntialiasingKind;
 pub use bind_action::BindAction;
 pub use bind_config::BindConfig;
 pub use bloom_config::BloomConfig;
+pub use eye_adaptation_config::EyeAdaptationConfig;
 pub use key_chord::KeyChord;
 pub use lens_config::LensConfig;
 pub use render_config::RenderConfig;
 pub use terrain_lod_config::TerrainLodConfig;
+pub use white_balance_config::WhiteBalanceConfig;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {

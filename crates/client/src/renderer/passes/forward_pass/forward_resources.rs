@@ -4,5 +4,6 @@ use render_graph::ImageHandle;
 pub(in crate::renderer) struct ForwardResources {
     pub hdr: ImageHandle,
     pub motion: ImageHandle,
+    pub illuminance: ImageHandle,
     pub depth: ImageHandle,
 }

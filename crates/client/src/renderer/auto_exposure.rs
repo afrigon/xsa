@@ -3,13 +3,22 @@ use std::time::Instant;
 const ISO_SENSITIVITY: f32 = 100.0;
 // The incident-light meter calibration constant C, in lux·s.
 const INCIDENT_METER_CALIBRATION: f32 = 250.0;
-// The exposure for an EV100 is 1 / (1.2 × 2^EV100).
-const EXPOSURE_SCALE: f32 = 1.2;
+// Standard output sensitivity (ISO 12232): the exposure H = 10 / ISO lux·s renders middle gray. Through a lens
+// transmitting q of the scene luminance L, H = q × L × 2^-EV, so middle gray is L = 10 / (ISO × q) × 2^EV.
+const STANDARD_OUTPUT_EXPOSURE: f32 = 10.0;
+const LENS_TRANSMITTANCE: f32 = 0.65;
+// Display-referred middle gray, before tone mapping.
+const MIDDLE_GRAY: f32 = 0.18;
+// Eye adaptation: the exposure moves from the incident meter's toward what puts the visible surfaces at middle gray,
+// the way an eye or a photographer exposes for what fills the view; an eye adapts only so far around the light level.
+const ADAPTATION_STRENGTH: f32 = 1.0;
+const MAXIMUM_ADAPTATION_STOPS: f32 = 2.0;
 // Softens jumps in starlight, such as switching the target from one planet to another.
-const EXPOSURE_TRANSITION_HALF_LIFE_SECONDS: f32 = 0.5;
+pub(super) const EXPOSURE_TRANSITION_HALF_LIFE_SECONDS: f32 = 0.5;
 
 pub struct AutoExposure {
     anchor_ev100: f32,
+    adaptation_stops: f32,
     ev100: f32,
     last_update: Option<Instant>,
     duration_scale: f32,
@@ -19,6 +28,7 @@ impl AutoExposure {
     pub fn new(initial_ev100: f32) -> Self {
         Self {
             anchor_ev100: initial_ev100,
+            adaptation_stops: 0.0,
             ev100: initial_ev100,
             last_update: None,
             duration_scale: 1.0,
@@ -38,15 +48,24 @@ impl AutoExposure {
         self.anchor_ev100
     }
 
+    // The apparent albedo of the lit surfaces in view, None without any or with eye adaptation disabled.
+    pub fn adapt_to(&mut self, visible_albedo: Option<f32>) {
+        self.adaptation_stops = visible_albedo.map_or(0.0, |albedo| {
+            ((albedo / MIDDLE_GRAY).log2() * ADAPTATION_STRENGTH)
+                .clamp(-MAXIMUM_ADAPTATION_STOPS, MAXIMUM_ADAPTATION_STOPS)
+        });
+    }
+
     // Starlight at the camera, in lux.
     pub fn update(&mut self, illuminance: f32) {
         let now = Instant::now();
         let elapsed = self.last_update.map(|last| now.duration_since(last).as_secs_f32());
         self.last_update = Some(now);
         self.anchor_ev100 = (illuminance * ISO_SENSITIVITY / INCIDENT_METER_CALIBRATION).log2();
+        let target = self.anchor_ev100 + self.adaptation_stops;
         self.ev100 = match elapsed {
-            Some(seconds) => self.transition(self.ev100, self.anchor_ev100, seconds),
-            None => self.anchor_ev100,
+            Some(seconds) => self.transition(self.ev100, target, seconds),
+            None => target,
         };
     }
 
@@ -56,7 +75,8 @@ impl AutoExposure {
     }
 
     pub fn exposure_for(ev100: f32) -> f32 {
-        1.0 / (EXPOSURE_SCALE * ev100.exp2())
+        let middle_gray_luminance = STANDARD_OUTPUT_EXPOSURE / (ISO_SENSITIVITY * LENS_TRANSMITTANCE) * ev100.exp2();
+        MIDDLE_GRAY / middle_gray_luminance
     }
 
     fn transition(&self, current: f32, target: f32, seconds: f32) -> f32 {
@@ -85,6 +105,36 @@ mod tests {
             "EV100 {}",
             exposure.anchor_ev100()
         );
+    }
+
+    #[test]
+    fn a_gray_card_in_sunlight_renders_at_middle_gray() {
+        const GRAY_CARD_ALBEDO: f32 = 0.18;
+        let mut exposure = AutoExposure::new(0.0);
+        exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT);
+        let luminance = GRAY_CARD_ALBEDO * SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT / std::f32::consts::PI;
+        let display = luminance * exposure.exposure();
+        assert!((display - MIDDLE_GRAY).abs() < 0.02, "{display}");
+    }
+
+    #[test]
+    fn adapted_to_a_dark_surface_filling_the_view_it_renders_at_middle_gray() {
+        const MOON_ALBEDO: f32 = 0.11;
+        let mut exposure = AutoExposure::new(0.0);
+        exposure.adapt_to(Some(MOON_ALBEDO));
+        exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT);
+        let luminance = MOON_ALBEDO * SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT / std::f32::consts::PI;
+        let display = luminance * exposure.exposure();
+        assert!((display - MIDDLE_GRAY).abs() < 0.02, "{display}");
+    }
+
+    #[test]
+    fn adaptation_stops_at_its_limit() {
+        let mut exposure = AutoExposure::new(0.0);
+        exposure.adapt_to(Some(0.001));
+        exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT);
+        let stops = exposure.ev100() - exposure.anchor_ev100();
+        assert!((stops + MAXIMUM_ADAPTATION_STOPS).abs() < 1e-4, "{stops}");
     }
 
     #[test]

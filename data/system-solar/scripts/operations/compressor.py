@@ -8,10 +8,13 @@ class Compressor:
     def __init__(self, texture_format: TextureFormat):
         self.format = texture_format
 
-    # pixels: height × width × 4 bytes, RGBA.
+    # pixels: height × width × 4, RGBA: bytes, or floats for a float format.
     def compress(self, pixels: np.ndarray) -> bytes:
         if self.format == TextureFormat.RGBA8_SRGB:
             return np.ascontiguousarray(pixels).tobytes()
+
+        if self.format == TextureFormat.RGBA16_SFLOAT:
+            return np.ascontiguousarray(pixels, np.float16).tobytes()
 
         padded = self._padded(pixels)
         height, width = padded.shape[:2]

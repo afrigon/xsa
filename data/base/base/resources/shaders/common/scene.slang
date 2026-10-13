@@ -31,7 +31,6 @@ struct PushConstants {
 [[vk::push_constant]]
 ConstantBuffer<PushConstants> constants;
 
-static const float pi = 3.14159265358979;
 static const float uvPerNdc = 0.5;
 
 struct VertexInput {
@@ -51,6 +50,8 @@ struct VertexOutput {
 struct SurfaceOutput {
     float4 color : SV_Target0;
     float2 motion : SV_Target1;
+    // The starlight the surface receives, exposed like its color; the exposure meter compares the two.
+    float illuminance : SV_Target2;
 };
 
 // The jitter shifts every clip-space position by the same fraction of the viewport.
@@ -65,9 +66,10 @@ float2 motionVector(float4 currentClip, float4 previousClip) {
     return (current - previous) * uvPerNdc;
 }
 
-SurfaceOutput surfaceOutput(float4 color, VertexOutput input) {
+SurfaceOutput surfaceOutput(float4 color, float illuminance, VertexOutput input) {
     SurfaceOutput output;
     output.color = color;
+    output.illuminance = illuminance;
     output.motion = motionVector(input.currentClip, input.previousClip);
     return output;
 }
@@ -141,6 +143,12 @@ float starCosine(StarData star, float3 worldPosition, float3 normal) {
 float3 starIlluminance(StarData star, float3 worldPosition) {
     float3 toStar = star.positionAndRadius.xyz - worldPosition;
     return star.intensity.rgb / dot(toStar, toStar);
+}
+
+// Lux a surface receives from one star.
+float receivedIlluminance(StarData star, float3 worldPosition, float3 normal) {
+    return dot(starIlluminance(star, worldPosition), float3(0.2126, 0.7152, 0.0722)) *
+           starCosine(star, worldPosition, normal);
 }
 
 // cd/m² reflected from the faint starlight arriving from every direction.

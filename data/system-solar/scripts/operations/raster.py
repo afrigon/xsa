@@ -5,6 +5,9 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+import rasterio.warp
+from rasterio.crs import CRS
+from rasterio.transform import from_origin
 
 from operations import srgb
 
@@ -38,17 +41,19 @@ class Raster:
 
     @staticmethod
     def native_width(path: Path) -> int:
-        with rasterio.open(path) as source:
+        with Raster._open(path) as source:
             return source.width
+
+    # Global maps often ship without georeferencing; the recipe's layout describes them instead.
+    @staticmethod
+    def _open(path: Path):
+        with warnings.catch_warnings(category=rasterio.errors.NotGeoreferencedWarning, action="ignore"):
+            return rasterio.open(path)
 
     # Reads a global map, area-averaged down to `width` in linear values, then put in the game's layout.
     @staticmethod
     def read(path: Path, width: int, layout: SourceLayout, encoded_srgb: bool = False, scale: float = 1.0) -> "Raster":
-        # Global maps often ship without georeferencing; the recipe's layout describes them instead.
-        with warnings.catch_warnings(category=rasterio.errors.NotGeoreferencedWarning, action="ignore"):
-            source = rasterio.open(path)
-
-        with source:
+        with Raster._open(path) as source:
             if width > source.width:
                 raise ValueError(f"{path.name}: {width} is wider than the source's {source.width}")
 
@@ -67,6 +72,82 @@ class Raster:
 
         pixels = Raster._area_resample(np.concatenate(rows), 0, width // 2)
         return Raster(Raster._game_layout(pixels, layout))
+
+    # Georeferenced tiles of one global map, in meters on a sphere, placed on a global grid at their own resolution;
+    # their no-data becomes NaN, which resampling leaves out.
+    @staticmethod
+    def read_tiles(paths: list[Path], width: int, bands: list[int] | None = None) -> "Raster":
+        grid = None
+
+        for path in paths:
+            with rasterio.open(path) as source:
+                meters_per_degree = Raster._radius(source) * np.pi / 180
+                degrees_per_pixel = source.transform.a / meters_per_degree
+                columns = round(DEGREES_PER_TURN / degrees_per_pixel)
+                left = round(source.transform.c / meters_per_degree / degrees_per_pixel) % columns
+                top = round((90 - source.transform.f / meters_per_degree) / degrees_per_pixel)
+                indexes = bands or list(range(1, source.count + 1))
+                scales = np.array([source.scales[index - 1] for index in indexes], np.float32)
+                data = np.moveaxis(source.read(indexes, masked=True).astype(np.float32).filled(np.nan), 0, -1) * scales
+
+                if grid is None:
+                    grid = np.full((columns // 2, columns, data.shape[-1]), np.nan, np.float32)
+
+                rows = slice(max(top, 0), min(top + data.shape[0], grid.shape[0]))
+                target = grid[rows, left : left + data.shape[1]]
+                np.copyto(target, data[rows.start - top : rows.stop - top], where=np.isnan(target))
+                logger.debug("%s placed at row %d, column %d", path.name, top, left)
+
+        return Raster(Raster._game_layout(Raster._resampled(grid, width), SourceLayout(left_edge_longitude=0.0)))
+
+    # A map in any projection rasterio reads (polar stereographic, …), interpolated onto the global grid: for maps
+    # whose pixels are no larger than the grid's where they have data, such as polar maps.
+    @staticmethod
+    def read_reprojected(path: Path, width: int) -> "Raster":
+        with rasterio.open(path) as source:
+            height = width // 2
+            target_crs = CRS.from_proj4(f"+proj=longlat +R={Raster._radius(source)} +no_defs")
+            pixels = np.full((height, width), np.nan, np.float32)
+            rasterio.warp.reproject(
+                source.read(1, masked=True).astype(np.float32).filled(np.nan) * source.scales[0],
+                pixels,
+                src_transform=source.transform,
+                src_crs=source.crs,
+                src_nodata=np.nan,
+                dst_transform=from_origin(0.0, 90.0, DEGREES_PER_TURN / width, 180.0 / height),
+                dst_crs=target_crs,
+                dst_nodata=np.nan,
+                resampling=rasterio.warp.Resampling.bilinear,
+            )
+
+        return Raster(Raster._game_layout(pixels[..., None], SourceLayout(left_edge_longitude=0.0)))
+
+    @property
+    def latitudes(self) -> np.ndarray:
+        return np.degrees(self._latitudes())
+
+    # Rows without data take the nearest row that has some, column by column.
+    def extended_toward_poles(self) -> "Raster":
+        valid_rows = np.flatnonzero(~np.isnan(self.pixels).all(axis=(1, 2)))
+        nearest = valid_rows[np.abs(np.arange(self.height)[:, None] - valid_rows[None, :]).argmin(axis=1)]
+        return Raster(self.pixels[nearest])
+
+    # Bilinear interpolation onto a finer grid, for smooth fields such as fitted parameters, whose values between
+    # samples are estimates either way: the area average would turn each sample into a visible square.
+    def interpolated(self, width: int) -> "Raster":
+        height = width // 2
+        x = (np.arange(width) + 0.5) * self.width / width - 0.5
+        y = np.clip((np.arange(height) + 0.5) * self.height / height - 0.5, 0, self.height - 1)
+        x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+        fx, fy = (x - x0)[None, :, None], (y - y0)[:, None, None]
+        x1, y1 = (x0 + 1) % self.width, np.minimum(y0 + 1, self.height - 1)
+        x0 %= self.width
+        top = self.pixels[y0][:, x0] * (1 - fx) + self.pixels[y0][:, x1] * fx
+        bottom = self.pixels[y1][:, x0] * (1 - fx) + self.pixels[y1][:, x1] * fx
+        return Raster((top * (1 - fy) + bottom * fy).astype(np.float32))
+
+    def resampled(self, width: int) -> "Raster":
+        return Raster(Raster._resampled(self.pixels, width))
 
     def mipmaps(self) -> list[np.ndarray]:
         levels = [self.pixels]
@@ -106,13 +187,40 @@ class Raster:
     def _latitudes(self) -> np.ndarray:
         return (np.arange(self.height) + 0.5) / self.height * np.pi - np.pi / 2
 
-    # Box filter of exact area: each output sample averages the span of input it covers, fractions included.
+    @staticmethod
+    def _radius(source) -> float:
+        return source.crs.to_dict().get("R") or source.crs.ellipsoid_major_axis
+
+    # Resamples a whole map to `width`, columns first in bands of rows to bound the memory used.
+    @staticmethod
+    def _resampled(pixels: np.ndarray, width: int) -> np.ndarray:
+        rows = [
+            Raster._area_resample(pixels[top : top + ROWS_PER_READ], 1, width).astype(np.float32)
+            for top in range(0, pixels.shape[0], ROWS_PER_READ)
+        ]
+        return Raster._area_resample(np.concatenate(rows), 0, width // 2).astype(np.float32)
+
+    # Box filter of exact area: each output sample averages the span of input it covers, fractions included. NaN
+    # marks missing data: an output averages only the valid input it covers, and stays NaN when there is none.
     @staticmethod
     def _area_resample(values: np.ndarray, axis: int, size: int) -> np.ndarray:
-        count = values.shape[axis]
-
-        if size == count:
+        if size == values.shape[axis]:
             return values
+
+        valid = ~np.isnan(values)
+
+        if valid.all():
+            return Raster._box(values, axis, size)
+
+        sums = Raster._box(np.where(valid, values, 0), axis, size)
+        weights = Raster._box(valid.astype(np.float64), axis, size)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            return np.where(weights > 0, sums / weights, np.nan)
+
+    @staticmethod
+    def _box(values: np.ndarray, axis: int, size: int) -> np.ndarray:
+        count = values.shape[axis]
 
         values = np.moveaxis(values, axis, 0).astype(np.float64)
         prefix = np.concatenate([np.zeros((1,) + values.shape[1:]), np.cumsum(values, axis=0)])

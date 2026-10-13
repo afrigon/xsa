@@ -92,10 +92,10 @@ HapkeSurface hapkeSurface(PlanetData material, SurfaceCoordinates coordinates, f
     surface.albedo = albedo;
     surface.singleScatteringAlbedo = scatter.r;
     surface.lobeWidth = scatter.g;
-    surface.lobeBalance = 2.0 * scatter.b - 1.0;
-    surface.shadowHidingAmplitude = 2.0 * surge.r;
+    surface.lobeBalance = scatter.b;
+    surface.shadowHidingAmplitude = surge.r;
     surface.shadowHidingWidth = surge.g;
-    surface.backscatterAmplitude = 2.0 * surge.b;
+    surface.backscatterAmplitude = surge.b;
     surface.backscatterWidth = surge.a;
     surface.porosity = material.hapke.porosity;
     surface.roughness = material.hapke.roughness;
@@ -172,16 +172,18 @@ SurfaceOutput fragmentMain(VertexOutput input) {
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
     float3 albedo = surfaceColor(material, coordinates);
     float3 luminance = starlightLuminance(albedo);
+    float illuminance = 0.0;
 
     for (uint index = 0; index < constants.frame.starCount; index++) {
-        luminance +=
-            reflectedLuminance(constants.frame.stars[index], material, coordinates, input, worldNormal, albedo);
+        StarData star = constants.frame.stars[index];
+        luminance += reflectedLuminance(star, material, coordinates, input, worldNormal, albedo);
+        illuminance += receivedIlluminance(star, input.worldPosition, worldNormal);
     }
 
     if (material.emissiveTexture != noTexture) {
         luminance += sampleSurface(material.emissiveTexture, coordinates).rgb * material.emissiveLuminance;
     }
 
-    float3 color = luminance * constants.frame.exposure;
-    return surfaceOutput(float4(color, 1.0), input);
+    float exposure = constants.frame.exposure;
+    return surfaceOutput(float4(luminance * exposure, 1.0), illuminance * exposure, input);
 }

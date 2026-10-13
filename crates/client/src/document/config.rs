@@ -8,6 +8,7 @@ mod config_key;
 mod config_layer;
 mod config_value_kind;
 mod config_values;
+mod eye_adaptation_document;
 mod key_chord_name;
 mod lens_document;
 mod number_range;
@@ -16,16 +17,19 @@ mod shader_choice;
 mod shading_model_choice;
 mod terrain_lod_document;
 mod tonemapper_choice;
+mod white_balance_document;
 
 pub use antialiasing_document::AntialiasingDocument;
 pub use bloom_document::BloomDocument;
 pub use config_choice::ConfigChoice;
 pub use config_key::ConfigKey;
 pub use config_value_kind::ConfigValueKind;
+pub use eye_adaptation_document::EyeAdaptationDocument;
 pub use lens_document::LensDocument;
 pub use number_range::NumberRange;
 pub use render_document::RenderDocument;
 pub use terrain_lod_document::TerrainLodDocument;
+pub use white_balance_document::WhiteBalanceDocument;
 
 use animation_document::AnimationDocument;
 use bind_document::BindDocument;

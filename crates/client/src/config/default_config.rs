@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use winit::keyboard::KeyCode;
 
 use super::{
-    AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, KeyChord,
-    LensConfig, RenderConfig, TerrainLodConfig,
+    AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
+    EyeAdaptationConfig, KeyChord, LensConfig, RenderConfig, TerrainLodConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::{ShadingModel, Tonemapper};
@@ -62,6 +62,8 @@ impl Default for Config {
                     strength: BLOOM_STRENGTH,
                 },
                 lens: LensConfig { enabled: true },
+                white_balance: WhiteBalanceConfig { enabled: true },
+                eye_adaptation: EyeAdaptationConfig { enabled: true },
                 antialiasing: AntialiasingConfig {
                     kind: Some(AntialiasingKind::Taa),
                 },

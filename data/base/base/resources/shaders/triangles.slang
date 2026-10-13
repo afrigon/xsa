@@ -16,5 +16,5 @@ uint pcgHash(uint value) {
 SurfaceOutput fragmentMain(VertexOutput input, uint primitive: SV_PrimitiveID) {
     uint hash = pcgHash(primitive);
     float3 color = float3(hash & 0xff, (hash >> 8) & 0xff, (hash >> 16) & 0xff) / 255.0;
-    return surfaceOutput(float4(color, 1.0), input);
+    return surfaceOutput(float4(color, 1.0), 0.0, input);
 }
