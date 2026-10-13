@@ -45,9 +45,11 @@ impl WhiteBalance {
         };
     }
 
-    // Rows of the linear sRGB matrix taking the adapted white to the display's white.
-    pub fn rows(&self) -> [Vec4; 3] {
-        let adaptation = WhiteBalance::adaptation(self.white);
+    // Rows of the linear sRGB matrix taking the adapted white to the display's white; disabled, the identity, while
+    // the adaptation keeps following the light so enabling it again takes effect at once.
+    pub fn rows(&self, enabled: bool) -> [Vec4; 3] {
+        let white = if enabled { self.white } else { Vec3::ONE };
+        let adaptation = WhiteBalance::adaptation(white);
         let rows = adaptation.transpose();
         [
             rows.x_axis.extend(0.0),
@@ -91,7 +93,7 @@ mod tests {
 
     #[test]
     fn the_display_white_needs_no_correction() {
-        let rows = WhiteBalance::new().rows();
+        let rows = WhiteBalance::new().rows(true);
         let color = Vec3::new(0.3, 0.5, 0.7);
         assert!((apply(rows, color) - color).abs().max_element() < 1e-4);
     }
@@ -100,7 +102,7 @@ mod tests {
     fn the_adapted_light_becomes_white() {
         let mut white_balance = WhiteBalance::new();
         white_balance.update(SUNLIGHT);
-        let white = apply(white_balance.rows(), SUNLIGHT);
+        let white = apply(white_balance.rows(true), SUNLIGHT);
         assert!((white - Vec3::ONE).abs().max_element() < 1e-3, "{white}");
     }
 
@@ -108,8 +110,16 @@ mod tests {
     fn a_gray_surface_in_that_light_renders_gray() {
         let mut white_balance = WhiteBalance::new();
         white_balance.update(SUNLIGHT);
-        let gray = apply(white_balance.rows(), SUNLIGHT * 0.18);
+        let gray = apply(white_balance.rows(true), SUNLIGHT * 0.18);
         assert!((gray - Vec3::splat(0.18)).abs().max_element() < 1e-3, "{gray}");
+    }
+
+    #[test]
+    fn disabled_it_leaves_colors_alone() {
+        let mut white_balance = WhiteBalance::new();
+        white_balance.update(SUNLIGHT);
+        let color = Vec3::new(0.3, 0.5, 0.7);
+        assert!((apply(white_balance.rows(false), color) - color).abs().max_element() < 1e-4);
     }
 
     #[test]
@@ -117,7 +127,7 @@ mod tests {
         let mut white_balance = WhiteBalance::new();
         white_balance.update(SUNLIGHT);
         let color = Vec3::new(0.4, 0.2, 0.1);
-        let balanced = apply(white_balance.rows(), color);
+        let balanced = apply(white_balance.rows(true), color);
         assert!((balanced.dot(LUMINANCE_WEIGHTS) - color.dot(LUMINANCE_WEIGHTS)).abs() < 0.01);
     }
 }

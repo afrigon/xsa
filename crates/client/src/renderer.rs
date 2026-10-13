@@ -551,7 +551,7 @@ impl Renderer {
             tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             shading_model: self.render.shading_model.shader_id(),
-            white_balance: self.white_balance.rows(),
+            white_balance: self.white_balance.rows(self.render.white_balance.enabled),
         };
 
         self.object_data.clear();

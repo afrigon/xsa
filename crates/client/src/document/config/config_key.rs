@@ -1,6 +1,6 @@
 use super::{
     AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, LensDocument,
-    RenderDocument, TerrainLodDocument,
+    RenderDocument, TerrainLodDocument, WhiteBalanceDocument,
 };
 
 #[derive(Clone, Copy)]
@@ -17,6 +17,7 @@ impl ConfigKey {
         BloomDocument::ENABLED,
         BloomDocument::STRENGTH,
         LensDocument::ENABLED,
+        WhiteBalanceDocument::ENABLED,
         AntialiasingDocument::KIND,
         RenderDocument::WIREFRAME,
         RenderDocument::SHADER_OVERRIDE,

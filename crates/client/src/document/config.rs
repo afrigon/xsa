@@ -16,6 +16,7 @@ mod shader_choice;
 mod shading_model_choice;
 mod terrain_lod_document;
 mod tonemapper_choice;
+mod white_balance_document;
 
 pub use antialiasing_document::AntialiasingDocument;
 pub use bloom_document::BloomDocument;
@@ -26,6 +27,7 @@ pub use lens_document::LensDocument;
 pub use number_range::NumberRange;
 pub use render_document::RenderDocument;
 pub use terrain_lod_document::TerrainLodDocument;
+pub use white_balance_document::WhiteBalanceDocument;
 
 use animation_document::AnimationDocument;
 use bind_document::BindDocument;
