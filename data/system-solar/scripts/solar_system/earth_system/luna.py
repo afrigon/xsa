@@ -2,6 +2,7 @@ import numpy as np
 
 from operations.band_color import BandColor
 from operations.build_context import BuildContext
+from operations.color_grade import ColorGrade
 from operations.coverage_fill import CoverageFill
 from operations.credit import Credit
 from operations.hapke_material import HapkeMaterial
@@ -25,6 +26,9 @@ CAMERA_WAVELENGTHS = [321, 360, 415, 566, 604, 643, 689]
 PARAMETERS = ["w", "b", "c", "Bc0", "hc", "Bs0", "hs", "theta", "phi"]
 # The band LROC's photometry uses for brightness; the surface's Hapke maps hold its parameters.
 HAPKE_WAVELENGTH = 566
+# The look: the measured regolith is warm (red/blue 1.58 in sRGB); Sol's artists render it close to neutral (about
+# 1.08), which people recognize as the Moon. This saturation brings the map's mean ratio to Sol's.
+SATURATION = 0.18
 # Beyond 70° of latitude only the laser altimeter's albedo exists; it takes over across the last 10° of the mosaic.
 POLAR_OVERLAP = (60.0, 70.0)
 
@@ -172,7 +176,8 @@ class Luna(Recipe):
             reflectances.append(HapkeModel.diffusive_reflectance(albedo))
 
         color = Raster(BandColor(list(self.mosaic)).linear_srgb(np.stack(reflectances, axis=-1)).astype(np.float32))
-        return CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context, width))
+        filled = CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context, width))
+        return ColorGrade(SATURATION).apply(filled)
 
     @staticmethod
     def _channels(parameters: Raster, names: list[str]) -> Raster:
