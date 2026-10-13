@@ -37,7 +37,9 @@ pub use material::{
     EmissiveMaterial, HapkeParameters, LitMaterial, Material, PlanetMaterial, Shader, ShadingModel, SkyboxMaterial,
 };
 pub use resource_loader::texture::ColorSpace;
-pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
+pub use scene::{
+    LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle, TerrainHeight,
+};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
@@ -661,6 +663,8 @@ impl Renderer {
 
             let sphere = QuadSphere {
                 radius: object.scale,
+                minimum_height: terrain.minimum_height(),
+                maximum_height: terrain.maximum_height(),
                 center,
                 orientation: object.orientation,
             };

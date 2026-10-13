@@ -20,6 +20,9 @@ pub(in crate::renderer) const DEEPEST_DEPTH: u32 = 22;
 // A sphere whose cube faces split into quadtrees of tiles, finer where the camera is closer.
 pub(in crate::renderer) struct QuadSphere {
     pub radius: f64,
+    // Relative to the radius, signed.
+    pub minimum_height: f64,
+    pub maximum_height: f64,
     // Relative to the camera.
     pub center: DVec3,
     pub orientation: DQuat,
@@ -28,7 +31,11 @@ pub(in crate::renderer) struct QuadSphere {
 impl QuadSphere {
     pub fn select(&self, ranges: &DetailRanges, culler: &Culler, tiles: &mut Vec<SelectedTile>) {
         let camera = self.orientation.inverse() * -self.center;
-        let horizon = HorizonCuller::new(camera, self.radius);
+        let horizon = HorizonCuller::new(
+            camera,
+            self.radius + self.minimum_height,
+            self.radius + self.maximum_height,
+        );
 
         for root in QuadSphereTile::roots() {
             self.select_tile(root, ranges, culler, &horizon, tiles);
@@ -51,8 +58,10 @@ impl QuadSphere {
             return;
         }
 
-        let center = self.center + self.orientation * (direction * self.radius);
-        let bounding_radius = chord_radius * self.radius;
+        let middle_height = (self.minimum_height + self.maximum_height) / 2.0;
+        let half_height_range = (self.maximum_height - self.minimum_height) / 2.0;
+        let center = self.center + self.orientation * (direction * (self.radius + middle_height));
+        let bounding_radius = chord_radius * (self.radius + self.maximum_height) + half_height_range;
 
         if !culler.is_visible(center, bounding_radius) {
             return;
@@ -97,6 +106,8 @@ mod tests {
         let ranges = DetailRanges::new(RADIUS, focal_length_pixels, VERTEX_SPACING_PIXELS);
         let sphere = QuadSphere {
             radius: RADIUS,
+            minimum_height: 0.0,
+            maximum_height: 0.0,
             center,
             orientation: DQuat::IDENTITY,
         };

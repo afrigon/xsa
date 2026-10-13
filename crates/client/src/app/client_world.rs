@@ -5,14 +5,16 @@ use glam::{DVec3, Vec3};
 use xsa_commands::completion::CompletionCandidate;
 use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
-use xsa_packs::{Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition};
+use xsa_packs::{
+    Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition, TerrainDefinition,
+};
 use xsa_proto::event::WorldState;
 use xsa_units::SimulationTime;
 
 use super::body_step::BodyStep;
 use crate::renderer::{
     ColorSpace, EmissiveMaterial, HapkeParameters, LightSource, LitMaterial, MaterialHandle, ObjectHandle,
-    PlanetMaterial, Renderer, SceneObject, SkyboxMaterial, Star, Terrain,
+    PlanetMaterial, Renderer, SceneObject, SkyboxMaterial, Star, Terrain, TerrainHeight,
 };
 
 const DEFAULT_NAMESPACE: &str = "base";
@@ -57,6 +59,14 @@ impl ClientWorld {
                     .with_context(|| format!("loading the material of {}", body.id))
             })
             .collect::<anyhow::Result<Vec<MaterialHandle>>>()?;
+        let heights = simulation
+            .bodies()
+            .iter()
+            .map(|body| {
+                ClientWorld::load_terrain_height(&stack, &Id::parse(&body.id.value, DEFAULT_NAMESPACE)?, renderer)
+                    .with_context(|| format!("loading the terrain of {}", body.id))
+            })
+            .collect::<anyhow::Result<Vec<Option<TerrainHeight>>>>()?;
         let mut state = SimulationState::default();
         simulation.state_at(world.time, &mut state);
 
@@ -65,15 +75,21 @@ impl ClientWorld {
             .bodies()
             .iter()
             .zip(&materials)
+            .zip(heights)
             .zip(&state.bodies)
-            .map(|((body, &material), body_state)| {
+            .map(|(((body, &material), height), body_state)| {
+                let highest_point = body.radius + height.as_ref().map_or(0.0, |height| height.maximum);
                 let object = scene.add(SceneObject {
                     position: body_state.position,
                     orientation: body_state.orientation,
                     scale: body.radius,
-                    bounding_radius: body.radius,
+                    bounding_radius: highest_point,
                 });
-                scene.add_terrain(Terrain { object, material });
+                scene.add_terrain(Terrain {
+                    object,
+                    material,
+                    height,
+                });
                 scene.add_occluder(object);
                 object
             })
@@ -186,12 +202,10 @@ impl ClientWorld {
     pub fn sync(&self, renderer: &mut Renderer) {
         let scene = renderer.scene_mut();
 
-        for ((body, state), &handle) in self.bodies().iter().zip(&self.state.bodies).zip(&self.body_objects) {
+        for (state, &handle) in self.state.bodies.iter().zip(&self.body_objects) {
             let object = scene.object_mut(handle);
             object.position = state.position;
             object.orientation = state.orientation;
-            object.scale = body.radius;
-            object.bounding_radius = body.radius;
         }
     }
 
@@ -228,6 +242,26 @@ impl ClientWorld {
                 Ok(None)
             }
         }
+    }
+
+    // A terrain without its height map is drawn smooth, so it needs no height.
+    fn load_terrain_height(
+        stack: &PackStack,
+        body: &Id,
+        renderer: &mut Renderer,
+    ) -> anyhow::Result<Option<TerrainHeight>> {
+        let Some(definition) = TerrainDefinition::load_for_body(stack, body)? else {
+            return Ok(None);
+        };
+        let Some(height_map) = definition.height_map else {
+            return Ok(None);
+        };
+
+        Ok(Some(TerrainHeight {
+            texture: renderer.load_texture(&format!("{body} height map"), &height_map, ColorSpace::Linear)?,
+            minimum: definition.minimum_height,
+            maximum: definition.maximum_height,
+        }))
     }
 
     fn create_material(

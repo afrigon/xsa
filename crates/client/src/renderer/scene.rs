@@ -6,6 +6,7 @@ mod scene_object;
 mod star;
 mod terrain;
 mod terrain_handle;
+mod terrain_height;
 
 pub use light_source::LightSource;
 pub use light_source_handle::LightSourceHandle;
@@ -15,6 +16,7 @@ pub use scene_object::SceneObject;
 pub use star::Star;
 pub use terrain::Terrain;
 pub use terrain_handle::TerrainHandle;
+pub use terrain_height::TerrainHeight;
 
 #[derive(Default)]
 pub struct Scene {
