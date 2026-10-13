@@ -10,7 +10,9 @@ pub(super) struct HapkeData {
     pub blend: f32,
     pub light_boost: f32,
     pub gamma_boost: f32,
-    pub padding: u32,
+    pub medium_texture: u32,
+    pub opposition_texture: u32,
+    pub padding: [u32; 3],
 }
 
 impl HapkeData {
@@ -22,7 +24,9 @@ impl HapkeData {
         blend: 0.0,
         light_boost: 0.0,
         gamma_boost: 0.0,
-        padding: 0,
+        medium_texture: NO_TEXTURE,
+        opposition_texture: NO_TEXTURE,
+        padding: [0; 3],
     };
 }
 
@@ -36,7 +40,9 @@ impl From<HapkeParameters> for HapkeData {
             blend: hapke.blend,
             light_boost: hapke.light_boost,
             gamma_boost: hapke.gamma_boost,
-            padding: 0,
+            medium_texture: hapke.medium.map_or(NO_TEXTURE, |texture| texture.index()),
+            opposition_texture: hapke.opposition.map_or(NO_TEXTURE, |texture| texture.index()),
+            padding: [0; 3],
         }
     }
 }

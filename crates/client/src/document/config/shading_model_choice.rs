@@ -5,6 +5,7 @@ impl ConfigChoice for ShadingModel {
     const ALL: &'static [Self] = &[
         ShadingModel::HapkeSol,
         ShadingModel::HapkeTextbook,
+        ShadingModel::HapkeClean,
         ShadingModel::Lambert,
     ];
 
@@ -13,6 +14,7 @@ impl ConfigChoice for ShadingModel {
             ShadingModel::HapkeSol => "hapke-sol",
             ShadingModel::HapkeTextbook => "hapke-textbook",
             ShadingModel::Lambert => "lambert",
+            ShadingModel::HapkeClean => "hapke-clean",
         }
     }
 }

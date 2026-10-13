@@ -32,6 +32,7 @@ class MaterialWriter:
         if hapke is not None:
             text += (
                 f'hapke scatter-texture="{hapke.scatter_texture}" surge-texture="{hapke.surge_texture}" '
+                f'medium-texture="{hapke.medium_texture}" opposition-texture="{hapke.opposition_texture}" '
                 f"porosity={hapke.porosity:g} roughness={hapke.roughness_degrees:g} "
                 f"blend={NEUTRAL_TRIM} light-boost={NEUTRAL_TRIM} gamma-boost={NEUTRAL_TRIM}\n"
             )

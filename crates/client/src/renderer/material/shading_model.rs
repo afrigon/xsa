@@ -2,6 +2,7 @@
 pub enum ShadingModel {
     HapkeSol,
     HapkeTextbook,
+    HapkeClean,
     Lambert,
 }
 
@@ -12,6 +13,7 @@ impl ShadingModel {
             ShadingModel::HapkeSol => 0,
             ShadingModel::HapkeTextbook => 1,
             ShadingModel::Lambert => 2,
+            ShadingModel::HapkeClean => 3,
         }
     }
 }

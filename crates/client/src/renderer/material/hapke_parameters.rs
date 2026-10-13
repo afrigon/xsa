@@ -7,6 +7,10 @@ use crate::renderer::TextureHandle;
 pub struct HapkeParameters {
     pub scatter: TextureHandle,
     pub surge: TextureHandle,
+    // Hapke 2012's parameters other than the albedo, as stored: the particulate medium (b, c, θ̄ in degrees, porosity
+    // K) and the opposition effects (B_S0, h_S, B_C0, h_C).
+    pub medium: Option<TextureHandle>,
+    pub opposition: Option<TextureHandle>,
     pub porosity: f32,
     pub roughness: f32,
     pub blend: f32,

@@ -15,7 +15,9 @@ struct HapkeData {
     float blend;
     float lightBoost;
     float gammaBoost;
-    uint padding;
+    uint mediumTexture;
+    uint oppositionTexture;
+    uint padding[3];
 };
 
 struct PlanetData {
@@ -31,6 +33,7 @@ struct PlanetData {
 // Must match ShadingModel::shader_id in client/src/renderer/material.rs.
 static const uint shadingHapkeSol = 0;
 static const uint shadingHapkeTextbook = 1;
+static const uint shadingHapkeClean = 3;
 
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input) {
@@ -131,6 +134,24 @@ float3 textbookAlbedo(PlanetData material, SurfaceCoordinates coordinates, float
     return singleScatteringAlbedo * color / regionalLuminance;
 }
 
+// Hapke 2012's parameters at this point: w from the calibrated color map, the rest from the medium and opposition
+// textures, stored as published (θ̄ in degrees).
+HapkeParameters hapkeParameters(PlanetData material, SurfaceCoordinates coordinates, float3 diffusiveReflectance) {
+    float4 medium = sampleSurface(material.hapke.mediumTexture, coordinates);
+    float4 opposition = sampleSurface(material.hapke.oppositionTexture, coordinates);
+    HapkeParameters parameters;
+    parameters.singleScatteringAlbedo = singleScatteringAlbedo(diffusiveReflectance);
+    parameters.lobeWidth = medium.r;
+    parameters.lobeBalance = medium.g;
+    parameters.roughness = radians(medium.b);
+    parameters.porosity = medium.a;
+    parameters.shadowHidingAmplitude = opposition.r;
+    parameters.shadowHidingWidth = opposition.g;
+    parameters.backscatterAmplitude = opposition.b;
+    parameters.backscatterWidth = opposition.a;
+    return parameters;
+}
+
 // cd/m² the surface reflects from one star.
 float3 reflectedLuminance(StarData star, PlanetData material, SurfaceCoordinates coordinates, VertexOutput input,
                           float3 worldNormal, float3 albedo) {
@@ -138,8 +159,9 @@ float3 reflectedLuminance(StarData star, PlanetData material, SurfaceCoordinates
     float cosine = starCosine(star, input.worldPosition, worldNormal) * facingStar;
     float3 illuminance = starIlluminance(star, input.worldPosition);
     uint shading = constants.frame.shadingModel;
-    bool hapke =
-        material.hapke.scatterTexture != noTexture && (shading == shadingHapkeSol || shading == shadingHapkeTextbook);
+    bool hapke = (material.hapke.scatterTexture != noTexture &&
+                  (shading == shadingHapkeSol || shading == shadingHapkeTextbook)) ||
+                 (material.hapke.mediumTexture != noTexture && shading == shadingHapkeClean);
 
     if (!hapke || cosine <= 0.0) {
         return lambertLuminance(albedo, illuminance, cosine);
@@ -151,6 +173,10 @@ float3 reflectedLuminance(StarData star, PlanetData material, SurfaceCoordinates
     geometry.incidenceCosine = clamp(dot(toStar, worldNormal), 1e-4, 1.0);
     geometry.emissionCosine = clamp(dot(toCamera, worldNormal), 1e-4, 1.0);
     geometry.phaseAngle = acos(clamp(dot(toStar, toCamera), -1.0, 1.0));
+
+    if (shading == shadingHapkeClean) {
+        return hapkeReflectance(hapkeParameters(material, coordinates, albedo), geometry) * illuminance;
+    }
     HapkeSurface surface = hapkeSurface(material, coordinates, albedo);
 
     if (shading == shadingHapkeSol) {

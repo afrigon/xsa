@@ -288,6 +288,14 @@ impl ClientWorld {
                             Ok(HapkeParameters {
                                 scatter: load("scatter", &hapke.scatter, ColorSpace::Linear)?,
                                 surge: load("surge", &hapke.surge, ColorSpace::Linear)?,
+                                medium: hapke
+                                    .medium
+                                    .map(|path| load("hapke medium", &path, ColorSpace::Linear))
+                                    .transpose()?,
+                                opposition: hapke
+                                    .opposition
+                                    .map(|path| load("hapke opposition", &path, ColorSpace::Linear))
+                                    .transpose()?,
                                 porosity: hapke.porosity,
                                 roughness: hapke.roughness_degrees.to_radians(),
                                 blend: hapke.blend,

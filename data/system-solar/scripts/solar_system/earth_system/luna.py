@@ -126,8 +126,34 @@ class Luna(Recipe):
         TextureWriter.values().write(
             context.texture_path("bodies/luna/surge"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
         )
+        medium = self._channels(maps, ["b", "c", "theta"])
+        porosity = Luna._porosity(maps.pixels[..., PARAMETERS.index("phi")])
+        TextureWriter.values().write(
+            context.texture_path("bodies/luna/hapke-medium"),
+            [Raster(np.concatenate([medium.pixels, porosity[..., None]], axis=-1))],
+        )
+        TextureWriter.values().write(
+            context.texture_path("bodies/luna/hapke-opposition"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
+        )
         model = self._model(parameters.pixels)
-        return HapkeMaterial("bodies/luna/scatter", "bodies/luna/surge", model.porosity, float(np.degrees(model.roughness)))
+        return HapkeMaterial(
+            scatter_texture="bodies/luna/scatter",
+            surge_texture="bodies/luna/surge",
+            medium_texture="bodies/luna/hapke-medium",
+            opposition_texture="bodies/luna/hapke-opposition",
+            porosity=model.porosity,
+            roughness_degrees=float(np.degrees(model.roughness)),
+        )
+
+    # The porosity coefficient K from the filling factor φ (Hapke 2012, eq. 7.45b); K tends to 1 as φ tends to 0.
+    @staticmethod
+    def _porosity(filling_factor: np.ndarray) -> np.ndarray:
+        term = 1.209 * np.power(np.clip(filling_factor, 0, None), 2 / 3)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            porosity = -np.log(1 - term) / term
+
+        return np.where(term > 0, porosity, 1.0).astype(np.float32)
 
     # Each pixel's diffusive reflectance, per band, from the single-scattering albedo that reproduces the mosaic's
     # measurement with the Hapke parameters of its region; then the bands as sRGB.

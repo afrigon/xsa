@@ -179,3 +179,61 @@ float3 hapkeTextbook(HapkeSurface surface, HapkeGeometry geometry) {
     return porosity * w / (4.0 * hapkePi) * mu0 / (mu0 + mu) * (phaseAndShadowHiding + multipleScattering) *
            backscatter * rough.shadowing;
 }
+
+// Hapke 2012's inputs for a particulate medium, everything but the viewing geometry.
+struct HapkeParameters {
+    // w, per color channel.
+    float3 singleScatteringAlbedo;
+    // b and c of the double-lobed phase function; c > 0 scatters back toward the light.
+    float lobeWidth;
+    float lobeBalance;
+    // θ̄, in radians.
+    float roughness;
+    // K.
+    float porosity;
+    float shadowHidingAmplitude;
+    float shadowHidingWidth;
+    float backscatterAmplitude;
+    float backscatterWidth;
+};
+
+// w from the diffusive reflectance r0, inverting r0 = (1 - γ) / (1 + γ), γ = √(1 - w) (8.25).
+float3 singleScatteringAlbedo(float3 diffusiveReflectance) {
+    float3 gamma = (1.0 - diffusiveReflectance) / (1.0 + diffusiveReflectance);
+    return 1.0 - gamma * gamma;
+}
+
+// Coherent-backscatter opposition effect (9.43); it tends to 1 at opposition.
+float coherentBackscatterOpposition(float phaseAngle, float width) {
+    float zeta = tan(phaseAngle * 0.5) / width;
+    if (zeta < 1e-6) {
+        return 1.0;
+    }
+    return (1.0 + (1.0 - exp(-zeta)) / zeta) / (2.0 * (1.0 + zeta) * (1.0 + zeta));
+}
+
+// Hapke's bidirectional reflectance with porosity, both opposition effects and macroscopic roughness (12.55), per
+// color channel. Returns cd/m² per lux.
+float3 hapkeReflectance(HapkeParameters surface, HapkeGeometry geometry) {
+    float3 w = clamp(surface.singleScatteringAlbedo, 0.0, 0.999);
+    float3 gamma = sqrt(1.0 - w);
+    float3 diffusiveReflectance = (1.0 - gamma) / (1.0 + gamma);
+    float porosity = surface.porosity;
+    float g = geometry.phaseAngle;
+
+    RoughSurface rough =
+        roughSurface(geometry.incidenceCosine, geometry.emissionCosine, azimuthAngle(geometry), surface.roughness);
+    float mu0 = max(rough.incidenceCosine, 1e-4);
+    float mu = max(rough.emissionCosine, 1e-4);
+
+    float shadowHidingOpposition = 1.0 + surface.shadowHidingAmplitude * shadowHiding(g, surface.shadowHidingWidth);
+    float singleScattering = phaseFunction(g, surface.lobeWidth, surface.lobeBalance) * shadowHidingOpposition;
+    float3 multipleScattering = chandrasekharH(mu0 / porosity, w, diffusiveReflectance) *
+                                    chandrasekharH(mu / porosity, w, diffusiveReflectance) -
+                                1.0;
+    float backscatterOpposition =
+        1.0 + surface.backscatterAmplitude * coherentBackscatterOpposition(g, surface.backscatterWidth);
+
+    return porosity * w / (4.0 * hapkePi) * mu0 / (mu0 + mu) * (singleScattering + multipleScattering) *
+           backscatterOpposition * rough.shadowing;
+}
