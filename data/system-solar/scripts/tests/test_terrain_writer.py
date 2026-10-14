@@ -3,6 +3,7 @@ import struct
 import numpy as np
 import zstandard
 
+from operations.cube_map import CUBE_FACE_COUNT, CubeMap
 from operations.raster import Raster
 from operations.terrain_writer import TerrainWriter
 
@@ -10,23 +11,25 @@ R16_UNORM = 70
 
 
 def test_the_range_is_the_maps_own_rounded_outward(tmp_path):
-    heights = Raster(np.array([[[-9128.4], [10786.2]], [[0.0], [512.5]]], np.float32))
-    TerrainWriter(tmp_path).write("luna", heights)
+    faces = [Raster(np.zeros((2, 2, 1), np.float32)) for _ in range(CUBE_FACE_COUNT)]
+    faces[0].pixels[0, 0] = -9128.4
+    faces[5].pixels[1, 1] = 10786.2
+    TerrainWriter(tmp_path).write("luna", CubeMap(faces))
 
     assert (tmp_path / "luna.kdl").read_text() == 'height-map "luna"\nminimum -9129\nmaximum 10787\n'
 
 
 def test_heights_read_back_within_half_a_step(tmp_path):
-    heights = Raster(np.linspace(-9000, 11000, 8 * 4, dtype=np.float32).reshape(4, 8, 1))
-    TerrainWriter(tmp_path).write("luna", heights)
+    heights = np.linspace(-9000, 11000, CUBE_FACE_COUNT * 4 * 4, dtype=np.float32).reshape(CUBE_FACE_COUNT, 4, 4, 1)
+    TerrainWriter(tmp_path).write("luna", CubeMap([Raster(face) for face in heights]))
     data = (tmp_path / "luna.ktx2").read_bytes()
 
     vk_format, type_size, width, height = struct.unpack_from("<4I", data, 12)
-    level_count = struct.unpack_from("<I", data, 40)[0]
-    assert (vk_format, type_size, width, height, level_count) == (R16_UNORM, 2, 8, 4, 4)
+    face_count, level_count = struct.unpack_from("<2I", data, 36)
+    assert (vk_format, type_size, width, height, face_count, level_count) == (R16_UNORM, 2, 4, 4, CUBE_FACE_COUNT, 3)
 
     offset, length, _ = struct.unpack_from("<3Q", data, 80)
     stored = np.frombuffer(zstandard.ZstdDecompressor().decompress(data[offset : offset + length]), np.uint16)
-    meters = -9000 + stored.reshape(4, 8) / 65535 * 20000
+    meters = -9000 + stored.reshape(heights.shape) / 65535 * 20000
     step = 20000 / 65535
-    assert np.abs(meters - heights.pixels[..., 0]).max() <= step / 2 + 1e-3
+    assert np.abs(meters - heights).max() <= step / 2 + 1e-3

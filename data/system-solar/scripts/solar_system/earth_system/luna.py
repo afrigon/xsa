@@ -5,6 +5,7 @@ from operations.build_context import BuildContext
 from operations.color_grade import ColorGrade
 from operations.coverage_fill import CoverageFill
 from operations.credit import Credit
+from operations.cube_map import CubeMap
 from operations.hapke_material import HapkeMaterial
 from operations.hapke_model import Geometry, HapkeModel
 from operations.raster import Raster, SourceLayout
@@ -15,6 +16,8 @@ from operations.texture_writer import TextureWriter
 # The reference sphere of every LRO data product.
 RADIUS = 1737400.0
 METERS_PER_KILOMETER = 1000.0
+# Untiered: the server and every client read the same terrain.
+TERRAIN_FACE_SIZE = 2048
 CGI_MOON_KIT = SourceLayout(left_edge_longitude=-180.0, north_up=True)
 MOSAIC = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_HAPKE"
 PARAMETER_MAPS = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/WAC_HAPKEPARAMMAP"
@@ -118,7 +121,9 @@ class Luna(Recipe):
         width = context.output_width(Raster.native_width(elevation_path))
         heights = Raster.read(elevation_path, width, CGI_MOON_KIT, scale=METERS_PER_KILOMETER)
         TextureWriter.normal().write(context.texture_path("bodies/luna/normal"), [heights.normals(RADIUS)])
-        context.terrains.write("luna", heights)
+        context.terrains.write(
+            "luna", CubeMap.from_equirectangular(elevation_path, TERRAIN_FACE_SIZE, CGI_MOON_KIT, METERS_PER_KILOMETER)
+        )
 
         hapke = self._hapke(context)
         context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
