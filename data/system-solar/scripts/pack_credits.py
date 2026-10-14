@@ -11,9 +11,4 @@ PACK_CREDITS = [
         "Celestial Mechanics and Dynamical Astronomy 130:22).\n"
         "- Sol by RSS-Reborn (https://github.com/RSS-Reborn), for a few values neither source provides.",
     ),
-    Credit(
-        "Material base colors (system-solar/resources/materials/)",
-        "For bodies whose maps these scripts do not generate: the average color of the body's map in Sol by "
-        "RSS-Reborn (https://github.com/RSS-Reborn), measured by scripts/sol_base_colors.py.",
-    ),
 ]
