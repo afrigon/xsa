@@ -46,11 +46,6 @@ Studio (https://svs.gsfc.nasa.gov/4851). Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2,
 Tycho-2: ESA. Used under the NASA media usage guidelines; the cube map is
 converted from the source EXR.
 
-Material base colors (system-solar/resources/materials/)
-
-For bodies whose maps these scripts do not generate: colors chosen to match each
-body's look in Sol by RSS-Reborn (https://github.com/RSS-Reborn).
-
 Moon textures (system-solar/resources/textures/bodies/luna/)
 
 Color: the Lunar Reconnaissance Orbiter Camera (LROC) Wide Angle Camera

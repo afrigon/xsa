@@ -1,5 +1,4 @@
 from operations.build_context import BuildContext
-from operations.credit import Credit
 from operations.recipe import Recipe
 
 # Linear RGB, for the bodies without a recipe of their own.
@@ -58,13 +57,7 @@ BASE_COLORS = {
 
 class BaseColors(Recipe):
     name = "base-colors"
-    credits = [
-        Credit(
-            "Material base colors (system-solar/resources/materials/)",
-            "For bodies whose maps these scripts do not generate: colors chosen to match each body's look in Sol by "
-            "RSS-Reborn (https://github.com/RSS-Reborn).",
-        )
-    ]
+    credits = []
 
     def build(self, context: BuildContext) -> None:
         for body, color in BASE_COLORS.items():
