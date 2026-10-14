@@ -182,7 +182,7 @@ mod tests {
     use std::path::PathBuf;
 
     use xsa_proto::message::{Join, Leave, MessageId, Role, SetTime, SetTimeRate, StepTime};
-    use xsa_units::{SimulationTime, TimeRate};
+    use xsa_units::{SimulationTime, TimeRate, TimeRateChange};
 
     use super::*;
     use crate::WorldOptions;
@@ -288,13 +288,36 @@ mod tests {
         drain(&mut observer);
 
         let rate = TimeRate { multiplier: 100.0 };
-        let id = harness.send(&server_user, ClientMessage::SetTimeRate(SetTimeRate { rate }));
+        let id = harness.send(
+            &server_user,
+            ClientMessage::SetTimeRate(SetTimeRate {
+                change: TimeRateChange::To(rate),
+            }),
+        );
         let changed = ServerEvent::TimeChanged(TimeChanged {
             time: harness.server.world.time(),
             rate,
         });
         assert_eq!(drain(&mut server_user), vec![changed.clone(), accepted(id)]);
         assert_eq!(drain(&mut observer), vec![changed]);
+    }
+
+    #[test]
+    fn faster_and_slower_change_the_world_rate() {
+        let mut harness = Harness::new();
+        let connection = harness.connect();
+        harness.send(&connection, server_role());
+
+        for (change, multiplier) in [
+            (TimeRateChange::Faster, 2.0),
+            (TimeRateChange::Faster, 4.0),
+            (TimeRateChange::Slower, 2.0),
+            (TimeRateChange::Slower, 1.0),
+            (TimeRateChange::Slower, 0.0),
+        ] {
+            harness.send(&connection, ClientMessage::SetTimeRate(SetTimeRate { change }));
+            assert_eq!(harness.server.world.rate(), TimeRate { multiplier });
+        }
     }
 
     #[test]
@@ -315,7 +338,9 @@ mod tests {
         harness.send(&connection, server_role());
         harness.send(
             &connection,
-            ClientMessage::SetTimeRate(SetTimeRate { rate: TimeRate::PAUSED }),
+            ClientMessage::SetTimeRate(SetTimeRate {
+                change: TimeRateChange::To(TimeRate::PAUSED),
+            }),
         );
         let before = harness.server.world.time();
         harness.server.world.advance(SimulationDuration { seconds: 1.0 });
@@ -331,10 +356,10 @@ mod tests {
 
         for message in [
             ClientMessage::SetTimeRate(SetTimeRate {
-                rate: TimeRate { multiplier: -1.0 },
+                change: TimeRateChange::To(TimeRate { multiplier: -1.0 }),
             }),
             ClientMessage::SetTimeRate(SetTimeRate {
-                rate: TimeRate { multiplier: f64::NAN },
+                change: TimeRateChange::To(TimeRate { multiplier: f64::NAN }),
             }),
             ClientMessage::SetTime(SetTime {
                 time: SimulationTime { seconds: f64::INFINITY },
@@ -358,7 +383,7 @@ mod tests {
         harness.send(
             &connection,
             ClientMessage::SetTimeRate(SetTimeRate {
-                rate: TimeRate { multiplier: 2.0 },
+                change: TimeRateChange::To(TimeRate { multiplier: 2.0 }),
             }),
         );
         assert!(is_denied(&drain(&mut connection)));

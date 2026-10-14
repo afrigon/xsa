@@ -11,10 +11,13 @@ use super::graph_textures::GraphTextures;
 use super::lens::Lens;
 use super::material::MaterialBuffer;
 use super::temporal_history::TemporalHistory;
+use super::terrain_buffer::TerrainBuffer;
 use super::terrain_draw::TerrainDraw;
-use super::{MaterialHandle, Scene};
+use super::{MaterialHandle, Scene, TerrainBufferHandle};
 use crate::config::RenderConfig;
 use crate::vulkan::GraphicsPipeline;
+
+const NULL_ADDRESS: vk::DeviceAddress = 0;
 
 pub(super) struct FrameContext<'a> {
     pub recorder: CommandRecorder<'a>,
@@ -25,6 +28,7 @@ pub(super) struct FrameContext<'a> {
     pub render: &'a RenderConfig,
     pub scene: &'a Scene,
     pub materials: &'a [MaterialBuffer],
+    pub terrain_buffers: &'a [TerrainBuffer],
     pub lens: Option<&'a Lens>,
     pub focal_length_pixels: f32,
     pub terrain_draws: &'a [TerrainDraw],
@@ -40,6 +44,7 @@ impl FrameContext<'_> {
         object_index: usize,
         material: MaterialHandle,
         first_tile: u32,
+        terrain: Option<TerrainBufferHandle>,
     ) {
         self.recorder.push_graphics_constants(
             pipeline,
@@ -50,6 +55,9 @@ impl FrameContext<'_> {
                 object_index: object_index as u32,
                 first_tile,
                 tiles: self.frame.tiles.device_address(),
+                terrain: terrain.map_or(NULL_ADDRESS, |terrain| {
+                    self.terrain_buffers[terrain.index].device_address()
+                }),
             },
         );
     }

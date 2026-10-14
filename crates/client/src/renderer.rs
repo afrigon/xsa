@@ -24,6 +24,7 @@ mod scene;
 mod shader_binaries;
 mod star_visibility;
 mod temporal_history;
+mod terrain_buffer;
 mod terrain_draw;
 mod texture;
 mod tonemapper;
@@ -37,16 +38,20 @@ pub use material::{
     EmissiveMaterial, HapkeParameters, LitMaterial, Material, PlanetMaterial, Shader, ShadingModel, SkyboxMaterial,
 };
 pub use resource_loader::texture::ColorSpace;
-pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
+pub use scene::{
+    LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainBufferHandle, TerrainHandle,
+    TerrainHeight,
+};
 pub use shader_binaries::ShaderBinaries;
 pub use texture::{CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
 use std::path::Path;
+use std::sync::Arc;
 
 use ash::vk;
-use glam::{DVec3, Mat4, Vec2};
+use glam::{DVec2, DVec3, Mat4, Vec2};
 use render_graph::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -54,6 +59,7 @@ use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
 use resource_loader::texture::TextureImage;
+use xsa_core::terrain::HeightMap;
 use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
@@ -65,7 +71,7 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
+use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TerrainData, TileData};
 use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
@@ -73,10 +79,11 @@ use light_projection::LightProjection;
 use material::MaterialBuffer;
 use object_pose::ObjectPose;
 use passes::TaaPass;
-use quad_sphere::{DetailRanges, QuadSphere, SelectedTile};
+use quad_sphere::{DetailRanges, HeightBounds, QuadSphere, SelectedTile};
 use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
+use terrain_buffer::TerrainBuffer;
 use terrain_draw::TerrainDraw;
 use texture::TextureUpload;
 use tonemapper::NO_TONEMAPPER;
@@ -138,6 +145,7 @@ pub struct Renderer {
     cube_maps: Vec<Image>,
     textures: Vec<Image>,
     materials: Vec<MaterialBuffer>,
+    terrain_buffers: Vec<TerrainBuffer>,
     lens: Option<Lens>,
     passes: RenderPasses,
     graph: RenderGraph,
@@ -205,6 +213,7 @@ impl Renderer {
             cube_maps: Vec::new(),
             textures: Vec::new(),
             materials: Vec::new(),
+            terrain_buffers: Vec::new(),
             lens: None,
             passes,
             graph,
@@ -316,6 +325,34 @@ impl Renderer {
             .push(MaterialBuffer::new(&mut self.gpu, name, &material)?);
         Ok(MaterialHandle {
             index: self.materials.len() - 1,
+        })
+    }
+
+    // `image` is the height map's file, uploaded with its own mip chain; `map` is its decoded top level.
+    pub fn add_terrain_height(
+        &mut self,
+        name: &str,
+        image: &TextureImage,
+        map: Arc<HeightMap>,
+        radius: f64,
+    ) -> anyhow::Result<TerrainHeight> {
+        let bounds = HeightBounds::new(&map);
+        let texture = self.upload_texture(&format!("{name} height map"), image)?;
+        let data = TerrainData {
+            height_texture: texture.index(),
+            minimum_height: (map.minimum() / radius) as f32,
+            height_range: ((map.maximum() - map.minimum()) / radius) as f32,
+            padding: 0,
+        };
+        self.terrain_buffers
+            .push(TerrainBuffer::new(&mut self.gpu, name, data)?);
+
+        Ok(TerrainHeight {
+            buffer: TerrainBufferHandle {
+                index: self.terrain_buffers.len() - 1,
+            },
+            bounds,
+            map,
         })
     }
 
@@ -538,6 +575,8 @@ impl Renderer {
         };
         let view_projection = Mat4::from_translation(jitter.extend(0.0)) * unjittered_view_projection;
         let stars = self.frames[self.frame_index].stars.device_address();
+        let projection = LightProjection::new(camera, extent);
+        self.focal_length_pixels = projection.focal_length_pixels();
         let frame_data = FrameData {
             view_projection,
             world_from_clip: view_projection.inverse(),
@@ -551,6 +590,8 @@ impl Renderer {
             tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             shading_model: self.render.shading_model.shader_id(),
+            vertex_spacing_angle: self.render.terrain_lod.vertex_spacing_pixels / self.focal_length_pixels,
+            padding: [0; 3],
             white_balance: self.white_balance.rows(self.render.white_balance.enabled),
         };
 
@@ -572,8 +613,6 @@ impl Renderer {
         self.star_data.clear();
         self.projected_light_data.clear();
         self.lens_lights = LensLights::default();
-        let projection = LightProjection::new(camera, extent);
-        self.focal_length_pixels = projection.focal_length_pixels();
         let viewport = Vec2::new(extent.width as f32, extent.height as f32);
 
         for star in self.scene.stars() {
@@ -661,6 +700,7 @@ impl Renderer {
 
             let sphere = QuadSphere {
                 radius: object.scale,
+                height: terrain.height.as_ref(),
                 center,
                 orientation: object.orientation,
             };
@@ -694,6 +734,12 @@ impl Renderer {
             let object = self.scene.object(object_handle);
             let previous = self.temporal.previous_pose(object_handle.index);
             let ranges = self.detail_ranges(object.scale);
+            let grid = self
+                .scene
+                .terrain(draw.terrain)
+                .height
+                .as_ref()
+                .map(TerrainHeight::grid);
             let first_tile = draw.first_tile as usize;
 
             for selected in &self.selected_tiles[first_tile..first_tile + draw.tile_count as usize] {
@@ -702,6 +748,8 @@ impl Renderer {
                 let center = object.position - camera.position + object.orientation * (direction * object.scale);
                 let previous_center =
                     previous.position - previous_camera_position + previous.orientation * (direction * previous.scale);
+                let texel = grid.map_or(DVec2::ZERO, |grid| grid.texel_position(direction));
+                let center_texel = texel.floor();
                 self.tile_data.push(TileData {
                     center: center.as_vec3(),
                     detail: selected.detail,
@@ -713,6 +761,8 @@ impl Renderer {
                     morph_end: ranges.morph_end(selected.detail) as f32,
                     vertical_axis: tile.vertical_axis().as_vec3(),
                     padding: 0,
+                    center_texel: center_texel.as_ivec2(),
+                    center_texel_fraction: (texel - center_texel).as_vec2(),
                 });
             }
         }
@@ -782,6 +832,7 @@ impl Renderer {
             render: &self.render,
             scene: &self.scene,
             materials: &self.materials,
+            terrain_buffers: &self.terrain_buffers,
             lens: self.lens.as_ref(),
             focal_length_pixels: self.focal_length_pixels,
             terrain_draws: &self.terrain_draws,
@@ -798,11 +849,8 @@ impl Renderer {
         unsafe { device.handle().end_command_buffer(frame.command_buffer) }?;
         self.statistics = FrameStatistics {
             triangles: context.triangles.get(),
-            ev100: self.exposure.ev100(),
-            anchor_ev100: self.exposure.anchor_ev100(),
-            star_visibility: self.star_visibility.visibility(),
-            light: self.star_visibility.light(),
-            lens_lights: self.lens_lights,
+            tiles: self.selected_tiles.len(),
+            deepest_depth: self.selected_tiles.iter().map(|selected| selected.tile.depth).max(),
             gpu_milliseconds: self.gpu_milliseconds,
         };
         self.user_interface.atlas_updates.clear();
@@ -980,6 +1028,10 @@ impl Drop for Renderer {
 
             for material in &mut self.materials {
                 material.destroy(gpu);
+            }
+
+            for terrain in &mut self.terrain_buffers {
+                terrain.destroy(gpu);
             }
 
             if let Some(lens) = &mut self.lens {

@@ -1,5 +1,5 @@
 #[cfg(feature = "client")]
-mod distance;
+mod altitude;
 mod duration;
 #[cfg(feature = "client")]
 mod region;
@@ -8,7 +8,7 @@ mod target;
 mod timestamp;
 
 #[cfg(feature = "client")]
-pub use distance::Distance;
+pub use altitude::Altitude;
 pub use duration::Duration;
 #[cfg(feature = "client")]
 pub use region::Region;

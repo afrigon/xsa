@@ -1,5 +1,7 @@
 #[cfg(feature = "client")]
 mod body_category_completer;
+#[cfg(feature = "client")]
+mod body_completer;
 mod command_completion;
 mod completion_candidate;
 mod completion_kind;
@@ -11,6 +13,8 @@ mod target_completer;
 
 #[cfg(feature = "client")]
 pub(crate) use body_category_completer::complete_body_category;
+#[cfg(feature = "client")]
+pub(crate) use body_completer::complete_body;
 pub use command_completion::CommandCompletion;
 pub use completion_candidate::CompletionCandidate;
 pub use completion_kind::CompletionKind;

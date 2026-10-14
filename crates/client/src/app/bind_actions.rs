@@ -21,6 +21,9 @@ impl App {
                 overlay: Overlay::DebugOverlay,
             }
             .start(self),
+            BindAction::TimeFaster => return self.commands.faster_time(),
+            BindAction::TimeSlower => return self.commands.slower_time(),
+            BindAction::TimeRealTime => return self.commands.resume_time(),
         };
 
         self.follow(progress, None);
@@ -30,7 +33,7 @@ impl App {
         CameraTargetCommand {
             target,
             category: None,
-            distance: None,
+            altitude: None,
             pitch: None,
             yaw: None,
         }

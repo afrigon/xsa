@@ -11,8 +11,10 @@ pub(in crate::renderer) struct PushConstants {
     pub object_index: u32,
     pub first_tile: u32,
     pub tiles: vk::DeviceAddress,
+    // Null for a smooth body.
+    pub terrain: vk::DeviceAddress,
 }
 
-const _: () = assert!(size_of::<PushConstants>() == 40);
+const _: () = assert!(size_of::<PushConstants>() == 48);
 
 unsafe impl GpuData for PushConstants {}

@@ -1,12 +1,6 @@
 import common.hapke;
 import common.scene;
 
-[[vk::binding(2, 0)]]
-SamplerState wrappingSampler;
-
-[[vk::binding(3, 0)]]
-Texture2D textures[];
-
 struct HapkeData {
     uint mediumTexture;
     uint oppositionTexture;

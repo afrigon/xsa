@@ -77,12 +77,16 @@ impl BindlessTextures {
                 .binding(WRAPPING_SAMPLER_BINDING)
                 .descriptor_type(vk::DescriptorType::SAMPLER)
                 .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE),
+                .stage_flags(
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
+                ),
             vk::DescriptorSetLayoutBinding::default()
                 .binding(TEXTURES_BINDING)
                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                 .descriptor_count(MAX_TEXTURES)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE),
+                .stage_flags(
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
+                ),
             vk::DescriptorSetLayoutBinding::default()
                 .binding(STORAGE_IMAGES_BINDING)
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)

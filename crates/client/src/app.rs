@@ -6,7 +6,7 @@ mod client_world;
 mod command_handlers;
 mod command_progress;
 mod command_task;
-mod frame_rate;
+mod frame_timing;
 mod immediate_command_handler;
 mod pointer_input;
 mod running_task;
@@ -45,12 +45,12 @@ use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
-use crate::ui::{DebugOverlayView, GameCommands, TargetNameKey, ViewControllerFactory};
+use crate::ui::{ClockReading, DebugOverlayView, GameCommands, InputDisabledView, ViewControllerFactory};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
 use command_progress::CommandProgress;
-use frame_rate::FrameRate;
+use frame_timing::FrameTiming;
 use running_task::RunningTask;
 use task_status::TaskStatus;
 
@@ -78,7 +78,7 @@ pub struct App {
     last_frame: Option<Instant>,
     interface: Interface,
     theme: Option<Rc<Theme>>,
-    frame_rate: FrameRate,
+    frame_timing: FrameTiming,
     navigation: NavigationController,
     view_controllers: ViewControllerFactory,
     commands: GameCommands,
@@ -124,7 +124,7 @@ impl App {
             last_frame: None,
             interface: Interface::new(),
             theme: None,
-            frame_rate: FrameRate::new(),
+            frame_timing: FrameTiming::new(),
             navigation,
             view_controllers,
             commands,
@@ -154,7 +154,11 @@ impl App {
         let now = Instant::now();
         let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
         self.last_frame = Some(now);
-        self.frame_rate.record(delta_seconds);
+        let gpu_milliseconds = self
+            .renderer
+            .as_ref()
+            .and_then(|renderer| renderer.statistics().gpu_milliseconds);
+        self.frame_timing.record(delta_seconds, gpu_milliseconds);
         self.offer_pointer_move();
         self.navigation.advance(delta_seconds as f32);
 
@@ -176,7 +180,11 @@ impl App {
         self.poll_input();
         self.run_game_commands();
         let idle = Input::default();
-        let input = if self.is_game_active() { &self.input } else { &idle };
+        let input = if self.is_game_active() && self.config.input.enabled {
+            &self.input
+        } else {
+            &idle
+        };
 
         if let Some(world) = &mut self.world {
             if let Some(state) = self.session.state() {
@@ -238,7 +246,7 @@ impl App {
             self.run_bind_action(action);
         }
 
-        if !self.is_game_active() {
+        if !self.is_game_active() || !self.config.input.enabled {
             if self.mouse_captured {
                 self.set_mouse_captured(false);
             }
@@ -333,27 +341,34 @@ impl App {
             width: window_size.width as f32,
             height: window_size.height as f32,
         };
-        let target = self
+        let fill = Some(f32::INFINITY);
+        let surface = self
             .world
             .as_ref()
-            .zip(self.cameras.as_ref().and_then(CameraController::target_body))
-            .map(|(world, body)| world.body(body).id.to_string());
-        let environment = environment.with::<TargetNameKey>(target);
-        let fill = Some(f32::INFINITY);
+            .zip(self.cameras.as_ref())
+            .and_then(|(world, cameras)| {
+                let camera = cameras.camera();
+                cameras
+                    .reference_body(world)
+                    .map(|body| world.surface(body, camera.position, camera.orientation))
+            });
         let debug_overlay = self.overlays.contains(&Overlay::DebugOverlay).then(|| {
             DebugOverlayView {
-                frames_per_second: self.frame_rate.frames_per_second(),
-                triangles: renderer.statistics().triangles,
-                ev100: renderer.statistics().ev100,
-                anchor_ev100: renderer.statistics().anchor_ev100,
-                star_visibility: renderer.statistics().star_visibility,
-                light: renderer.statistics().light,
-                lens_lights: renderer.statistics().lens_lights,
-                gpu_milliseconds: renderer.statistics().gpu_milliseconds,
+                frames_per_second: self.frame_timing.frames_per_second(),
+                gpu_milliseconds: self.frame_timing.gpu_milliseconds(),
+                statistics: renderer.statistics(),
+                camera: self.cameras.as_ref().map(CameraController::reading),
+                surface,
+                clock: self.session.state().map(|state| ClockReading {
+                    time: state.time(),
+                    rate: state.rate(),
+                }),
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
         });
-        let root = ZStack::new((self.navigation.view(), debug_overlay));
+        let input_disabled =
+            (!self.config.input.enabled).then(|| InputDisabledView.max_frame(fill, fill, Alignment::TOP));
+        let root = ZStack::new((self.navigation.view(), debug_overlay, input_disabled));
         let draw_list = self.interface.render(&root, viewport, &environment)?;
         renderer.set_user_interface(draw_list);
 
@@ -483,6 +498,7 @@ impl CommandExecutor for App {
         let progress = match command {
             ClientCommand::CameraMode(command) => command.start(self),
             ClientCommand::CameraTarget(command) => command.start(self),
+            ClientCommand::CameraTeleport(command) => command.start(self),
             ClientCommand::CameraLookAt(command) => command.start(self),
             ClientCommand::CameraSnap(command) => command.start(self),
             ClientCommand::ConfigGet(command) => command.start(self),

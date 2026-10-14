@@ -18,6 +18,9 @@ impl BindDocument {
             BindAction::CameraTargetPrevious => "bind.camera.target-previous",
             BindAction::InterfacePauseMenu => "bind.interface.pause-menu",
             BindAction::InterfaceDebugOverlay => "bind.interface.debug-overlay",
+            BindAction::TimeFaster => "bind.time.faster",
+            BindAction::TimeSlower => "bind.time.slower",
+            BindAction::TimeRealTime => "bind.time.real-time",
         };
 
         ConfigKey::saved(path, ConfigValueKind::KeyChord)

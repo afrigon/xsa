@@ -1,8 +1,10 @@
+use std::f64::consts::FRAC_PI_2;
+
 use anyhow::{Context, bail, ensure};
-use glam::DVec3;
+use glam::{DMat3, DQuat, DVec3};
 use winit::dpi::PhysicalSize;
 use winit::event::MouseButton;
-use xsa_commands::command::CameraTargetCommand;
+use xsa_commands::command::{CameraTargetCommand, CameraTeleportCommand};
 use xsa_commands::value::Target;
 use xsa_core::simulation::BodyIndex;
 
@@ -10,19 +12,32 @@ use super::body_step::BodyStep;
 use super::client_world::ClientWorld;
 use crate::camera::debug::DebugCamera;
 use crate::camera::orbit::{OrbitCamera, OrbitTarget};
-use crate::camera::{Camera, CameraMode};
+use crate::camera::{Attitude, Camera, CameraMode};
 use crate::input::Input;
+use crate::ui::CameraReading;
 
 const HORIZONTAL_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
 const DEBUG_CAMERA_SPEED: f64 = 2_000_000.0;
 const METERS_PER_KILOMETER: f64 = 1_000.0;
+const FULL_TURN_DEGREES: f64 = 360.0;
+// Replies give angles to a thousandth of a degree.
+const ANGLE_PRECISION: f64 = 1000.0;
 
 pub(super) struct CameraController {
     camera: Camera,
     mode: CameraMode,
     orbit: Option<OrbitCamera>,
     debug: DebugCamera,
+    // The body the debug camera rides on, as it stood on the previous frame.
+    attachment: Option<Attachment>,
     animation_duration_scale: f64,
+}
+
+#[derive(Clone, Copy)]
+struct Attachment {
+    body: BodyIndex,
+    position: DVec3,
+    orientation: DQuat,
 }
 
 impl CameraController {
@@ -35,6 +50,7 @@ impl CameraController {
             mode: CameraMode::Orbit,
             orbit: None,
             debug: DebugCamera::new(DEBUG_CAMERA_SPEED),
+            attachment: None,
             animation_duration_scale: 1.0,
         }
     }
@@ -53,6 +69,22 @@ impl CameraController {
 
     pub fn target_body(&self) -> Option<BodyIndex> {
         self.orbit.as_ref().map(OrbitCamera::target)
+    }
+
+    // The body the camera is around: the orbited one, or the one the debug camera rides on.
+    pub fn reference_body(&self, world: &ClientWorld) -> Option<BodyIndex> {
+        match self.mode {
+            CameraMode::Orbit => self.target_body(),
+            CameraMode::Debug => world.nearest_body(self.camera.position),
+        }
+    }
+
+    pub fn reading(&self) -> CameraReading {
+        CameraReading {
+            mode: self.mode,
+            speed: (self.mode == CameraMode::Debug).then(|| self.debug.speed()),
+            attitude: Attitude::of(self.camera.orientation, DVec3::Z, DVec3::Y),
+        }
     }
 
     pub fn focus(&mut self, world: &ClientWorld) {
@@ -76,10 +108,9 @@ impl CameraController {
             return false;
         }
 
-        if mode == CameraMode::Debug
-            && let Some(orbit) = &self.orbit
-        {
-            self.debug.look_along(orbit.yaw(), orbit.pitch());
+        if mode == CameraMode::Debug {
+            self.debug.face(self.camera.orientation);
+            self.attachment = None;
         }
 
         self.mode = mode;
@@ -108,11 +139,14 @@ impl CameraController {
                     orbit.update(&mut self.camera, input, target, delta_seconds);
                 }
             }
-            CameraMode::Debug => self.debug.update(&mut self.camera, input, delta_seconds),
+            CameraMode::Debug => {
+                self.ride_nearest_body(world);
+                let up = world.nearest_body(self.camera.position).map_or(DVec3::Z, |body| {
+                    (self.camera.position - world.body_state(body).position).normalize()
+                });
+                self.debug.update(&mut self.camera, input, up, delta_seconds);
+            }
         }
-
-        let nearest_surface_distance = world.nearest_surface_distance(self.camera.position);
-        self.camera.fit_near_plane(nearest_surface_distance);
     }
 
     pub fn target(&mut self, command: &CameraTargetCommand, world: &ClientWorld) -> anyhow::Result<String> {
@@ -139,10 +173,6 @@ impl CameraController {
             orbit.set_target(target, world.body_state(target).position, body.radius);
         }
 
-        if let Some(distance) = command.distance {
-            orbit.set_distance(distance.meters);
-        }
-
         if let Some(pitch) = command.pitch {
             orbit.set_pitch(pitch.to_radians());
         }
@@ -151,13 +181,115 @@ impl CameraController {
             orbit.set_yaw(yaw.to_radians());
         }
 
+        let mut note = String::new();
+        let state = world.body_state(target);
+        let direction = (state.orientation.inverse() * -orbit.view_direction()).normalize();
+
+        if let Some(altitude) = command.altitude {
+            let distance = world
+                .eye_position(target, direction, altitude.meters)
+                .distance(state.position);
+            let closest = OrbitCamera::closest_distance(body.radius, &self.camera);
+            orbit.set_distance(distance.max(closest));
+
+            if distance < closest {
+                note = format!(
+                    " (the orbit keeps all of {} in view, so it stops there; `camera tp` reaches the ground)",
+                    body.id
+                );
+            }
+        }
+
+        let standing = world.eye_position(target, direction, 0.0).distance(state.position);
+
         Ok(format!(
-            "target: {}, distance {:.0} km, pitch {:.1}°, yaw {:.1}°",
+            "target: {}, altitude {:.1} km, pitch {:.1}°, yaw {:.1}°{note}",
             body.id,
-            orbit.distance() / METERS_PER_KILOMETER,
+            (orbit.distance() - standing) / METERS_PER_KILOMETER,
             orbit.pitch().to_degrees(),
             orbit.yaw().to_degrees()
         ))
+    }
+
+    // Stands the debug camera's feet `--altitude` above the ground; yaw is a compass heading, pitch above the horizon.
+    // Every value left out keeps the camera's current one over the body, `around` by default.
+    pub fn teleport(
+        &mut self,
+        command: &CameraTeleportCommand,
+        around: Option<BodyIndex>,
+        world: &ClientWorld,
+    ) -> anyhow::Result<String> {
+        let index = match &command.body {
+            Some(body) => world.find_body(body)?,
+            None => around.context("the camera is around no body; name one")?,
+        };
+        let current = world.surface(index, self.camera.position, self.camera.orientation);
+        let latitude = command.latitude.map_or(current.latitude, f64::to_radians);
+        ensure!(
+            latitude.abs() <= FRAC_PI_2,
+            "a latitude lies between -90 and 90 degrees, not {}",
+            latitude.to_degrees()
+        );
+
+        let longitude = command.longitude.map_or(current.longitude, f64::to_radians);
+        let altitude = command.altitude.map_or_else(
+            || current.above_ground.unwrap_or(current.above_sea),
+            |altitude| altitude.meters,
+        );
+        // The overlay's yaw is counterclockwise; `--yaw` is a compass heading.
+        let yaw = command.yaw.map_or(-current.attitude.yaw, f64::to_radians);
+        let pitch = command.pitch.map_or(current.attitude.pitch, f64::to_radians);
+
+        let state = world.body_state(index);
+        let direction = DVec3::new(
+            latitude.cos() * longitude.cos(),
+            latitude.cos() * longitude.sin(),
+            latitude.sin(),
+        );
+        self.camera.position = world.eye_position(index, direction, altitude);
+        self.attachment = Some(Attachment {
+            body: index,
+            position: state.position,
+            orientation: state.orientation,
+        });
+
+        let up = state.orientation * direction;
+        let north = world.local_north(index, latitude, longitude);
+        let east = north.cross(up);
+        let horizon = DQuat::from_mat3(&DMat3::from_cols(east, north, up));
+        self.debug
+            .face(horizon * DQuat::from_rotation_z(-yaw) * DQuat::from_rotation_x(pitch));
+
+        Ok(format!(
+            "standing on {} at {:.3}, {:.3}, feet {altitude:.1} m above the ground, yaw {:.3}, pitch {:.3}",
+            world.body(index).id,
+            latitude.to_degrees(),
+            longitude.to_degrees(),
+            ((yaw.to_degrees() * ANGLE_PRECISION).round() / ANGLE_PRECISION).rem_euclid(FULL_TURN_DEGREES) + 0.0,
+            pitch.to_degrees()
+        ))
+    }
+
+    // Carries the camera along with the nearest body's motion and spin since the previous frame, so it hovers over
+    // the same ground whatever the simulation's speed.
+    fn ride_nearest_body(&mut self, world: &ClientWorld) {
+        let Some(index) = world.nearest_body(self.camera.position) else {
+            self.attachment = None;
+            return;
+        };
+        let state = world.body_state(index);
+
+        if let Some(attachment) = self.attachment.filter(|attachment| attachment.body == index) {
+            let rotation = state.orientation * attachment.orientation.inverse();
+            self.camera.position = state.position + rotation * (self.camera.position - attachment.position);
+            self.debug.carry(rotation);
+        }
+
+        self.attachment = Some(Attachment {
+            body: index,
+            position: state.position,
+            orientation: state.orientation,
+        });
     }
 
     pub fn look_at(&mut self, target: &Target, world: &ClientWorld) -> anyhow::Result<String> {
@@ -173,8 +305,7 @@ impl CameraController {
         let direction = (world.body_state(body).position - self.camera.position).normalize_or_zero();
         ensure!(direction != DVec3::ZERO, "the camera is at the center of {id}");
 
-        self.debug
-            .look_along((-direction.x).atan2(direction.y), direction.z.asin());
+        self.debug.look_along(direction);
 
         Ok(format!("looking at {id}"))
     }

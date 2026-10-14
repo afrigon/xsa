@@ -128,8 +128,10 @@ enables only the kinds it reads.
   barriers.
 - **Bindless:** push constants carry buffer device addresses for the frame,
   object and material buffers; textures go through one bindless descriptor set.
-- **Reverse-Z infinite depth.** Clear to 0, test `GREATER`. The near plane
-  follows the nearest body surface: depth below ~1e-8 fails the test.
+- **Reverse-Z infinite depth.** Clear to 0, test `GREATER`, `D32_SFLOAT`.
+  Depth is `near / distance`, and a float keeps the same relative precision at
+  every magnitude, so one fixed near plane (0.1 m) serves 1 m to
+  interplanetary distances.
 - **Target architecture:** clustered forward (Forward+) with a depth prepass,
   HDR targets and tonemapping. Volumetrics (atmosphere via Hillaire's LUTs,
   clouds, plumes, explosions) are ray-marched passes reading depth, cleaned up
@@ -172,7 +174,7 @@ enables only the kinds it reads.
 
 ## Commands
 
-- Durations take `s`, `min`, `h` or `t` (ticks); distances take `m`, `km`,
+- Durations take `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
   `Mm` or `Gm` (case-sensitive), a bare number is km; angles are degrees.
 - Client commands may span frames: a handler returns `CommandProgress::Done`
   or a `CommandTask` that `App` polls once per frame after drawing, replying
@@ -185,6 +187,12 @@ enables only the kinds it reads.
   `--output` it goes to `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. It
   does not wait for animations: set `animations.duration-scale 0` first so
   camera transitions, eye adaptation and interface transitions finish at once.
+- Agents always send `mise run ipc --instance agent-<workspace> config set
+  input.enabled false` before testing in the game, so mouse and keyboard input
+  on its window cannot move the camera mid-test, and always send
+  `mise run ipc --instance agent-<workspace> config set input.enabled true`
+  once the test is done. The session key stops camera input and mouse capture (key binds still
+  work), and a red "input disabled" label shows while it is off.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
@@ -253,6 +261,9 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
 | Tab / Shift+Tab | `camera.target-next` / `target-previous` | Next / previous target |
 | Escape | `interface.pause-menu` | Open the pause menu, in game only |
 | F3 | `interface.debug-overlay` | Show or hide the debug overlay (FPS, triangles) |
+| . | `time.faster` | Double the time rate (`time faster`) |
+| , | `time.slower` | Halve the time rate, pausing below real time (`time slower`) |
+| / | `time.real-time` | Run time at real speed (`time resume`) |
 
 ## Gotchas
 

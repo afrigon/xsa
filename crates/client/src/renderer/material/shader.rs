@@ -31,5 +31,6 @@ shaders! {
     Lighting => "lighting",
     Motion => "motion",
     Lod => "lod",
+    Scale => "scale",
     Skybox => "skybox",
 }

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use winit::keyboard::KeyCode;
 
 use super::{
-    AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, KeyChord,
-    LensConfig, RenderConfig, TerrainLodConfig, WhiteBalanceConfig,
+    AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, InputConfig,
+    KeyChord, LensConfig, RenderConfig, TerrainLodConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::{ShadingModel, Tonemapper};
@@ -12,8 +12,9 @@ use crate::renderer::{ShadingModel, Tonemapper};
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
 const BLOOM_STRENGTH: f32 = 0.02;
 const ANIMATION_DURATION_SCALE: f32 = 1.0;
+const INPUT_ENABLED: bool = true;
 // A starting point to tune from, not a measured optimum.
-const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 8.0;
+const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
 
 struct DefaultBind {
     action: BindAction,
@@ -32,7 +33,7 @@ impl DefaultBind {
     }
 }
 
-const DEFAULT_BINDS: [DefaultBind; 4] = [
+const DEFAULT_BINDS: [DefaultBind; 7] = [
     DefaultBind {
         action: BindAction::CameraTargetNext,
         chord: KeyChord::key(KeyCode::Tab),
@@ -48,6 +49,18 @@ const DEFAULT_BINDS: [DefaultBind; 4] = [
     DefaultBind {
         action: BindAction::InterfaceDebugOverlay,
         chord: KeyChord::key(KeyCode::F3),
+    },
+    DefaultBind {
+        action: BindAction::TimeFaster,
+        chord: KeyChord::key(KeyCode::Period),
+    },
+    DefaultBind {
+        action: BindAction::TimeSlower,
+        chord: KeyChord::key(KeyCode::Comma),
+    },
+    DefaultBind {
+        action: BindAction::TimeRealTime,
+        chord: KeyChord::key(KeyCode::Slash),
     },
 ];
 
@@ -80,6 +93,7 @@ impl Default for Config {
             animations: AnimationConfig {
                 duration_scale: ANIMATION_DURATION_SCALE,
             },
+            input: InputConfig { enabled: INPUT_ENABLED },
         }
     }
 }

@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{IVec2, Vec2, Vec3};
 
 use super::GpuData;
 
@@ -16,8 +16,11 @@ pub(in crate::renderer) struct TileData {
     pub morph_end: f32,
     pub vertical_axis: Vec3,
     pub padding: u32,
+    // The center's position on the height map's top level, split so the fraction keeps full precision.
+    pub center_texel: IVec2,
+    pub center_texel_fraction: Vec2,
 }
 
-const _: () = assert!(size_of::<TileData>() == 80);
+const _: () = assert!(size_of::<TileData>() == 96);
 
 unsafe impl GpuData for TileData {}

@@ -17,7 +17,7 @@ mod ui;
 #[cfg(feature = "client")]
 pub use camera::{
     CameraAction, CameraCommand, CameraLookAtCommand, CameraMode, CameraModeCommand, CameraSnapCommand,
-    CameraTargetCommand,
+    CameraTargetCommand, CameraTeleportCommand,
 };
 #[cfg(feature = "client")]
 pub use client_command::ClientCommand;
@@ -33,7 +33,8 @@ pub use route::Route;
 pub use server_command::ServerCommand;
 pub use session_command::SessionCommand;
 pub use time::{
-    TimeAction, TimeCommand, TimePauseCommand, TimeRateCommand, TimeResumeCommand, TimeSetCommand, TimeStepCommand,
+    TimeAction, TimeCommand, TimeFasterCommand, TimePauseCommand, TimeRateCommand, TimeResumeCommand, TimeSetCommand,
+    TimeSlowerCommand, TimeStepCommand,
 };
 #[cfg(feature = "client")]
 pub use ui::{

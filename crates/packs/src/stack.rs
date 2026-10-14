@@ -70,6 +70,10 @@ impl PackStack {
         self.find(DATA_DIRECTORY, kind, id, DOCUMENT_EXTENSION)
     }
 
+    pub fn data_file(&self, kind: &str, id: &Id, extension: &str) -> anyhow::Result<&Path> {
+        self.find(DATA_DIRECTORY, kind, id, extension)
+    }
+
     pub fn resource(&self, kind: &str, id: &Id, extension: &str) -> anyhow::Result<&Path> {
         self.find(RESOURCES_DIRECTORY, kind, id, extension)
     }

@@ -1,14 +1,18 @@
+mod faster;
 mod pause;
 mod rate;
 mod resume;
 mod set;
+mod slower;
 mod step;
 mod time_action;
 
+pub use faster::TimeFasterCommand;
 pub use pause::TimePauseCommand;
 pub use rate::TimeRateCommand;
 pub use resume::TimeResumeCommand;
 pub use set::TimeSetCommand;
+pub use slower::TimeSlowerCommand;
 pub use step::TimeStepCommand;
 pub use time_action::TimeAction;
 

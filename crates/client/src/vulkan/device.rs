@@ -41,6 +41,7 @@ impl Device {
             .fill_mode_non_solid(true)
             .geometry_shader(true)
             .sampler_anisotropy(true)
+            .shader_int64(true)
             .shader_storage_image_extended_formats(true);
         let mut vulkan_11_features = vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
         let mut vulkan_12_features = vk::PhysicalDeviceVulkan12Features::default()

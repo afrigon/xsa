@@ -4,7 +4,7 @@ use crate::command::{ClientCommand, Routable, Route};
 use xsa_core::simulation::BodyCategory;
 
 use crate::completion::{complete_body_category, complete_target};
-use crate::value::{Distance, Target};
+use crate::value::{Altitude, Target};
 
 #[derive(Args)]
 pub struct CameraTargetCommand {
@@ -17,9 +17,10 @@ pub struct CameraTargetCommand {
     pub category: Option<BodyCategory>,
     #[usage(
         long,
-        help = "Distance from the body's center, e.g. 200km (m, km, Mm, Gm; a bare number is km)"
+        allow_negative_numbers,
+        help = "Feet above the ground below the camera, e.g. 100m (m, km, Mm, Gm; a bare number is km)"
     )]
-    pub distance: Option<Distance>,
+    pub altitude: Option<Altitude>,
     #[usage(long, allow_negative_numbers, help = "Pitch in degrees; positive looks up")]
     pub pitch: Option<f64>,
     #[usage(long, allow_negative_numbers, help = "Yaw in degrees around the ecliptic north pole")]
