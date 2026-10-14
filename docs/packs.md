@@ -228,8 +228,8 @@ terrain with `terrain "<id>"`.
 
 ```kdl
 height-map "luna"
-minimum -9099
-maximum 10747
+minimum -9041
+maximum 10752
 ```
 
 - **`height-map`:** the height map, relative to `data/terrains/` like every
@@ -238,8 +238,11 @@ maximum 10747
 - **`minimum`, `maximum`** (m): the heights the map's values span, relative to
   the body's `radius`, signed.
 
-The height map is a KTX2 file, `R16_UNORM` and uncompressed, equirectangular
-like every surface texture (see Materials). A value `v` is the height
+The height map is a KTX2 cube map, `R16_UNORM` and uncompressed: six square
+faces in Vulkan's face order and orientation, +X, −X, +Y, −Y, +Z, −Z of the
+body's frame (+X at longitude 0, +Z the north pole). It is sampled by
+direction, so neighbouring faces blend across their edges and no face
+stretches toward the poles. A value `v` is the height
 `minimum + v / 65535 × (maximum − minimum)`. It carries its full mip chain,
 each level the average of the one above, so the game only reads and uploads
 it. The server and every client read the same file, so the terrain has one

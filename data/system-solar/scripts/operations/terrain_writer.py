@@ -1,7 +1,7 @@
 import math
 from pathlib import Path
 
-from operations.raster import Raster
+from operations.cube_map import CubeMap
 from operations.texture_writer import TextureWriter
 
 
@@ -11,10 +11,10 @@ class TerrainWriter:
 
     # A body's height map in meters relative to its radius, and the file describing it; the range is the map's own,
     # rounded outward to whole meters.
-    def write(self, body: str, heights: Raster) -> Path:
-        minimum = math.floor(float(heights.pixels.min()))
-        maximum = math.ceil(float(heights.pixels.max()))
-        TextureWriter.height(minimum, maximum).write(self.terrains / f"{body}.ktx2", [heights])
+    def write(self, body: str, heights: CubeMap) -> Path:
+        minimum = math.floor(min(float(face.pixels.min()) for face in heights.faces))
+        maximum = math.ceil(max(float(face.pixels.max()) for face in heights.faces))
+        TextureWriter.height(minimum, maximum).write(self.terrains / f"{body}.ktx2", heights.faces)
         path = self.terrains / f"{body}.kdl"
         path.write_text(f'height-map "{body}"\nminimum {minimum}\nmaximum {maximum}\n')
         return path
