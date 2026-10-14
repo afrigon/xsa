@@ -1,7 +1,7 @@
 use usage::Args;
 use xsa_proto::message::{ClientMessage, SetTimeRate};
 use xsa_proto::session::SessionState;
-use xsa_units::TimeRate;
+use xsa_units::{TimeRate, TimeRateChange};
 
 use super::TimeCommand;
 use crate::command::{Routable, Route, ServerCommand};
@@ -19,7 +19,7 @@ impl Routable for TimeResumeCommand {
 impl ServerCommand for TimeResumeCommand {
     fn message(&self) -> ClientMessage {
         ClientMessage::SetTimeRate(SetTimeRate {
-            rate: TimeRate::REAL_TIME,
+            change: TimeRateChange::To(TimeRate::REAL_TIME),
         })
     }
 

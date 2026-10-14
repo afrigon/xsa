@@ -20,5 +20,8 @@ struct FrameData {
     uint tonemapper;
     float starlightIlluminance;
     uint shadingModel;
+    // The angle one vertex spacing of terrain covers on screen.
+    float vertexSpacingAngle;
+    uint padding[3];
     float4 whiteBalance[3];
 };

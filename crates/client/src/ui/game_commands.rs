@@ -1,9 +1,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use xsa_commands::command::{Command, ExitCommand, TimeAction, TimeCommand, TimePauseCommand, TimeResumeCommand};
+use xsa_commands::command::{
+    Command, ExitCommand, TimeAction, TimeCommand, TimeFasterCommand, TimePauseCommand, TimeResumeCommand,
+    TimeSlowerCommand,
+};
 
-// What view controllers ask of the game beyond navigation: each method queues a typed command, which the game runs
+// What view controllers and binds ask of the game beyond navigation: each method queues a typed command, which the game runs
 // like any other command once per frame.
 #[derive(Clone, Default)]
 pub struct GameCommands {
@@ -17,6 +20,14 @@ impl GameCommands {
 
     pub fn resume_time(&self) {
         self.time(TimeAction::Resume(TimeResumeCommand {}));
+    }
+
+    pub fn faster_time(&self) {
+        self.time(TimeAction::Faster(TimeFasterCommand {}));
+    }
+
+    pub fn slower_time(&self) {
+        self.time(TimeAction::Slower(TimeSlowerCommand {}));
     }
 
     pub fn exit(&self) {

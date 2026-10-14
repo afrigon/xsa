@@ -8,6 +8,7 @@ mod config_key;
 mod config_layer;
 mod config_value_kind;
 mod config_values;
+mod input_document;
 mod key_chord_name;
 mod lens_document;
 mod number_range;
@@ -33,6 +34,7 @@ use animation_document::AnimationDocument;
 use bind_document::BindDocument;
 use config_layer::ConfigLayer;
 use config_values::ConfigValues;
+use input_document::InputDocument;
 
 use std::env;
 use std::fs;
@@ -72,6 +74,7 @@ impl ConfigDocument {
         RenderDocument::write(&config.render, &mut defaults);
         BindDocument::write(&config.bind, &mut defaults);
         AnimationDocument::write(&config.animations, &mut defaults);
+        InputDocument::write(&config.input, &mut defaults);
         let mut document = ConfigDocument {
             path,
             session: ConfigLayer::default(),
@@ -123,6 +126,7 @@ impl ConfigDocument {
             render: RenderDocument::read(&values).into_config(&defaults.render),
             bind: BindDocument::read(&values).into_config(&defaults.bind),
             animations: AnimationDocument::read(&values).into_config(&defaults.animations),
+            input: InputDocument::read(&values).into_config(&defaults.input),
         }
     }
 

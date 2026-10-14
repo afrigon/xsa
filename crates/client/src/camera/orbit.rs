@@ -72,6 +72,20 @@ impl OrbitCamera {
         self.distance
     }
 
+    // From the camera towards the target.
+    pub fn view_direction(&self) -> DVec3 {
+        self.orientation() * DVec3::Y
+    }
+
+    // The orbit keeps the whole target in view, so it never comes closer than this.
+    pub fn closest_distance(target_radius: f64, camera: &Camera) -> f64 {
+        target_radius * FRAMING_MARGIN / f64::from(camera.narrowest_half_fov()).sin()
+    }
+
+    fn orientation(&self) -> DQuat {
+        DQuat::from_rotation_z(self.yaw) * DQuat::from_rotation_x(self.pitch)
+    }
+
     pub fn set_distance(&mut self, distance: f64) {
         self.distance = distance.min(MAXIMUM_DISTANCE);
     }
@@ -114,7 +128,7 @@ impl OrbitCamera {
             self.pitch = (self.pitch - mouse_delta.y * MOUSE_SENSITIVITY).clamp(-PITCH_LIMIT, PITCH_LIMIT);
         }
 
-        let minimum_distance = target.radius * FRAMING_MARGIN / f64::from(camera.narrowest_half_fov()).sin();
+        let minimum_distance = OrbitCamera::closest_distance(target.radius, camera);
         self.distance = (self.distance / ZOOM_FACTOR_PER_SCROLL_STEP.powf(input.scroll_steps()))
             .clamp(minimum_distance, MAXIMUM_DISTANCE);
 
@@ -144,7 +158,7 @@ impl OrbitCamera {
             self.transition = None;
         }
 
-        let orientation = DQuat::from_rotation_z(self.yaw) * DQuat::from_rotation_x(self.pitch);
+        let orientation = self.orientation();
         camera.orientation = orientation;
         camera.position = self.current.focus - orientation * DVec3::Y * self.current.distance;
     }

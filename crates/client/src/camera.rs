@@ -1,7 +1,9 @@
+mod attitude;
 mod camera_mode;
 pub mod debug;
 pub mod orbit;
 
+pub use attitude::Attitude;
 pub use camera_mode::CameraMode;
 
 use glam::camera::rh::proj::vulkan;

@@ -11,6 +11,7 @@ impl ConfigChoice for Option<Shader> {
         Some(Shader::Lighting),
         Some(Shader::Motion),
         Some(Shader::Lod),
+        Some(Shader::Scale),
     ];
 
     fn config_name(self) -> &'static str {
@@ -21,6 +22,7 @@ impl ConfigChoice for Option<Shader> {
             Some(Shader::Lighting) => "lighting",
             Some(Shader::Motion) => "motion",
             Some(Shader::Lod) => "lod",
+            Some(Shader::Scale) => "scale",
             _ => "none",
         }
     }

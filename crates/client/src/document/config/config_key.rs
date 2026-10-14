@@ -1,5 +1,5 @@
 use super::{
-    AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, LensDocument,
+    AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, InputDocument, LensDocument,
     RenderDocument, TerrainLodDocument, WhiteBalanceDocument,
 };
 
@@ -25,6 +25,7 @@ impl ConfigKey {
         TerrainLodDocument::VERTEX_SPACING,
         TerrainLodDocument::FREEZE,
         AnimationDocument::DURATION_SCALE,
+        InputDocument::ENABLED,
     ];
 
     pub fn all() -> Vec<ConfigKey> {

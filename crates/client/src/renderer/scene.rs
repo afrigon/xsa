@@ -5,6 +5,7 @@ mod object_handle;
 mod scene_object;
 mod star;
 mod terrain;
+mod terrain_buffer_handle;
 mod terrain_handle;
 mod terrain_height;
 
@@ -15,6 +16,7 @@ pub use object_handle::ObjectHandle;
 pub use scene_object::SceneObject;
 pub use star::Star;
 pub use terrain::Terrain;
+pub use terrain_buffer_handle::TerrainBufferHandle;
 pub use terrain_handle::TerrainHandle;
 pub use terrain_height::TerrainHeight;
 

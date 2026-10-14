@@ -1,10 +1,13 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, bail, ensure};
-use glam::{DVec3, Vec3};
+use glam::{DQuat, DVec3, Vec3};
+use resource_loader::texture::{TextureFormat, TextureImage};
 use xsa_commands::completion::CompletionCandidate;
 use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
+use xsa_core::terrain::HeightMap;
 use xsa_packs::{
     Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition, TerrainDefinition,
 };
@@ -12,13 +15,17 @@ use xsa_proto::event::WorldState;
 use xsa_units::SimulationTime;
 
 use super::body_step::BodyStep;
+use crate::camera::Attitude;
 use crate::renderer::{
     ColorSpace, EmissiveMaterial, HapkeParameters, LightSource, LitMaterial, MaterialHandle, ObjectHandle,
     PlanetMaterial, Renderer, SceneObject, SkyboxMaterial, Star, Terrain, TerrainHeight,
 };
+use crate::ui::SurfaceReading;
 
 const DEFAULT_NAMESPACE: &str = "base";
 const MAIN_LENS: &str = "main";
+// Altitudes are read at the feet of a standing person, this far below the eyes.
+const EYE_HEIGHT_METERS: f64 = 1.8;
 
 pub(super) struct ClientWorld {
     simulation_id: Id,
@@ -26,7 +33,14 @@ pub(super) struct ClientWorld {
     state: SimulationState,
     illumination: Illumination,
     body_objects: Vec<ObjectHandle>,
+    // One per body; None for a smooth body.
+    height_maps: Vec<Option<Arc<HeightMap>>>,
     skybox: Option<MaterialHandle>,
+}
+
+struct LoadedTerrain {
+    height: TerrainHeight,
+    map: Arc<HeightMap>,
 }
 
 impl ClientWorld {
@@ -59,14 +73,30 @@ impl ClientWorld {
                     .with_context(|| format!("loading the material of {}", body.id))
             })
             .collect::<anyhow::Result<Vec<MaterialHandle>>>()?;
-        let heights = simulation
+        let terrains = simulation
             .bodies()
             .iter()
             .map(|body| {
-                ClientWorld::load_terrain_height(&stack, &Id::parse(&body.id.value, DEFAULT_NAMESPACE)?, renderer)
+                let id = Id::parse(&body.id.value, DEFAULT_NAMESPACE)?;
+                ClientWorld::load_terrain(&stack, &id, body.radius, renderer)
                     .with_context(|| format!("loading the terrain of {}", body.id))
             })
-            .collect::<anyhow::Result<Vec<Option<TerrainHeight>>>>()?;
+            .collect::<anyhow::Result<Vec<Option<LoadedTerrain>>>>()?;
+        let mut heights = Vec::with_capacity(terrains.len());
+        let mut height_maps = Vec::with_capacity(terrains.len());
+
+        for terrain in terrains {
+            match terrain {
+                Some(terrain) => {
+                    heights.push(Some(terrain.height));
+                    height_maps.push(Some(terrain.map));
+                }
+                None => {
+                    heights.push(None);
+                    height_maps.push(None);
+                }
+            }
+        }
         let mut state = SimulationState::default();
         simulation.state_at(world.time, &mut state);
 
@@ -78,7 +108,7 @@ impl ClientWorld {
             .zip(heights)
             .zip(&state.bodies)
             .map(|(((body, &material), height), body_state)| {
-                let highest_point = body.radius + height.as_ref().map_or(0.0, |height| height.maximum);
+                let highest_point = body.radius + height.as_ref().map_or(0.0, TerrainHeight::maximum);
                 let object = scene.add(SceneObject {
                     position: body_state.position,
                     orientation: body_state.orientation,
@@ -115,6 +145,7 @@ impl ClientWorld {
             state,
             illumination,
             body_objects,
+            height_maps,
             skybox,
         })
     }
@@ -156,6 +187,68 @@ impl ClientWorld {
     pub fn illuminance_at(&self, position: DVec3) -> f64 {
         self.illumination
             .illuminance_at(self.simulation.bodies(), &self.state.bodies, position)
+    }
+
+    // The body whose radius the position is closest to.
+    pub fn nearest_body(&self, position: DVec3) -> Option<BodyIndex> {
+        self.bodies()
+            .iter()
+            .zip(&self.state.bodies)
+            .map(|(body, state)| state.position.distance(position) - body.radius)
+            .enumerate()
+            .min_by(|first, second| first.1.total_cmp(&second.1))
+            .map(|(value, _)| BodyIndex { value })
+    }
+
+    // The camera against `index`: latitude, longitude and altitudes at the feet, EYE_HEIGHT_METERS below the camera,
+    // and its attitude against the local horizon.
+    pub fn surface(&self, index: BodyIndex, position: DVec3, orientation: DQuat) -> SurfaceReading {
+        let body = self.body(index);
+        let state = self.body_state(index);
+        let offset = position - state.position;
+        let direction = (state.orientation.inverse() * offset).normalize();
+        let above_sea = offset.length() - body.radius - EYE_HEIGHT_METERS;
+        let up = offset.normalize();
+        let latitude = direction.z.clamp(-1.0, 1.0).asin();
+        let longitude = direction.y.atan2(direction.x);
+
+        SurfaceReading {
+            body: body.id.to_string(),
+            latitude,
+            longitude,
+            above_ground: self.height_maps[index.value]
+                .as_ref()
+                .map(|map| above_sea - map.height_at(direction)),
+            above_sea,
+            attitude: Attitude::of(orientation, up, self.local_north(index, latitude, longitude)),
+        }
+    }
+
+    // North along the ground at a latitude and longitude, in radians: along their meridian, so at a pole, where every
+    // direction is south, the longitude still picks one.
+    pub fn local_north(&self, index: BodyIndex, latitude: f64, longitude: f64) -> DVec3 {
+        let north = DVec3::new(
+            -latitude.sin() * longitude.cos(),
+            -latitude.sin() * longitude.sin(),
+            latitude.cos(),
+        );
+
+        self.body_state(index).orientation * north
+    }
+
+    // Meters relative to the radius at `direction`, a unit vector in the body's frame; 0 on a smooth body.
+    pub fn ground_height(&self, index: BodyIndex, direction: DVec3) -> f64 {
+        self.height_maps[index.value]
+            .as_ref()
+            .map_or(0.0, |map| map.height_at(direction))
+    }
+
+    // Where the eyes are when the feet stand `altitude` above the ground at `direction`, in the body's frame.
+    pub fn eye_position(&self, index: BodyIndex, direction: DVec3, altitude: f64) -> DVec3 {
+        let state = self.body_state(index);
+        let distance = self.body(index).radius + self.ground_height(index, direction) + altitude + EYE_HEIGHT_METERS;
+
+        state.position + state.orientation * (direction * distance)
     }
 
     pub fn body_candidates(&self) -> Vec<CompletionCandidate> {
@@ -245,23 +338,45 @@ impl ClientWorld {
     }
 
     // A terrain without its height map is drawn smooth, so it needs no height.
-    fn load_terrain_height(
+    fn load_terrain(
         stack: &PackStack,
         body: &Id,
+        radius: f64,
         renderer: &mut Renderer,
-    ) -> anyhow::Result<Option<TerrainHeight>> {
+    ) -> anyhow::Result<Option<LoadedTerrain>> {
         let Some(definition) = TerrainDefinition::load_for_body(stack, body)? else {
             return Ok(None);
         };
-        let Some(height_map) = definition.height_map else {
+        let Some(path) = definition.height_map else {
             return Ok(None);
         };
 
-        Ok(Some(TerrainHeight {
-            texture: renderer.load_texture(&format!("{body} height map"), &height_map, ColorSpace::Linear)?,
-            minimum: definition.minimum_height,
-            maximum: definition.maximum_height,
-        }))
+        let image = TextureImage::read(&path, ColorSpace::Linear)?;
+        ensure!(
+            image.format() == TextureFormat::R16Unorm,
+            "{}: a height map must be R16_UNORM, not {:?}",
+            path.display(),
+            image.format()
+        );
+
+        let width = image.width() as usize;
+        let height = image.height() as usize;
+        let texels = image.layers()[0][..width * height * size_of::<u16>()]
+            .as_chunks::<{ size_of::<u16>() }>()
+            .0
+            .iter()
+            .map(|&bytes| u16::from_le_bytes(bytes))
+            .collect();
+        let map = Arc::new(HeightMap::new(
+            width,
+            height,
+            texels,
+            definition.minimum_height,
+            definition.maximum_height,
+        )?);
+        let height = renderer.add_terrain_height(&format!("{body} terrain"), &image, Arc::clone(&map), radius)?;
+
+        Ok(Some(LoadedTerrain { height, map }))
     }
 
     fn create_material(

@@ -151,7 +151,7 @@ mod tests {
     use xsa_proto::connection::{ClientLink, Connection};
     use xsa_proto::event::{JoinAccepted, Reply, TimeChanged, WorldState};
     use xsa_proto::message::{ClientFrame, ClientMessage, Join, Role, SetTime, SetTimeRate, StepTime};
-    use xsa_units::{SimulationDuration, SimulationTime, TimeRate};
+    use xsa_units::{SimulationDuration, SimulationTime, TimeRate, TimeRateChange};
 
     use super::*;
 
@@ -249,7 +249,12 @@ mod tests {
         let mut receiver = harness.invoke("time rate 100");
         let frame = harness.sent();
         let rate = TimeRate { multiplier: 100.0 };
-        assert_eq!(frame.message, ClientMessage::SetTimeRate(SetTimeRate { rate }));
+        assert_eq!(
+            frame.message,
+            ClientMessage::SetTimeRate(SetTimeRate {
+                change: TimeRateChange::To(rate)
+            })
+        );
         assert!(receiver.try_recv().is_err());
 
         harness.deliver(ServerEvent::TimeChanged(TimeChanged {
@@ -287,12 +292,26 @@ mod tests {
         let cases = [
             Case {
                 line: "time pause",
-                message: ClientMessage::SetTimeRate(SetTimeRate { rate: TimeRate::PAUSED }),
+                message: ClientMessage::SetTimeRate(SetTimeRate {
+                    change: TimeRateChange::To(TimeRate::PAUSED),
+                }),
             },
             Case {
                 line: "time resume",
                 message: ClientMessage::SetTimeRate(SetTimeRate {
-                    rate: TimeRate::REAL_TIME,
+                    change: TimeRateChange::To(TimeRate::REAL_TIME),
+                }),
+            },
+            Case {
+                line: "time faster",
+                message: ClientMessage::SetTimeRate(SetTimeRate {
+                    change: TimeRateChange::Faster,
+                }),
+            },
+            Case {
+                line: "time slower",
+                message: ClientMessage::SetTimeRate(SetTimeRate {
+                    change: TimeRateChange::Slower,
                 }),
             },
             Case {

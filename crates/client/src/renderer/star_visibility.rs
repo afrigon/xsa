@@ -18,7 +18,6 @@ const STARFIELD_EV100: f32 = -6.0;
 
 pub struct StarVisibility {
     visibility: Option<f32>,
-    light: f32,
     last_update: Option<Instant>,
     duration_scale: f32,
 }
@@ -27,7 +26,6 @@ impl StarVisibility {
     pub fn new() -> StarVisibility {
         StarVisibility {
             visibility: None,
-            light: 0.0,
             last_update: None,
             duration_scale: 1.0,
         }
@@ -42,8 +40,8 @@ impl StarVisibility {
         let now = Instant::now();
         let elapsed = self.last_update.map(|last| now.duration_since(last).as_secs_f32());
         self.last_update = Some(now);
-        self.light = StarVisibility::average_brightness(histogram);
-        let target = StarVisibility::target_visibility(self.light);
+        let light = StarVisibility::average_brightness(histogram);
+        let target = StarVisibility::target_visibility(light);
         self.visibility = Some(match (self.visibility, elapsed) {
             (Some(current), Some(seconds)) => self.adapt(current, target, seconds),
             _ => target,
@@ -53,11 +51,6 @@ impl StarVisibility {
     // Stars stay hidden until the first frame is measured.
     pub fn visibility(&self) -> f32 {
         self.visibility.unwrap_or(0.0)
-    }
-
-    // The average exposed brightness of the last measured frame.
-    pub fn light(&self) -> f32 {
-        self.light
     }
 
     pub fn starfield_exposure(&self) -> f32 {

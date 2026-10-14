@@ -13,6 +13,7 @@ const MIDDLE_GRAY: f32 = 0.18;
 pub(super) const EXPOSURE_TRANSITION_HALF_LIFE_SECONDS: f32 = 0.5;
 
 pub struct AutoExposure {
+    // The exposure an incident-light meter at the camera calls for.
     anchor_ev100: f32,
     ev100: f32,
     last_update: Option<Instant>,
@@ -31,15 +32,6 @@ impl AutoExposure {
 
     pub fn configure(&mut self, duration_scale: f32) {
         self.duration_scale = duration_scale;
-    }
-
-    pub fn ev100(&self) -> f32 {
-        self.ev100
-    }
-
-    // The exposure an incident-light meter at the camera calls for.
-    pub fn anchor_ev100(&self) -> f32 {
-        self.anchor_ev100
     }
 
     // Starlight at the camera, in lux.
@@ -86,9 +78,9 @@ mod tests {
         let mut exposure = AutoExposure::new(0.0);
         exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT);
         assert!(
-            (exposure.anchor_ev100() - 15.6).abs() < 0.1,
+            (exposure.anchor_ev100 - 15.6).abs() < 0.1,
             "EV100 {}",
-            exposure.anchor_ev100()
+            exposure.anchor_ev100
         );
     }
 

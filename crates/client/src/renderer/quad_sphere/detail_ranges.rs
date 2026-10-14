@@ -13,6 +13,7 @@ const MINIMUM_RANGE_RADII: f64 = 2.0 * SQRT_2;
 // vertices under the target spacing on screen. Every coarser level reaches twice as far.
 pub(in crate::renderer) struct DetailRanges {
     root_distance: f64,
+    vertex_spacing_angle: f64,
 }
 
 impl DetailRanges {
@@ -22,7 +23,13 @@ impl DetailRanges {
 
         Self {
             root_distance: target_distance.max(MINIMUM_RANGE_RADII * radius),
+            vertex_spacing_angle: vertex_spacing_pixels / focal_length_pixels,
         }
+    }
+
+    // The angle the target vertex spacing covers on screen; the shader picks height mip levels from the same angle.
+    pub fn vertex_spacing_angle(&self) -> f64 {
+        self.vertex_spacing_angle
     }
 
     pub fn fine_distance(&self, detail: i32) -> f64 {

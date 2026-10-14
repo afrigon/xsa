@@ -116,7 +116,13 @@ impl ForwardPass {
                     bound = true;
                 }
 
-                frame.push_draw_constants(pipeline, terrain.object.index, terrain.material, draw.first_tile);
+                frame.push_draw_constants(
+                    pipeline,
+                    terrain.object.index,
+                    terrain.material,
+                    draw.first_tile,
+                    terrain.height.as_ref().map(|height| height.buffer),
+                );
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);
                 frame

@@ -1,12 +1,14 @@
 use super::{
-    CameraLookAtCommand, CameraModeCommand, CameraSnapCommand, CameraTargetCommand, ConfigGetCommand,
-    ConfigReloadCommand, ConfigSaveCommand, ConfigSetCommand, ConfigToggleCommand, InterfaceHideCommand,
-    InterfacePopCommand, InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand,
+    CameraLookAtCommand, CameraModeCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand,
+    ConfigGetCommand, ConfigReloadCommand, ConfigSaveCommand, ConfigSetCommand, ConfigToggleCommand,
+    InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand,
+    InterfaceToggleCommand,
 };
 
 pub enum ClientCommand {
     CameraMode(CameraModeCommand),
     CameraTarget(CameraTargetCommand),
+    CameraTeleport(CameraTeleportCommand),
     CameraLookAt(CameraLookAtCommand),
     CameraSnap(CameraSnapCommand),
     ConfigGet(ConfigGetCommand),
