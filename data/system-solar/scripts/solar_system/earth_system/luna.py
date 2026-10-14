@@ -118,6 +118,7 @@ class Luna(Recipe):
         width = context.output_width(Raster.native_width(elevation_path))
         heights = Raster.read(elevation_path, width, CGI_MOON_KIT, scale=METERS_PER_KILOMETER)
         TextureWriter.normal().write(context.texture_path("bodies/luna/normal"), [heights.normals(RADIUS)])
+        context.terrains.write("luna", heights)
 
         hapke = self._hapke(context)
         context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)

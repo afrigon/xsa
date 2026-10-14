@@ -13,6 +13,7 @@ QUALIFIER_LINEAR = 0x10
 QUALIFIER_SIGNED = 0x40
 QUALIFIER_FLOAT = 0x80
 UNSIGNED_BYTE_MAX = 255
+UNSIGNED_SHORT_MAX = 65535
 BLOCK_SAMPLE_MAX = 0xFFFFFFFF
 # A float sample's bounds are the bit patterns of -1.0 and 1.0.
 FLOAT_SAMPLE_LOWER = 0xBF800000
@@ -38,10 +39,10 @@ class FormatDescription:
     block_bytes: int
     samples: tuple[Sample, ...]
 
-    # KTX2's typeSize: the size of the type each channel is stored as, 1 for byte and block-compressed formats.
+    # KTX2's typeSize: the size of the type each channel is stored as, 1 for block-compressed formats.
     @property
     def type_size(self) -> int:
-        return HALF_BITS // 8 if self.samples[0].channel & QUALIFIER_FLOAT else 1
+        return self.samples[0].bit_length // 8 if self.block_size == 1 else 1
 
 
 def _rgba8_samples(transfer: int) -> tuple[Sample, ...]:
@@ -62,6 +63,7 @@ def _rgba16_float_samples() -> tuple[Sample, ...]:
 class TextureFormat(Enum):
     RGBA8_SRGB = FormatDescription(43, MODEL_RGBSDA, TRANSFER_SRGB, 1, 4, _rgba8_samples(TRANSFER_SRGB))
     RGBA16_SFLOAT = FormatDescription(97, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 8, _rgba16_float_samples())
+    R16_UNORM = FormatDescription(70, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 2, (Sample(0, 16, 0, UNSIGNED_SHORT_MAX),))
     BC4_UNORM = FormatDescription(139, MODEL_BC4, TRANSFER_LINEAR, 4, 8, (Sample(0, 64, 0, BLOCK_SAMPLE_MAX),))
     BC5_UNORM = FormatDescription(
         141, MODEL_BC5, TRANSFER_LINEAR, 4, 16, (Sample(0, 64, 0, BLOCK_SAMPLE_MAX), Sample(64, 64, 1, BLOCK_SAMPLE_MAX))

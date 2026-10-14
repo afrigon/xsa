@@ -11,7 +11,7 @@ from pack_credits import PACK_CREDITS
 SCRIPTS = Path(__file__).resolve().parent
 PACK = SCRIPTS.parent
 RECIPE_ROOTS = [SCRIPTS / "skybox.py", SCRIPTS / "solar_system"]
-TIER_WIDTH = 4096
+TIER_WIDTH = 8192
 
 
 def recipes() -> dict[str, Recipe]:

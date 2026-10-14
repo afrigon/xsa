@@ -221,6 +221,30 @@ reads resources. Terrain shape decides where a lander touches down, and
 atmospheric density drives drag and heating, so both are data even when part
 of them is binary.
 
+### Terrains — `<namespace>/data/terrains/`
+
+A body's shape: a height map and the range its values cover. A body names its
+terrain with `terrain "<id>"`.
+
+```kdl
+height-map "luna"
+minimum -9099
+maximum 10747
+```
+
+- **`height-map`:** the height map, relative to `data/terrains/` like every
+  reference is relative to its kind's folder: `luna` is
+  `data/terrains/luna.ktx2`.
+- **`minimum`, `maximum`** (m): the heights the map's values span, relative to
+  the body's `radius`, signed.
+
+The height map is a KTX2 file, `R16_UNORM` and uncompressed, equirectangular
+like every surface texture (see Materials). A value `v` is the height
+`minimum + v / 65535 × (maximum − minimum)`. It carries its full mip chain,
+each level the average of the one above, so the game only reads and uploads
+it. The server and every client read the same file, so the terrain has one
+resolution whatever texture tier a player installs.
+
 ## Resources
 
 ### Objects — `<namespace>/resources/objects/`
