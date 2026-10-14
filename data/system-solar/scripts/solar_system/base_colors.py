@@ -1,0 +1,71 @@
+from operations.build_context import BuildContext
+from operations.credit import Credit
+from operations.recipe import Recipe
+
+# Linear RGB, for the bodies without a recipe of their own.
+BASE_COLORS = {
+    "amalthea": (0.2092, 0.1088, 0.0656),
+    "ariel": (0.5232, 0.5257, 0.5254),
+    "arrokoth": (0.2782, 0.2100, 0.1521),
+    "callisto": (0.1894, 0.1521, 0.1163),
+    "ceres": (0.4994, 0.4723, 0.4144),
+    "charon": (0.4169, 0.4122, 0.4094),
+    "dactyl": (0.2236, 0.2002, 0.1674),
+    "deimos": (0.3116, 0.2678, 0.2094),
+    "dione": (0.4312, 0.4288, 0.4257),
+    "earth": (0.0869, 0.0815, 0.0742),
+    "enceladus": (0.6382, 0.6382, 0.6382),
+    "eros": (0.2770, 0.2444, 0.1946),
+    "europa": (0.3657, 0.3420, 0.2623),
+    "ganymede": (0.2849, 0.2556, 0.2279),
+    "hydra": (0.8339, 0.8228, 0.7998),
+    "hyperion": (0.4682, 0.4400, 0.3710),
+    "iapetus": (0.2874, 0.2829, 0.2756),
+    "ida": (0.2229, 0.2041, 0.1755),
+    "io": (0.4501, 0.3460, 0.2139),
+    "jupiter": (0.3763, 0.3392, 0.3049),
+    "kerberos": (0.5493, 0.5490, 0.5429),
+    "mars": (0.3202, 0.1764, 0.1036),
+    "mercury": (0.3439, 0.3258, 0.3202),
+    "mimas": (0.2017, 0.1986, 0.1953),
+    "miranda": (0.3243, 0.3283, 0.3339),
+    "neptune": (0.3455, 0.4823, 0.5911),
+    "nereid": (0.2381, 0.2395, 0.2397),
+    "nix": (0.3613, 0.3544, 0.3418),
+    "oberon": (0.3148, 0.3042, 0.2942),
+    "pallas": (0.1556, 0.1554, 0.1498),
+    "phobos": (0.2742, 0.2572, 0.2401),
+    "phoebe": (0.0832, 0.0861, 0.0856),
+    "pluto": (0.5391, 0.4796, 0.3969),
+    "proteus": (0.0954, 0.0949, 0.0932),
+    "psyche": (0.1712, 0.1602, 0.1434),
+    "puck": (0.1436, 0.1436, 0.1436),
+    "rhea": (0.3576, 0.3537, 0.3438),
+    "ryugu": (0.0926, 0.0926, 0.0926),
+    "saturn": (0.6780, 0.5459, 0.3767),
+    "styx": (0.6497, 0.6424, 0.6247),
+    "tethys": (0.4465, 0.4465, 0.4440),
+    "thebe": (0.0760, 0.0487, 0.0315),
+    "titania": (0.3462, 0.3366, 0.3260),
+    "titan": (0.3408, 0.2926, 0.2390),
+    "triton": (0.6264, 0.6136, 0.5782),
+    "umbriel": (0.2563, 0.2542, 0.2543),
+    "uranus": (0.3563, 0.5388, 0.5423),
+    "venus": (0.2154, 0.1603, 0.1227),
+    "vesta": (0.2637, 0.2398, 0.1902),
+}
+
+
+class BaseColors(Recipe):
+    name = "base-colors"
+    credits = [
+        Credit(
+            "Material base colors (system-solar/resources/materials/)",
+            "For bodies whose maps these scripts do not generate: colors chosen to match each body's look in Sol by "
+            "RSS-Reborn (https://github.com/RSS-Reborn).",
+        )
+    ]
+
+    def build(self, context: BuildContext) -> None:
+        for body, color in BASE_COLORS.items():
+            context.materials.write_base_color(body, color)

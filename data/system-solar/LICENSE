@@ -39,18 +39,17 @@ Orbits, physical properties and rotation of the bodies are facts, taken from:
 - Sol by RSS-Reborn (https://github.com/RSS-Reborn), for a few values neither
   source provides.
 
-Material base colors (system-solar/resources/materials/)
-
-For bodies whose maps these scripts do not generate: the average color of the
-body's map in Sol by RSS-Reborn (https://github.com/RSS-Reborn), measured by
-scripts/sol_base_colors.py.
-
 Skybox (system-solar/resources/textures/skyboxes/)
 
 Deep Star Maps 2020, NASA/Goddard Space Flight Center Scientific Visualization
 Studio (https://svs.gsfc.nasa.gov/4851). Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2,
 Tycho-2: ESA. Used under the NASA media usage guidelines; the cube map is
 converted from the source EXR.
+
+Material base colors (system-solar/resources/materials/)
+
+For bodies whose maps these scripts do not generate: colors chosen to match each
+body's look in Sol by RSS-Reborn (https://github.com/RSS-Reborn).
 
 Moon textures (system-solar/resources/textures/bodies/luna/)
 
