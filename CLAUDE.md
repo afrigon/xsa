@@ -5,12 +5,17 @@ Agency, written in Rust on Vulkan.
 
 ## Priorities
 
-1. **Accuracy.** Physically correct orbital mechanics and flight.
-2. **Visual quality.** The target is AAA: PBR, atmospheric scattering,
-   volumetric clouds, ray-marched engine plumes and explosions.
-3. **Performance.** Nothing above may cost a smooth frame rate.
-4. **Code quality.** The project is built to grow large: clean architecture,
+1. **Performance and visual quality.** The target is AAA (PBR, atmospheric
+   scattering, volumetric clouds, ray-marched engine plumes and explosions)
+   at a smooth frame rate.
+2. **Code quality.** The project is built to grow large: clean architecture,
    small focused files, modern tech.
+3. **Realism.** Physically based simulation and rendering, weighed against
+   performance and visual quality with common sense: find the sweet spot
+   instead of paying for accuracy nobody can see.
+
+Every decision picks the best option by these priorities. A worse option is
+never preferred because it is easier to implement or already exists.
 
 The roadmap, known deferred work and loose ideas live in the `xsa-roadmap` GitHub
 project (https://github.com/users/afrigon/projects/7): milestones, one issue per
@@ -126,8 +131,6 @@ enables only the kinds it reads.
   through their extensions.
 - **Dynamic rendering and synchronization2** — no `VkRenderPass`, no legacy
   barriers.
-- **Bindless:** push constants carry buffer device addresses for the frame,
-  object and material buffers; textures go through one bindless descriptor set.
 - **Reverse-Z infinite depth.** Clear to 0, test `GREATER`, `D32_SFLOAT`.
   Depth is `near / distance`, and a float keeps the same relative precision at
   every magnitude, so one fixed near plane (0.1 m) serves 1 m to
@@ -136,16 +139,8 @@ enables only the kinds it reads.
   HDR targets and tonemapping. Volumetrics (atmosphere via Hillaire's LUTs,
   clouds, plumes, explosions) are ray-marched passes reading depth, cleaned up
   by temporal anti-aliasing and upscaling.
-- **Render graph:** each pass implements `render_graph::RenderPass` and owns
-  only its pipelines. `declare` states the images and buffers each step uses
-  and how, and returns the handles the pass records with; `record` records draws
-  and dispatches, never barriers. `RenderPasses::add_to` builds every frame's
-  pipeline in code: a disabled feature's pass is simply not added, and passes
-  are wired through the handles earlier passes return. Shaders get texture
-  indices for graph images from the pass (push constants), never from
-  `FrameData`, which only describes the scene.
-- **Few pipelines:** bindless resources and dynamic state over per-material
-  pipelines.
+- **Render graph:** every frame is built with the `render-graph` crate, and
+  every pass goes through it.
 - **Materials are typed:** a `Shader` is a program, a `Material` is a shader
   plus typed parameters in a per-frame GPU buffer.
 - Every rendering feature is explained before it is implemented: what it is,
