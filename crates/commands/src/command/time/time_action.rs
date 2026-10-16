@@ -16,9 +16,9 @@ pub enum TimeAction {
     Pause(TimePauseCommand),
     /// Run time at real speed (time rate 1)
     Resume(TimeResumeCommand),
-    /// Double the time rate
+    /// Step up from a pause through slow motion to real speed, then double the time rate
     Faster(TimeFasterCommand),
-    /// Halve the time rate, pausing below real speed
+    /// Halve the time rate down to real speed, then step down through slow motion to a pause
     Slower(TimeSlowerCommand),
     /// Advance time by a duration: s, min, h, or t for ticks
     Step(TimeStepCommand),

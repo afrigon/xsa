@@ -7,7 +7,7 @@ const STEP_FACTOR: f64 = 2.0;
 #[derive(Encode, Decode, Debug, Clone, Copy, PartialEq)]
 pub enum TimeRateChange {
     To(TimeRate),
-    // Doubles the rate from real time up, steps up through slow motion below it; a paused simulation stays paused.
+    // Steps up from a pause through slow motion to real time, then doubles the rate.
     Faster,
     // Halves the rate down to real time, then steps down through slow motion and pauses.
     Slower,
@@ -23,10 +23,6 @@ impl TimeRateChange {
     }
 
     fn faster(current: TimeRate) -> TimeRate {
-        if current.is_paused() {
-            return TimeRate::PAUSED;
-        }
-
         if current >= TimeRate::REAL_TIME {
             return TimeRate {
                 multiplier: current.multiplier * STEP_FACTOR,
@@ -70,13 +66,13 @@ mod tests {
     }
 
     #[test]
-    fn faster_doubles_and_keeps_a_pause() {
+    fn faster_doubles_from_real_time() {
         assert_eq!(TimeRateChange::Faster.apply(rate(4.0)), rate(8.0));
-        assert_eq!(TimeRateChange::Faster.apply(TimeRate::PAUSED), TimeRate::PAUSED);
     }
 
     #[test]
-    fn faster_steps_up_through_slow_motion_to_real_time() {
+    fn faster_steps_up_from_a_pause_through_slow_motion_to_real_time() {
+        assert_eq!(TimeRateChange::Faster.apply(TimeRate::PAUSED), rate(0.1));
         assert_eq!(TimeRateChange::Faster.apply(rate(0.1)), rate(0.25));
         assert_eq!(TimeRateChange::Faster.apply(rate(0.25)), rate(0.5));
         assert_eq!(TimeRateChange::Faster.apply(rate(0.5)), TimeRate::REAL_TIME);
