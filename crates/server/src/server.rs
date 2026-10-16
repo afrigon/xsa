@@ -313,6 +313,9 @@ mod tests {
             (TimeRateChange::Faster, 4.0),
             (TimeRateChange::Slower, 2.0),
             (TimeRateChange::Slower, 1.0),
+            (TimeRateChange::Slower, 0.5),
+            (TimeRateChange::Slower, 0.25),
+            (TimeRateChange::Slower, 0.1),
             (TimeRateChange::Slower, 0.0),
         ] {
             harness.send(&connection, ClientMessage::SetTimeRate(SetTimeRate { change }));

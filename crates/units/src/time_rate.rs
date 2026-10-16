@@ -12,6 +12,12 @@ pub struct TimeRate {
 impl TimeRate {
     pub const PAUSED: TimeRate = TimeRate { multiplier: 0.0 };
     pub const REAL_TIME: TimeRate = TimeRate { multiplier: 1.0 };
+    // Ordered from fastest to slowest, all below real time.
+    pub const SLOW_MOTION: [TimeRate; 3] = [
+        TimeRate { multiplier: 0.5 },
+        TimeRate { multiplier: 0.25 },
+        TimeRate { multiplier: 0.1 },
+    ];
 
     pub fn is_paused(self) -> bool {
         self.multiplier == 0.0

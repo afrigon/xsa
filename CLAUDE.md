@@ -261,8 +261,8 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
 | Tab / Shift+Tab | `camera.target-next` / `target-previous` | Next / previous target |
 | Escape | `interface.pause-menu` | Open the pause menu, in game only |
 | F3 | `interface.debug-overlay` | Show or hide the debug overlay (FPS, triangles) |
-| . | `time.faster` | Double the time rate (`time faster`) |
-| , | `time.slower` | Halve the time rate, pausing below real time (`time slower`) |
+| . | `time.faster` | Step up through slow motion to real time, then double the time rate (`time faster`) |
+| , | `time.slower` | Halve the time rate down to real time, then step through slow motion (0.5×, 0.25×, 0.1×) and pause (`time slower`) |
 | / | `time.real-time` | Run time at real speed (`time resume`) |
 
 ## Gotchas
