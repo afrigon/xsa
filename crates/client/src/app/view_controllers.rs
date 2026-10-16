@@ -2,7 +2,7 @@ use tokio::sync::oneshot;
 use xsa_commands::command::{Overlay, ViewControllerId};
 
 use super::App;
-use crate::ui::GameViewController;
+use crate::ui::{GameViewController, PauseViewController};
 
 impl App {
     pub(super) fn push_view_controller(&mut self, id: ViewControllerId) {
@@ -36,6 +36,10 @@ impl App {
     // camera gets input and may capture the mouse.
     pub(super) fn is_game_active(&self) -> bool {
         self.navigation.top().is::<GameViewController>() && !self.navigation.is_transitioning()
+    }
+
+    pub(super) fn is_pause_menu_active(&self) -> bool {
+        self.navigation.top().is::<PauseViewController>() && !self.navigation.is_transitioning()
     }
 
     // Runs what view controllers asked of the game this frame, through the router like any other command.

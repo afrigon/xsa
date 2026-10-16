@@ -222,12 +222,12 @@ for any app.
     time) goes through `GameCommands`, which queues typed commands that `App`
     runs through the router, never formatting text.
   - Back is per page, mostly a BACK button performing `dismiss`. Escape
-    pushes the pause menu in game and does nothing elsewhere; F3 toggles the
-    debug overlay, hidden at start. There are no other interface binds;
-    debug toggles are commands.
+    pushes the pause menu in game, pops it in the pause menu and does
+    nothing elsewhere; F3 toggles the debug overlay, hidden at start. There
+    are no other interface binds; debug toggles are commands.
   - The pause menu (RESUME, OPTIONS, MAIN MENU) is an `Overlay` view
-    controller over `game`. It pauses time while it is in the stack when the
-    server is the integrated one; on a remote server time keeps running.
+    controller over `game`. It stops time with a time override while it is
+    in the stack, in singleplayer only; elsewhere time keeps running.
   - The camera gets input, and may capture the mouse, only while `game` is
     the visible top view controller and no transition runs; leaving it
     releases the mouse.

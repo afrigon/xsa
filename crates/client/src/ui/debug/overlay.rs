@@ -84,17 +84,16 @@ impl DebugOverlayView {
         let timestamp = clock.time.to_string();
         let (date, time) = timestamp.split_once('T').unwrap_or((&timestamp, MISSING));
 
-        let mut text = format!(
-            "date: {date}\ntime: {} UTC\nrate: {}",
+        let time_override = clock
+            .time_flow
+            .time_override
+            .map_or_else(String::new, |rate| format!(" (override: {})", Self::rate(rate)));
+
+        format!(
+            "date: {date}\ntime: {} UTC\nrate: {}{time_override}",
             time.trim_end_matches('Z'),
             Self::rate(clock.time_flow.rate)
-        );
-
-        if let Some(time_override) = clock.time_flow.time_override {
-            text.push_str(&format!("\noverride: {}", Self::rate(time_override)));
-        }
-
-        text
+        )
     }
 
     fn rate(rate: TimeRate) -> String {
