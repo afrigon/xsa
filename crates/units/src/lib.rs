@@ -1,11 +1,13 @@
 mod civil_date;
 mod simulation_duration;
 mod simulation_time;
+mod time_flow;
 mod time_rate;
 mod time_rate_change;
 
 pub use simulation_duration::SimulationDuration;
 pub use simulation_time::SimulationTime;
+pub use time_flow::TimeFlow;
 pub use time_rate::TimeRate;
 pub use time_rate_change::TimeRateChange;
 

@@ -1,7 +1,8 @@
 use std::time::Instant;
 
-use xsa_units::{SimulationDuration, SimulationTime, TimeRate};
+use xsa_units::{SimulationDuration, SimulationTime, TimeFlow};
 
+use super::SessionEnvironment;
 use crate::event::{PackReference, Player, ServerEvent, WorldState};
 
 pub struct SessionState {
@@ -9,7 +10,8 @@ pub struct SessionState {
     pub packs: Vec<PackReference>,
     pub players: Vec<Player>,
     time: SimulationTime,
-    rate: TimeRate,
+    time_flow: TimeFlow,
+    environment: SessionEnvironment,
     time_received: Instant,
 }
 
@@ -20,7 +22,8 @@ impl SessionState {
             packs: state.packs.clone(),
             players: state.players.clone(),
             time: state.time,
-            rate: state.rate,
+            time_flow: state.time_flow,
+            environment: state.environment,
             time_received: Instant::now(),
         }
     }
@@ -30,11 +33,15 @@ impl SessionState {
             seconds: self.time_received.elapsed().as_secs_f64(),
         };
 
-        self.time.advanced_by(self.rate.scale(elapsed))
+        self.time.advanced_by(self.time_flow.effective().scale(elapsed))
     }
 
-    pub fn rate(&self) -> TimeRate {
-        self.rate
+    pub fn time_flow(&self) -> TimeFlow {
+        self.time_flow
+    }
+
+    pub fn environment(&self) -> SessionEnvironment {
+        self.environment
     }
 
     pub(super) fn apply(&mut self, event: &ServerEvent) {
@@ -43,7 +50,7 @@ impl SessionState {
             ServerEvent::PlayerLeft(left) => self.players.retain(|player| player.id != left.player),
             ServerEvent::TimeChanged(changed) => {
                 self.set_time(changed.time);
-                self.rate = changed.rate;
+                self.time_flow = changed.time_flow;
             }
             ServerEvent::Tick(tick) => self.set_time(tick.time),
             ServerEvent::JoinAccepted(_) | ServerEvent::JoinDenied(_) | ServerEvent::Reply(_) => {}

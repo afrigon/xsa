@@ -11,6 +11,7 @@ use xsa_commands::ipc::{InstanceKind, IpcEndpoint};
 use xsa_commands::repl::Repl;
 use xsa_proto::connection::Connection;
 use xsa_proto::network::{Identity, Listener};
+use xsa_proto::session::SessionEnvironment;
 
 use crate::server_user::ServerUser;
 use crate::{Server, World};
@@ -41,7 +42,7 @@ impl DedicatedServer {
         let (new_clients, receiver) = unbounded_channel();
         thread::Builder::new()
             .name("simulation".into())
-            .spawn(move || Server::new(world, receiver).run())?;
+            .spawn(move || Server::new(world, receiver, SessionEnvironment::Dedicated).run())?;
 
         let server_user_connection = Connection::local();
         new_clients

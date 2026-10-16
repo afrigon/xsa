@@ -34,7 +34,7 @@ impl TimeCommand {
             return Output::failure("not joined to a simulation yet");
         };
 
-        Output::success(format!("time: {}, {}", state.time(), state.rate()))
+        Output::success(format!("time: {}, {}", state.time(), state.time_flow()))
     }
 }
 

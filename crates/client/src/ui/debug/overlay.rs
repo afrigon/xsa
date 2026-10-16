@@ -1,3 +1,4 @@
+use xsa_units::TimeRate;
 use xui::{Context, EdgeInsets, Text, View};
 
 use super::{CameraReading, ClockReading, SurfaceReading};
@@ -83,13 +84,25 @@ impl DebugOverlayView {
         let timestamp = clock.time.to_string();
         let (date, time) = timestamp.split_once('T').unwrap_or((&timestamp, MISSING));
 
-        let rate = if clock.rate.is_paused() {
+        let mut text = format!(
+            "date: {date}\ntime: {} UTC\nrate: {}",
+            time.trim_end_matches('Z'),
+            Self::rate(clock.time_flow.rate)
+        );
+
+        if let Some(time_override) = clock.time_flow.time_override {
+            text.push_str(&format!("\noverride: {}", Self::rate(time_override)));
+        }
+
+        text
+    }
+
+    fn rate(rate: TimeRate) -> String {
+        if rate.is_paused() {
             "paused".to_string()
         } else {
-            format!("{}×", clock.rate.multiplier)
-        };
-
-        format!("date: {date}\ntime: {} UTC\nrate: {rate}", time.trim_end_matches('Z'))
+            format!("{}×", rate.multiplier)
+        }
     }
 }
 

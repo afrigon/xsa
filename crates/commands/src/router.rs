@@ -151,7 +151,8 @@ mod tests {
     use xsa_proto::connection::{ClientLink, Connection};
     use xsa_proto::event::{JoinAccepted, Reply, TimeChanged, WorldState};
     use xsa_proto::message::{ClientFrame, ClientMessage, Join, Role, SetTime, SetTimeRate, StepTime};
-    use xsa_units::{SimulationDuration, SimulationTime, TimeRate, TimeRateChange};
+    use xsa_proto::session::SessionEnvironment;
+    use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateChange};
 
     use super::*;
 
@@ -202,7 +203,11 @@ mod tests {
                     simulation: "system-solar:sol".to_string(),
                     packs: Vec::new(),
                     time: SimulationTime::J2000,
-                    rate: TimeRate::PAUSED,
+                    time_flow: TimeFlow {
+                        rate: TimeRate::PAUSED,
+                        time_override: None,
+                    },
+                    environment: SessionEnvironment::Singleplayer,
                     players: Vec::new(),
                 },
             }));
@@ -259,7 +264,10 @@ mod tests {
 
         harness.deliver(ServerEvent::TimeChanged(TimeChanged {
             time: SimulationTime::J2000,
-            rate,
+            time_flow: TimeFlow {
+                rate,
+                time_override: None,
+            },
         }));
         harness.deliver(ServerEvent::Reply(Reply {
             id: frame.id,
@@ -357,7 +365,11 @@ mod tests {
                 simulation: "system-solar:sol".to_string(),
                 packs: Vec::new(),
                 time: SimulationTime::J2000,
-                rate: TimeRate::PAUSED,
+                time_flow: TimeFlow {
+                    rate: TimeRate::PAUSED,
+                    time_override: None,
+                },
+                environment: SessionEnvironment::Singleplayer,
                 players: Vec::new(),
             },
         }));

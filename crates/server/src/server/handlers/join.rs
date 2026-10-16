@@ -31,7 +31,7 @@ impl MessageHandler for Join {
         };
         server.clients[client].membership = Some(membership);
 
-        let state = server.world.state(server.players());
+        let state = server.world.state(server.players(), server.environment);
         server.send(client, ServerEvent::JoinAccepted(JoinAccepted { state }));
 
         if let Some(player) = joined_player {

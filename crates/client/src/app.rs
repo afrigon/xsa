@@ -361,7 +361,7 @@ impl App {
                 surface,
                 clock: self.session.state().map(|state| ClockReading {
                     time: state.time(),
-                    rate: state.rate(),
+                    time_flow: state.time_flow(),
                 }),
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)

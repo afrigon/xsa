@@ -1,6 +1,6 @@
-use xsa_units::{SimulationTime, TimeRate};
+use xsa_units::{SimulationTime, TimeFlow};
 
 pub struct ClockReading {
     pub time: SimulationTime,
-    pub rate: TimeRate,
+    pub time_flow: TimeFlow,
 }
