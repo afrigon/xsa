@@ -1,5 +1,9 @@
+mod session_environment;
+mod session_environments;
 mod session_state;
 
+pub use session_environment::SessionEnvironment;
+pub use session_environments::SessionEnvironments;
 pub use session_state::SessionState;
 
 use crate::connection::Connection;

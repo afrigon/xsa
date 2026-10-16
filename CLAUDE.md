@@ -171,6 +171,8 @@ enables only the kinds it reads.
 
 - Durations take `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
   `Mm` or `Gm` (case-sensitive), a bare number is km; angles are degrees.
+- `time override <rate>` runs time at a rate without changing the configured one, until `time override none`; only
+  singleplayer allows it (a message's `session_environment`), and the pause menu stops time with one.
 - Client commands may span frames: a handler returns `CommandProgress::Done`
   or a `CommandTask` that `App` polls once per frame after drawing, replying
   when it finishes. Commands that finish at once implement
@@ -254,10 +256,10 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
 | Key | Bind | Action |
 | --- | --- | --- |
 | Tab / Shift+Tab | `camera.target-next` / `target-previous` | Next / previous target |
-| Escape | `interface.pause-menu` | Open the pause menu, in game only |
+| Escape | `interface.pause-menu` | Open the pause menu in game, close it in the pause menu |
 | F3 | `interface.debug-overlay` | Show or hide the debug overlay (FPS, triangles) |
-| . | `time.faster` | Double the time rate (`time faster`) |
-| , | `time.slower` | Halve the time rate, pausing below real time (`time slower`) |
+| . | `time.faster` | Step up from a pause through slow motion to real time, then double the time rate (`time faster`) |
+| , | `time.slower` | Halve the time rate down to real time, then step through slow motion (0.5×, 0.25×, 0.1×) and pause (`time slower`) |
 | / | `time.real-time` | Run time at real speed (`time resume`) |
 
 ## Gotchas

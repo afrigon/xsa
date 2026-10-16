@@ -1,5 +1,5 @@
 use super::{Controller, Presentation};
-use crate::View;
+use crate::{Environment, View};
 
 // Like UIKit's `UIViewController`: an object that lives as long as it is in a navigation stack. Its root is one
 // named view holding the layout, given the actions it triggers; `this` builds actions that call the controller's
@@ -11,11 +11,11 @@ pub trait ViewController: Sized + 'static {
         Presentation::FullScreen
     }
 
-    fn did_load(&mut self) {}
+    fn did_load(&mut self, _environment: &Environment) {}
 
-    fn did_unload(&mut self) {}
+    fn did_unload(&mut self, _environment: &Environment) {}
 
-    fn did_appear(&mut self) {}
+    fn did_appear(&mut self, _environment: &Environment) {}
 
-    fn did_disappear(&mut self) {}
+    fn did_disappear(&mut self, _environment: &Environment) {}
 }

@@ -11,7 +11,6 @@ use super::{
 pub struct ViewControllerFactory {
     pub navigation: Navigation,
     pub commands: GameCommands,
-    pub pauses_time: bool,
 }
 
 impl ViewControllerFactory {

@@ -5,6 +5,7 @@ mod duration;
 mod region;
 #[cfg(feature = "client")]
 mod target;
+mod time_override;
 mod timestamp;
 
 #[cfg(feature = "client")]
@@ -14,4 +15,5 @@ pub use duration::Duration;
 pub use region::Region;
 #[cfg(feature = "client")]
 pub use target::Target;
+pub use time_override::TimeOverride;
 pub use timestamp::Timestamp;

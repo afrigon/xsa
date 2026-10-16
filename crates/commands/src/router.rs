@@ -99,15 +99,27 @@ impl CommandRouter {
 
                 return;
             }
-            Route::Server(command) => match executor.session().send(command.message()) {
-                Ok(id) => {
-                    let pending = Pending { command, reply };
-                    self.pending.insert(id, pending);
+            Route::Server(command) => {
+                let message = command.message();
+                let refusal = executor
+                    .session()
+                    .state()
+                    .and_then(|state| message.check_session_environment(state.environment()).err());
 
-                    return;
+                if let Some(reason) = refusal {
+                    Output::failure(reason)
+                } else {
+                    match executor.session().send(message) {
+                        Ok(id) => {
+                            let pending = Pending { command, reply };
+                            self.pending.insert(id, pending);
+
+                            return;
+                        }
+                        Err(err) => Output::failure(format!("{err:#}")),
+                    }
                 }
-                Err(err) => Output::failure(format!("{err:#}")),
-            },
+            }
             Route::Session(command) => command.answer(executor.session().state()),
             Route::Exit => {
                 executor.exit();
@@ -151,7 +163,8 @@ mod tests {
     use xsa_proto::connection::{ClientLink, Connection};
     use xsa_proto::event::{JoinAccepted, Reply, TimeChanged, WorldState};
     use xsa_proto::message::{ClientFrame, ClientMessage, Join, Role, SetTime, SetTimeRate, StepTime};
-    use xsa_units::{SimulationDuration, SimulationTime, TimeRate, TimeRateChange};
+    use xsa_proto::session::SessionEnvironment;
+    use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateChange};
 
     use super::*;
 
@@ -190,6 +203,10 @@ mod tests {
         }
 
         fn joined() -> Self {
+            Harness::joined_in(SessionEnvironment::Singleplayer)
+        }
+
+        fn joined_in(environment: SessionEnvironment) -> Self {
             let mut harness = Harness::unjoined();
             harness
                 .executor
@@ -202,7 +219,11 @@ mod tests {
                     simulation: "system-solar:sol".to_string(),
                     packs: Vec::new(),
                     time: SimulationTime::J2000,
-                    rate: TimeRate::PAUSED,
+                    time_flow: TimeFlow {
+                        rate: TimeRate::PAUSED,
+                        time_override: None,
+                    },
+                    environment,
                     players: Vec::new(),
                 },
             }));
@@ -259,7 +280,10 @@ mod tests {
 
         harness.deliver(ServerEvent::TimeChanged(TimeChanged {
             time: SimulationTime::J2000,
-            rate,
+            time_flow: TimeFlow {
+                rate,
+                time_override: None,
+            },
         }));
         harness.deliver(ServerEvent::Reply(Reply {
             id: frame.id,
@@ -267,6 +291,17 @@ mod tests {
         }));
         let output = receiver.try_recv().unwrap();
         assert!(output.succeeded && output.text.contains("rate 100×"), "{output:?}");
+    }
+
+    #[test]
+    fn a_message_outside_its_session_environment_is_refused_without_sending() {
+        let mut harness = Harness::joined_in(SessionEnvironment::Dedicated);
+        let output = harness.invoke("time override 0").try_recv().unwrap();
+        assert!(
+            !output.succeeded && output.text.contains("dedicated server"),
+            "{output:?}"
+        );
+        assert!(harness.link.messages.try_recv().is_err());
     }
 
     #[test]
@@ -357,7 +392,11 @@ mod tests {
                 simulation: "system-solar:sol".to_string(),
                 packs: Vec::new(),
                 time: SimulationTime::J2000,
-                rate: TimeRate::PAUSED,
+                time_flow: TimeFlow {
+                    rate: TimeRate::PAUSED,
+                    time_override: None,
+                },
+                environment: SessionEnvironment::Singleplayer,
                 players: Vec::new(),
             },
         }));

@@ -6,7 +6,8 @@ use anyhow::{Context, bail};
 use xsa_core::simulation::Simulation;
 use xsa_packs::{Id, PackData, PackStack, SimulationDefinition};
 use xsa_proto::event::{PackReference, Player, WorldState};
-use xsa_units::{SimulationDuration, SimulationTime, TimeRate};
+use xsa_proto::session::SessionEnvironment;
+use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate};
 
 const DEFAULT_NAMESPACE: &str = "base";
 
@@ -15,7 +16,7 @@ pub struct World {
     simulation: Simulation,
     packs: Vec<PackReference>,
     time: SimulationTime,
-    rate: TimeRate,
+    time_flow: TimeFlow,
 }
 
 impl World {
@@ -43,7 +44,7 @@ impl World {
             simulation,
             packs,
             time: SimulationTime::now()?,
-            rate: TimeRate::REAL_TIME,
+            time_flow: TimeFlow::REAL_TIME,
         })
     }
 
@@ -59,22 +60,23 @@ impl World {
         self.time
     }
 
-    pub fn rate(&self) -> TimeRate {
-        self.rate
+    pub fn time_flow(&self) -> TimeFlow {
+        self.time_flow
     }
 
-    pub fn state(&self, players: Vec<Player>) -> WorldState {
+    pub fn state(&self, players: Vec<Player>, environment: SessionEnvironment) -> WorldState {
         WorldState {
             simulation: self.simulation_id.to_string(),
             packs: self.packs.clone(),
             time: self.time,
-            rate: self.rate,
+            time_flow: self.time_flow,
+            environment,
             players,
         }
     }
 
     pub(crate) fn advance(&mut self, real: SimulationDuration) {
-        self.time = self.time.advanced_by(self.rate.scale(real));
+        self.time = self.time.advanced_by(self.time_flow.effective().scale(real));
     }
 
     pub(crate) fn set_time(&mut self, time: SimulationTime) {
@@ -82,7 +84,11 @@ impl World {
     }
 
     pub(crate) fn set_rate(&mut self, rate: TimeRate) {
-        self.rate = rate;
+        self.time_flow.rate = rate;
+    }
+
+    pub(crate) fn set_time_override(&mut self, time_override: Option<TimeRate>) {
+        self.time_flow.time_override = time_override;
     }
 
     pub(crate) fn step(&mut self, duration: SimulationDuration) {

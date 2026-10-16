@@ -1,8 +1,8 @@
 use bitcode::{Decode, Encode};
-use xsa_units::{SimulationTime, TimeRate};
+use xsa_units::{SimulationTime, TimeFlow};
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
 pub struct TimeChanged {
     pub time: SimulationTime,
-    pub rate: TimeRate,
+    pub time_flow: TimeFlow,
 }

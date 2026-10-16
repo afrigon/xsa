@@ -11,6 +11,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use xsa_proto::connection::{ClientLink, Connection};
 use xsa_proto::event::{Outcome, Player, PlayerLeft, Reply, ServerEvent, Tick, TimeChanged};
 use xsa_proto::message::{ClientFrame, ClientMessage};
+use xsa_proto::session::SessionEnvironment;
 use xsa_units::{SimulationDuration, TICK_RATE_HERTZ};
 
 use crate::World;
@@ -20,15 +21,17 @@ use message_handler::MessageHandler;
 
 pub struct Server {
     world: World,
+    environment: SessionEnvironment,
     new_clients: UnboundedReceiver<ClientLink>,
     clients: Vec<Client>,
     next_player: u32,
 }
 
 impl Server {
-    pub fn new(world: World, new_clients: UnboundedReceiver<ClientLink>) -> Self {
+    pub fn new(world: World, new_clients: UnboundedReceiver<ClientLink>, environment: SessionEnvironment) -> Self {
         Self {
             world,
+            environment,
             new_clients,
             clients: Vec::new(),
             next_player: 0,
@@ -43,7 +46,7 @@ impl Server {
             .expect("the receiver is alive until the server starts");
         thread::Builder::new()
             .name("integrated server".into())
-            .spawn(move || Server::new(world, receiver).run())?;
+            .spawn(move || Server::new(world, receiver, SessionEnvironment::Singleplayer).run())?;
 
         Ok(local.connection)
     }
@@ -116,10 +119,15 @@ impl Server {
             return Outcome::denied("join the simulation first");
         }
 
+        if let Err(reason) = message.check_session_environment(self.environment) {
+            return Outcome::denied(reason);
+        }
+
         match message {
             ClientMessage::Join(message) => message.handle(self, client),
             ClientMessage::Leave(message) => message.handle(self, client),
             ClientMessage::SetTimeRate(message) => message.handle(self, client),
+            ClientMessage::SetTimeOverride(message) => message.handle(self, client),
             ClientMessage::SetTime(message) => message.handle(self, client),
             ClientMessage::StepTime(message) => message.handle(self, client),
         }
@@ -138,7 +146,7 @@ impl Server {
     fn broadcast_time(&mut self) {
         self.broadcast(&ServerEvent::TimeChanged(TimeChanged {
             time: self.world.time(),
-            rate: self.world.rate(),
+            time_flow: self.world.time_flow(),
         }));
     }
 
@@ -181,8 +189,8 @@ impl Server {
 mod tests {
     use std::path::PathBuf;
 
-    use xsa_proto::message::{Join, Leave, MessageId, Role, SetTime, SetTimeRate, StepTime};
-    use xsa_units::{SimulationTime, TimeRate, TimeRateChange};
+    use xsa_proto::message::{Join, Leave, MessageId, Role, SetTime, SetTimeOverride, SetTimeRate, StepTime};
+    use xsa_units::{SimulationTime, TimeFlow, TimeRate, TimeRateChange};
 
     use super::*;
     use crate::WorldOptions;
@@ -194,6 +202,10 @@ mod tests {
 
     impl Harness {
         fn new() -> Self {
+            Self::in_environment(SessionEnvironment::Singleplayer)
+        }
+
+        fn in_environment(environment: SessionEnvironment) -> Self {
             let world = World::load(&WorldOptions {
                 packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")),
                 packs: vec!["base".to_string(), "system-solar".to_string()],
@@ -203,7 +215,7 @@ mod tests {
             let (_new_clients, receiver) = unbounded_channel();
 
             Self {
-                server: Server::new(world, receiver),
+                server: Server::new(world, receiver, environment),
                 next_id: 0,
             }
         }
@@ -272,7 +284,7 @@ mod tests {
         assert!(matches!(
             &events[0],
             ServerEvent::JoinAccepted(accepted)
-                if accepted.state.rate == TimeRate::REAL_TIME && accepted.state.players.len() == 1
+                if accepted.state.time_flow == TimeFlow::REAL_TIME && accepted.state.players.len() == 1
         ));
         assert_eq!(events[1], accepted(id));
     }
@@ -296,7 +308,10 @@ mod tests {
         );
         let changed = ServerEvent::TimeChanged(TimeChanged {
             time: harness.server.world.time(),
-            rate,
+            time_flow: TimeFlow {
+                rate,
+                time_override: None,
+            },
         });
         assert_eq!(drain(&mut server_user), vec![changed.clone(), accepted(id)]);
         assert_eq!(drain(&mut observer), vec![changed]);
@@ -313,10 +328,13 @@ mod tests {
             (TimeRateChange::Faster, 4.0),
             (TimeRateChange::Slower, 2.0),
             (TimeRateChange::Slower, 1.0),
+            (TimeRateChange::Slower, 0.5),
+            (TimeRateChange::Slower, 0.25),
+            (TimeRateChange::Slower, 0.1),
             (TimeRateChange::Slower, 0.0),
         ] {
             harness.send(&connection, ClientMessage::SetTimeRate(SetTimeRate { change }));
-            assert_eq!(harness.server.world.rate(), TimeRate { multiplier });
+            assert_eq!(harness.server.world.time_flow().rate, TimeRate { multiplier });
         }
     }
 
@@ -348,6 +366,59 @@ mod tests {
     }
 
     #[test]
+    fn an_override_stops_time_and_keeps_the_rate() {
+        let mut harness = Harness::new();
+        let connection = harness.connect();
+        harness.send(&connection, server_role());
+        let rate = TimeRate { multiplier: 4.0 };
+        harness.send(
+            &connection,
+            ClientMessage::SetTimeRate(SetTimeRate {
+                change: TimeRateChange::To(rate),
+            }),
+        );
+        harness.send(
+            &connection,
+            ClientMessage::SetTimeOverride(SetTimeOverride {
+                rate: Some(TimeRate::PAUSED),
+            }),
+        );
+        let before = harness.server.world.time();
+        harness.server.world.advance(SimulationDuration { seconds: 1.0 });
+        assert_eq!(harness.server.world.time(), before);
+        assert_eq!(harness.server.world.time_flow().rate, rate);
+
+        harness.send(
+            &connection,
+            ClientMessage::SetTimeOverride(SetTimeOverride { rate: None }),
+        );
+        assert_eq!(
+            harness.server.world.time_flow(),
+            TimeFlow {
+                rate,
+                time_override: None,
+            }
+        );
+    }
+
+    #[test]
+    fn a_dedicated_server_denies_a_time_override() {
+        let mut harness = Harness::in_environment(SessionEnvironment::Dedicated);
+        let mut connection = harness.connect();
+        harness.send(&connection, server_role());
+        drain(&mut connection);
+
+        harness.send(
+            &connection,
+            ClientMessage::SetTimeOverride(SetTimeOverride {
+                rate: Some(TimeRate::PAUSED),
+            }),
+        );
+        assert!(is_denied(&drain(&mut connection)));
+        assert_eq!(harness.server.world.time_flow(), TimeFlow::REAL_TIME);
+    }
+
+    #[test]
     fn invalid_values_are_denied_without_changing_the_world() {
         let mut harness = Harness::new();
         let mut connection = harness.connect();
@@ -367,13 +438,16 @@ mod tests {
             ClientMessage::StepTime(StepTime {
                 duration: SimulationDuration { seconds: 0.0 },
             }),
+            ClientMessage::SetTimeOverride(SetTimeOverride {
+                rate: Some(TimeRate { multiplier: -1.0 }),
+            }),
         ] {
             harness.send(&connection, message);
             let events = drain(&mut connection);
             assert!(is_denied(&events), "{events:?}");
         }
 
-        assert_eq!(harness.server.world.rate(), TimeRate::REAL_TIME);
+        assert_eq!(harness.server.world.time_flow(), TimeFlow::REAL_TIME);
     }
 
     #[test]

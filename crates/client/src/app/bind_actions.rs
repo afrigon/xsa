@@ -1,5 +1,5 @@
 use xsa_commands::command::{
-    CameraTargetCommand, InterfacePushCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
+    CameraTargetCommand, InterfacePopCommand, InterfacePushCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
 };
 use xsa_commands::value::Target;
 
@@ -16,6 +16,7 @@ impl App {
                 view_controller: ViewControllerId::PauseMenu,
             }
             .start(self),
+            BindAction::InterfacePauseMenu if self.is_pause_menu_active() => InterfacePopCommand {}.start(self),
             BindAction::InterfacePauseMenu => return,
             BindAction::InterfaceDebugOverlay => InterfaceToggleCommand {
                 overlay: Overlay::DebugOverlay,

@@ -1,8 +1,8 @@
 use usage::Subcommands;
 
 use super::{
-    TimeFasterCommand, TimePauseCommand, TimeRateCommand, TimeResumeCommand, TimeSetCommand, TimeSlowerCommand,
-    TimeStepCommand,
+    TimeFasterCommand, TimeOverrideCommand, TimePauseCommand, TimeRateCommand, TimeResumeCommand, TimeSetCommand,
+    TimeSlowerCommand, TimeStepCommand,
 };
 use crate::command::{Routable, Route};
 
@@ -16,12 +16,14 @@ pub enum TimeAction {
     Pause(TimePauseCommand),
     /// Run time at real speed (time rate 1)
     Resume(TimeResumeCommand),
-    /// Double the time rate
+    /// Step up from a pause through slow motion to real speed, then double the time rate
     Faster(TimeFasterCommand),
-    /// Halve the time rate, pausing below real speed
+    /// Halve the time rate down to real speed, then step down through slow motion to a pause
     Slower(TimeSlowerCommand),
     /// Advance time by a duration: s, min, h, or t for ticks
     Step(TimeStepCommand),
+    /// Run time at a rate that replaces the configured one until cleared with none, in singleplayer only
+    Override(TimeOverrideCommand),
 }
 
 impl Routable for TimeAction {
@@ -34,6 +36,7 @@ impl Routable for TimeAction {
             TimeAction::Faster(command) => command.route(),
             TimeAction::Slower(command) => command.route(),
             TimeAction::Step(command) => command.route(),
+            TimeAction::Override(command) => command.route(),
         }
     }
 }

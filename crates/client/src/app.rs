@@ -33,7 +33,7 @@ use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, Com
 use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
-use xsa_proto::session::ServerSession;
+use xsa_proto::session::{ServerSession, SessionState};
 use xui::{
     Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, NavigationController, Point,
     ScaleFactorKey, Size, View, ZStack,
@@ -45,7 +45,9 @@ use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
-use crate::ui::{ClockReading, DebugOverlayView, GameCommands, InputDisabledView, ViewControllerFactory};
+use crate::ui::{
+    ClockReading, DebugOverlayView, GameCommands, InputDisabledView, SessionEnvironmentKey, ViewControllerFactory,
+};
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 use client_world::ClientWorld;
@@ -92,18 +94,15 @@ impl App {
         invocations: UnboundedReceiver<CommandInvocation>,
         packs_directory: PathBuf,
         config_document: ConfigDocument,
-        pauses_time: bool,
     ) -> Self {
         let commands = GameCommands::default();
-        let mut navigation = NavigationController::new();
+        let navigation = NavigationController::new();
         let view_controllers = ViewControllerFactory {
             navigation: navigation.navigation(),
             commands: commands.clone(),
-            pauses_time,
         };
-        navigation.set_root(view_controllers.build(ViewControllerId::MainMenu));
 
-        Self {
+        let mut app = Self {
             renderer: None,
             window: None,
             error: None,
@@ -130,7 +129,10 @@ impl App {
             commands,
             overlays: HashSet::new(),
             action_replies: Vec::new(),
-        }
+        };
+        app.set_view_controller(ViewControllerId::MainMenu);
+
+        app
     }
 
     pub fn into_result(self) -> anyhow::Result<()> {
@@ -160,7 +162,8 @@ impl App {
             .and_then(|renderer| renderer.statistics().gpu_milliseconds);
         self.frame_timing.record(delta_seconds, gpu_milliseconds);
         self.offer_pointer_move();
-        self.navigation.advance(delta_seconds as f32);
+        let environment = self.environment();
+        self.navigation.advance(delta_seconds as f32, &environment);
 
         self.update(delta_seconds)?;
         self.draw()?;
@@ -326,16 +329,31 @@ impl App {
         renderer.draw(cameras.camera())
     }
 
+    // Keys whose source does not exist yet, such as the theme before the window opens, keep their default.
+    fn environment(&self) -> Environment {
+        let color_scheme = ColorScheme::Dark;
+        let mut environment = Environment::default()
+            .with::<ColorSchemeKey>(color_scheme)
+            .with::<SessionEnvironmentKey>(self.session.state().map(SessionState::environment));
+
+        if let Some(window) = &self.window {
+            environment = environment.with::<ScaleFactorKey>(window.scale_factor() as f32);
+        }
+
+        if let Some(theme) = &self.theme {
+            environment = environment
+                .with::<ForegroundStyleKey>(theme.color(&theme.foreground().default, color_scheme))
+                .with::<ThemeKey>(Some(theme.clone()));
+        }
+
+        environment
+    }
+
     fn update_user_interface(&mut self) -> anyhow::Result<()> {
-        let (Some(renderer), Some(window), Some(theme)) = (&mut self.renderer, &self.window, &self.theme) else {
+        let environment = self.environment();
+        let (Some(renderer), Some(window), Some(_)) = (&mut self.renderer, &self.window, &self.theme) else {
             return Ok(());
         };
-        let color_scheme = ColorScheme::Dark;
-        let environment = Environment::default()
-            .with::<ScaleFactorKey>(window.scale_factor() as f32)
-            .with::<ColorSchemeKey>(color_scheme)
-            .with::<ForegroundStyleKey>(theme.color(&theme.foreground().default, color_scheme))
-            .with::<ThemeKey>(Some(theme.clone()));
         let window_size = window.inner_size();
         let viewport = Size {
             width: window_size.width as f32,
@@ -361,7 +379,7 @@ impl App {
                 surface,
                 clock: self.session.state().map(|state| ClockReading {
                     time: state.time(),
-                    rate: state.rate(),
+                    time_flow: state.time_flow(),
                 }),
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)

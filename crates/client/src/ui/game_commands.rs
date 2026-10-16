@@ -2,9 +2,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use xsa_commands::command::{
-    Command, ExitCommand, TimeAction, TimeCommand, TimeFasterCommand, TimePauseCommand, TimeResumeCommand,
+    Command, ExitCommand, TimeAction, TimeCommand, TimeFasterCommand, TimeOverrideCommand, TimeResumeCommand,
     TimeSlowerCommand,
 };
+use xsa_commands::value::TimeOverride;
+use xsa_units::TimeRate;
 
 // What view controllers and binds ask of the game beyond navigation: each method queues a typed command, which the game runs
 // like any other command once per frame.
@@ -14,8 +16,12 @@ pub struct GameCommands {
 }
 
 impl GameCommands {
-    pub fn pause_time(&self) {
-        self.time(TimeAction::Pause(TimePauseCommand {}));
+    pub fn override_time(&self, rate: TimeRate) {
+        self.set_time_override(Some(rate));
+    }
+
+    pub fn clear_time_override(&self) {
+        self.set_time_override(None);
     }
 
     pub fn resume_time(&self) {
@@ -36,6 +42,12 @@ impl GameCommands {
 
     pub fn take(&self) -> Vec<Command> {
         std::mem::take(&mut self.queue.borrow_mut())
+    }
+
+    fn set_time_override(&self, rate: Option<TimeRate>) {
+        self.time(TimeAction::Override(TimeOverrideCommand {
+            rate: TimeOverride { rate },
+        }));
     }
 
     fn time(&self, action: TimeAction) {
