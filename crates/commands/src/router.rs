@@ -99,15 +99,27 @@ impl CommandRouter {
 
                 return;
             }
-            Route::Server(command) => match executor.session().send(command.message()) {
-                Ok(id) => {
-                    let pending = Pending { command, reply };
-                    self.pending.insert(id, pending);
+            Route::Server(command) => {
+                let message = command.message();
+                let refusal = executor
+                    .session()
+                    .state()
+                    .and_then(|state| message.check_session_environment(state.environment()).err());
 
-                    return;
+                if let Some(reason) = refusal {
+                    Output::failure(reason)
+                } else {
+                    match executor.session().send(message) {
+                        Ok(id) => {
+                            let pending = Pending { command, reply };
+                            self.pending.insert(id, pending);
+
+                            return;
+                        }
+                        Err(err) => Output::failure(format!("{err:#}")),
+                    }
                 }
-                Err(err) => Output::failure(format!("{err:#}")),
-            },
+            }
             Route::Session(command) => command.answer(executor.session().state()),
             Route::Exit => {
                 executor.exit();
@@ -191,6 +203,10 @@ mod tests {
         }
 
         fn joined() -> Self {
+            Harness::joined_in(SessionEnvironment::Singleplayer)
+        }
+
+        fn joined_in(environment: SessionEnvironment) -> Self {
             let mut harness = Harness::unjoined();
             harness
                 .executor
@@ -207,7 +223,7 @@ mod tests {
                         rate: TimeRate::PAUSED,
                         time_override: None,
                     },
-                    environment: SessionEnvironment::Singleplayer,
+                    environment,
                     players: Vec::new(),
                 },
             }));
@@ -275,6 +291,17 @@ mod tests {
         }));
         let output = receiver.try_recv().unwrap();
         assert!(output.succeeded && output.text.contains("rate 100×"), "{output:?}");
+    }
+
+    #[test]
+    fn a_message_outside_its_session_environment_is_refused_without_sending() {
+        let mut harness = Harness::joined_in(SessionEnvironment::Dedicated);
+        let output = harness.invoke("time override 0").try_recv().unwrap();
+        assert!(
+            !output.succeeded && output.text.contains("dedicated server"),
+            "{output:?}"
+        );
+        assert!(harness.link.messages.try_recv().is_err());
     }
 
     #[test]

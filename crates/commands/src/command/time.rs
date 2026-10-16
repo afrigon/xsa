@@ -6,6 +6,7 @@ mod set;
 mod slower;
 mod step;
 mod time_action;
+mod time_override;
 
 pub use faster::TimeFasterCommand;
 pub use pause::TimePauseCommand;
@@ -15,6 +16,7 @@ pub use set::TimeSetCommand;
 pub use slower::TimeSlowerCommand;
 pub use step::TimeStepCommand;
 pub use time_action::TimeAction;
+pub use time_override::TimeOverrideCommand;
 
 use usage::Args;
 use xsa_proto::session::SessionState;

@@ -33,8 +33,8 @@ pub use route::Route;
 pub use server_command::ServerCommand;
 pub use session_command::SessionCommand;
 pub use time::{
-    TimeAction, TimeCommand, TimeFasterCommand, TimePauseCommand, TimeRateCommand, TimeResumeCommand, TimeSetCommand,
-    TimeSlowerCommand, TimeStepCommand,
+    TimeAction, TimeCommand, TimeFasterCommand, TimeOverrideCommand, TimePauseCommand, TimeRateCommand,
+    TimeResumeCommand, TimeSetCommand, TimeSlowerCommand, TimeStepCommand,
 };
 #[cfg(feature = "client")]
 pub use ui::{
