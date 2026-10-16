@@ -2,9 +2,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use xui::{
-    Action, AnyViewController, Context, Controller, DismissKey, DrawList, EmptyView, Environment, Interface,
-    LayoutContext, Navigation, NavigationController, NavigationDelegate, NavigationOperation, NoTransition, Node,
-    NodeLayout, Presentation, Rect, Size, SizeProposal, Transition, UpdateContext, View, ViewController,
+    Action, AnyViewController, ColorScheme, ColorSchemeKey, Context, Controller, DismissKey, DrawList, EmptyView,
+    Environment, Interface, LayoutContext, Navigation, NavigationController, NavigationDelegate, NavigationOperation,
+    NoTransition, Node, NodeLayout, Presentation, Rect, Size, SizeProposal, Transition, UpdateContext, View,
+    ViewController,
 };
 
 const VIEWPORT: Size = Size {
@@ -99,26 +100,26 @@ impl ViewController for RecordingViewController {
         self.presentation
     }
 
-    fn did_load(&mut self) {
+    fn did_load(&mut self, _environment: &Environment) {
         self.record("loaded");
     }
 
-    fn did_unload(&mut self) {
+    fn did_unload(&mut self, _environment: &Environment) {
         self.record("unloaded");
     }
 
-    fn did_appear(&mut self) {
+    fn did_appear(&mut self, _environment: &Environment) {
         self.record("appeared");
     }
 
-    fn did_disappear(&mut self) {
+    fn did_disappear(&mut self, _environment: &Environment) {
         self.record("disappeared");
     }
 }
 
 fn navigation_with(root: RecordingViewController) -> NavigationController {
     let mut navigation = NavigationController::new();
-    navigation.set_root(root);
+    navigation.set_root(root, &Environment::default());
     navigation
 }
 
@@ -143,11 +144,14 @@ fn a_full_screen_push_hides_the_view_controller_below_after_its_transition() {
     let log = Log::default();
     let mut navigation = navigation_with(RecordingViewController::new("menu", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
-    navigation.push(RecordingViewController::new("game", Presentation::FullScreen, &log));
+    navigation.push(
+        RecordingViewController::new("game", Presentation::FullScreen, &log),
+        &Environment::default(),
+    );
     assert_eq!(take(&log), ["menu loaded", "menu appeared", "game loaded"]);
 
     assert_eq!(drawn(&render(&mut interface, &navigation, &log)), ["menu", "game"]);
-    navigation.advance(FADE_SECONDS);
+    navigation.advance(FADE_SECONDS, &Environment::default());
     assert!(!navigation.is_transitioning());
     assert_eq!(take(&log), ["menu disappeared", "game appeared"]);
     assert_eq!(drawn(&render(&mut interface, &navigation, &log)), ["game"]);
@@ -158,8 +162,11 @@ fn an_overlay_leaves_the_view_controller_below_drawn() {
     let log = Log::default();
     let mut navigation = navigation_with(RecordingViewController::new("game", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
-    navigation.push(RecordingViewController::new("pause", Presentation::Overlay, &log));
-    navigation.advance(FADE_SECONDS);
+    navigation.push(
+        RecordingViewController::new("pause", Presentation::Overlay, &log),
+        &Environment::default(),
+    );
+    navigation.advance(FADE_SECONDS, &Environment::default());
 
     assert_eq!(
         take(&log),
@@ -174,29 +181,38 @@ fn popping_returns_to_the_view_controller_below_with_its_state() {
     let mut navigation = navigation_with(RecordingViewController::new("menu", Presentation::FullScreen, &log));
     let mut interface = Interface::new();
     render(&mut interface, &navigation, &log);
-    navigation.push(RecordingViewController::new("config", Presentation::FullScreen, &log));
-    navigation.advance(FADE_SECONDS);
+    navigation.push(
+        RecordingViewController::new("config", Presentation::FullScreen, &log),
+        &Environment::default(),
+    );
+    navigation.advance(FADE_SECONDS, &Environment::default());
     render(&mut interface, &navigation, &log);
     take(&log);
 
-    assert!(navigation.pop());
-    navigation.advance(FADE_SECONDS);
+    assert!(navigation.pop(&Environment::default()));
+    navigation.advance(FADE_SECONDS, &Environment::default());
     assert_eq!(take(&log), ["config disappeared", "config unloaded", "menu appeared"]);
     let events = render(&mut interface, &navigation, &log);
     assert!(events.contains(&"menu frame 3".to_string()), "{events:?}");
-    assert!(!navigation.pop());
+    assert!(!navigation.pop(&Environment::default()));
 }
 
 #[test]
 fn setting_the_root_unloads_the_whole_stack() {
     let log = Log::default();
     let mut navigation = navigation_with(RecordingViewController::new("game", Presentation::FullScreen, &log));
-    navigation.push(RecordingViewController::new("pause", Presentation::Overlay, &log));
-    navigation.advance(FADE_SECONDS);
+    navigation.push(
+        RecordingViewController::new("pause", Presentation::Overlay, &log),
+        &Environment::default(),
+    );
+    navigation.advance(FADE_SECONDS, &Environment::default());
     take(&log);
 
-    navigation.set_root(RecordingViewController::new("menu", Presentation::FullScreen, &log));
-    navigation.advance(FADE_SECONDS);
+    navigation.set_root(
+        RecordingViewController::new("menu", Presentation::FullScreen, &log),
+        &Environment::default(),
+    );
+    navigation.advance(FADE_SECONDS, &Environment::default());
 
     let events = take(&log);
     for expected in ["game unloaded", "pause unloaded", "menu appeared"] {
@@ -223,7 +239,10 @@ fn a_delegate_chooses_the_transition() {
     let log = Log::default();
     let mut navigation = navigation_with(RecordingViewController::new("menu", Presentation::FullScreen, &log));
     navigation.set_delegate(InstantDelegate);
-    navigation.push(RecordingViewController::new("game", Presentation::FullScreen, &log));
+    navigation.push(
+        RecordingViewController::new("game", Presentation::FullScreen, &log),
+        &Environment::default(),
+    );
 
     assert!(!navigation.is_transitioning());
     assert!(take(&log).ends_with(&["menu disappeared".to_string(), "game appeared".to_string()]));
@@ -289,11 +308,11 @@ impl ViewController for DetailViewController {
         DetailView
     }
 
-    fn did_load(&mut self) {
+    fn did_load(&mut self, _environment: &Environment) {
         self.log.borrow_mut().push(format!("detail {} loaded", self.id));
     }
 
-    fn did_unload(&mut self) {
+    fn did_unload(&mut self, _environment: &Environment) {
         self.log.borrow_mut().push(format!("detail {} unloaded", self.id));
     }
 }
@@ -303,23 +322,50 @@ fn actions_reach_their_controller_with_their_value_and_views_dismiss_themselves(
     let log = Log::default();
     let mut navigation = NavigationController::new();
     navigation.set_delegate(InstantDelegate);
-    navigation.set_root(ListViewController {
-        navigation: navigation.navigation(),
-        log: log.clone(),
-    });
+    navigation.set_root(
+        ListViewController {
+            navigation: navigation.navigation(),
+            log: log.clone(),
+        },
+        &Environment::default(),
+    );
     let mut interface = Interface::new();
 
     interface
         .render(&navigation.view(), VIEWPORT, &Environment::default())
         .unwrap();
-    navigation.advance(0.0);
+    navigation.advance(0.0, &Environment::default());
     assert_eq!(take(&log), ["detail 7 loaded"]);
     assert!(navigation.top().is::<DetailViewController>());
 
     interface
         .render(&navigation.view(), VIEWPORT, &Environment::default())
         .unwrap();
-    navigation.advance(0.0);
+    navigation.advance(0.0, &Environment::default());
     assert_eq!(take(&log), ["detail 7 unloaded"]);
     assert!(navigation.top().is::<ListViewController>());
+}
+
+struct SchemeReadingViewController {
+    log: Log,
+}
+
+impl ViewController for SchemeReadingViewController {
+    fn root(&self, _this: &Controller<Self>) -> impl View {
+        EmptyView
+    }
+
+    fn did_load(&mut self, environment: &Environment) {
+        let scheme = environment.get::<ColorSchemeKey>();
+        self.log.borrow_mut().push(format!("loaded in {scheme:?}"));
+    }
+}
+
+#[test]
+fn lifecycle_hooks_read_the_environment_they_are_given() {
+    let log = Log::default();
+    let mut navigation = NavigationController::new();
+    let environment = Environment::default().with::<ColorSchemeKey>(ColorScheme::Dark);
+    navigation.set_root(SchemeReadingViewController { log: log.clone() }, &environment);
+    assert_eq!(take(&log), ["loaded in Dark"]);
 }

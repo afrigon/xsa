@@ -6,15 +6,18 @@ use crate::ui::GameViewController;
 
 impl App {
     pub(super) fn push_view_controller(&mut self, id: ViewControllerId) {
-        self.navigation.push(self.view_controllers.build(id));
+        let environment = self.environment();
+        self.navigation.push(self.view_controllers.build(id), &environment);
     }
 
     pub(super) fn pop_view_controller(&mut self) -> bool {
-        self.navigation.pop()
+        let environment = self.environment();
+        self.navigation.pop(&environment)
     }
 
     pub(super) fn set_view_controller(&mut self, id: ViewControllerId) {
-        self.navigation.set_root(self.view_controllers.build(id));
+        let environment = self.environment();
+        self.navigation.set_root(self.view_controllers.build(id), &environment);
     }
 
     pub(super) fn is_overlay_shown(&self, overlay: Overlay) -> bool {

@@ -35,7 +35,7 @@ pub enum ClientMessage {
 impl ClientMessage {
     pub fn session_environment(&self) -> SessionEnvironments {
         match self {
-            ClientMessage::SetTimeOverride(_) => SessionEnvironments::SINGLEPLAYER,
+            ClientMessage::SetTimeOverride(_) => SetTimeOverride::SESSION_ENVIRONMENT,
             ClientMessage::Join(_)
             | ClientMessage::Leave(_)
             | ClientMessage::SetTimeRate(_)

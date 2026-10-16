@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::{Controller, ControllerMessage, Presentation, ViewController};
-use crate::AnyView;
+use crate::{AnyView, Environment};
 
 // A view controller behind one type, so a stack can hold controllers of different types. Every view controller
 // implements it.
@@ -12,13 +12,13 @@ pub trait AnyViewController: Any {
 
     fn presentation(&self) -> Presentation;
 
-    fn did_load(&mut self);
+    fn did_load(&mut self, environment: &Environment);
 
-    fn did_unload(&mut self);
+    fn did_unload(&mut self, environment: &Environment);
 
-    fn did_appear(&mut self);
+    fn did_appear(&mut self, environment: &Environment);
 
-    fn did_disappear(&mut self);
+    fn did_disappear(&mut self, environment: &Environment);
 }
 
 impl<Implementation: ViewController> AnyViewController for Implementation {
@@ -30,20 +30,20 @@ impl<Implementation: ViewController> AnyViewController for Implementation {
         ViewController::presentation(self)
     }
 
-    fn did_load(&mut self) {
-        ViewController::did_load(self);
+    fn did_load(&mut self, environment: &Environment) {
+        ViewController::did_load(self, environment);
     }
 
-    fn did_unload(&mut self) {
-        ViewController::did_unload(self);
+    fn did_unload(&mut self, environment: &Environment) {
+        ViewController::did_unload(self, environment);
     }
 
-    fn did_appear(&mut self) {
-        ViewController::did_appear(self);
+    fn did_appear(&mut self, environment: &Environment) {
+        ViewController::did_appear(self, environment);
     }
 
-    fn did_disappear(&mut self) {
-        ViewController::did_disappear(self);
+    fn did_disappear(&mut self, environment: &Environment) {
+        ViewController::did_disappear(self, environment);
     }
 }
 

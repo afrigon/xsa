@@ -7,7 +7,7 @@ use super::{
     NavigationDelegate, NavigationEntry, NavigationLayer, NavigationOperation, NavigationRequest, Presentation,
     TransitionAppearance, TransitionRole,
 };
-use crate::{Action, Alignment, ForEach, View, Visibility, ZStack};
+use crate::{Action, Alignment, Environment, ForEach, View, Visibility, ZStack};
 
 // A stack of view controllers, like UIKit's `UINavigationController`. The app owns it and draws it with `view`;
 // it changes through `push`, `pop` and `set_root`, or through the `Navigation` handles its view controllers hold.
@@ -57,23 +57,24 @@ impl NavigationController {
         self.delegate = Box::new(delegate);
     }
 
-    pub fn push(&mut self, controller: impl Into<Box<dyn AnyViewController>>) {
-        self.finish_transition();
+    pub fn push(&mut self, controller: impl Into<Box<dyn AnyViewController>>, environment: &Environment) {
+        self.finish_transition(environment);
         let visible_before = self.visible_ids(&[]);
         let outgoing = self.top_id();
-        let incoming = self.insert(controller.into());
+        let incoming = self.insert(controller.into(), environment);
         self.begin(
             NavigationOperation::Push,
             outgoing,
             incoming,
             visible_before,
             Vec::new(),
+            environment,
         );
     }
 
     // Returns whether there was a view controller to pop: the root stays.
-    pub fn pop(&mut self) -> bool {
-        self.finish_transition();
+    pub fn pop(&mut self, environment: &Environment) -> bool {
+        self.finish_transition(environment);
 
         if self.entries.len() < 2 {
             return false;
@@ -88,37 +89,39 @@ impl NavigationController {
             incoming,
             visible_before,
             vec![outgoing],
+            environment,
         );
 
         true
     }
 
     // Replaces the whole stack with `controller`.
-    pub fn set_root(&mut self, controller: impl Into<Box<dyn AnyViewController>>) {
-        self.finish_transition();
+    pub fn set_root(&mut self, controller: impl Into<Box<dyn AnyViewController>>, environment: &Environment) {
+        self.finish_transition(environment);
 
         if self.entries.is_empty() {
-            let id = self.insert(controller.into());
-            self.entry_mut(id).controller.did_appear();
+            let id = self.insert(controller.into(), environment);
+            self.entry_mut(id).controller.did_appear(environment);
             return;
         }
 
         let visible_before = self.visible_ids(&[]);
         let outgoing = self.top_id();
         let removed = self.entries.iter().map(|entry| entry.id).collect();
-        let incoming = self.insert(controller.into());
+        let incoming = self.insert(controller.into(), environment);
         self.begin(
             NavigationOperation::SetRoot,
             outgoing,
             incoming,
             visible_before,
             removed,
+            environment,
         );
     }
 
-    pub fn advance(&mut self, delta_seconds: f32) {
+    pub fn advance(&mut self, delta_seconds: f32, environment: &Environment) {
         self.deliver_messages();
-        self.apply_requests();
+        self.apply_requests(environment);
 
         let Some(active) = &mut self.transition else {
             return;
@@ -128,7 +131,7 @@ impl NavigationController {
         active.transition.progressed(progress);
 
         if progress >= 1.0 {
-            self.finish_transition();
+            self.finish_transition(environment);
         }
     }
 
@@ -199,31 +202,31 @@ impl NavigationController {
         }
     }
 
-    fn apply_requests(&mut self) {
+    fn apply_requests(&mut self, environment: &Environment) {
         let requests = std::mem::take(&mut *self.requests.borrow_mut());
 
         for request in requests {
             match request {
-                NavigationRequest::Push(controller) => self.push(controller),
+                NavigationRequest::Push(controller) => self.push(controller, environment),
                 NavigationRequest::Pop => {
-                    self.pop();
+                    self.pop(environment);
                 }
-                NavigationRequest::SetRoot(controller) => self.set_root(controller),
-                NavigationRequest::Dismiss { id } => self.dismiss(id),
+                NavigationRequest::SetRoot(controller) => self.set_root(controller, environment),
+                NavigationRequest::Dismiss { id } => self.dismiss(id, environment),
             }
         }
     }
 
     // Pops the view controller when it is on top; otherwise removes it from under the top at once.
-    fn dismiss(&mut self, id: u64) {
-        self.finish_transition();
+    fn dismiss(&mut self, id: u64, environment: &Environment) {
+        self.finish_transition(environment);
 
         if self.entries.len() < 2 || !self.entries.iter().any(|entry| entry.id == id) {
             return;
         }
 
         if id == self.top_id() {
-            self.pop();
+            self.pop(environment);
             return;
         }
 
@@ -236,10 +239,10 @@ impl NavigationController {
         let mut entry = self.entries.remove(index);
 
         if visible_before.contains(&id) {
-            entry.controller.did_disappear();
+            entry.controller.did_disappear(environment);
         }
 
-        entry.controller.did_unload();
+        entry.controller.did_unload(environment);
     }
 
     fn entry_mut(&mut self, id: u64) -> &mut NavigationEntry {
@@ -264,10 +267,10 @@ impl NavigationController {
         }
     }
 
-    fn insert(&mut self, mut controller: Box<dyn AnyViewController>) -> u64 {
+    fn insert(&mut self, mut controller: Box<dyn AnyViewController>, environment: &Environment) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
-        controller.did_load();
+        controller.did_load(environment);
         self.entries.push(NavigationEntry { id, controller });
         id
     }
@@ -279,6 +282,7 @@ impl NavigationController {
         incoming: u64,
         visible_before: Vec<u64>,
         removed: Vec<u64>,
+        environment: &Environment,
     ) {
         let transition = self
             .delegate
@@ -295,13 +299,13 @@ impl NavigationController {
         });
 
         if self.transition.as_ref().is_some_and(|active| active.progress() >= 1.0) {
-            self.finish_transition();
+            self.finish_transition(environment);
         }
     }
 
     // Removes what the transition removes and tells each controller whether it appeared or disappeared, the
     // disappearances first, as UIKit does.
-    fn finish_transition(&mut self) {
+    fn finish_transition(&mut self, environment: &Environment) {
         let Some(mut active) = self.transition.take() else {
             return;
         };
@@ -315,21 +319,21 @@ impl NavigationController {
 
         for entry in &mut self.entries {
             if was_visible(entry) && !visible_after.contains(&entry.id) {
-                entry.controller.did_disappear();
+                entry.controller.did_disappear(environment);
             }
         }
 
         for mut entry in removed {
             if was_visible(&entry) {
-                entry.controller.did_disappear();
+                entry.controller.did_disappear(environment);
             }
 
-            entry.controller.did_unload();
+            entry.controller.did_unload(environment);
         }
 
         for entry in &mut self.entries {
             if visible_after.contains(&entry.id) && !was_visible(entry) {
-                entry.controller.did_appear();
+                entry.controller.did_appear(environment);
             }
         }
     }

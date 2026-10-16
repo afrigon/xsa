@@ -137,7 +137,8 @@ for any app.
     a pause menu over the game).
   - Lifecycle hooks, all optional: `did_load`/`did_unload` when it enters or
     leaves the stack, `did_appear`/`did_disappear` when it becomes visible or
-    hidden.
+    hidden. Each receives the app's environment, which the navigation
+    controller's `push`, `pop`, `set_root` and `advance` take for them.
 - **Actions**, as when hosting SwiftUI in UIKit:
   - Each view controller defines an actions object for its view
     (`MainMenuActions`), whose fields are `Action`s; the view receives it
