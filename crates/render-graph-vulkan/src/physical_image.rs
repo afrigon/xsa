@@ -1,5 +1,5 @@
 use ash::vk;
-use memory_vulkan::{DeviceObject, Image, ImageDescription, MemoryContext};
+use memory_vulkan::{DeviceObject, Image, ImageDescription, MemoryContext, QueueSharing};
 
 use crate::access::Access;
 use crate::image_owner::ImageOwner;
@@ -41,6 +41,7 @@ impl PhysicalImage {
                 aspect: view_aspect,
                 mip_levels: description.mip_levels,
                 cube: false,
+                sharing: QueueSharing::Exclusive,
             },
         )?;
         let level_views = if description.mip_levels > 1 {

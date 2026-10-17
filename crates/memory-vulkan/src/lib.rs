@@ -15,6 +15,7 @@ mod image;
 mod image_description;
 mod memory_context;
 mod memory_error;
+mod queue_sharing;
 mod timeline;
 
 pub(crate) use deletion_queue::{DeletionQueue, Frontier, OpenRecordings, RecordingId};
@@ -29,6 +30,7 @@ pub use image::Image;
 pub use image_description::ImageDescription;
 pub use memory_context::MemoryContext;
 pub use memory_error::MemoryError;
+pub use queue_sharing::QueueSharing;
 pub use timeline::{Recording, Timeline};
 
 #[cfg(test)]

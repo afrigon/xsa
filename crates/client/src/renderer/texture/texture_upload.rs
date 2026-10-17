@@ -2,7 +2,7 @@ use anyhow::{Context, ensure};
 use ash::vk;
 use resource_loader::texture::{TextureFormat, TextureImage};
 
-use memory_vulkan::{Buffer, DeviceObject, Image, ImageDescription, MemoryLocation};
+use memory_vulkan::{Buffer, DeviceObject, Image, ImageDescription, MemoryLocation, QueueSharing};
 
 use crate::renderer::gpu_context::GpuContext;
 
@@ -54,6 +54,7 @@ impl<'a> TextureUpload<'a> {
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: self.image.mip_levels(),
                 cube,
+                sharing: QueueSharing::Exclusive,
             },
         )?;
 
@@ -87,6 +88,7 @@ impl<'a> TextureUpload<'a> {
             data.len() as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
             MemoryLocation::CpuToGpu,
+            &QueueSharing::Exclusive,
         )?;
         staging.write(data)?;
 

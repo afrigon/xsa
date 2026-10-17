@@ -52,7 +52,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use glam::{DVec2, DVec3, Mat4, Vec2};
-use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation, Recording};
+use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation, QueueSharing, Recording};
 use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -408,6 +408,7 @@ impl Renderer {
             size,
             vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuToCpu,
+            &QueueSharing::Exclusive,
         )?;
         self.capture = Some(buffer);
         let pixels = self.render_capture(camera, extent);

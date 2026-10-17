@@ -35,7 +35,8 @@ impl Image {
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
             .usage(description.usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .sharing_mode(description.sharing.mode())
+            .queue_family_indices(description.sharing.families())
             .initial_layout(vk::ImageLayout::UNDEFINED);
         let image = DeviceObject::new(memory, unsafe { device.create_image(&create_info, None) }?);
         let requirements = unsafe { device.get_image_memory_requirements(image.handle()) };

@@ -2,7 +2,7 @@ use ash::vk;
 use gpu_allocator::MemoryLocation;
 use gpu_allocator::vulkan::Allocation;
 
-use crate::{DeviceObject, MemoryContext, MemoryError};
+use crate::{DeviceObject, MemoryContext, MemoryError, QueueSharing};
 
 /// A buffer and the memory bound to it.
 pub struct Buffer {
@@ -21,12 +21,14 @@ impl Buffer {
         size: u64,
         usage: vk::BufferUsageFlags,
         location: MemoryLocation,
+        sharing: &QueueSharing,
     ) -> Result<Buffer, MemoryError> {
         let device = memory.device();
         let create_info = vk::BufferCreateInfo::default()
             .size(size)
             .usage(usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+            .sharing_mode(sharing.mode())
+            .queue_family_indices(sharing.families());
         let buffer = DeviceObject::new(memory, unsafe { device.create_buffer(&create_info, None) }?);
         let requirements = unsafe { device.get_buffer_memory_requirements(buffer.handle()) };
         let allocation = memory.allocate(name, requirements, location, true)?;
@@ -53,7 +55,14 @@ impl Buffer {
         usage: vk::BufferUsageFlags,
         data: &[T],
     ) -> Result<Buffer, MemoryError> {
-        let mut buffer = Buffer::new(memory, name, size_of_val(data) as u64, usage, MemoryLocation::CpuToGpu)?;
+        let mut buffer = Buffer::new(
+            memory,
+            name,
+            size_of_val(data) as u64,
+            usage,
+            MemoryLocation::CpuToGpu,
+            &QueueSharing::Exclusive,
+        )?;
         buffer.write(data)?;
 
         Ok(buffer)
