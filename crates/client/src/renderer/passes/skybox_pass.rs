@@ -63,7 +63,9 @@ impl<'frame> RenderPass<FrameContext<'frame>> for SkyboxPass {
     ) -> Result<(), PassError> {
         pass.begin_rendering();
 
-        if let Some(skybox) = frame.scene.skybox {
+        if let Some(skybox) = frame.scene.skybox
+            && frame.is_drawable(skybox)
+        {
             frame.recorder.bind_graphics(&self.pipeline, frame.descriptor_set);
             frame.push_draw_constants(&self.pipeline, NO_OBJECT, skybox, NO_TILES, None);
             frame.recorder.draw_fullscreen();

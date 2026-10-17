@@ -2,10 +2,11 @@ use anyhow::{Context, bail};
 use kdl::KdlValue;
 
 use super::NumberRange;
-use crate::config::KeyChord;
+use crate::config::{ByteSize, KeyChord};
 
 const TRUE_WORDS: [&str; 2] = ["true", "on"];
 const FALSE_WORDS: [&str; 2] = ["false", "off"];
+const NONE_WORD: &str = "none";
 
 // Building blocks for declaring settings, kept whether or not a setting uses them.
 #[allow(dead_code)]
@@ -15,6 +16,11 @@ pub enum ConfigValueKind {
     Number { range: NumberRange },
     Choice { names: fn() -> Vec<&'static str> },
     KeyChord,
+    // A whole number, 1 or more.
+    Count,
+    ByteSize,
+    // `value`, or none.
+    Optional { value: &'static ConfigValueKind },
 }
 
 impl ConfigValueKind {
@@ -55,12 +61,30 @@ impl ConfigValueKind {
 
                 Ok(KdlValue::String(chord.config_name()))
             }
+            ConfigValueKind::Count => {
+                let count = text
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|count| *count > 0)
+                    .with_context(|| format!("{text:?} is not a whole number of 1 or more"))?;
+
+                Ok(KdlValue::Integer(count.into()))
+            }
+            ConfigValueKind::ByteSize => {
+                let size = ByteSize::from_config_name(text)
+                    .with_context(|| format!("{text:?} is not a size like 512MiB, 2GB or 1024B"))?;
+
+                Ok(KdlValue::String(size.config_name()))
+            }
+            ConfigValueKind::Optional { .. } if text == NONE_WORD => Ok(KdlValue::Null),
+            ConfigValueKind::Optional { value } => value.parse(text),
         }
     }
 
     pub fn accepts_number(self, number: f32) -> bool {
         match self {
             ConfigValueKind::Number { range } => range.contains(number),
+            ConfigValueKind::Optional { value } => value.accepts_number(number),
             _ => false,
         }
     }
@@ -71,6 +95,8 @@ impl ConfigValueKind {
             ConfigValueKind::Number { .. } => Vec::new(),
             ConfigValueKind::Choice { names } => names(),
             ConfigValueKind::KeyChord => KeyChord::key_names(),
+            ConfigValueKind::Count | ConfigValueKind::ByteSize => Vec::new(),
+            ConfigValueKind::Optional { value } => [NONE_WORD].into_iter().chain(value.values()).collect(),
         }
     }
 
@@ -81,14 +107,23 @@ impl ConfigValueKind {
                 ConfigValueKind::as_chord(first).is_some()
                     && ConfigValueKind::as_chord(first) == ConfigValueKind::as_chord(second)
             }
-            ConfigValueKind::Bool | ConfigValueKind::Choice { .. } => first == second,
+            ConfigValueKind::Optional { value } if !first.is_null() && !second.is_null() => value.same(first, second),
+            ConfigValueKind::Bool
+            | ConfigValueKind::Choice { .. }
+            | ConfigValueKind::Count
+            | ConfigValueKind::ByteSize
+            | ConfigValueKind::Optional { .. } => first == second,
         }
     }
 
     pub fn toggled(self, current: &KdlValue) -> anyhow::Result<KdlValue> {
         match self {
             ConfigValueKind::Bool => Ok(KdlValue::Bool(!current.as_bool().unwrap_or(false))),
-            ConfigValueKind::Number { .. } | ConfigValueKind::KeyChord => {
+            ConfigValueKind::Number { .. }
+            | ConfigValueKind::KeyChord
+            | ConfigValueKind::Count
+            | ConfigValueKind::ByteSize
+            | ConfigValueKind::Optional { .. } => {
                 bail!("only on/off and choice settings toggle")
             }
             ConfigValueKind::Choice { names } => {
@@ -108,6 +143,7 @@ impl ConfigValueKind {
             KdlValue::String(text) => text.clone(),
             KdlValue::Bool(true) => TRUE_WORDS[0].to_string(),
             KdlValue::Bool(false) => FALSE_WORDS[0].to_string(),
+            KdlValue::Null => NONE_WORD.to_string(),
             other => other.to_string(),
         }
     }

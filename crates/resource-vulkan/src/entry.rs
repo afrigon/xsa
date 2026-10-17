@@ -6,7 +6,7 @@ use memory_vulkan::BindlessTable;
 
 use crate::{
     AnyEntry, EntryId, Events, LoadContext, LoadEnvironment, LoadPriority, LoadRequest, MemoryUsage, PendingResource,
-    Registry, ResourceKind, ResourceState, Retention, Unavailable,
+    Registry, ResourceKey, ResourceKind, ResourceState, Retention, Unavailable,
 };
 
 // One resource of kind `K`: its file, its handle count and what its load produced so far.
@@ -56,8 +56,11 @@ impl<K: ResourceKind> Entry<K> {
         }
     }
 
-    pub fn key(&self) -> (PathBuf, K::Options) {
-        (self.path.clone(), self.options.clone())
+    pub fn key(&self) -> ResourceKey<K> {
+        ResourceKey {
+            path: self.path.clone(),
+            options: self.options.clone(),
+        }
     }
 
     pub fn value(&self) -> Option<&K> {

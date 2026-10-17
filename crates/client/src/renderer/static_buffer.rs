@@ -48,11 +48,6 @@ impl StaticBuffer {
         Ok(self.upload.poll()?.is_some())
     }
 
-    pub fn wait(&mut self) -> anyhow::Result<()> {
-        self.upload.wait()?;
-        Ok(())
-    }
-
     pub fn into_buffer(self) -> anyhow::Result<Buffer> {
         match self.upload {
             GpuUpload::Pending(ticket) => Ok(ticket.wait()?),

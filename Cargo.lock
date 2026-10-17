@@ -3198,6 +3198,7 @@ dependencies = [
  "memory-vulkan",
  "render-graph-vulkan",
  "resource-loader",
+ "resource-vulkan",
  "tokio",
  "tracing",
  "winit",

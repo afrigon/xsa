@@ -21,6 +21,7 @@ use std::time::Instant;
 
 use anyhow::{Context, bail};
 use glam::DVec2;
+use resource_vulkan::Resources;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
 use winit::application::ApplicationHandler;
@@ -59,7 +60,10 @@ use task_status::TaskStatus;
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
 
+// Declaration order is drop order: the world and resources hold GPU objects, so they drop before the renderer.
 pub struct App {
+    world: Option<ClientWorld>,
+    resources: Option<Resources>,
     renderer: Option<Renderer>,
     window: Option<Window>,
     error: Option<anyhow::Error>,
@@ -69,7 +73,6 @@ pub struct App {
     exit_requested: bool,
     tasks: Vec<RunningTask>,
     packs_directory: PathBuf,
-    world: Option<ClientWorld>,
     input: Input,
     cameras: Option<CameraController>,
     config_document: ConfigDocument,
@@ -103,6 +106,8 @@ impl App {
         };
 
         let mut app = Self {
+            world: None,
+            resources: None,
             renderer: None,
             window: None,
             error: None,
@@ -112,7 +117,6 @@ impl App {
             exit_requested: false,
             tasks: Vec::new(),
             packs_directory,
-            world: None,
             input: Input::default(),
             cameras: None,
             config: config_document.config(),
@@ -143,7 +147,9 @@ impl App {
         let window = self.window.insert(event_loop.create_window(App::window_attributes())?);
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
         let shaders = ShaderBinaries::load(&base)?;
-        self.renderer = Some(Renderer::new(window, &shaders, &self.config)?);
+        let renderer = Renderer::new(window, &shaders, &self.config)?;
+        self.resources = Some(renderer.create_resources());
+        self.renderer = Some(renderer);
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
         self.cameras = Some(CameraController::new(window.inner_size()));
         window.request_redraw();
@@ -179,6 +185,12 @@ impl App {
 
     fn update(&mut self, delta_seconds: f64) -> anyhow::Result<()> {
         self.poll_connection()?;
+
+        if let Some(resources) = &self.resources {
+            resources.update()?;
+        }
+
+        self.advance_loading();
         self.poll_invocations();
         self.poll_input();
         self.run_game_commands();
@@ -235,7 +247,8 @@ impl App {
 
     fn join(&mut self, state: &WorldState) -> anyhow::Result<()> {
         let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
-        let world = ClientWorld::load(&self.packs_directory, state, renderer)?;
+        let resources = self.resources.as_ref().context("resources are not ready")?;
+        let world = ClientWorld::load(&self.packs_directory, state, renderer, resources)?;
         let cameras = self.cameras.as_mut().context("the cameras are not ready")?;
         cameras.focus(&world);
         self.world = Some(world);
@@ -291,6 +304,10 @@ impl App {
 
         if let Some(cameras) = &mut self.cameras {
             cameras.set_animation_duration_scale(f64::from(animation_duration_scale));
+        }
+
+        if let Some(resources) = &self.resources {
+            resources.set_limits(self.config.resources);
         }
 
         let Some(renderer) = &mut self.renderer else {

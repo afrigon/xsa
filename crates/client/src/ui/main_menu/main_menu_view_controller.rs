@@ -2,7 +2,7 @@ use xsa_commands::command::ViewControllerId;
 use xui::{Controller, Navigation, View, ViewController};
 
 use super::{MainMenuActions, MainMenuView};
-use crate::ui::ViewControllerFactory;
+use crate::ui::{LoadingViewController, ViewControllerFactory};
 
 pub struct MainMenuViewController {
     pub navigation: Navigation,
@@ -25,8 +25,7 @@ impl ViewController for MainMenuViewController {
 
 impl MainMenuViewController {
     fn play(&mut self) {
-        let game = self.factory.build(ViewControllerId::Game);
-        self.navigation.set_root(game);
+        self.navigation.set_root(LoadingViewController);
     }
 
     fn show_load(&mut self) {

@@ -9,8 +9,8 @@ use memory_vulkan::{BindlessTable, MemoryContext, TransferQueue};
 
 use crate::{
     AnyEntry, AvailableMemory, BudgetReading, Entry, EntryId, Events, Job, LoadEnvironment, LoadPriority, LoadRequest,
-    MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKind, ResourceLimits, ResourceState, Unavailable,
-    WorkerPool,
+    MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKey, ResourceKind, ResourceLimits, ResourceState,
+    Unavailable, WorkerPool,
 };
 
 /// Loads resource files in the background and frees them once nothing uses them.
@@ -128,7 +128,10 @@ impl Resources {
     fn request<K: ResourceKind>(&self, request: LoadRequest, options: K::Options) -> ResourceHandle<K> {
         let shared = &self.shared;
         let mut registry = shared.registry();
-        let key = (request.path.clone(), options);
+        let key = ResourceKey::<K> {
+            path: request.path.clone(),
+            options,
+        };
 
         if let Some(entry) = registry.kind::<K>().get(&key).cloned() {
             entry.join(&request);
@@ -141,7 +144,13 @@ impl Resources {
         let size = metadata.as_ref().map_or(0, |metadata| metadata.len());
         let priority = request.priority;
         let id = registry.next_id();
-        let entry = Arc::new(Entry::<K>::new(id, request, key.1, size, Arc::clone(&shared.events)));
+        let entry = Arc::new(Entry::<K>::new(
+            id,
+            request,
+            key.options,
+            size,
+            Arc::clone(&shared.events),
+        ));
         registry.insert(Arc::clone(&entry));
         let handle = ResourceHandle::new(Arc::clone(&entry));
         drop(registry);

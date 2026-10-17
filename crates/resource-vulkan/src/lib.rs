@@ -21,6 +21,7 @@ mod pending_resource;
 mod registry;
 mod resource_group;
 mod resource_handle;
+mod resource_key;
 mod resource_kind;
 mod resource_limits;
 mod resource_state;
@@ -28,6 +29,7 @@ mod resources;
 mod retention;
 mod textures;
 mod unavailable;
+mod unreferenced_entry;
 mod worker_pool;
 
 pub(crate) use any_entry::AnyEntry;
@@ -39,7 +41,9 @@ pub(crate) use events::Events;
 pub(crate) use load_environment::LoadEnvironment;
 pub(crate) use memory_budget::{BudgetReading, MemoryBudget};
 pub(crate) use registry::Registry;
+pub(crate) use resource_key::ResourceKey;
 pub(crate) use unavailable::Unavailable;
+pub(crate) use unreferenced_entry::UnreferencedEntry;
 pub(crate) use worker_pool::{Job, WorkerPool};
 
 pub use group_progress::GroupProgress;

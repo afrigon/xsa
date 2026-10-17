@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use resource_vulkan::ResourceLimits;
 use winit::keyboard::KeyCode;
 
 use super::{
@@ -94,6 +95,7 @@ impl Default for Config {
                 duration_scale: ANIMATION_DURATION_SCALE,
             },
             input: InputConfig { enabled: INPUT_ENABLED },
+            resources: ResourceLimits::default(),
         }
     }
 }

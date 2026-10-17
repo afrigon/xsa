@@ -3,6 +3,7 @@ mod antialiasing_document;
 mod antialiasing_kind_choice;
 mod bind_document;
 mod bloom_document;
+mod byte_size_name;
 mod config_choice;
 mod config_key;
 mod config_layer;
@@ -13,6 +14,7 @@ mod key_chord_name;
 mod lens_document;
 mod number_range;
 mod render_document;
+mod resources_document;
 mod shader_choice;
 mod shading_model_choice;
 mod terrain_lod_document;
@@ -35,6 +37,7 @@ use bind_document::BindDocument;
 use config_layer::ConfigLayer;
 use config_values::ConfigValues;
 use input_document::InputDocument;
+use resources_document::ResourcesDocument;
 
 use std::env;
 use std::fs;
@@ -75,6 +78,7 @@ impl ConfigDocument {
         BindDocument::write(&config.bind, &mut defaults);
         AnimationDocument::write(&config.animations, &mut defaults);
         InputDocument::write(&config.input, &mut defaults);
+        ResourcesDocument::write(&config.resources, &mut defaults);
         let mut document = ConfigDocument {
             path,
             session: ConfigLayer::default(),
@@ -127,6 +131,7 @@ impl ConfigDocument {
             bind: BindDocument::read(&values).into_config(&defaults.bind),
             animations: AnimationDocument::read(&values).into_config(&defaults.animations),
             input: InputDocument::read(&values).into_config(&defaults.input),
+            resources: ResourcesDocument::read(&values).into_config(&defaults.resources),
         }
     }
 

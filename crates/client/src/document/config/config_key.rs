@@ -1,6 +1,6 @@
 use super::{
     AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, InputDocument, LensDocument,
-    RenderDocument, TerrainLodDocument, WhiteBalanceDocument,
+    RenderDocument, ResourcesDocument, TerrainLodDocument, WhiteBalanceDocument,
 };
 
 #[derive(Clone, Copy)]
@@ -26,6 +26,9 @@ impl ConfigKey {
         TerrainLodDocument::FREEZE,
         AnimationDocument::DURATION_SCALE,
         InputDocument::ENABLED,
+        ResourcesDocument::MAX_CPU_CORES,
+        ResourcesDocument::MAX_MEMORY_USAGE,
+        ResourcesDocument::MAX_VIDEO_MEMORY_USAGE,
     ];
 
     pub fn all() -> Vec<ConfigKey> {

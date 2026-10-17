@@ -18,8 +18,8 @@ use std::f64::consts::SQRT_2;
 
 use glam::{DQuat, DVec3};
 
-use super::TerrainHeight;
 use super::culler::Culler;
+use super::terrain_height::TerrainHeight;
 
 // Tile centers are sent to the GPU as cube coordinates in f32, which hold them exactly down to this depth.
 pub(in crate::renderer) const DEEPEST_DEPTH: u32 = 22;
@@ -156,7 +156,6 @@ mod tests {
 
     use super::*;
     use crate::camera::Camera;
-    use crate::renderer::TerrainBufferHandle;
 
     const RADIUS: f64 = 6.0e6;
     const VERTEX_SPACING_PIXELS: f64 = 8.0;
@@ -170,11 +169,7 @@ mod tests {
     }
 
     fn terrain(map: HeightMap) -> TerrainHeight {
-        TerrainHeight {
-            buffer: TerrainBufferHandle { index: 0 },
-            bounds: HeightBounds::new(&map),
-            map: Arc::new(map),
-        }
+        TerrainHeight::new(Arc::new(map))
     }
 
     fn select_over(center: DVec3, height: Option<&TerrainHeight>) -> Vec<SelectedTile> {

@@ -12,6 +12,7 @@ mod gpu_data;
 mod gpu_timer;
 mod graph_textures;
 mod lens;
+mod lens_flare;
 mod lens_lights;
 mod light_occlusion;
 mod light_projection;
@@ -27,8 +28,9 @@ mod star_visibility;
 mod static_buffer;
 mod temporal_history;
 mod terrain_buffer;
+mod terrain_displacement;
 mod terrain_draw;
-mod texture;
+mod terrain_height;
 mod tonemapper;
 mod white_balance;
 
@@ -41,36 +43,27 @@ pub use material::{
 };
 pub use pending_capture::PendingCapture;
 pub use resource_loader::texture::ColorSpace;
-pub use scene::{
-    LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainBufferHandle, TerrainHandle,
-    TerrainHeight,
-};
+pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
-pub use texture::{CubeMapHandle, TextureHandle};
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
-use std::path::Path;
-use std::sync::Arc;
 
 use ash::vk;
 use glam::{DVec2, DVec3, Mat4, Vec2};
-use memory_vulkan::{
-    BindlessBinding, BindlessSlot, Buffer, Image, MemoryError, MemoryLocation, Recording, TimelineValue,
-    TransferPriority,
-};
+use memory_vulkan::{Buffer, MemoryError, MemoryLocation, Recording, TimelineValue, TransferPriority};
 use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
-use resource_loader::texture::TextureImage;
-use xsa_core::terrain::HeightMap;
+use resource_vulkan::{ResourceHandle, Resources};
 use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
 use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
+use crate::resource_kinds::{LensGhost, LensStarburst};
 use crate::vulkan::Swapchain;
 use command_recorder::CommandRecorder;
 use culler::Culler;
@@ -78,7 +71,7 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TerrainData, TileData};
+use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
 use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
@@ -87,13 +80,13 @@ use material::MaterialBuffer;
 use object_pose::ObjectPose;
 use passes::TaaPass;
 use pending_capture::BYTES_PER_PIXEL;
-use quad_sphere::{DetailRanges, HeightBounds, QuadSphere, SelectedTile};
+use quad_sphere::{DetailRanges, QuadSphere, SelectedTile};
 use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
-use terrain_buffer::TerrainBuffer;
+use terrain_displacement::TerrainDisplacement;
 use terrain_draw::TerrainDraw;
-use texture::{SlottedTexture, TextureUpload};
+use terrain_height::TerrainHeight;
 use tonemapper::NO_TONEMAPPER;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
@@ -149,15 +142,10 @@ pub struct Renderer {
     tile_capacity: usize,
     star_capacity: usize,
     light_capacity: usize,
-    textures: Vec<(Image, BindlessSlot)>,
     materials: Vec<MaterialBuffer>,
-    terrain_buffers: Vec<TerrainBuffer>,
+    // By terrain index; None until its height map is ready.
+    terrain_displacements: Vec<Option<TerrainDisplacement>>,
     lens: Option<Lens>,
-    // A lens loaded while its uploads are pending; it replaces `lens` once they complete.
-    pending_lens: Option<Lens>,
-    // Uploads whose slots are reserved and whose descriptors are written once they complete. A stopgap until
-    // resources own their textures.
-    pending_textures: Vec<SlottedTexture>,
     passes: RenderPasses,
     graph: RenderGraph,
     graph_textures: GraphTextures,
@@ -221,12 +209,9 @@ impl Renderer {
             tile_capacity: INITIAL_TILE_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
             light_capacity: INITIAL_LIGHT_CAPACITY,
-            textures: Vec::new(),
             materials: Vec::new(),
-            terrain_buffers: Vec::new(),
+            terrain_displacements: Vec::new(),
             lens: None,
-            pending_lens: None,
-            pending_textures: Vec::new(),
             passes,
             graph,
             graph_textures: GraphTextures::default(),
@@ -294,122 +279,52 @@ impl Renderer {
         self.gpu.device.extended_dynamic_state3().is_some()
     }
 
-    pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
-        let image = TextureImage::read(path, ColorSpace::Srgb)?;
-        let upload = TextureUpload::new(image).cube_map(&self.gpu, name)?;
-        let slot = self.gpu.bindless.allocate(BindlessBinding::CubeMap)?;
-        let handle = CubeMapHandle::new(slot.index());
-        self.pending_textures.push(SlottedTexture::new(slot, upload.into()));
-
-        Ok(handle)
+    // Loads into the same GPU memory, transfer queue and bindless table the renderer draws from.
+    pub fn create_resources(&self) -> Resources {
+        Resources::new(&self.gpu.memory, &self.gpu.transfer, &self.gpu.bindless)
     }
 
-    pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
-        let image = TextureImage::read(path, color_space)?;
-        self.upload_texture(name, image)
-    }
-
-    fn upload_texture(&mut self, name: &str, image: TextureImage) -> anyhow::Result<TextureHandle> {
-        let texture = Renderer::slotted_texture(&mut self.gpu, name, image)?;
-        let handle = TextureHandle::new(texture.slot().index());
-        self.pending_textures.push(texture);
-
-        Ok(handle)
-    }
-
-    fn slotted_texture(gpu: &mut GpuContext, name: &str, image: TextureImage) -> anyhow::Result<SlottedTexture> {
-        let upload = TextureUpload::new(image).texture(gpu, name)?;
-        let slot = gpu.bindless.allocate(BindlessBinding::Texture)?;
-
-        Ok(SlottedTexture::new(slot, upload.into()))
-    }
-
-    pub fn add_material<M: Material>(&mut self, name: &str, material: M) -> anyhow::Result<MaterialHandle> {
-        self.materials.push(MaterialBuffer::new(&self.gpu, name, &material)?);
+    pub fn add_material<M: Material + 'static>(&mut self, name: &str, material: M) -> anyhow::Result<MaterialHandle> {
+        self.materials.push(MaterialBuffer::new(&self.gpu, name, material)?);
         Ok(MaterialHandle {
             index: self.materials.len() - 1,
         })
     }
 
-    // `image` is the height map's file, uploaded with its own mip chain; `map` is its decoded top level.
-    pub fn add_terrain_height(
+    // Replaces the lens; it is drawn once its textures are loaded and its ghosts uploaded.
+    pub fn load_lens(
         &mut self,
-        name: &str,
-        image: TextureImage,
-        map: Arc<HeightMap>,
-        radius: f64,
-    ) -> anyhow::Result<TerrainHeight> {
-        let bounds = HeightBounds::new(&map);
-        let texture = self.upload_texture(&format!("{name} height map"), image)?;
-        let data = TerrainData {
-            height_texture: texture.index(),
-            minimum_height: (map.minimum() / radius) as f32,
-            height_range: ((map.maximum() - map.minimum()) / radius) as f32,
-            padding: 0,
-        };
-        self.terrain_buffers.push(TerrainBuffer::new(&self.gpu, name, data)?);
-
-        Ok(TerrainHeight {
-            buffer: TerrainBufferHandle {
-                index: self.terrain_buffers.len() - 1,
-            },
-            bounds,
-            map,
-        })
+        definition: LensDefinition,
+        starburst: ResourceHandle<LensStarburst>,
+        ghosts: Vec<ResourceHandle<LensGhost>>,
+    ) {
+        self.lens = Some(Lens::new(definition, starburst, ghosts));
     }
 
-    pub fn load_lens(&mut self, definition: &LensDefinition) -> anyhow::Result<()> {
-        let mut lens = Lens::new(definition, |name, image| {
-            Renderer::slotted_texture(&mut self.gpu, name, image)
-        })?;
-        lens.upload(&self.gpu)?;
-        self.pending_lens = Some(lens);
-
-        Ok(())
-    }
-
-    // Blocks until every upload queued so far completes, so the next frame may use all of them.
-    pub fn finish_uploads(&mut self) -> anyhow::Result<()> {
-        let gpu = &self.gpu;
-
-        for texture in &mut self.pending_textures {
-            texture.wait(&gpu.bindless)?;
-        }
-
-        for material in &mut self.materials {
-            material.wait()?;
-        }
-
-        for terrain in &mut self.terrain_buffers {
-            terrain.wait()?;
-        }
-
-        if let Some(lens) = &mut self.pending_lens {
-            lens.wait_uploads(&gpu.bindless)?;
-        }
-
-        self.poll_uploads()
-    }
-
+    // Derives what loaded resources add to the scene, and polls the uploads of what was derived.
     fn poll_uploads(&mut self) -> anyhow::Result<()> {
-        let gpu = &self.gpu;
-        let mut index = 0;
+        for material in &mut self.materials {
+            material.refresh(&self.gpu)?;
+        }
 
-        while let Some(texture) = self.pending_textures.get_mut(index) {
-            if !texture.poll(&gpu.bindless)? {
-                index += 1;
-                continue;
+        let terrains = self.scene.terrains();
+        self.terrain_displacements.resize_with(terrains.len(), || None);
+
+        for (terrain, displacement) in terrains.iter().zip(&mut self.terrain_displacements) {
+            if displacement.is_none()
+                && let Some(height_map) = &terrain.height_map
+            {
+                let radius = self.scene.object(terrain.object).scale;
+                *displacement = TerrainDisplacement::of(&self.gpu, "terrain", height_map, radius)?;
             }
 
-            let texture = self.pending_textures.swap_remove(index);
-            self.textures
-                .push(texture.into_parts().expect("a polled ready texture holds its image"));
+            if let Some(displacement) = displacement {
+                displacement.buffer.poll()?;
+            }
         }
 
-        if let Some(lens) = &mut self.pending_lens
-            && lens.poll_uploads(&gpu.bindless)?
-        {
-            self.lens = self.pending_lens.take();
+        if let Some(lens) = &mut self.lens {
+            lens.refresh(&self.gpu)?;
         }
 
         Ok(())
@@ -672,7 +587,7 @@ impl Renderer {
             let visibility = self
                 .light_occlusion
                 .visibility(camera_relative, object.bounding_radius, occluders);
-            if let Some(lens) = &self.lens {
+            if let Some(lens) = self.lens.as_ref().and_then(Lens::flare) {
                 let projected = projection.project(
                     camera_relative,
                     object.bounding_radius,
@@ -727,13 +642,17 @@ impl Renderer {
             let object = self.scene.object(terrain.object);
             let center = object.position - camera.position;
 
-            if !culler.is_visible(center, object.bounding_radius) {
+            let height = TerrainDisplacement::uploaded(&self.terrain_displacements, TerrainHandle { index })
+                .map(|displacement| &displacement.height);
+            let bounding_radius = object.bounding_radius + height.map_or(0.0, TerrainHeight::maximum);
+
+            if !culler.is_visible(center, bounding_radius) {
                 continue;
             }
 
             let sphere = QuadSphere {
                 radius: object.scale,
-                height: terrain.height.as_ref(),
+                height,
                 center,
                 orientation: object.orientation,
             };
@@ -767,12 +686,8 @@ impl Renderer {
             let object = self.scene.object(object_handle);
             let previous = self.temporal.previous_pose(object_handle.index);
             let ranges = self.detail_ranges(object.scale);
-            let grid = self
-                .scene
-                .terrain(draw.terrain)
-                .height
-                .as_ref()
-                .map(TerrainHeight::grid);
+            let grid = TerrainDisplacement::uploaded(&self.terrain_displacements, draw.terrain)
+                .map(|displacement| displacement.height.grid());
             let first_tile = draw.first_tile as usize;
 
             for selected in &self.selected_tiles[first_tile..first_tile + draw.tile_count as usize] {
@@ -848,7 +763,7 @@ impl Renderer {
                 })
             }),
             projected_light_count: self.projected_light_data.len() as u32,
-            lens_loaded: self.lens.is_some(),
+            lens_loaded: self.lens.as_ref().and_then(Lens::flare).is_some(),
         };
         self.passes.add_to(&mut graph, &self.render, inputs);
         let compiled = graph.compile()?;
@@ -863,8 +778,8 @@ impl Renderer {
             render: &self.render,
             scene: &self.scene,
             materials: &self.materials,
-            terrain_buffers: &self.terrain_buffers,
-            lens: self.lens.as_ref(),
+            terrain_displacements: &self.terrain_displacements,
+            lens: self.lens.as_ref().and_then(Lens::flare),
             focal_length_pixels: self.focal_length_pixels,
             terrain_draws: &self.terrain_draws,
             descriptor_set: bindless.set(),

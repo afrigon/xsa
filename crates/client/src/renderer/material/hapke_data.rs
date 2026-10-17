@@ -14,11 +14,17 @@ impl HapkeData {
     };
 }
 
-impl From<HapkeParameters> for HapkeData {
-    fn from(hapke: HapkeParameters) -> Self {
-        HapkeData {
-            medium_texture: hapke.medium.index(),
-            opposition_texture: hapke.opposition.index(),
+impl HapkeData {
+    // The shader reads both maps once it has the medium, so none until both are ready.
+    pub fn of(hapke: Option<&HapkeParameters>) -> HapkeData {
+        let indices = hapke.and_then(|hapke| Some((hapke.medium.get()?.index(), hapke.opposition.get()?.index())));
+
+        match indices {
+            Some((medium_texture, opposition_texture)) => HapkeData {
+                medium_texture,
+                opposition_texture,
+            },
+            None => HapkeData::NONE,
         }
     }
 }
