@@ -129,6 +129,9 @@ enables only the kinds it reads.
 
 - **Vulkan 1.3 baseline.** `ash` 0.38 has no 1.4 bindings; use 1.4 features
   through their extensions.
+- **Hardware baseline: NVIDIA RTX 2080 SUPER.** Any Vulkan feature or extension
+  that GPU supports may be required, with no fallback path, as long as later
+  GPUs support it too.
 - **Dynamic rendering and synchronization2** — no `VkRenderPass`, no legacy
   barriers.
 - **Reverse-Z infinite depth.** Clear to 0, test `GREATER`, `D32_SFLOAT`.
