@@ -1,14 +1,14 @@
-use memory_vulkan::{MemoryContext, Timeline, TransferQueue};
+use memory_vulkan::{BindlessTable, MemoryContext, Timeline, TransferQueue};
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
 
-use crate::vulkan::{BindlessTextures, Device, Instance, SuitableDevice, Surface, TransferQueueLocation};
+use crate::vulkan::{Device, Instance, SuitableDevice, Surface, TransferQueueLocation};
 
 // Every GPU object must drop before this context, so the memory context's last clone, here, destroys the device before
 // the surface and the instance. Validation layers report a violation.
 pub(super) struct GpuContext {
     pub transfer: TransferQueue,
-    pub bindless: BindlessTextures,
+    pub bindless: BindlessTable,
     pub graphics: Timeline,
     pub memory: MemoryContext,
     pub device: Device,
@@ -36,7 +36,7 @@ impl GpuContext {
             device.transfer_family(),
             device.queue_family(),
         )?;
-        let bindless = BindlessTextures::new(&memory, &device)?;
+        let bindless = BindlessTable::new(&memory, device.max_sampler_anisotropy())?;
 
         Ok(GpuContext {
             transfer,

@@ -55,7 +55,10 @@ use std::sync::Arc;
 
 use ash::vk;
 use glam::{DVec2, DVec3, Mat4, Vec2};
-use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation, Recording, TimelineValue, TransferPriority};
+use memory_vulkan::{
+    BindlessBinding, BindlessSlot, Buffer, Image, MemoryError, MemoryLocation, Recording, TimelineValue,
+    TransferPriority,
+};
 use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -90,7 +93,7 @@ use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use terrain_buffer::TerrainBuffer;
 use terrain_draw::TerrainDraw;
-use texture::{BindlessSlot, SlottedTexture, TextureUpload};
+use texture::{SlottedTexture, TextureUpload};
 use tonemapper::NO_TONEMAPPER;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
@@ -146,8 +149,7 @@ pub struct Renderer {
     tile_capacity: usize,
     star_capacity: usize,
     light_capacity: usize,
-    cube_maps: Vec<Image>,
-    textures: Vec<Image>,
+    textures: Vec<(Image, BindlessSlot)>,
     materials: Vec<MaterialBuffer>,
     terrain_buffers: Vec<TerrainBuffer>,
     lens: Option<Lens>,
@@ -219,7 +221,6 @@ impl Renderer {
             tile_capacity: INITIAL_TILE_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
             light_capacity: INITIAL_LIGHT_CAPACITY,
-            cube_maps: Vec::new(),
             textures: Vec::new(),
             materials: Vec::new(),
             terrain_buffers: Vec::new(),
@@ -296,11 +297,11 @@ impl Renderer {
     pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
         let image = TextureImage::read(path, ColorSpace::Srgb)?;
         let upload = TextureUpload::new(image).cube_map(&self.gpu, name)?;
-        let index = self.gpu.bindless.reserve_cube()?;
-        self.pending_textures
-            .push(SlottedTexture::new(BindlessSlot::Cube(index), upload.into()));
+        let slot = self.gpu.bindless.allocate(BindlessBinding::CubeMap)?;
+        let handle = CubeMapHandle::new(slot.index());
+        self.pending_textures.push(SlottedTexture::new(slot, upload.into()));
 
-        Ok(CubeMapHandle::new(index))
+        Ok(handle)
     }
 
     pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
@@ -318,9 +319,9 @@ impl Renderer {
 
     fn slotted_texture(gpu: &mut GpuContext, name: &str, image: TextureImage) -> anyhow::Result<SlottedTexture> {
         let upload = TextureUpload::new(image).texture(gpu, name)?;
-        let index = gpu.bindless.reserve_texture()?;
+        let slot = gpu.bindless.allocate(BindlessBinding::Texture)?;
 
-        Ok(SlottedTexture::new(BindlessSlot::Texture(index), upload.into()))
+        Ok(SlottedTexture::new(slot, upload.into()))
     }
 
     pub fn add_material<M: Material>(&mut self, name: &str, material: M) -> anyhow::Result<MaterialHandle> {
@@ -372,7 +373,7 @@ impl Renderer {
         let gpu = &self.gpu;
 
         for texture in &mut self.pending_textures {
-            texture.wait(&gpu.bindless, &gpu.device)?;
+            texture.wait(&gpu.bindless)?;
         }
 
         for material in &mut self.materials {
@@ -384,7 +385,7 @@ impl Renderer {
         }
 
         if let Some(lens) = &mut self.pending_lens {
-            lens.wait_uploads(&gpu.bindless, &gpu.device)?;
+            lens.wait_uploads(&gpu.bindless)?;
         }
 
         self.poll_uploads()
@@ -395,23 +396,18 @@ impl Renderer {
         let mut index = 0;
 
         while let Some(texture) = self.pending_textures.get_mut(index) {
-            if !texture.poll(&gpu.bindless, &gpu.device)? {
+            if !texture.poll(&gpu.bindless)? {
                 index += 1;
                 continue;
             }
 
             let texture = self.pending_textures.swap_remove(index);
-            let slot = texture.slot();
-            let image = texture.into_image().expect("a polled ready texture holds its image");
-
-            match slot {
-                BindlessSlot::Texture(_) => self.textures.push(image),
-                BindlessSlot::Cube(_) => self.cube_maps.push(image),
-            }
+            self.textures
+                .push(texture.into_parts().expect("a polled ready texture holds its image"));
         }
 
         if let Some(lens) = &mut self.pending_lens
-            && lens.poll_uploads(&gpu.bindless, &gpu.device)?
+            && lens.poll_uploads(&gpu.bindless)?
         {
             self.lens = self.pending_lens.take();
         }
@@ -857,7 +853,7 @@ impl Renderer {
         self.passes.add_to(&mut graph, &self.render, inputs);
         let compiled = graph.compile()?;
         self.graph_textures
-            .register(device, bindless, compiled.graph(), compiled.created_images())?;
+            .register(bindless, compiled.graph(), compiled.created_images())?;
         let context = FrameContext {
             recorder: CommandRecorder::new(device, frame.command_buffer),
             frame,
@@ -997,23 +993,11 @@ impl Renderer {
             self.swapchain.handle(),
         )?;
         let recreated = self.graph.resize(self.swapchain.extent())?;
-        // Workaround: the recreated images' bindless slots are rewritten in place, which no frame still in flight may
-        // read. Waiting goes away once freed slots are reused only after those frames (tracked in #285).
-        self.wait_for_frames_in_flight()?;
-        let gpu = &mut self.gpu;
         self.graph_textures
-            .register(&gpu.device, &mut gpu.bindless, &self.graph, &recreated)?;
+            .register(&self.gpu.bindless, &self.graph, &recreated)?;
         self.temporal.reset();
 
         self.swapchain_outdated = false;
-
-        Ok(())
-    }
-
-    fn wait_for_frames_in_flight(&self) -> anyhow::Result<()> {
-        for submitted in self.frames.iter().filter_map(|frame| frame.submitted.as_ref()) {
-            self.gpu.graphics.wait(submitted.value)?;
-        }
 
         Ok(())
     }

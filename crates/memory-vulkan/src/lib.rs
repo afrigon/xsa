@@ -7,6 +7,7 @@
 //! submission too. Plain actions, such as returning a slot to a free list, wait in the same queue. Every type can be
 //! shared across threads.
 
+mod bindless_table;
 mod buffer;
 mod deletion_queue;
 mod device_handle;
@@ -22,6 +23,7 @@ mod transfer_queue;
 pub(crate) use deletion_queue::{DeletionQueue, Frontier, OpenRecordings, RecordingId};
 pub(crate) use timeline::{TimelineId, TimelineSemaphore};
 
+pub use bindless_table::{BindlessBinding, BindlessSlot, BindlessTable};
 pub use buffer::Buffer;
 pub use deletion_queue::Deletion;
 pub use device_handle::DeviceHandle;
@@ -53,6 +55,8 @@ mod tests {
         assert_thread_safe::<Recording>();
         assert_thread_safe::<DeviceObject<vk::Buffer>>();
         assert_thread_safe::<Buffer>();
+        assert_thread_safe::<BindlessTable>();
+        assert_thread_safe::<BindlessSlot>();
         assert_thread_safe::<Image>();
         assert_thread_safe::<TransferQueue>();
         assert_thread_safe::<UploadTicket<Image>>();

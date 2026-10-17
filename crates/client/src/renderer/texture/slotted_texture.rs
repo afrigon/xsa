@@ -1,7 +1,5 @@
-use memory_vulkan::{GpuUpload, Image};
-
-use super::BindlessSlot;
-use crate::vulkan::{BindlessTextures, Device, SAMPLED_LAYOUT};
+use ash::vk;
+use memory_vulkan::{BindlessSlot, BindlessTable, GpuUpload, Image};
 
 // A texture being uploaded into a reserved bindless slot, whose descriptor is written once the upload completes.
 pub(in crate::renderer) struct SlottedTexture {
@@ -14,43 +12,38 @@ impl SlottedTexture {
         SlottedTexture { slot, upload }
     }
 
-    pub fn slot(&self) -> BindlessSlot {
-        self.slot
+    pub fn slot(&self) -> &BindlessSlot {
+        &self.slot
     }
 
     // Whether the texture is ready; its descriptor is written when it becomes so.
-    pub fn poll(&mut self, bindless: &BindlessTextures, device: &Device) -> anyhow::Result<bool> {
+    pub fn poll(&mut self, bindless: &BindlessTable) -> anyhow::Result<bool> {
         let ready = self.upload.poll()?.is_some();
 
         if ready {
-            self.bind(bindless, device);
+            self.bind(bindless);
         }
 
         Ok(ready)
     }
 
-    pub fn wait(&mut self, bindless: &BindlessTextures, device: &Device) -> anyhow::Result<()> {
+    pub fn wait(&mut self, bindless: &BindlessTable) -> anyhow::Result<()> {
         self.upload.wait()?;
-        self.bind(bindless, device);
+        self.bind(bindless);
 
         Ok(())
     }
 
-    pub fn into_image(self) -> Option<Image> {
+    pub fn into_parts(self) -> Option<(Image, BindlessSlot)> {
         match self.upload {
             GpuUpload::Pending(_) => None,
-            GpuUpload::Ready(image) => Some(image),
+            GpuUpload::Ready(image) => Some((image, self.slot)),
         }
     }
 
-    fn bind(&self, bindless: &BindlessTextures, device: &Device) {
-        let Some(image) = self.upload.get() else {
-            return;
-        };
-
-        match self.slot {
-            BindlessSlot::Texture(index) => bindless.set_texture(device, index, image.view(), SAMPLED_LAYOUT),
-            BindlessSlot::Cube(index) => bindless.set_cube(device, index, image.view()),
+    fn bind(&self, bindless: &BindlessTable) {
+        if let Some(image) = self.upload.get() {
+            bindless.write(&self.slot, image.view(), vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
         }
     }
 }

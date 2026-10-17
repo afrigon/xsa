@@ -9,7 +9,7 @@ use super::gpu_context::GpuContext;
 use super::gpu_data::{GhostData, ProjectedLightData};
 use super::static_buffer::StaticBuffer;
 use super::texture::SlottedTexture;
-use crate::vulkan::{BindlessTextures, Device};
+use memory_vulkan::BindlessTable;
 
 // The smallest scene value that can change an 8-bit pixel: half an output step, decoded through sRGB's linear segment.
 // Every tonemapper darkens values near black, so none shows a smaller one.
@@ -184,11 +184,11 @@ impl Lens {
     }
 
     // Whether its textures and ghosts are in GPU memory, so it may be drawn.
-    pub fn poll_uploads(&mut self, bindless: &BindlessTextures, device: &Device) -> anyhow::Result<bool> {
+    pub fn poll_uploads(&mut self, bindless: &BindlessTable) -> anyhow::Result<bool> {
         let mut ready = true;
 
         for texture in &mut self.textures {
-            ready &= texture.poll(bindless, device)?;
+            ready &= texture.poll(bindless)?;
         }
 
         if let Some(ghosts) = &mut self.ghosts {
@@ -198,9 +198,9 @@ impl Lens {
         Ok(ready)
     }
 
-    pub fn wait_uploads(&mut self, bindless: &BindlessTextures, device: &Device) -> anyhow::Result<()> {
+    pub fn wait_uploads(&mut self, bindless: &BindlessTable) -> anyhow::Result<()> {
         for texture in &mut self.textures {
-            texture.wait(bindless, device)?;
+            texture.wait(bindless)?;
         }
 
         if let Some(ghosts) = &mut self.ghosts {
