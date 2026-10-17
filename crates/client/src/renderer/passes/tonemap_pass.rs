@@ -3,7 +3,7 @@ mod tonemap_inputs;
 pub(in crate::renderer) use tonemap_inputs::TonemapInputs;
 
 use ash::vk;
-use render_graph::{Attachment, PassContext, PassDeclaration, PassError, RenderPass, Stage};
+use render_graph_vulkan::{Attachment, PassContext, PassDeclaration, PassError, RenderPass, Stage};
 
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;

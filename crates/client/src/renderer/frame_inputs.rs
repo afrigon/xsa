@@ -1,4 +1,4 @@
-use render_graph::{ImportedBufferHandle, ImportedImageHandle};
+use render_graph_vulkan::{ImportedBufferHandle, ImportedImageHandle};
 
 #[derive(Clone, Copy)]
 pub(super) struct FrameInputs {

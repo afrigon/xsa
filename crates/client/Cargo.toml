@@ -10,7 +10,7 @@ glam.workspace = true
 image = { workspace = true, features = ["png"] }
 gpu-allocator.workspace = true
 kdl = "6.7.1"
-render-graph.workspace = true
+render-graph-vulkan.workspace = true
 resource-loader = { workspace = true, features = ["texture"] }
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true

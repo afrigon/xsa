@@ -2,7 +2,7 @@ mod histogram_inputs;
 
 pub(in crate::renderer) use histogram_inputs::HistogramInputs;
 
-use render_graph::{BufferUsage, PassContext, PassDeclaration, PassError, RenderPass, Stage};
+use render_graph_vulkan::{BufferUsage, PassContext, PassDeclaration, PassError, RenderPass, Stage};
 
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;

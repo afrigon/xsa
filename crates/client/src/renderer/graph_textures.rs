@@ -1,5 +1,5 @@
 use ash::vk;
-use render_graph::{ImageId, RenderGraph};
+use render_graph_vulkan::{ImageId, RenderGraph};
 
 use crate::vulkan::{BindlessTextures, Device};
 

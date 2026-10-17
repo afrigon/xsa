@@ -52,7 +52,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use glam::{DVec2, DVec3, Mat4, Vec2};
-use render_graph::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
+use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;

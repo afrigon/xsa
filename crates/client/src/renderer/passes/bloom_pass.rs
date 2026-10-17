@@ -4,7 +4,7 @@ mod bloom_step;
 pub(in crate::renderer) use bloom_resources::BloomResources;
 
 use ash::vk;
-use render_graph::{
+use render_graph_vulkan::{
     GraphImageDescription, ImageHandle, ImageSize, PassContext, PassDeclaration, PassError, RenderPass, Stage,
 };
 

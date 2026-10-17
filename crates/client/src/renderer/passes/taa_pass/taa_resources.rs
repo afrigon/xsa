@@ -1,4 +1,4 @@
-use render_graph::HistoryImage;
+use render_graph_vulkan::HistoryImage;
 
 use crate::renderer::passes::ForwardResources;
 

@@ -3,7 +3,7 @@ mod taa_resources;
 pub(in crate::renderer) use taa_resources::TaaResources;
 
 use ash::vk;
-use render_graph::{
+use render_graph_vulkan::{
     GraphImageDescription, HistoryId, ImageSize, PassContext, PassDeclaration, PassError, RenderGraph, RenderPass,
     Stage,
 };

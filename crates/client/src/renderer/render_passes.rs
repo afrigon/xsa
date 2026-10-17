@@ -1,5 +1,5 @@
 use ash::vk;
-use render_graph::{GraphBuilder, RenderGraph};
+use render_graph_vulkan::{GraphBuilder, RenderGraph};
 
 use super::ShaderBinaries;
 use super::frame_context::FrameContext;

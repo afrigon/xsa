@@ -1,5 +1,5 @@
 use ash::vk;
-use render_graph::{Attachment, PassContext, PassDeclaration, PassError, RenderPass};
+use render_graph_vulkan::{Attachment, PassContext, PassDeclaration, PassError, RenderPass};
 
 use super::ForwardResources;
 use super::forward_pass::{DEPTH_FORMAT, HDR_FORMAT, MOTION_FORMAT};

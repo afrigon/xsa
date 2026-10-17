@@ -1,4 +1,4 @@
-use render_graph::{ImageHandle, ImportedBufferHandle};
+use render_graph_vulkan::{ImageHandle, ImportedBufferHandle};
 
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct HistogramInputs {

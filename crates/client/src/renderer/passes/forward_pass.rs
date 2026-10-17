@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::mem::offset_of;
 
 use ash::vk;
-use render_graph::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
+use render_graph_vulkan::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
 
 use crate::mesh::{GridMesh, GridVertex};
 use crate::renderer::frame_context::FrameContext;

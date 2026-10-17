@@ -5,7 +5,7 @@ pub(in crate::renderer) use lens_inputs::LensInputs;
 pub(in crate::renderer) use lens_resources::LensResources;
 
 use ash::vk;
-use render_graph::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
+use render_graph_vulkan::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
 
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;

@@ -1,5 +1,5 @@
 use ash::vk::{self, Handle};
-use render_graph::{Attachment, ImportedImageHandle, PassContext, PassDeclaration, PassError, RenderPass};
+use render_graph_vulkan::{Attachment, ImportedImageHandle, PassContext, PassDeclaration, PassError, RenderPass};
 use xui_vulkan::{FrameTarget, VulkanHost};
 
 use crate::renderer::frame_context::FrameContext;

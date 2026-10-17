@@ -1,5 +1,5 @@
 [package]
-name = "render-graph"
+name = "render-graph-vulkan"
 version.workspace = true
 edition.workspace = true
 
