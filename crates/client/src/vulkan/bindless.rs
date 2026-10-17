@@ -177,15 +177,19 @@ impl BindlessTextures {
         self.set
     }
 
-    pub fn add_cube(&mut self, device: &Device, view: vk::ImageView) -> anyhow::Result<u32> {
+    // A slot no shader reads until `set_cube` fills it.
+    pub fn reserve_cube(&mut self) -> anyhow::Result<u32> {
         ensure!(self.cube_texture_count < MAX_CUBE_TEXTURES, "out of cube texture slots");
         let index = self.cube_texture_count;
+        self.cube_texture_count += 1;
+        Ok(index)
+    }
+
+    pub fn set_cube(&self, device: &Device, index: u32, view: vk::ImageView) {
         self.write_image(
             device,
             &ImageWrite::sampled(CUBE_TEXTURES_BINDING, index, view, SAMPLED_LAYOUT),
         );
-        self.cube_texture_count += 1;
-        Ok(index)
     }
 
     pub fn add_texture(
@@ -197,6 +201,14 @@ impl BindlessTextures {
         ensure!(self.texture_count < MAX_TEXTURES, "out of texture slots");
         let index = self.texture_count;
         self.set_texture(device, index, view, layout);
+        self.texture_count += 1;
+        Ok(index)
+    }
+
+    // A slot no shader reads until `set_texture` fills it.
+    pub fn reserve_texture(&mut self) -> anyhow::Result<u32> {
+        ensure!(self.texture_count < MAX_TEXTURES, "out of texture slots");
+        let index = self.texture_count;
         self.texture_count += 1;
         Ok(index)
     }

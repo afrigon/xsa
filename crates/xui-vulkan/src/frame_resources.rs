@@ -1,5 +1,5 @@
 use ash::vk;
-use memory_vulkan::{Buffer, MemoryContext, MemoryLocation};
+use memory_vulkan::{Buffer, MemoryContext, MemoryLocation, QueueSharing};
 
 use crate::primitive_instance::PrimitiveInstance;
 
@@ -80,6 +80,7 @@ impl FrameResources {
             size as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER,
             MemoryLocation::CpuToGpu,
+            &QueueSharing::Exclusive,
         )?)
     }
 
@@ -90,6 +91,7 @@ impl FrameResources {
             size as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
             MemoryLocation::CpuToGpu,
+            &QueueSharing::Exclusive,
         )?)
     }
 

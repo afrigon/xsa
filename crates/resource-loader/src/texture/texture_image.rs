@@ -56,6 +56,11 @@ impl TextureImage {
         &self.layers
     }
 
+    /// Each layer's mip chain, as `layers` lays them out, owned.
+    pub fn into_layers(self) -> Vec<Vec<u8>> {
+        self.layers
+    }
+
     /// The top mip level of a half-float image, row by row, as red green blue.
     pub fn rgb_texels(&self) -> anyhow::Result<Vec<[f32; 3]>> {
         ensure!(

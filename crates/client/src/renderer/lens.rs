@@ -2,12 +2,14 @@ use std::path::Path;
 
 use ash::vk;
 use glam::{Vec2, Vec3};
-use memory_vulkan::{Buffer, MemoryContext};
 use resource_loader::texture::{ColorSpace, TextureImage};
 use xsa_packs::LensDefinition;
 
-use super::TextureHandle;
+use super::gpu_context::GpuContext;
 use super::gpu_data::{GhostData, ProjectedLightData};
+use super::static_buffer::StaticBuffer;
+use super::texture::SlottedTexture;
+use crate::vulkan::{BindlessTextures, Device};
 
 // The smallest scene value that can change an 8-bit pixel: half an output step, decoded through sRGB's linear segment.
 // Every tonemapper darkens values near black, so none shows a smaller one.
@@ -28,17 +30,20 @@ pub(in crate::renderer) struct Lens {
     // Each ghost's brightest texel times its intensity and tint.
     ghost_peaks: Vec<f32>,
     ghost_data: Vec<GhostData>,
-    ghosts: Option<Buffer>,
+    ghosts: Option<StaticBuffer>,
+    textures: Vec<SlottedTexture>,
 }
 
 impl Lens {
     pub fn new(
         definition: &LensDefinition,
-        mut upload: impl FnMut(&str, &TextureImage) -> anyhow::Result<TextureHandle>,
+        mut upload: impl FnMut(&str, TextureImage) -> anyhow::Result<SlottedTexture>,
     ) -> anyhow::Result<Lens> {
         let starburst = Lens::read(&definition.starburst.texture)?;
         let starburst_maxima = Lens::starburst_maxima(&starburst)?;
-        let starburst_texture = upload("lens starburst", &starburst)?.index();
+        let starburst = upload("lens starburst", starburst)?;
+        let starburst_texture = starburst.slot().index();
+        let mut textures = vec![starburst];
         let mut ghost_peaks = Vec::with_capacity(definition.ghosts.len());
         let mut ghost_data = Vec::with_capacity(definition.ghosts.len());
 
@@ -49,14 +54,16 @@ impl Lens {
                 .iter()
                 .fold(0.0_f32, |peak, &texel| peak.max(Vec3::from(texel).max_element()));
             ghost_peaks.push(peak * ghost.intensity * ghost.tint.max_element());
+            let texture = upload(&format!("lens ghost {index}"), image)?;
             ghost_data.push(GhostData {
                 position: ghost.position,
                 size: ghost.size_degrees.to_radians(),
-                texture: upload(&format!("lens ghost {index}"), &image)?.index(),
+                texture: texture.slot().index(),
                 dispersion_per_radian: ghost.dispersion_per_degree.to_degrees(),
                 tint: ghost.tint,
                 intensity: ghost.intensity,
             });
+            textures.push(texture);
         }
 
         Ok(Lens {
@@ -71,6 +78,7 @@ impl Lens {
             ghost_peaks,
             ghost_data,
             ghosts: None,
+            textures,
         })
     }
 
@@ -156,13 +164,13 @@ impl Lens {
         (pixel - viewport * 0.5).extend(focal_length).normalize()
     }
 
-    pub fn upload(&mut self, memory: &MemoryContext) -> anyhow::Result<()> {
+    pub fn upload(&mut self, gpu: &GpuContext) -> anyhow::Result<()> {
         if self.ghost_data.is_empty() {
             return Ok(());
         }
 
-        self.ghosts = Some(Buffer::with_data(
-            memory,
+        self.ghosts = Some(StaticBuffer::new(
+            gpu,
             "lens ghosts",
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             &self.ghost_data,
@@ -172,7 +180,34 @@ impl Lens {
     }
 
     pub fn ghosts(&self) -> vk::DeviceAddress {
-        self.ghosts.as_ref().map_or(0, Buffer::device_address)
+        self.ghosts.as_ref().map_or(0, StaticBuffer::device_address)
+    }
+
+    // Whether its textures and ghosts are in GPU memory, so it may be drawn.
+    pub fn poll_uploads(&mut self, bindless: &BindlessTextures, device: &Device) -> anyhow::Result<bool> {
+        let mut ready = true;
+
+        for texture in &mut self.textures {
+            ready &= texture.poll(bindless, device)?;
+        }
+
+        if let Some(ghosts) = &mut self.ghosts {
+            ready &= ghosts.poll()?;
+        }
+
+        Ok(ready)
+    }
+
+    pub fn wait_uploads(&mut self, bindless: &BindlessTextures, device: &Device) -> anyhow::Result<()> {
+        for texture in &mut self.textures {
+            texture.wait(bindless, device)?;
+        }
+
+        if let Some(ghosts) = &mut self.ghosts {
+            ghosts.wait()?;
+        }
+
+        Ok(())
     }
 }
 
@@ -198,6 +233,7 @@ mod tests {
             ghost_peaks,
             ghost_data: ghosts,
             ghosts: None,
+            textures: Vec::new(),
         }
     }
 

@@ -14,6 +14,7 @@ pub struct Image {
     _allocation: DeviceObject<Allocation>,
     format: vk::Format,
     aspect: vk::ImageAspectFlags,
+    mip_levels: u32,
     cube: bool,
 }
 
@@ -35,7 +36,8 @@ impl Image {
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
             .usage(description.usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .sharing_mode(description.sharing.mode())
+            .queue_family_indices(description.sharing.families())
             .initial_layout(vk::ImageLayout::UNDEFINED);
         let image = DeviceObject::new(memory, unsafe { device.create_image(&create_info, None) }?);
         let requirements = unsafe { device.get_image_memory_requirements(image.handle()) };
@@ -57,6 +59,7 @@ impl Image {
             _allocation: allocation,
             format: description.format,
             aspect: description.aspect,
+            mip_levels: description.mip_levels,
             cube: description.cube,
         })
     }
@@ -68,6 +71,14 @@ impl Image {
     /// The view of every level and layer.
     pub fn view(&self) -> vk::ImageView {
         self.view.handle()
+    }
+
+    /// Every level and layer, as barriers name them.
+    pub(crate) fn subresource_range(&self) -> vk::ImageSubresourceRange {
+        vk::ImageSubresourceRange::default()
+            .aspect_mask(self.aspect)
+            .level_count(self.mip_levels)
+            .layer_count(if self.cube { CUBE_FACES } else { 1 })
     }
 
     /// Another view of `level_count` levels from `base_level`, owned by the caller and dropped before the image.

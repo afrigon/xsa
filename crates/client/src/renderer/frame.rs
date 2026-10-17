@@ -1,5 +1,5 @@
 use ash::vk;
-use memory_vulkan::{Buffer, DeviceObject, MemoryContext, MemoryLocation};
+use memory_vulkan::{Buffer, DeviceObject, MemoryContext, MemoryLocation, QueueSharing, TimelineValue};
 
 use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
 use super::gpu_timer::GpuTimer;
@@ -19,7 +19,7 @@ pub(super) struct Frame {
     pub timer: Option<GpuTimer>,
     // The graphics timeline value of the last frame submitted from this slot; once it is reached, the slot may be
     // recorded again and its read-backs hold that frame's results.
-    pub submitted: Option<u64>,
+    pub submitted: Option<TimelineValue>,
 }
 
 impl Frame {
@@ -45,6 +45,7 @@ impl Frame {
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuToCpu,
+            &QueueSharing::Exclusive,
         )?;
 
         let timer = GpuTimer::new(memory, device)?;
@@ -103,6 +104,7 @@ impl Frame {
             size as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             MemoryLocation::CpuToGpu,
+            &QueueSharing::Exclusive,
         )?)
     }
 }

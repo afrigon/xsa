@@ -43,7 +43,7 @@ use crate::camera::CameraMode;
 use crate::config::Config;
 use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
-use crate::renderer::{CapturedImage, Renderer, ShaderBinaries};
+use crate::renderer::{PendingCapture, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
 use crate::ui::{
     ClockReading, DebugOverlayView, GameCommands, InputDisabledView, SessionEnvironmentKey, ViewControllerFactory,
@@ -302,7 +302,7 @@ impl App {
         renderer.scene_mut().skybox = if self.config.render.stars { skybox } else { None };
     }
 
-    fn capture(&mut self) -> anyhow::Result<CapturedImage> {
+    fn capture(&mut self) -> anyhow::Result<PendingCapture> {
         self.update_user_interface()?;
         let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
         let cameras = self.cameras.as_ref().context("the cameras are not ready")?;

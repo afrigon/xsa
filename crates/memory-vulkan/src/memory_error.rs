@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
 use ash::vk;
 use gpu_allocator::AllocationError;
@@ -13,6 +14,8 @@ pub enum MemoryError {
         buffer: String,
         reason: &'static str,
     },
+    /// A transfer failed along with the others submitted with it, which share its cause.
+    Transfer(Arc<MemoryError>),
 }
 
 impl fmt::Display for MemoryError {
@@ -21,6 +24,7 @@ impl fmt::Display for MemoryError {
             MemoryError::Vulkan(result) => write!(formatter, "a Vulkan call failed: {result}"),
             MemoryError::Allocation(error) => write!(formatter, "allocating GPU memory: {error}"),
             MemoryError::HostAccess { buffer, reason } => write!(formatter, "accessing {buffer}: {reason}"),
+            MemoryError::Transfer(cause) => write!(formatter, "a transfer failed: {cause}"),
         }
     }
 }
@@ -31,6 +35,7 @@ impl Error for MemoryError {
             MemoryError::Vulkan(result) => Some(result),
             MemoryError::Allocation(error) => Some(error),
             MemoryError::HostAccess { .. } => None,
+            MemoryError::Transfer(cause) => Some(cause.as_ref()),
         }
     }
 }

@@ -213,6 +213,10 @@ impl MemoryContext {
         self.bookkeeping().close_recording(id);
     }
 
+    pub(crate) fn timeline_semaphore(&self, timeline: TimelineId) -> vk::Semaphore {
+        self.bookkeeping().timelines[timeline.index].semaphore
+    }
+
     pub(crate) fn wait_timeline(&self, timeline: TimelineId, value: u64) -> Result<(), MemoryError> {
         let semaphores = [self.bookkeeping().timelines[timeline.index].semaphore];
         let values = [value];

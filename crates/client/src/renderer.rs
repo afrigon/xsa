@@ -18,11 +18,13 @@ mod light_projection;
 mod material;
 mod object_pose;
 mod passes;
+mod pending_capture;
 mod quad_sphere;
 mod render_passes;
 mod scene;
 mod shader_binaries;
 mod star_visibility;
+mod static_buffer;
 mod temporal_history;
 mod terrain_buffer;
 mod terrain_draw;
@@ -37,6 +39,7 @@ pub use lens_lights::LensLights;
 pub use material::{
     EmissiveMaterial, HapkeParameters, LitMaterial, Material, PlanetMaterial, Shader, ShadingModel, SkyboxMaterial,
 };
+pub use pending_capture::PendingCapture;
 pub use resource_loader::texture::ColorSpace;
 pub use scene::{
     LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainBufferHandle, TerrainHandle,
@@ -52,7 +55,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use glam::{DVec2, DVec3, Mat4, Vec2};
-use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation, Recording};
+use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation, Recording, TimelineValue, TransferPriority};
 use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -65,7 +68,7 @@ use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
 use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
-use crate::vulkan::{SAMPLED_LAYOUT, Swapchain};
+use crate::vulkan::Swapchain;
 use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
@@ -80,18 +83,18 @@ use light_projection::LightProjection;
 use material::MaterialBuffer;
 use object_pose::ObjectPose;
 use passes::TaaPass;
+use pending_capture::BYTES_PER_PIXEL;
 use quad_sphere::{DetailRanges, HeightBounds, QuadSphere, SelectedTile};
 use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use terrain_buffer::TerrainBuffer;
 use terrain_draw::TerrainDraw;
-use texture::TextureUpload;
+use texture::{BindlessSlot, SlottedTexture, TextureUpload};
 use tonemapper::NO_TONEMAPPER;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
 const FRAMES_IN_FLIGHT: usize = 2;
-const BYTES_PER_PIXEL: usize = 4;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_TILE_CAPACITY: usize = 4096;
@@ -148,6 +151,11 @@ pub struct Renderer {
     materials: Vec<MaterialBuffer>,
     terrain_buffers: Vec<TerrainBuffer>,
     lens: Option<Lens>,
+    // A lens loaded while its uploads are pending; it replaces `lens` once they complete.
+    pending_lens: Option<Lens>,
+    // Uploads whose slots are reserved and whose descriptors are written once they complete. A stopgap until
+    // resources own their textures.
+    pending_textures: Vec<SlottedTexture>,
     passes: RenderPasses,
     graph: RenderGraph,
     graph_textures: GraphTextures,
@@ -216,6 +224,8 @@ impl Renderer {
             materials: Vec::new(),
             terrain_buffers: Vec::new(),
             lens: None,
+            pending_lens: None,
+            pending_textures: Vec::new(),
             passes,
             graph,
             graph_textures: GraphTextures::default(),
@@ -285,27 +295,32 @@ impl Renderer {
 
     pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
         let image = TextureImage::read(path, ColorSpace::Srgb)?;
-        let image = TextureUpload::new(&image).cube_map(&self.gpu, name)?;
-        let index = self.gpu.bindless.add_cube(&self.gpu.device, image.view())?;
-        self.cube_maps.push(image);
+        let upload = TextureUpload::new(image).cube_map(&self.gpu, name)?;
+        let index = self.gpu.bindless.reserve_cube()?;
+        self.pending_textures
+            .push(SlottedTexture::new(BindlessSlot::Cube(index), upload.into()));
 
         Ok(CubeMapHandle::new(index))
     }
 
     pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
         let image = TextureImage::read(path, color_space)?;
-        self.upload_texture(name, &image)
+        self.upload_texture(name, image)
     }
 
-    fn upload_texture(&mut self, name: &str, image: &TextureImage) -> anyhow::Result<TextureHandle> {
-        let image = TextureUpload::new(image).texture(&self.gpu, name)?;
-        let index = self
-            .gpu
-            .bindless
-            .add_texture(&self.gpu.device, image.view(), SAMPLED_LAYOUT)?;
-        self.textures.push(image);
+    fn upload_texture(&mut self, name: &str, image: TextureImage) -> anyhow::Result<TextureHandle> {
+        let texture = Renderer::slotted_texture(&mut self.gpu, name, image)?;
+        let handle = TextureHandle::new(texture.slot().index());
+        self.pending_textures.push(texture);
 
-        Ok(TextureHandle::new(index))
+        Ok(handle)
+    }
+
+    fn slotted_texture(gpu: &mut GpuContext, name: &str, image: TextureImage) -> anyhow::Result<SlottedTexture> {
+        let upload = TextureUpload::new(image).texture(gpu, name)?;
+        let index = gpu.bindless.reserve_texture()?;
+
+        Ok(SlottedTexture::new(BindlessSlot::Texture(index), upload.into()))
     }
 
     pub fn add_material<M: Material>(&mut self, name: &str, material: M) -> anyhow::Result<MaterialHandle> {
@@ -319,7 +334,7 @@ impl Renderer {
     pub fn add_terrain_height(
         &mut self,
         name: &str,
-        image: &TextureImage,
+        image: TextureImage,
         map: Arc<HeightMap>,
         radius: f64,
     ) -> anyhow::Result<TerrainHeight> {
@@ -343,10 +358,63 @@ impl Renderer {
     }
 
     pub fn load_lens(&mut self, definition: &LensDefinition) -> anyhow::Result<()> {
-        self.lens = None;
-        let mut lens = Lens::new(definition, |name, image| self.upload_texture(name, image))?;
-        lens.upload(&self.gpu.memory)?;
-        self.lens = Some(lens);
+        let mut lens = Lens::new(definition, |name, image| {
+            Renderer::slotted_texture(&mut self.gpu, name, image)
+        })?;
+        lens.upload(&self.gpu)?;
+        self.pending_lens = Some(lens);
+
+        Ok(())
+    }
+
+    // Blocks until every upload queued so far completes, so the next frame may use all of them.
+    pub fn finish_uploads(&mut self) -> anyhow::Result<()> {
+        let gpu = &self.gpu;
+
+        for texture in &mut self.pending_textures {
+            texture.wait(&gpu.bindless, &gpu.device)?;
+        }
+
+        for material in &mut self.materials {
+            material.wait()?;
+        }
+
+        for terrain in &mut self.terrain_buffers {
+            terrain.wait()?;
+        }
+
+        if let Some(lens) = &mut self.pending_lens {
+            lens.wait_uploads(&gpu.bindless, &gpu.device)?;
+        }
+
+        self.poll_uploads()
+    }
+
+    fn poll_uploads(&mut self) -> anyhow::Result<()> {
+        let gpu = &self.gpu;
+        let mut index = 0;
+
+        while let Some(texture) = self.pending_textures.get_mut(index) {
+            if !texture.poll(&gpu.bindless, &gpu.device)? {
+                index += 1;
+                continue;
+            }
+
+            let texture = self.pending_textures.swap_remove(index);
+            let slot = texture.slot();
+            let image = texture.into_image().expect("a polled ready texture holds its image");
+
+            match slot {
+                BindlessSlot::Texture(_) => self.textures.push(image),
+                BindlessSlot::Cube(_) => self.cube_maps.push(image),
+            }
+        }
+
+        if let Some(lens) = &mut self.pending_lens
+            && lens.poll_uploads(&gpu.bindless, &gpu.device)?
+        {
+            self.lens = self.pending_lens.take();
+        }
 
         Ok(())
     }
@@ -365,6 +433,7 @@ impl Renderer {
             self.recreate_swapchain()?;
         }
 
+        self.poll_uploads()?;
         self.ensure_object_capacity()?;
         self.ensure_star_capacity()?;
         self.ensure_light_capacity()?;
@@ -389,8 +458,8 @@ impl Renderer {
         Ok(())
     }
 
-    // Renders one frame now and blocks until its pixels are back on the CPU.
-    pub fn capture(&mut self, camera: &Camera) -> anyhow::Result<CapturedImage> {
+    // Renders one frame now and starts copying its pixels back to the CPU.
+    pub fn capture(&mut self, camera: &Camera) -> anyhow::Result<PendingCapture> {
         anyhow::ensure!(
             self.swapchain.supports_capture(),
             "this display does not allow copying the rendered image"
@@ -406,21 +475,23 @@ impl Renderer {
             &self.gpu.memory,
             "capture",
             size,
-            vk::BufferUsageFlags::TRANSFER_DST,
-            MemoryLocation::GpuToCpu,
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::TRANSFER_SRC,
+            MemoryLocation::GpuOnly,
+            &self.gpu.transfer.sharing(),
         )?;
         self.capture = Some(buffer);
-        let pixels = self.render_capture(camera, extent);
-        self.capture = None;
+        let rendered = self.render_capture(camera, extent);
+        let buffer = self.capture.take().expect("the capture buffer is set while capturing");
+        let readback = self
+            .gpu
+            .transfer
+            .read_buffer(buffer, Some(rendered?), TransferPriority::High);
 
-        Ok(CapturedImage {
-            width: extent.width,
-            height: extent.height,
-            rgba: pixels?,
-        })
+        Ok(PendingCapture::new(extent, self.swapchain.format(), readback))
     }
 
-    fn render_capture(&mut self, camera: &Camera, extent: vk::Extent2D) -> anyhow::Result<Vec<u8>> {
+    // The point the graphics timeline reaches once the captured frame is rendered.
+    fn render_capture(&mut self, camera: &Camera, extent: vk::Extent2D) -> anyhow::Result<TimelineValue> {
         let frame = self.frame_index;
         self.draw(camera)?;
 
@@ -439,27 +510,10 @@ impl Renderer {
             "the window is not visible, nothing was rendered"
         );
 
-        let submitted = self.frames[frame]
+        Ok(self.frames[frame]
             .submitted
-            .expect("a frame was submitted from the slot drawn above");
-        self.gpu.graphics.wait(submitted)?;
-        let mut pixels = vec![0_u8; extent.width as usize * extent.height as usize * BYTES_PER_PIXEL];
-        self.capture
-            .as_ref()
-            .expect("the capture buffer is set while capturing")
-            .read(&mut pixels)?;
-
-        match self.swapchain.format() {
-            vk::Format::B8G8R8A8_SRGB | vk::Format::B8G8R8A8_UNORM => {
-                for pixel in pixels.as_chunks_mut::<BYTES_PER_PIXEL>().0 {
-                    pixel.swap(0, 2);
-                }
-            }
-            vk::Format::R8G8B8A8_SRGB | vk::Format::R8G8B8A8_UNORM => {}
-            format => anyhow::bail!("capturing a {format:?} swapchain is not supported"),
-        }
-
-        Ok(pixels)
+            .clone()
+            .expect("a frame was submitted from the slot drawn above"))
     }
 
     fn update_exposure(&mut self) {
@@ -517,8 +571,8 @@ impl Renderer {
     fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
         let frame = &self.frames[self.frame_index];
 
-        if let Some(submitted) = frame.submitted {
-            self.gpu.graphics.wait(submitted)?;
+        if let Some(submitted) = &frame.submitted {
+            self.gpu.graphics.wait(submitted.value)?;
         }
 
         self.gpu.memory.collect()?;
@@ -841,9 +895,12 @@ impl Renderer {
     fn submit_and_present(&mut self, image_index: u32, recording: Recording) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
         let render_finished = self.swapchain.render_finished(image_index);
-        let wait_semaphores = [vk::SemaphoreSubmitInfo::default()
-            .semaphore(frame.image_acquired.handle())
-            .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)];
+        let wait_semaphores = [
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(frame.image_acquired.handle())
+                .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT),
+            self.gpu.transfer.visibility_wait(),
+        ];
         let signal_semaphores = [vk::SemaphoreSubmitInfo::default()
             .semaphore(render_finished)
             .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)];
@@ -954,8 +1011,8 @@ impl Renderer {
     }
 
     fn wait_for_frames_in_flight(&self) -> anyhow::Result<()> {
-        for submitted in self.frames.iter().filter_map(|frame| frame.submitted) {
-            self.gpu.graphics.wait(submitted)?;
+        for submitted in self.frames.iter().filter_map(|frame| frame.submitted.as_ref()) {
+            self.gpu.graphics.wait(submitted.value)?;
         }
 
         Ok(())

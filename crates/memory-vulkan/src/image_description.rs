@@ -1,5 +1,7 @@
 use ash::vk;
 
+use crate::QueueSharing;
+
 pub struct ImageDescription<'a> {
     pub name: &'a str,
     pub extent: vk::Extent2D,
@@ -10,4 +12,5 @@ pub struct ImageDescription<'a> {
     pub mip_levels: u32,
     /// Six layers, viewed as a cube.
     pub cube: bool,
+    pub sharing: QueueSharing,
 }

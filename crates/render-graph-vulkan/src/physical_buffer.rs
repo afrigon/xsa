@@ -1,5 +1,5 @@
 use ash::vk;
-use memory_vulkan::{Buffer, MemoryContext, MemoryLocation};
+use memory_vulkan::{Buffer, MemoryContext, MemoryLocation, QueueSharing};
 
 use crate::{BufferState, GraphBufferDescription, RenderGraphError};
 
@@ -25,6 +25,7 @@ impl PhysicalBuffer {
             description.size,
             usage | BASE_USAGE,
             MemoryLocation::GpuOnly,
+            &QueueSharing::Exclusive,
         )?;
 
         Ok(PhysicalBuffer {
