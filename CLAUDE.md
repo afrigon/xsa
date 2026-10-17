@@ -276,7 +276,7 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
 ## Gotchas
 
 - Every queue submission goes through `Timeline::submit` and every present
-  through `MemoryContext::present`: the deletion queue only knows the GPU is
+  through `Timeline::present`: the deletion queue only knows the GPU is
   done with an object from the timelines and present fences.
 - Validation layers (`vulkan-validation-layers`) are enabled in debug builds and
   logged under the `vulkan` target; any validation message is a bug. Messages mentioning

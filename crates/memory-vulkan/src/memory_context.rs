@@ -1,35 +1,34 @@
+mod bookkeeping;
 mod present_fences;
 
-use std::cell::RefCell;
 use std::mem::ManuallyDrop;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use ash::{khr, vk};
 use gpu_allocator::MemoryLocation;
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc};
 
-use present_fences::PresentFences;
+use bookkeeping::Bookkeeping;
 
-use crate::{Deletion, DeletionQueue, DeviceObject, Frontier, MemoryError, Timeline, TimelineId, TimelineSemaphore};
+use crate::{Deletion, DeviceObject, Frontier, MemoryError, Timeline, TimelineId, TimelineSemaphore};
 
 /// Owns the device, its memory allocator and the queue of objects waiting for the GPU to finish with them.
 ///
 /// Cloning it is cheap: every `DeviceObject` holds a clone, so the device is destroyed only once the last object
 /// created from it is gone. Dropping the last clone waits for the GPU, runs every queued deletion, then destroys the
-/// allocator and the device. It is single-threaded.
+/// allocator and the device. It can be shared, and its objects created and dropped, across threads.
 #[derive(Clone)]
 pub struct MemoryContext {
-    shared: Rc<SharedMemory>,
+    shared: Arc<SharedMemory>,
 }
 
+// Lock order: a timeline's queue lock before the bookkeeping lock. The allocator lock is never held with another.
 struct SharedMemory {
     device: ash::Device,
     swapchain: khr::swapchain::Device,
     // Dropped by hand, after the queued deletions free their allocations and before the device is destroyed.
-    allocator: ManuallyDrop<RefCell<Allocator>>,
-    deletions: RefCell<DeletionQueue<Deletion>>,
-    timelines: RefCell<Vec<TimelineSemaphore>>,
-    presents: RefCell<PresentFences>,
+    allocator: ManuallyDrop<Mutex<Allocator>>,
+    bookkeeping: Mutex<Bookkeeping>,
 }
 
 impl MemoryContext {
@@ -59,13 +58,11 @@ impl MemoryContext {
         let swapchain = khr::swapchain::Device::new(instance, &device);
 
         Ok(MemoryContext {
-            shared: Rc::new(SharedMemory {
+            shared: Arc::new(SharedMemory {
                 device,
                 swapchain,
-                allocator: ManuallyDrop::new(RefCell::new(allocator)),
-                deletions: RefCell::new(DeletionQueue::default()),
-                timelines: RefCell::new(Vec::new()),
-                presents: RefCell::new(PresentFences::default()),
+                allocator: ManuallyDrop::new(Mutex::new(allocator)),
+                bookkeeping: Mutex::new(Bookkeeping::default()),
             }),
         })
     }
@@ -78,38 +75,37 @@ impl MemoryContext {
         &self.shared.swapchain
     }
 
-    /// Creates the timeline every submission to `queue` must go through.
+    /// Creates the timeline every submission and present to `queue` must go through. A queue has one timeline.
     pub fn create_timeline(&self, queue: vk::Queue) -> Result<Timeline, MemoryError> {
-        let semaphore = TimelineSemaphore::new(&self.shared.device, queue)?;
-        let mut timelines = self.shared.timelines.borrow_mut();
-        timelines.push(semaphore);
+        let semaphore = TimelineSemaphore::new(&self.shared.device)?;
+        let mut bookkeeping = self.bookkeeping();
+        bookkeeping.timelines.push(semaphore);
+        let id = TimelineId {
+            index: bookkeeping.timelines.len() - 1,
+        };
 
-        Ok(Timeline::new(
-            self.clone(),
-            TimelineId {
-                index: timelines.len() - 1,
-            },
-        ))
+        Ok(Timeline::new(self.clone(), id, queue))
     }
 
     /// Queues a deletion until the GPU has finished all work submitted so far.
     pub fn defer(&self, deletion: Deletion) {
-        let frontier = self.submitted();
-        self.shared.deletions.borrow_mut().push(&frontier, deletion);
+        let mut bookkeeping = self.bookkeeping();
+        let frontier = bookkeeping.submitted();
+        bookkeeping.deletions.push(&frontier, deletion);
     }
 
     /// Runs `action` once the GPU has finished all work submitted so far. The action must not own device objects:
     /// they would keep this context alive from inside its own queue.
-    pub fn defer_action(&self, action: impl FnOnce(&ash::Device) + 'static) {
+    pub fn defer_action(&self, action: impl FnOnce(&ash::Device) + Send + 'static) {
         self.defer(Deletion::Action(Box::new(action)));
     }
 
     /// Runs every queued deletion the GPU has reached.
     pub fn collect(&self) -> Result<(), MemoryError> {
-        let completed = self.completed()?;
+        let completed = self.bookkeeping().completed(&self.shared.device)?;
         let mut first_error = None;
 
-        // The queue is not borrowed while an entry runs: an action may drop device objects, which queue more.
+        // The queue is not locked while an entry runs: an action may drop device objects, which queue more.
         while let Some(deletion) = self.next_reached(&completed) {
             if let Err(err) = self.run(deletion) {
                 first_error.get_or_insert(err);
@@ -119,22 +115,23 @@ impl MemoryContext {
         first_error.map_or(Ok(()), Err)
     }
 
-    /// Presents through `queue` with a present fence per swapchain, so the swapchain images and semaphores it uses
-    /// are known to be released before the deletion queue destroys them. Returns whether the swapchain is suboptimal.
-    pub fn present(&self, queue: vk::Queue, present_info: vk::PresentInfoKHR) -> Result<bool, MemoryError> {
+    pub(crate) fn present(&self, queue: vk::Queue, present_info: vk::PresentInfoKHR) -> Result<bool, MemoryError> {
         let device = &self.shared.device;
-        let mut presents = self.shared.presents.borrow_mut();
         let mut fences = Vec::with_capacity(present_info.swapchain_count as usize);
 
-        for _ in 0..present_info.swapchain_count {
-            match presents.acquire(device) {
-                Ok(fence) => fences.push(fence),
-                Err(err) => {
-                    for fence in fences {
-                        presents.release(fence);
-                    }
+        {
+            let mut bookkeeping = self.bookkeeping();
 
-                    return Err(err);
+            for _ in 0..present_info.swapchain_count {
+                match bookkeeping.presents.acquire(device) {
+                    Ok(fence) => fences.push(fence),
+                    Err(err) => {
+                        for fence in fences {
+                            bookkeeping.presents.release(fence);
+                        }
+
+                        return Err(err);
+                    }
                 }
             }
         }
@@ -148,12 +145,13 @@ impl MemoryContext {
             result,
             Ok(_) | Err(vk::Result::ERROR_OUT_OF_DATE_KHR) | Err(vk::Result::ERROR_SURFACE_LOST_KHR)
         );
+        let mut bookkeeping = self.bookkeeping();
 
         for fence in fences {
             if queued {
-                presents.queue(fence);
+                bookkeeping.presents.queue(fence);
             } else {
-                presents.discard(device, fence);
+                bookkeeping.presents.discard(device, fence);
             }
         }
 
@@ -167,7 +165,7 @@ impl MemoryContext {
         location: MemoryLocation,
         linear: bool,
     ) -> Result<DeviceObject<Allocation>, MemoryError> {
-        let allocation = self.shared.allocator.borrow_mut().allocate(&AllocationCreateDesc {
+        let allocation = self.allocator().allocate(&AllocationCreateDesc {
             name,
             requirements,
             location,
@@ -178,17 +176,19 @@ impl MemoryContext {
         Ok(DeviceObject::new(self, allocation))
     }
 
+    // The caller holds `queue`'s lock, so values are signalled in the order they are picked.
     pub(crate) fn submit(
         &self,
         timeline: TimelineId,
+        queue: vk::Queue,
         waits: &[vk::SemaphoreSubmitInfo],
         command_buffers: &[vk::CommandBufferSubmitInfo],
         signals: &[vk::SemaphoreSubmitInfo],
     ) -> Result<u64, MemoryError> {
-        let (semaphore, queue, value) = {
-            let timelines = self.shared.timelines.borrow();
-            let state = &timelines[timeline.index];
-            (state.semaphore, state.queue, state.submitted + 1)
+        let (semaphore, value) = {
+            let bookkeeping = self.bookkeeping();
+            let state = &bookkeeping.timelines[timeline.index];
+            (state.semaphore, state.submitted + 1)
         };
         let mut all_signals = signals.to_vec();
         all_signals.push(
@@ -202,13 +202,13 @@ impl MemoryContext {
             .command_buffer_infos(command_buffers)
             .signal_semaphore_infos(&all_signals);
         unsafe { self.shared.device.queue_submit2(queue, &[submit], vk::Fence::null()) }?;
-        self.shared.timelines.borrow_mut()[timeline.index].submitted = value;
+        self.bookkeeping().timelines[timeline.index].submitted = value;
 
         Ok(value)
     }
 
     pub(crate) fn wait_timeline(&self, timeline: TimelineId, value: u64) -> Result<(), MemoryError> {
-        let semaphores = [self.shared.timelines.borrow()[timeline.index].semaphore];
+        let semaphores = [self.bookkeeping().timelines[timeline.index].semaphore];
         let values = [value];
         let wait_info = vk::SemaphoreWaitInfo::default().semaphores(&semaphores).values(&values);
         unsafe { self.shared.device.wait_semaphores(&wait_info, u64::MAX) }?;
@@ -216,35 +216,19 @@ impl MemoryContext {
         Ok(())
     }
 
-    fn submitted(&self) -> Frontier {
-        Frontier {
-            timelines: self
-                .shared
-                .timelines
-                .borrow()
-                .iter()
-                .map(|timeline| timeline.submitted)
-                .collect(),
-            presents: self.shared.presents.borrow().queued(),
-        }
-    }
-
-    fn completed(&self) -> Result<Frontier, MemoryError> {
-        let device = &self.shared.device;
-        let timelines = self
-            .shared
-            .timelines
-            .borrow()
-            .iter()
-            .map(|timeline| timeline.completed(device))
-            .collect::<Result<_, _>>()?;
-        let presents = self.shared.presents.borrow_mut().completed(device)?;
-
-        Ok(Frontier { timelines, presents })
-    }
-
     fn next_reached(&self, completed: &Frontier) -> Option<Deletion> {
-        self.shared.deletions.borrow_mut().pop_reached(completed)
+        self.bookkeeping().deletions.pop_reached(completed)
+    }
+
+    fn bookkeeping(&self) -> MutexGuard<'_, Bookkeeping> {
+        self.shared
+            .bookkeeping
+            .lock()
+            .expect("the bookkeeping lock is poisoned")
+    }
+
+    fn allocator(&self) -> MutexGuard<'_, Allocator> {
+        self.shared.allocator.lock().expect("the allocator lock is poisoned")
     }
 
     fn run(&self, deletion: Deletion) -> Result<(), MemoryError> {
@@ -254,7 +238,7 @@ impl MemoryContext {
 
 impl SharedMemory {
     fn run(&self, deletion: Deletion) -> Result<(), MemoryError> {
-        let mut allocator = self.allocator.borrow_mut();
+        let mut allocator = self.allocator.lock().expect("the allocator lock is poisoned");
         deletion.run(&self.device, &self.swapchain, &mut allocator)
     }
 }
@@ -265,22 +249,25 @@ impl Drop for SharedMemory {
             tracing::error!("waiting for the GPU before destroying the device: {err}");
         }
 
-        if let Err(err) = self.presents.get_mut().wait_all(&self.device) {
+        let bookkeeping = self.bookkeeping.get_mut().expect("the bookkeeping lock is poisoned");
+        let allocator = self.allocator.get_mut().expect("the allocator lock is poisoned");
+
+        if let Err(err) = bookkeeping.presents.wait_all(&self.device) {
             tracing::error!("waiting for presents before destroying the device: {err}");
         }
 
-        while let Some(deletion) = self.deletions.get_mut().pop() {
-            if let Err(err) = self.run(deletion) {
+        while let Some(deletion) = bookkeeping.deletions.pop() {
+            if let Err(err) = deletion.run(&self.device, &self.swapchain, allocator) {
                 tracing::error!("destroying a device object: {err}");
             }
         }
 
         unsafe {
-            for timeline in self.timelines.get_mut().drain(..) {
+            for timeline in bookkeeping.timelines.drain(..) {
                 self.device.destroy_semaphore(timeline.semaphore, None);
             }
 
-            self.presents.get_mut().destroy(&self.device);
+            bookkeeping.presents.destroy(&self.device);
             ManuallyDrop::drop(&mut self.allocator);
             self.device.destroy_device(None);
         }

@@ -860,7 +860,7 @@ impl Renderer {
             .swapchains(&swapchains)
             .image_indices(&image_indices);
 
-        match self.gpu.memory.present(self.gpu.device.queue(), present_info) {
+        match self.gpu.graphics.present(present_info) {
             Ok(suboptimal) => self.swapchain_outdated |= suboptimal,
             Err(MemoryError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR)) => self.swapchain_outdated = true,
             Err(err) => return Err(err.into()),

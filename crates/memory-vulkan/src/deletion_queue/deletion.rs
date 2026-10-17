@@ -19,7 +19,7 @@ pub enum Deletion {
     QueryPool(vk::QueryPool),
     Swapchain(vk::SwapchainKHR),
     Allocation(Allocation),
-    Action(Box<dyn FnOnce(&ash::Device)>),
+    Action(Box<dyn FnOnce(&ash::Device) + Send>),
 }
 
 impl Deletion {
