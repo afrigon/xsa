@@ -5,7 +5,9 @@ pub(in crate::renderer) use lens_inputs::LensInputs;
 pub(in crate::renderer) use lens_resources::LensResources;
 
 use ash::vk;
-use render_graph::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
+use render_graph_vulkan::{
+    Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass,
+};
 
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
@@ -32,6 +34,7 @@ impl LensPass {
 
     fn pipeline(gpu: &GpuContext, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
         GraphicsPipeline::new(
+            &gpu.memory,
             &gpu.device,
             &GraphicsPipelineDescription {
                 spirv,
@@ -48,13 +51,6 @@ impl LensPass {
                 descriptor_set_layouts: &[gpu.bindless.layout()],
             },
         )
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe {
-            self.light_pipeline.destroy(&gpu.device);
-            self.ghosts_pipeline.destroy(&gpu.device);
-        }
     }
 }
 

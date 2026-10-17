@@ -3,7 +3,7 @@ mod tonemap_inputs;
 pub(in crate::renderer) use tonemap_inputs::TonemapInputs;
 
 use ash::vk;
-use render_graph::{Attachment, PassContext, PassDeclaration, PassError, RenderPass, Stage};
+use render_graph_vulkan::{Attachment, PassContext, PassDeclaration, PassError, RenderPass, Stage};
 
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
@@ -23,6 +23,7 @@ pub(in crate::renderer) struct TonemapPass {
 impl TonemapPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries, output_format: vk::Format) -> anyhow::Result<TonemapPass> {
         let pipeline = GraphicsPipeline::new(
+            &gpu.memory,
             &gpu.device,
             &GraphicsPipelineDescription {
                 spirv: &binaries.tonemap,
@@ -41,10 +42,6 @@ impl TonemapPass {
         )?;
 
         Ok(TonemapPass { pipeline })
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe { self.pipeline.destroy(&gpu.device) };
     }
 }
 

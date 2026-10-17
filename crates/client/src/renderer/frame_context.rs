@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
 use ash::vk;
-use render_graph::{ImageHandle, PassContext};
+use render_graph_vulkan::{ImageHandle, PassContext};
 use xui::DrawList;
 
 use super::command_recorder::CommandRecorder;

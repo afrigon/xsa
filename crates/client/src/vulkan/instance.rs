@@ -3,7 +3,7 @@ mod debug_messenger;
 use std::ffi::{CStr, c_char};
 
 use anyhow::{Context, bail};
-use ash::ext::debug_utils;
+use ash::ext::{debug_utils, surface_maintenance1};
 use ash::khr;
 use ash::vk;
 use winit::raw_window_handle::RawDisplayHandle;
@@ -64,7 +64,8 @@ impl Instance {
         &self.instance
     }
 
-    fn surface_extensions(display_handle: RawDisplayHandle) -> anyhow::Result<[&'static CStr; 2]> {
+    // Present fences (VK_EXT_swapchain_maintenance1 on the device) need surface_maintenance1 and its dependency.
+    fn surface_extensions(display_handle: RawDisplayHandle) -> anyhow::Result<[&'static CStr; 4]> {
         let platform_extension = match display_handle {
             RawDisplayHandle::Wayland(_) => khr::wayland_surface::NAME,
             RawDisplayHandle::Xlib(_) => khr::xlib_surface::NAME,
@@ -72,7 +73,12 @@ impl Instance {
             RawDisplayHandle::Windows(_) => khr::win32_surface::NAME,
             other => bail!("unsupported display server: {other:?}"),
         };
-        Ok([khr::surface::NAME, platform_extension])
+        Ok([
+            khr::surface::NAME,
+            platform_extension,
+            khr::get_surface_capabilities2::NAME,
+            surface_maintenance1::NAME,
+        ])
     }
 }
 

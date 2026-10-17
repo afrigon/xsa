@@ -1,4 +1,4 @@
-use render_graph::{ImageHandle, ImportedImageHandle};
+use render_graph_vulkan::{ImageHandle, ImportedImageHandle};
 
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct TonemapInputs {

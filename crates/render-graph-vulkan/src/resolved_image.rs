@@ -45,8 +45,8 @@ impl ResolvedImage {
         ResolvedImage {
             name: physical.description.name,
             used: true,
-            image: physical.image,
-            view: physical.view,
+            image: physical.image(),
+            view: physical.view(),
             extent: physical.extent,
             aspect: physical.description.aspect(),
             id: Some(id),

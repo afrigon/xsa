@@ -1,15 +1,15 @@
 use ash::vk;
+use memory_vulkan::{Buffer, DeviceObject, MemoryContext, MemoryLocation};
 
 use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
 use super::gpu_timer::GpuTimer;
 use super::star_visibility::HISTOGRAM_BINS;
-use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
+use crate::vulkan::Device;
 
 pub(super) struct Frame {
-    pub command_pool: vk::CommandPool,
+    pub command_pool: DeviceObject<vk::CommandPool>,
     pub command_buffer: vk::CommandBuffer,
-    pub image_acquired: vk::Semaphore,
-    pub in_flight: vk::Fence,
+    pub image_acquired: DeviceObject<vk::Semaphore>,
     pub frame_data: Buffer,
     pub objects: Buffer,
     pub tiles: Buffer,
@@ -17,28 +17,28 @@ pub(super) struct Frame {
     pub projected_lights: Buffer,
     pub histogram: Buffer,
     pub timer: Option<GpuTimer>,
-    // A frame was submitted from this slot, so its read-backs hold results once its fence is waited on.
-    pub submitted: bool,
+    // The graphics timeline value of the last frame submitted from this slot; once it is reached, the slot may be
+    // recorded again and its read-backs hold that frame's results.
+    pub submitted: Option<u64>,
 }
 
 impl Frame {
     pub fn new(
+        memory: &MemoryContext,
         device: &Device,
-        allocator: &mut Allocator,
         object_capacity: usize,
         tile_capacity: usize,
         star_capacity: usize,
         light_capacity: usize,
     ) -> anyhow::Result<Self> {
-        let frame_data = Frame::create_shader_buffer(device, allocator, "frame data", size_of::<FrameData>())?;
-        let objects = Frame::create_object_buffer(device, allocator, object_capacity)?;
-        let tiles = Frame::create_tile_buffer(device, allocator, tile_capacity)?;
-        let stars = Frame::create_star_buffer(device, allocator, star_capacity)?;
-        let projected_lights = Frame::create_projected_light_buffer(device, allocator, light_capacity)?;
+        let frame_data = Frame::create_shader_buffer(memory, "frame data", size_of::<FrameData>())?;
+        let objects = Frame::create_object_buffer(memory, object_capacity)?;
+        let tiles = Frame::create_tile_buffer(memory, tile_capacity)?;
+        let stars = Frame::create_star_buffer(memory, star_capacity)?;
+        let projected_lights = Frame::create_projected_light_buffer(memory, light_capacity)?;
 
         let histogram = Buffer::new(
-            device,
-            allocator,
+            memory,
             "luminance histogram",
             (HISTOGRAM_BINS * size_of::<u32>()) as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER
@@ -47,25 +47,24 @@ impl Frame {
             MemoryLocation::GpuToCpu,
         )?;
 
-        let timer = GpuTimer::new(device)?;
+        let timer = GpuTimer::new(memory, device)?;
         let queue_family = device.queue_family();
         let device = device.handle();
         let pool_info = vk::CommandPoolCreateInfo::default().queue_family_index(queue_family);
-        let command_pool = unsafe { device.create_command_pool(&pool_info, None) }?;
+        let command_pool = DeviceObject::new(memory, unsafe { device.create_command_pool(&pool_info, None) }?);
         let allocate_info = vk::CommandBufferAllocateInfo::default()
-            .command_pool(command_pool)
+            .command_pool(command_pool.handle())
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
         let command_buffer = unsafe { device.allocate_command_buffers(&allocate_info) }?[0];
-        let image_acquired = unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?;
-        let fence_info = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
-        let in_flight = unsafe { device.create_fence(&fence_info, None) }?;
+        let image_acquired = DeviceObject::new(memory, unsafe {
+            device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+        }?);
 
         Ok(Self {
             command_pool,
             command_buffer,
             image_acquired,
-            in_flight,
             frame_data,
             objects,
             tiles,
@@ -73,68 +72,37 @@ impl Frame {
             projected_lights,
             histogram,
             timer,
-            submitted: false,
+            submitted: None,
         })
     }
 
-    pub unsafe fn destroy(&mut self, device: &Device, allocator: &mut Allocator) {
-        unsafe {
-            self.frame_data.destroy(device, allocator);
-            self.objects.destroy(device, allocator);
-            self.tiles.destroy(device, allocator);
-            self.stars.destroy(device, allocator);
-            self.projected_lights.destroy(device, allocator);
-            self.histogram.destroy(device, allocator);
-
-            if let Some(timer) = &mut self.timer {
-                timer.destroy(device);
-            }
-
-            let device = device.handle();
-            device.destroy_fence(self.in_flight, None);
-            device.destroy_semaphore(self.image_acquired, None);
-            device.destroy_command_pool(self.command_pool, None);
-        }
+    pub fn create_object_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(memory, "object data", capacity * size_of::<ObjectData>())
     }
 
-    pub fn create_object_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {
-        Frame::create_shader_buffer(device, allocator, "object data", capacity * size_of::<ObjectData>())
+    pub fn create_tile_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(memory, "tile data", capacity * size_of::<TileData>())
     }
 
-    pub fn create_tile_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {
-        Frame::create_shader_buffer(device, allocator, "tile data", capacity * size_of::<TileData>())
+    pub fn create_star_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(memory, "star data", capacity * size_of::<StarData>())
     }
 
-    pub fn create_star_buffer(device: &Device, allocator: &mut Allocator, capacity: usize) -> anyhow::Result<Buffer> {
-        Frame::create_shader_buffer(device, allocator, "star data", capacity * size_of::<StarData>())
-    }
-
-    pub fn create_projected_light_buffer(
-        device: &Device,
-        allocator: &mut Allocator,
-        capacity: usize,
-    ) -> anyhow::Result<Buffer> {
+    pub fn create_projected_light_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
         Frame::create_shader_buffer(
-            device,
-            allocator,
+            memory,
             "projected light data",
             capacity * size_of::<ProjectedLightData>(),
         )
     }
 
-    fn create_shader_buffer(
-        device: &Device,
-        allocator: &mut Allocator,
-        name: &str,
-        size: usize,
-    ) -> anyhow::Result<Buffer> {
-        Buffer::new(
-            device,
-            allocator,
+    fn create_shader_buffer(memory: &MemoryContext, name: &str, size: usize) -> anyhow::Result<Buffer> {
+        Ok(Buffer::new(
+            memory,
             name,
             size as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             MemoryLocation::CpuToGpu,
-        )
+        )?)
     }
 }

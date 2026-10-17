@@ -1,4 +1,4 @@
-use render_graph::ImageHandle;
+use render_graph_vulkan::ImageHandle;
 
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct ForwardResources {

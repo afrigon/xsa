@@ -1,9 +1,10 @@
 use std::ops::Range;
 
 use ash::vk;
+use memory_vulkan::Buffer;
 
 use super::gpu_data::GpuData;
-use crate::vulkan::{Buffer, ComputePipeline, Device, GraphicsPipeline};
+use crate::vulkan::{ComputePipeline, Device, GraphicsPipeline};
 
 const FULLSCREEN_VERTEX_COUNT: u32 = 3;
 const QUAD_VERTEX_COUNT: u32 = 6;

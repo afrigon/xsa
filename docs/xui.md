@@ -14,7 +14,8 @@ difference here.
   names) once the API is stable enough that most xsa UI work no longer changes
   xui, or a second project wants it. Before that move, xui needs its own error
   type instead of `anyhow`, and a test font of its own instead of reading
-  Inter from xsa's `data/`.
+  Inter from xsa's `data/`. `memory-vulkan`, which `xui-vulkan` creates its GPU
+  objects through, becomes its own repository too.
 - **Three layers, like SwiftUI, Core Animation and a design system:**
   - `xui` holds views, layout, environment, state, text shaping and the glyph
     atlas. It is renderer-agnostic: its output is a draw list of primitives in
@@ -189,12 +190,14 @@ for any app.
 
 ## xui-vulkan
 
-- A binding-agnostic contract. The host passes raw handles as `u64` and
-  `vkGetInstanceProcAddr`. `ash` is a private implementation detail.
-  Requirements: Vulkan 1.3 with dynamic rendering and synchronization2.
-- It owns its memory (a few raw allocations), its pipeline, its own
-  descriptor set (the atlas and a storage buffer of instances) and its
-  shader, compiled by `mise run shaders` and embedded in the crate.
+- The host passes its `memory-vulkan` `MemoryContext`; xui-vulkan creates its
+  objects through it, so they share the host's allocator and are destroyed
+  through the host's deletion queue once the GPU is done with them. The host
+  and xui-vulkan use the same `ash` version. Requirements: Vulkan 1.3 with
+  dynamic rendering and synchronization2.
+- It owns its buffers, glyph atlas image, pipeline, its own descriptor set (the
+  atlas and a storage buffer of instances) and its shader, compiled by
+  `mise run shaders` and embedded in the crate.
 - It records into the host's command buffer over an image in
   color-attachment layout and leaves it there, blending with premultiplied
   alpha. Atlas updates are copied in the same command buffer before drawing.

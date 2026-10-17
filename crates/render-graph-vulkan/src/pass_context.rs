@@ -84,7 +84,7 @@ impl<'frame> PassContext<'frame> {
             .id
             .expect("a used graph buffer is pooled");
 
-        self.recorder.buffer_pool.buffer(id).address
+        self.recorder.buffer_pool.buffer(id).address()
     }
 
     /// Begins rendering to the current step's attachments, with the viewport and scissor covering them.

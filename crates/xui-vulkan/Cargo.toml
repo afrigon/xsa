@@ -6,4 +6,5 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 ash.workspace = true
+memory-vulkan.workspace = true
 xui.workspace = true

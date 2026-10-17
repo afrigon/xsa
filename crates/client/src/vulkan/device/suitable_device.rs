@@ -1,13 +1,16 @@
 use anyhow::Context;
-use ash::khr;
 use ash::vk;
+use ash::{ext, khr};
 
 use crate::vulkan::Surface;
 
-pub(super) struct SuitableDevice {
+#[derive(Clone, Copy)]
+pub struct SuitableDevice {
     pub physical_device: vk::PhysicalDevice,
     pub queue_family: u32,
     pub device_type: vk::PhysicalDeviceType,
+    // Wireframe needs the polygon mode to be dynamic state (VK_EXT_extended_dynamic_state3).
+    pub dynamic_polygon_mode: bool,
 }
 
 impl SuitableDevice {
@@ -20,6 +23,7 @@ impl SuitableDevice {
                     physical_device,
                     queue_family,
                     device_type: unsafe { instance.get_physical_device_properties(physical_device) }.device_type,
+                    dynamic_polygon_mode: SuitableDevice::supports_dynamic_polygon_mode(instance, physical_device)?,
                 });
             }
         }
@@ -27,7 +31,7 @@ impl SuitableDevice {
         suitable
             .into_iter()
             .min_by_key(|device| device.device_type != vk::PhysicalDeviceType::DISCRETE_GPU)
-            .context("no GPU supports Vulkan 1.3 and presenting to this window")
+            .context("no GPU supports Vulkan 1.3, swapchain maintenance and presenting to this window")
     }
 
     fn find_queue_family(
@@ -42,11 +46,21 @@ impl SuitableDevice {
         }
 
         let extensions = unsafe { instance.enumerate_device_extension_properties(physical_device) }?;
-        let supports_swapchain = extensions
-            .iter()
-            .any(|extension| extension.extension_name_as_c_str() == Ok(khr::swapchain::NAME));
+        let supports = |name| {
+            extensions
+                .iter()
+                .any(|extension| extension.extension_name_as_c_str() == Ok(name))
+        };
 
-        if !supports_swapchain {
+        if !supports(khr::swapchain::NAME) || !supports(ext::swapchain_maintenance1::NAME) {
+            return Ok(None);
+        }
+
+        let mut swapchain_maintenance1 = vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT::default();
+        let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut swapchain_maintenance1);
+        unsafe { instance.get_physical_device_features2(physical_device, &mut features) };
+
+        if swapchain_maintenance1.swapchain_maintenance1 != vk::TRUE {
             return Ok(None);
         }
 
@@ -65,5 +79,24 @@ impl SuitableDevice {
         }
 
         Ok(None)
+    }
+
+    fn supports_dynamic_polygon_mode(
+        instance: &ash::Instance,
+        physical_device: vk::PhysicalDevice,
+    ) -> anyhow::Result<bool> {
+        let extensions = unsafe { instance.enumerate_device_extension_properties(physical_device) }?;
+        let has_extension = extensions
+            .iter()
+            .any(|extension| extension.extension_name_as_c_str() == Ok(ext::extended_dynamic_state3::NAME));
+
+        if !has_extension {
+            return Ok(false);
+        }
+
+        let mut extended_dynamic_state3_features = vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT::default();
+        let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut extended_dynamic_state3_features);
+        unsafe { instance.get_physical_device_features2(physical_device, &mut features) };
+        Ok(extended_dynamic_state3_features.extended_dynamic_state3_polygon_mode == vk::TRUE)
     }
 }

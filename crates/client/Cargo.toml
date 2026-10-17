@@ -8,9 +8,9 @@ anyhow.workspace = true
 ash.workspace = true
 glam.workspace = true
 image = { workspace = true, features = ["png"] }
-gpu-allocator.workspace = true
 kdl = "6.7.1"
-render-graph.workspace = true
+memory-vulkan.workspace = true
+render-graph-vulkan.workspace = true
 resource-loader = { workspace = true, features = ["texture"] }
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true

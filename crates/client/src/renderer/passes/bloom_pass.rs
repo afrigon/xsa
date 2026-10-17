@@ -4,7 +4,7 @@ mod bloom_step;
 pub(in crate::renderer) use bloom_resources::BloomResources;
 
 use ash::vk;
-use render_graph::{
+use render_graph_vulkan::{
     GraphImageDescription, ImageHandle, ImageSize, PassContext, PassDeclaration, PassError, RenderPass, Stage,
 };
 
@@ -31,7 +31,7 @@ impl BloomPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<BloomPass> {
         let pipeline = |spirv: &[u8]| {
             ComputePipeline::new(
-                &gpu.device,
+                &gpu.memory,
                 spirv,
                 size_of::<BloomPushConstants>() as u32,
                 &[gpu.bindless.layout()],
@@ -41,13 +41,6 @@ impl BloomPass {
         let upsample = pipeline(&binaries.bloom_upsample)?;
 
         Ok(BloomPass { downsample, upsample })
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe {
-            self.downsample.destroy(&gpu.device);
-            self.upsample.destroy(&gpu.device);
-        }
     }
 
     fn dispatch(

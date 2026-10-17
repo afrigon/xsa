@@ -1,20 +1,21 @@
 use anyhow::Context;
-use ash::khr;
 use ash::vk;
+use memory_vulkan::{DeviceObject, MemoryContext};
 
-use super::{Device, Instance, Surface};
+use super::{Device, Surface};
 
 const PREFERRED_FORMAT: vk::SurfaceFormatKHR = vk::SurfaceFormatKHR {
     format: vk::Format::B8G8R8A8_SRGB,
     color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
 };
 
+// Replacing it queues the old one's destruction behind its last presents.
 pub struct Swapchain {
-    loader: khr::swapchain::Device,
-    swapchain: vk::SwapchainKHR,
+    // Declaration order is destruction order: the semaphores and views before the swapchain.
+    render_finished: Vec<DeviceObject<vk::Semaphore>>,
+    image_views: Vec<DeviceObject<vk::ImageView>>,
+    swapchain: DeviceObject<vk::SwapchainKHR>,
     images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
-    render_finished: Vec<vk::Semaphore>,
     extent: vk::Extent2D,
     format: vk::Format,
     supports_capture: bool,
@@ -22,7 +23,7 @@ pub struct Swapchain {
 
 impl Swapchain {
     pub fn new(
-        instance: &Instance,
+        memory: &MemoryContext,
         surface: &Surface,
         device: &Device,
         window_extent: vk::Extent2D,
@@ -91,10 +92,13 @@ impl Swapchain {
             .clipped(true)
             .old_swapchain(old_swapchain);
 
-        let device = device.handle();
-        let loader = khr::swapchain::Device::new(instance.handle(), device);
-        let swapchain = unsafe { loader.create_swapchain(&create_info, None) }.context("creating the swapchain")?;
-        let images = unsafe { loader.get_swapchain_images(swapchain) }?;
+        let device = memory.device();
+        let loader = memory.swapchain_loader();
+        let swapchain = DeviceObject::new(
+            memory,
+            unsafe { loader.create_swapchain(&create_info, None) }.context("creating the swapchain")?,
+        );
+        let images = unsafe { loader.get_swapchain_images(swapchain.handle()) }?;
 
         let mut image_views = Vec::with_capacity(images.len());
         let mut render_finished = Vec::with_capacity(images.len());
@@ -110,16 +114,19 @@ impl Swapchain {
                         .level_count(1)
                         .layer_count(1),
                 );
-            image_views.push(unsafe { device.create_image_view(&view_info, None) }?);
-            render_finished.push(unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?);
+            image_views.push(DeviceObject::new(memory, unsafe {
+                device.create_image_view(&view_info, None)
+            }?));
+            render_finished.push(DeviceObject::new(memory, unsafe {
+                device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+            }?));
         }
 
         Ok(Self {
-            loader,
+            render_finished,
+            image_views,
             swapchain,
             images,
-            image_views,
-            render_finished,
             extent,
             format: format.format,
             supports_capture,
@@ -127,11 +134,7 @@ impl Swapchain {
     }
 
     pub fn handle(&self) -> vk::SwapchainKHR {
-        self.swapchain
-    }
-
-    pub fn loader(&self) -> &khr::swapchain::Device {
-        &self.loader
+        self.swapchain.handle()
     }
 
     pub fn image(&self, index: u32) -> vk::Image {
@@ -139,11 +142,11 @@ impl Swapchain {
     }
 
     pub fn image_view(&self, index: u32) -> vk::ImageView {
-        self.image_views[index as usize]
+        self.image_views[index as usize].handle()
     }
 
     pub fn render_finished(&self, index: u32) -> vk::Semaphore {
-        self.render_finished[index as usize]
+        self.render_finished[index as usize].handle()
     }
 
     pub fn extent(&self) -> vk::Extent2D {
@@ -156,21 +159,5 @@ impl Swapchain {
 
     pub fn supports_capture(&self) -> bool {
         self.supports_capture
-    }
-
-    pub unsafe fn destroy(&mut self, device: &Device) {
-        let device = device.handle();
-
-        unsafe {
-            for &semaphore in &self.render_finished {
-                device.destroy_semaphore(semaphore, None);
-            }
-
-            for &image_view in &self.image_views {
-                device.destroy_image_view(image_view, None);
-            }
-
-            self.loader.destroy_swapchain(self.swapchain, None);
-        }
     }
 }

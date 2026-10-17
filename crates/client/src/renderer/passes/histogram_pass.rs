@@ -2,7 +2,7 @@ mod histogram_inputs;
 
 pub(in crate::renderer) use histogram_inputs::HistogramInputs;
 
-use render_graph::{BufferUsage, PassContext, PassDeclaration, PassError, RenderPass, Stage};
+use render_graph_vulkan::{BufferUsage, PassContext, PassDeclaration, PassError, RenderPass, Stage};
 
 use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
@@ -21,17 +21,13 @@ pub(in crate::renderer) struct HistogramPass {
 impl HistogramPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<HistogramPass> {
         let pipeline = ComputePipeline::new(
-            &gpu.device,
+            &gpu.memory,
             &binaries.histogram,
             size_of::<HistogramPushConstants>() as u32,
             &[gpu.bindless.layout()],
         )?;
 
         Ok(HistogramPass { pipeline })
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe { self.pipeline.destroy(&gpu.device) };
     }
 }
 

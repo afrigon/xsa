@@ -1,8 +1,8 @@
 use ash::vk;
+use memory_vulkan::Buffer;
 
 use super::{Material, Shader};
 use crate::renderer::GpuContext;
-use crate::vulkan::Buffer;
 
 pub(in crate::renderer) struct MaterialBuffer {
     shader: Shader,
@@ -10,10 +10,9 @@ pub(in crate::renderer) struct MaterialBuffer {
 }
 
 impl MaterialBuffer {
-    pub fn new<M: Material>(gpu: &mut GpuContext, name: &str, material: &M) -> anyhow::Result<Self> {
+    pub fn new<M: Material>(gpu: &GpuContext, name: &str, material: &M) -> anyhow::Result<Self> {
         let buffer = Buffer::with_data(
-            &gpu.device,
-            &mut gpu.allocator,
+            &gpu.memory,
             name,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             &[material.gpu_data()],
@@ -31,9 +30,5 @@ impl MaterialBuffer {
 
     pub fn device_address(&self) -> vk::DeviceAddress {
         self.buffer.device_address()
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe { self.buffer.destroy(&gpu.device, &mut gpu.allocator) };
     }
 }

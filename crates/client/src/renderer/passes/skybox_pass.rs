@@ -1,5 +1,5 @@
 use ash::vk;
-use render_graph::{Attachment, PassContext, PassDeclaration, PassError, RenderPass};
+use render_graph_vulkan::{Attachment, PassContext, PassDeclaration, PassError, RenderPass};
 
 use super::ForwardResources;
 use super::forward_pass::{DEPTH_FORMAT, HDR_FORMAT, MOTION_FORMAT};
@@ -19,6 +19,7 @@ pub(in crate::renderer) struct SkyboxPass {
 impl SkyboxPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<SkyboxPass> {
         let pipeline = GraphicsPipeline::new(
+            &gpu.memory,
             &gpu.device,
             &GraphicsPipelineDescription {
                 spirv: &binaries.shaders[Shader::Skybox.index()],
@@ -37,10 +38,6 @@ impl SkyboxPass {
         )?;
 
         Ok(SkyboxPass { pipeline })
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe { self.pipeline.destroy(&gpu.device) };
     }
 }
 

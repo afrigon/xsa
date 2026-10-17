@@ -1,11 +1,13 @@
 mod suitable_device;
 
+pub use suitable_device::SuitableDevice;
+
 use anyhow::Context;
 use ash::vk;
 use ash::{ext, khr};
+use memory_vulkan::MemoryContext;
 
-use super::{Instance, Surface};
-use suitable_device::SuitableDevice;
+use super::Instance;
 
 pub struct Device {
     physical_device: vk::PhysicalDevice,
@@ -19,21 +21,24 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(instance: &Instance, surface: &Surface) -> anyhow::Result<Self> {
+    // The device is owned by the memory context, which destroys it once every object created from it is gone.
+    pub fn create_memory(instance: &Instance, suitable: &SuitableDevice) -> anyhow::Result<MemoryContext> {
         let SuitableDevice {
             physical_device,
             queue_family,
+            dynamic_polygon_mode,
             ..
-        } = SuitableDevice::select(instance.handle(), surface)?;
-
+        } = *suitable;
         let queue_priorities = [1.0];
         let queue_create_infos = [vk::DeviceQueueCreateInfo::default()
             .queue_family_index(queue_family)
             .queue_priorities(&queue_priorities)];
-        let supports_polygon_mode = Device::supports_dynamic_polygon_mode(instance.handle(), physical_device)?;
-        let mut extensions = vec![khr::swapchain::NAME.as_ptr()];
+        let mut extensions = vec![
+            khr::swapchain::NAME.as_ptr(),
+            ext::swapchain_maintenance1::NAME.as_ptr(),
+        ];
 
-        if supports_polygon_mode {
+        if dynamic_polygon_mode {
             extensions.push(ext::extended_dynamic_state3::NAME.as_ptr());
         }
 
@@ -46,6 +51,7 @@ impl Device {
         let mut vulkan_11_features = vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
         let mut vulkan_12_features = vk::PhysicalDeviceVulkan12Features::default()
             .buffer_device_address(true)
+            .timeline_semaphore(true)
             .runtime_descriptor_array(true)
             .descriptor_binding_partially_bound(true)
             .descriptor_binding_sampled_image_update_after_bind(true)
@@ -54,6 +60,8 @@ impl Device {
         let mut vulkan_13_features = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
             .synchronization2(true);
+        let mut swapchain_maintenance1_features =
+            vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT::default().swapchain_maintenance1(true);
         let mut extended_dynamic_state3_features =
             vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT::default().extended_dynamic_state3_polygon_mode(true);
         let mut create_info = vk::DeviceCreateInfo::default()
@@ -62,17 +70,27 @@ impl Device {
             .enabled_features(&features)
             .push_next(&mut vulkan_11_features)
             .push_next(&mut vulkan_12_features)
-            .push_next(&mut vulkan_13_features);
+            .push_next(&mut vulkan_13_features)
+            .push_next(&mut swapchain_maintenance1_features);
 
-        if supports_polygon_mode {
+        if dynamic_polygon_mode {
             create_info = create_info.push_next(&mut extended_dynamic_state3_features);
         }
 
-        let device = unsafe { instance.handle().create_device(physical_device, &create_info, None) }
-            .context("creating the Vulkan device")?;
+        MemoryContext::new(instance.handle(), physical_device, &create_info).context("creating the Vulkan device")
+    }
+
+    pub fn new(instance: &Instance, memory: &MemoryContext, suitable: &SuitableDevice) -> Self {
+        let SuitableDevice {
+            physical_device,
+            queue_family,
+            dynamic_polygon_mode,
+            ..
+        } = *suitable;
+        let device = memory.device().clone();
         let queue = unsafe { device.get_device_queue(queue_family, 0) };
         let extended_dynamic_state3 =
-            supports_polygon_mode.then(|| ext::extended_dynamic_state3::Device::new(instance.handle(), &device));
+            dynamic_polygon_mode.then(|| ext::extended_dynamic_state3::Device::new(instance.handle(), &device));
         let limits = unsafe { instance.handle().get_physical_device_properties(physical_device) }.limits;
         let queue_families = unsafe {
             instance
@@ -82,7 +100,7 @@ impl Device {
         let timestamp_period =
             (queue_families[queue_family as usize].timestamp_valid_bits > 0).then_some(limits.timestamp_period);
 
-        Ok(Self {
+        Self {
             physical_device,
             device,
             queue_family,
@@ -90,7 +108,7 @@ impl Device {
             max_sampler_anisotropy: limits.max_sampler_anisotropy,
             timestamp_period,
             extended_dynamic_state3,
-        })
+        }
     }
 
     pub fn handle(&self) -> &ash::Device {
@@ -119,30 +137,5 @@ impl Device {
 
     pub fn extended_dynamic_state3(&self) -> Option<&ext::extended_dynamic_state3::Device> {
         self.extended_dynamic_state3.as_ref()
-    }
-
-    fn supports_dynamic_polygon_mode(
-        instance: &ash::Instance,
-        physical_device: vk::PhysicalDevice,
-    ) -> anyhow::Result<bool> {
-        let extensions = unsafe { instance.enumerate_device_extension_properties(physical_device) }?;
-        let has_extension = extensions
-            .iter()
-            .any(|extension| extension.extension_name_as_c_str() == Ok(ext::extended_dynamic_state3::NAME));
-
-        if !has_extension {
-            return Ok(false);
-        }
-
-        let mut extended_dynamic_state3_features = vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT::default();
-        let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut extended_dynamic_state3_features);
-        unsafe { instance.get_physical_device_features2(physical_device, &mut features) };
-        Ok(extended_dynamic_state3_features.extended_dynamic_state3_polygon_mode == vk::TRUE)
-    }
-}
-
-impl Drop for Device {
-    fn drop(&mut self) {
-        unsafe { self.device.destroy_device(None) };
     }
 }

@@ -2,7 +2,7 @@ mod capture_inputs;
 
 pub(in crate::renderer) use capture_inputs::CaptureInputs;
 
-use render_graph::{BufferUsage, PassContext, PassDeclaration, PassError, RenderPass};
+use render_graph_vulkan::{BufferUsage, PassContext, PassDeclaration, PassError, RenderPass};
 
 use crate::renderer::frame_context::FrameContext;
 

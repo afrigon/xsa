@@ -3,48 +3,48 @@ use std::io::Cursor;
 use anyhow::Context;
 use ash::vk;
 
+use memory_vulkan::{DeviceObject, MemoryContext};
+
 use super::GraphicsPipelineDescription;
 use crate::vulkan::Device;
 
 pub struct GraphicsPipeline {
-    pipeline: vk::Pipeline,
-    layout: vk::PipelineLayout,
+    // Declaration order is destruction order: the pipeline before its layout.
+    pipeline: DeviceObject<vk::Pipeline>,
+    layout: DeviceObject<vk::PipelineLayout>,
 }
 
 impl GraphicsPipeline {
-    pub fn new(device: &Device, description: &GraphicsPipelineDescription) -> anyhow::Result<Self> {
+    pub fn new(
+        memory: &MemoryContext,
+        device: &Device,
+        description: &GraphicsPipelineDescription,
+    ) -> anyhow::Result<Self> {
         let code = ash::util::read_spv(&mut Cursor::new(description.spirv)).context("reading SPIR-V")?;
         let module_info = vk::ShaderModuleCreateInfo::default().code(&code);
-        let module = unsafe { device.handle().create_shader_module(&module_info, None) }?;
+        let module = DeviceObject::new(memory, unsafe {
+            memory.device().create_shader_module(&module_info, None)
+        }?);
         let dynamic_polygon_mode = description.wireframe && device.extended_dynamic_state3().is_some();
-        let pipeline = GraphicsPipeline::create_pipeline(device.handle(), module, description, dynamic_polygon_mode);
-        unsafe { device.handle().destroy_shader_module(module, None) };
-        pipeline
+
+        GraphicsPipeline::create_pipeline(memory, module.handle(), description, dynamic_polygon_mode)
     }
 
     pub fn handle(&self) -> vk::Pipeline {
-        self.pipeline
+        self.pipeline.handle()
     }
 
     pub fn layout(&self) -> vk::PipelineLayout {
-        self.layout
-    }
-
-    pub unsafe fn destroy(&mut self, device: &Device) {
-        let device = device.handle();
-
-        unsafe {
-            device.destroy_pipeline(self.pipeline, None);
-            device.destroy_pipeline_layout(self.layout, None);
-        }
+        self.layout.handle()
     }
 
     fn create_pipeline(
-        device: &ash::Device,
+        memory: &MemoryContext,
         module: vk::ShaderModule,
         description: &GraphicsPipelineDescription,
         dynamic_polygon_mode: bool,
     ) -> anyhow::Result<GraphicsPipeline> {
+        let device = memory.device();
         let push_constant_ranges = [vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .size(description.push_constant_size)];
@@ -54,7 +54,7 @@ impl GraphicsPipeline {
             layout_info = layout_info.push_constant_ranges(&push_constant_ranges);
         }
 
-        let layout = unsafe { device.create_pipeline_layout(&layout_info, None) }?;
+        let layout = DeviceObject::new(memory, unsafe { device.create_pipeline_layout(&layout_info, None) }?);
 
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
@@ -117,19 +117,14 @@ impl GraphicsPipeline {
             .depth_stencil_state(&depth_stencil)
             .color_blend_state(&color_blend)
             .dynamic_state(&dynamic_state)
-            .layout(layout)
+            .layout(layout.handle())
             .push_next(&mut rendering);
-        let pipelines = unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None) };
+        let pipelines = unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None) }
+            .map_err(|(_, err)| anyhow::Error::from(err).context("creating the graphics pipeline"))?;
 
-        match pipelines {
-            Ok(pipelines) => Ok(GraphicsPipeline {
-                pipeline: pipelines[0],
-                layout,
-            }),
-            Err((_, err)) => {
-                unsafe { device.destroy_pipeline_layout(layout, None) };
-                Err(anyhow::Error::from(err).context("creating the graphics pipeline"))
-            }
-        }
+        Ok(GraphicsPipeline {
+            pipeline: DeviceObject::new(memory, pipelines[0]),
+            layout,
+        })
     }
 }
