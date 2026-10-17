@@ -843,9 +843,12 @@ impl Renderer {
     fn submit_and_present(&mut self, image_index: u32, recording: Recording) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
         let render_finished = self.swapchain.render_finished(image_index);
-        let wait_semaphores = [vk::SemaphoreSubmitInfo::default()
-            .semaphore(frame.image_acquired.handle())
-            .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)];
+        let wait_semaphores = [
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(frame.image_acquired.handle())
+                .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT),
+            self.gpu.transfer.visibility_wait(),
+        ];
         let signal_semaphores = [vk::SemaphoreSubmitInfo::default()
             .semaphore(render_finished)
             .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)];
