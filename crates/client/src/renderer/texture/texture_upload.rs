@@ -104,7 +104,6 @@ impl<'a> TextureUpload<'a> {
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
         let command_buffer = unsafe { handle.allocate_command_buffers(&allocate_info) }?[0];
-        let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         let range = vk::ImageSubresourceRange::default()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
             .level_count(self.image.mip_levels())
@@ -136,8 +135,9 @@ impl<'a> TextureUpload<'a> {
             })
             .collect();
 
+        let recording = gpu.graphics.begin(command_buffer)?;
+
         unsafe {
-            handle.begin_command_buffer(command_buffer, &begin_info)?;
             let to_transfer = [vk::ImageMemoryBarrier2::default()
                 .dst_stage_mask(vk::PipelineStageFlags2::COPY)
                 .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
@@ -169,11 +169,9 @@ impl<'a> TextureUpload<'a> {
                 command_buffer,
                 &vk::DependencyInfo::default().image_memory_barriers(&to_shader),
             );
-            handle.end_command_buffer(command_buffer)?;
         }
 
-        let command_buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer)];
-        let value = gpu.graphics.submit(&[], &command_buffers, &[])?;
+        let value = recording.submit(&[], &[])?;
         gpu.graphics.wait(value)?;
 
         Ok(())

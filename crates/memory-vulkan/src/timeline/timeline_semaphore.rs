@@ -4,12 +4,11 @@ use crate::MemoryError;
 
 pub(crate) struct TimelineSemaphore {
     pub semaphore: vk::Semaphore,
-    pub queue: vk::Queue,
     pub submitted: u64,
 }
 
 impl TimelineSemaphore {
-    pub fn new(device: &ash::Device, queue: vk::Queue) -> Result<TimelineSemaphore, MemoryError> {
+    pub fn new(device: &ash::Device) -> Result<TimelineSemaphore, MemoryError> {
         let mut type_info = vk::SemaphoreTypeCreateInfo::default()
             .semaphore_type(vk::SemaphoreType::TIMELINE)
             .initial_value(0);
@@ -18,7 +17,6 @@ impl TimelineSemaphore {
 
         Ok(TimelineSemaphore {
             semaphore,
-            queue,
             submitted: 0,
         })
     }

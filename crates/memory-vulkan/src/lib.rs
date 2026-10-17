@@ -3,7 +3,9 @@
 //! A `MemoryContext` owns the device, its memory allocator and a deletion queue. Every object created from the device
 //! is wrapped in a `DeviceObject` as soon as it exists; dropping it queues its destruction until the GPU has finished
 //! all work submitted so far, which every submission reports through a `Timeline` and every present through a present
-//! fence. Plain actions, such as returning a slot to a free list, wait in the same queue.
+//! fence. Work is recorded through a timeline's `Recording`: an object dropped while one is open waits for its
+//! submission too. Plain actions, such as returning a slot to a free list, wait in the same queue. Every type can be
+//! shared across threads.
 
 mod buffer;
 mod deletion_queue;
@@ -15,7 +17,7 @@ mod memory_context;
 mod memory_error;
 mod timeline;
 
-pub(crate) use deletion_queue::{DeletionQueue, Frontier};
+pub(crate) use deletion_queue::{DeletionQueue, Frontier, OpenRecordings, RecordingId};
 pub(crate) use timeline::{TimelineId, TimelineSemaphore};
 
 pub use buffer::Buffer;
@@ -27,4 +29,23 @@ pub use image::Image;
 pub use image_description::ImageDescription;
 pub use memory_context::MemoryContext;
 pub use memory_error::MemoryError;
-pub use timeline::Timeline;
+pub use timeline::{Recording, Timeline};
+
+#[cfg(test)]
+mod tests {
+    use ash::vk;
+
+    use super::*;
+
+    fn assert_thread_safe<T: Send + Sync>() {}
+
+    #[test]
+    fn device_objects_cross_threads() {
+        assert_thread_safe::<MemoryContext>();
+        assert_thread_safe::<Timeline>();
+        assert_thread_safe::<Recording>();
+        assert_thread_safe::<DeviceObject<vk::Buffer>>();
+        assert_thread_safe::<Buffer>();
+        assert_thread_safe::<Image>();
+    }
+}
