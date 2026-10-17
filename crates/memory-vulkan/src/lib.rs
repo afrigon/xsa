@@ -31,7 +31,7 @@ pub use image_description::ImageDescription;
 pub use memory_context::MemoryContext;
 pub use memory_error::MemoryError;
 pub use queue_sharing::QueueSharing;
-pub use timeline::{Recording, Timeline};
+pub use timeline::{Recording, Timeline, TimelineValue};
 
 #[cfg(test)]
 mod tests {

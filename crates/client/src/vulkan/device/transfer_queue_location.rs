@@ -4,10 +4,8 @@ use ash::vk;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransferQueueLocation {
     DedicatedFamily(u32),
-    // A second queue of the graphics family.
-    GraphicsFamily,
-    // The graphics queue itself, sharing its timeline.
-    GraphicsQueue,
+    SecondGraphicsQueue,
+    SharedGraphicsQueue,
 }
 
 impl TransferQueueLocation {
@@ -21,15 +19,17 @@ impl TransferQueueLocation {
 
         match dedicated {
             Some((index, _)) => TransferQueueLocation::DedicatedFamily(index),
-            None if queue_families[graphics_family as usize].queue_count > 1 => TransferQueueLocation::GraphicsFamily,
-            None => TransferQueueLocation::GraphicsQueue,
+            None if queue_families[graphics_family as usize].queue_count > 1 => {
+                TransferQueueLocation::SecondGraphicsQueue
+            }
+            None => TransferQueueLocation::SharedGraphicsQueue,
         }
     }
 
     pub fn family(self, graphics_family: u32) -> u32 {
         match self {
             TransferQueueLocation::DedicatedFamily(family) => family,
-            TransferQueueLocation::GraphicsFamily | TransferQueueLocation::GraphicsQueue => graphics_family,
+            TransferQueueLocation::SecondGraphicsQueue | TransferQueueLocation::SharedGraphicsQueue => graphics_family,
         }
     }
 }

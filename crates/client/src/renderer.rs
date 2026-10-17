@@ -442,8 +442,9 @@ impl Renderer {
 
         let submitted = self.frames[frame]
             .submitted
+            .as_ref()
             .expect("a frame was submitted from the slot drawn above");
-        self.gpu.graphics.wait(submitted)?;
+        self.gpu.graphics.wait(submitted.value)?;
         let mut pixels = vec![0_u8; extent.width as usize * extent.height as usize * BYTES_PER_PIXEL];
         self.capture
             .as_ref()
@@ -518,8 +519,8 @@ impl Renderer {
     fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
         let frame = &self.frames[self.frame_index];
 
-        if let Some(submitted) = frame.submitted {
-            self.gpu.graphics.wait(submitted)?;
+        if let Some(submitted) = &frame.submitted {
+            self.gpu.graphics.wait(submitted.value)?;
         }
 
         self.gpu.memory.collect()?;
@@ -955,8 +956,8 @@ impl Renderer {
     }
 
     fn wait_for_frames_in_flight(&self) -> anyhow::Result<()> {
-        for submitted in self.frames.iter().filter_map(|frame| frame.submitted) {
-            self.gpu.graphics.wait(submitted)?;
+        for submitted in self.frames.iter().filter_map(|frame| frame.submitted.as_ref()) {
+            self.gpu.graphics.wait(submitted.value)?;
         }
 
         Ok(())

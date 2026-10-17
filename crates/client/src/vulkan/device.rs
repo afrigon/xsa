@@ -44,8 +44,8 @@ impl Device {
                     .queue_family_index(family)
                     .queue_priorities(&one_queue),
             ],
-            TransferQueueLocation::GraphicsFamily => vec![graphics_queues.queue_priorities(&two_queues)],
-            TransferQueueLocation::GraphicsQueue => vec![graphics_queues.queue_priorities(&one_queue)],
+            TransferQueueLocation::SecondGraphicsQueue => vec![graphics_queues.queue_priorities(&two_queues)],
+            TransferQueueLocation::SharedGraphicsQueue => vec![graphics_queues.queue_priorities(&one_queue)],
         };
         let mut extensions = vec![
             khr::swapchain::NAME.as_ptr(),
@@ -106,8 +106,8 @@ impl Device {
         let queue = unsafe { device.get_device_queue(queue_family, 0) };
         let transfer_queue = match transfer {
             TransferQueueLocation::DedicatedFamily(family) => unsafe { device.get_device_queue(family, 0) },
-            TransferQueueLocation::GraphicsFamily => unsafe { device.get_device_queue(queue_family, 1) },
-            TransferQueueLocation::GraphicsQueue => queue,
+            TransferQueueLocation::SecondGraphicsQueue => unsafe { device.get_device_queue(queue_family, 1) },
+            TransferQueueLocation::SharedGraphicsQueue => queue,
         };
         let extended_dynamic_state3 =
             dynamic_polygon_mode.then(|| ext::extended_dynamic_state3::Device::new(instance.handle(), &device));

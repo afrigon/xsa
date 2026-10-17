@@ -174,7 +174,7 @@ impl<'a> TextureUpload<'a> {
         }
 
         let value = recording.submit(&[], &[])?;
-        gpu.graphics.wait(value)?;
+        gpu.graphics.wait(value.value)?;
 
         Ok(())
     }

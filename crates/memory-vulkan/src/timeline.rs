@@ -1,10 +1,12 @@
 mod recording;
 mod timeline_id;
 mod timeline_semaphore;
+mod timeline_value;
 
 pub use recording::Recording;
 pub(crate) use timeline_id::TimelineId;
 pub(crate) use timeline_semaphore::TimelineSemaphore;
+pub use timeline_value::TimelineValue;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
