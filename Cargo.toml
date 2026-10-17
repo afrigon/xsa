@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph", "crates/resource-loader"]
+members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph", "crates/memory-vulkan", "crates/resource-loader"]
 
 [workspace.package]
 version = "0.0.1"
@@ -12,6 +12,7 @@ ash = "0.38.0"
 bitcode = "0.6.9"
 glam = "0.33.11"
 gpu-allocator = { version = "0.28.0", default-features = false, features = ["std", "vulkan"] }
+memory-vulkan = { path = "crates/memory-vulkan" }
 image = { version = "0.25.10", default-features = false, features = ["exr"] }
 render-graph = { path = "crates/render-graph" }
 resource-loader = { path = "crates/resource-loader" }
