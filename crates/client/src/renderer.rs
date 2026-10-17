@@ -23,6 +23,7 @@ mod render_passes;
 mod scene;
 mod shader_binaries;
 mod star_visibility;
+mod static_buffer;
 mod temporal_history;
 mod terrain_buffer;
 mod terrain_draw;
@@ -65,7 +66,7 @@ use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
 use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
-use crate::vulkan::{SAMPLED_LAYOUT, Swapchain};
+use crate::vulkan::Swapchain;
 use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
@@ -86,7 +87,7 @@ use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use terrain_buffer::TerrainBuffer;
 use terrain_draw::TerrainDraw;
-use texture::TextureUpload;
+use texture::{BindlessSlot, SlottedTexture, TextureUpload};
 use tonemapper::NO_TONEMAPPER;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
@@ -148,6 +149,11 @@ pub struct Renderer {
     materials: Vec<MaterialBuffer>,
     terrain_buffers: Vec<TerrainBuffer>,
     lens: Option<Lens>,
+    // A lens loaded while its uploads are pending; it replaces `lens` once they complete.
+    pending_lens: Option<Lens>,
+    // Uploads whose slots are reserved and whose descriptors are written once they complete. A stopgap until
+    // resources own their textures.
+    pending_textures: Vec<SlottedTexture>,
     passes: RenderPasses,
     graph: RenderGraph,
     graph_textures: GraphTextures,
@@ -216,6 +222,8 @@ impl Renderer {
             materials: Vec::new(),
             terrain_buffers: Vec::new(),
             lens: None,
+            pending_lens: None,
+            pending_textures: Vec::new(),
             passes,
             graph,
             graph_textures: GraphTextures::default(),
@@ -285,27 +293,32 @@ impl Renderer {
 
     pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
         let image = TextureImage::read(path, ColorSpace::Srgb)?;
-        let image = TextureUpload::new(&image).cube_map(&self.gpu, name)?;
-        let index = self.gpu.bindless.add_cube(&self.gpu.device, image.view())?;
-        self.cube_maps.push(image);
+        let upload = TextureUpload::new(image).cube_map(&self.gpu, name)?;
+        let index = self.gpu.bindless.reserve_cube()?;
+        self.pending_textures
+            .push(SlottedTexture::new(BindlessSlot::Cube(index), upload.into()));
 
         Ok(CubeMapHandle::new(index))
     }
 
     pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
         let image = TextureImage::read(path, color_space)?;
-        self.upload_texture(name, &image)
+        self.upload_texture(name, image)
     }
 
-    fn upload_texture(&mut self, name: &str, image: &TextureImage) -> anyhow::Result<TextureHandle> {
-        let image = TextureUpload::new(image).texture(&self.gpu, name)?;
-        let index = self
-            .gpu
-            .bindless
-            .add_texture(&self.gpu.device, image.view(), SAMPLED_LAYOUT)?;
-        self.textures.push(image);
+    fn upload_texture(&mut self, name: &str, image: TextureImage) -> anyhow::Result<TextureHandle> {
+        let texture = Renderer::slotted_texture(&mut self.gpu, name, image)?;
+        let handle = TextureHandle::new(texture.slot().index());
+        self.pending_textures.push(texture);
 
-        Ok(TextureHandle::new(index))
+        Ok(handle)
+    }
+
+    fn slotted_texture(gpu: &mut GpuContext, name: &str, image: TextureImage) -> anyhow::Result<SlottedTexture> {
+        let upload = TextureUpload::new(image).texture(gpu, name)?;
+        let index = gpu.bindless.reserve_texture()?;
+
+        Ok(SlottedTexture::new(BindlessSlot::Texture(index), upload.into()))
     }
 
     pub fn add_material<M: Material>(&mut self, name: &str, material: M) -> anyhow::Result<MaterialHandle> {
@@ -319,7 +332,7 @@ impl Renderer {
     pub fn add_terrain_height(
         &mut self,
         name: &str,
-        image: &TextureImage,
+        image: TextureImage,
         map: Arc<HeightMap>,
         radius: f64,
     ) -> anyhow::Result<TerrainHeight> {
@@ -343,10 +356,63 @@ impl Renderer {
     }
 
     pub fn load_lens(&mut self, definition: &LensDefinition) -> anyhow::Result<()> {
-        self.lens = None;
-        let mut lens = Lens::new(definition, |name, image| self.upload_texture(name, image))?;
-        lens.upload(&self.gpu.memory)?;
-        self.lens = Some(lens);
+        let mut lens = Lens::new(definition, |name, image| {
+            Renderer::slotted_texture(&mut self.gpu, name, image)
+        })?;
+        lens.upload(&self.gpu)?;
+        self.pending_lens = Some(lens);
+
+        Ok(())
+    }
+
+    // Blocks until every upload queued so far completes, so the next frame may use all of them.
+    pub fn finish_uploads(&mut self) -> anyhow::Result<()> {
+        let gpu = &self.gpu;
+
+        for texture in &mut self.pending_textures {
+            texture.wait(&gpu.bindless, &gpu.device)?;
+        }
+
+        for material in &mut self.materials {
+            material.wait()?;
+        }
+
+        for terrain in &mut self.terrain_buffers {
+            terrain.wait()?;
+        }
+
+        if let Some(lens) = &mut self.pending_lens {
+            lens.wait_uploads(&gpu.bindless, &gpu.device)?;
+        }
+
+        self.poll_uploads()
+    }
+
+    fn poll_uploads(&mut self) -> anyhow::Result<()> {
+        let gpu = &self.gpu;
+        let mut index = 0;
+
+        while let Some(texture) = self.pending_textures.get_mut(index) {
+            if !texture.poll(&gpu.bindless, &gpu.device)? {
+                index += 1;
+                continue;
+            }
+
+            let texture = self.pending_textures.swap_remove(index);
+            let slot = texture.slot();
+            let image = texture.into_image().expect("a polled ready texture holds its image");
+
+            match slot {
+                BindlessSlot::Texture(_) => self.textures.push(image),
+                BindlessSlot::Cube(_) => self.cube_maps.push(image),
+            }
+        }
+
+        if let Some(lens) = &mut self.pending_lens
+            && lens.poll_uploads(&gpu.bindless, &gpu.device)?
+        {
+            self.lens = self.pending_lens.take();
+        }
 
         Ok(())
     }
@@ -365,6 +431,7 @@ impl Renderer {
             self.recreate_swapchain()?;
         }
 
+        self.poll_uploads()?;
         self.ensure_object_capacity()?;
         self.ensure_star_capacity()?;
         self.ensure_light_capacity()?;

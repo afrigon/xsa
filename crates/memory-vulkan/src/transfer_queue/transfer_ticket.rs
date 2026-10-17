@@ -19,7 +19,8 @@ impl<T> TransferTicket<T> {
         self.slot.take()
     }
 
-    pub fn wait(self) -> Result<T, MemoryError> {
+    // Waits without giving up the ticket; it must not be polled or waited on again afterwards.
+    pub fn wait_settled(&mut self) -> Result<T, MemoryError> {
         self.slot.wait()
     }
 }

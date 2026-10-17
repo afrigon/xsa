@@ -20,7 +20,7 @@ impl ReadbackTicket {
     }
 
     /// Blocks until the readback completes.
-    pub fn wait(self) -> Result<Vec<u8>, MemoryError> {
-        self.ticket.wait()
+    pub fn wait(mut self) -> Result<Vec<u8>, MemoryError> {
+        self.ticket.wait_settled()
     }
 }

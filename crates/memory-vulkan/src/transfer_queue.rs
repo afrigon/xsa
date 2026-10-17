@@ -2,6 +2,7 @@ mod batch;
 mod batch_builder;
 mod copy_rate;
 mod copy_region;
+mod gpu_upload;
 mod image_copy;
 mod image_upload;
 mod owned_upload_completion;
@@ -29,6 +30,7 @@ mod upload_destination;
 mod upload_target;
 mod upload_ticket;
 
+pub use gpu_upload::GpuUpload;
 pub use image_copy::ImageCopy;
 pub use image_upload::ImageUpload;
 pub use readback_ticket::ReadbackTicket;

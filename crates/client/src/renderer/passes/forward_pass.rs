@@ -16,6 +16,7 @@ use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
+use crate::renderer::static_buffer::StaticBuffer;
 use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
@@ -42,18 +43,21 @@ impl ForwardPass {
             })
             .collect::<anyhow::Result<_>>()?;
         let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
-        let vertex_buffer = Buffer::with_data(
-            &gpu.memory,
+        // Every frame draws the grid, so it is in GPU memory before the first one.
+        let vertex_buffer = StaticBuffer::new(
+            gpu,
             "tile grid vertices",
             vk::BufferUsageFlags::VERTEX_BUFFER,
             &grids.vertices,
         )?;
-        let index_buffer = Buffer::with_data(
-            &gpu.memory,
+        let index_buffer = StaticBuffer::new(
+            gpu,
             "tile grid indices",
             vk::BufferUsageFlags::INDEX_BUFFER,
             &grids.indices,
         )?;
+        let vertex_buffer = vertex_buffer.into_buffer()?;
+        let index_buffer = index_buffer.into_buffer()?;
 
         Ok(ForwardPass {
             pipelines,

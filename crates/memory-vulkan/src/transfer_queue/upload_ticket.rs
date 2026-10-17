@@ -20,7 +20,11 @@ impl<T> UploadTicket<T> {
     }
 
     /// Blocks until the upload completes.
-    pub fn wait(self) -> Result<T, MemoryError> {
-        self.ticket.wait()
+    pub fn wait(mut self) -> Result<T, MemoryError> {
+        self.ticket.wait_settled()
+    }
+
+    pub(crate) fn wait_settled(&mut self) -> Result<T, MemoryError> {
+        self.ticket.wait_settled()
     }
 }

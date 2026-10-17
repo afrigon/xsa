@@ -138,6 +138,7 @@ impl ClientWorld {
         let skybox = ClientWorld::load_skybox(&stack, &simulation_id, renderer)?;
         renderer.scene_mut().skybox = skybox;
         ClientWorld::load_lens(&stack, renderer);
+        renderer.finish_uploads()?;
 
         Ok(ClientWorld {
             simulation_id,
@@ -374,7 +375,7 @@ impl ClientWorld {
             definition.minimum_height,
             definition.maximum_height,
         )?);
-        let height = renderer.add_terrain_height(&format!("{body} terrain"), &image, Arc::clone(&map), radius)?;
+        let height = renderer.add_terrain_height(&format!("{body} terrain"), image, Arc::clone(&map), radius)?;
 
         Ok(Some(LoadedTerrain { height, map }))
     }

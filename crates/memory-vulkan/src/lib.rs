@@ -34,7 +34,8 @@ pub use memory_error::MemoryError;
 pub use queue_sharing::QueueSharing;
 pub use timeline::{Recording, Timeline, TimelineValue};
 pub use transfer_queue::{
-    ImageCopy, ImageUpload, ReadbackTicket, TexelBlock, TransferPriority, TransferQueue, TransferStatus, UploadTicket,
+    GpuUpload, ImageCopy, ImageUpload, ReadbackTicket, TexelBlock, TransferPriority, TransferQueue, TransferStatus,
+    UploadTicket,
 };
 
 #[cfg(test)]

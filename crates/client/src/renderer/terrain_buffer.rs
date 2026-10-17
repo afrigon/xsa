@@ -1,17 +1,17 @@
 use ash::vk;
-use memory_vulkan::Buffer;
 
 use super::GpuContext;
 use super::gpu_data::TerrainData;
+use super::static_buffer::StaticBuffer;
 
 pub(in crate::renderer) struct TerrainBuffer {
-    buffer: Buffer,
+    buffer: StaticBuffer,
 }
 
 impl TerrainBuffer {
     pub fn new(gpu: &GpuContext, name: &str, data: TerrainData) -> anyhow::Result<Self> {
-        let buffer = Buffer::with_data(
-            &gpu.memory,
+        let buffer = StaticBuffer::new(
+            gpu,
             name,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             &[data],
@@ -22,5 +22,9 @@ impl TerrainBuffer {
 
     pub fn device_address(&self) -> vk::DeviceAddress {
         self.buffer.device_address()
+    }
+
+    pub fn wait(&mut self) -> anyhow::Result<()> {
+        self.buffer.wait()
     }
 }
