@@ -34,7 +34,7 @@ pub(in crate::renderer) struct TaaPass {
 impl TaaPass {
     pub fn new(gpu: &GpuContext, graph: &mut RenderGraph, binaries: &ShaderBinaries) -> anyhow::Result<TaaPass> {
         let pipeline = ComputePipeline::new(
-            &gpu.device,
+            &gpu.memory,
             &binaries.taa,
             size_of::<TaaPushConstants>() as u32,
             &[gpu.bindless.layout()],
@@ -52,10 +52,6 @@ impl TaaPass {
     // Frames until the history has replaced all but SETTLED_HISTORY_SHARE of what it held before.
     pub fn settling_frames() -> u32 {
         (SETTLED_HISTORY_SHARE.ln() / (1.0 - CURRENT_FRAME_WEIGHT).ln()).ceil() as u32
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe { self.pipeline.destroy(&gpu.device) };
     }
 }
 

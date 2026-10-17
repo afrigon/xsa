@@ -52,6 +52,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use glam::{DVec2, DVec3, Mat4, Vec2};
+use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation};
 use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -64,7 +65,7 @@ use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
 use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
-use crate::vulkan::{Buffer, Image, MemoryLocation, SAMPLED_LAYOUT, Swapchain};
+use crate::vulkan::{SAMPLED_LAYOUT, Swapchain};
 use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
@@ -107,8 +108,8 @@ const SWAPCHAIN_PRESENTABLE: ImageState = ImageState {
     access: vk::AccessFlags2::NONE,
     layout: vk::ImageLayout::PRESENT_SRC_KHR,
 };
-// The CPU reads a frame's readback buffers only after waiting on its fence.
-const READ_BACK_AFTER_FENCE: BufferState = BufferState {
+// The CPU reads a frame's readback buffers only after waiting for the frame on the graphics timeline.
+const READ_BACK_AFTER_WAIT: BufferState = BufferState {
     stages: vk::PipelineStageFlags2::NONE,
     access: vk::AccessFlags2::NONE,
 };
@@ -161,10 +162,10 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(window: &Window, shaders: &ShaderBinaries, config: &Config) -> anyhow::Result<Self> {
-        let mut gpu = GpuContext::new(window)?;
+        let gpu = GpuContext::new(window)?;
         let window_extent = Renderer::extent_of(window.inner_size());
         let swapchain = Swapchain::new(
-            &gpu.instance,
+            &gpu.memory,
             &gpu.surface,
             &gpu.device,
             window_extent,
@@ -173,8 +174,8 @@ impl Renderer {
         let frames = (0..FRAMES_IN_FLIGHT)
             .map(|_| {
                 Frame::new(
+                    &gpu.memory,
                     &gpu.device,
-                    &mut gpu.allocator,
                     INITIAL_OBJECT_CAPACITY,
                     INITIAL_TILE_CAPACITY,
                     INITIAL_STAR_CAPACITY,
@@ -182,8 +183,8 @@ impl Renderer {
                 )
             })
             .collect::<anyhow::Result<_>>()?;
-        let mut graph = RenderGraph::new(swapchain.extent());
-        let passes = RenderPasses::new(&mut gpu, &mut graph, shaders, swapchain.format(), FRAMES_IN_FLIGHT)?;
+        let mut graph = RenderGraph::new(&gpu.memory, swapchain.extent());
+        let passes = RenderPasses::new(&gpu, &mut graph, shaders, swapchain.format(), FRAMES_IN_FLIGHT)?;
 
         Ok(Self {
             scene: Scene::default(),
@@ -283,20 +284,12 @@ impl Renderer {
     }
 
     pub fn load_cube_map(&mut self, name: &str, path: &Path) -> anyhow::Result<CubeMapHandle> {
-        let gpu = &mut self.gpu;
         let image = TextureImage::read(path, ColorSpace::Srgb)?;
-        let mut image = TextureUpload::new(&image).cube_map(&gpu.device, &mut gpu.allocator, name)?;
+        let image = TextureUpload::new(&image).cube_map(&self.gpu, name)?;
+        let index = self.gpu.bindless.add_cube(&self.gpu.device, image.view())?;
+        self.cube_maps.push(image);
 
-        match gpu.bindless.add_cube(&gpu.device, image.view()) {
-            Ok(index) => {
-                self.cube_maps.push(image);
-                Ok(CubeMapHandle::new(index))
-            }
-            Err(err) => {
-                unsafe { image.destroy(&gpu.device, &mut gpu.allocator) };
-                Err(err)
-            }
-        }
+        Ok(CubeMapHandle::new(index))
     }
 
     pub fn load_texture(&mut self, name: &str, path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureHandle> {
@@ -305,24 +298,18 @@ impl Renderer {
     }
 
     fn upload_texture(&mut self, name: &str, image: &TextureImage) -> anyhow::Result<TextureHandle> {
-        let gpu = &mut self.gpu;
-        let mut image = TextureUpload::new(image).texture(&gpu.device, &mut gpu.allocator, name)?;
+        let image = TextureUpload::new(image).texture(&self.gpu, name)?;
+        let index = self
+            .gpu
+            .bindless
+            .add_texture(&self.gpu.device, image.view(), SAMPLED_LAYOUT)?;
+        self.textures.push(image);
 
-        match gpu.bindless.add_texture(&gpu.device, image.view(), SAMPLED_LAYOUT) {
-            Ok(index) => {
-                self.textures.push(image);
-                Ok(TextureHandle::new(index))
-            }
-            Err(err) => {
-                unsafe { image.destroy(&gpu.device, &mut gpu.allocator) };
-                Err(err)
-            }
-        }
+        Ok(TextureHandle::new(index))
     }
 
     pub fn add_material<M: Material>(&mut self, name: &str, material: M) -> anyhow::Result<MaterialHandle> {
-        self.materials
-            .push(MaterialBuffer::new(&mut self.gpu, name, &material)?);
+        self.materials.push(MaterialBuffer::new(&self.gpu, name, &material)?);
         Ok(MaterialHandle {
             index: self.materials.len() - 1,
         })
@@ -344,8 +331,7 @@ impl Renderer {
             height_range: ((map.maximum() - map.minimum()) / radius) as f32,
             padding: 0,
         };
-        self.terrain_buffers
-            .push(TerrainBuffer::new(&mut self.gpu, name, data)?);
+        self.terrain_buffers.push(TerrainBuffer::new(&self.gpu, name, data)?);
 
         Ok(TerrainHeight {
             buffer: TerrainBufferHandle {
@@ -357,13 +343,9 @@ impl Renderer {
     }
 
     pub fn load_lens(&mut self, definition: &LensDefinition) -> anyhow::Result<()> {
-        if let Some(mut lens) = self.lens.take() {
-            self.gpu.wait_idle()?;
-            unsafe { lens.destroy(&self.gpu.device, &mut self.gpu.allocator) };
-        }
-
+        self.lens = None;
         let mut lens = Lens::new(definition, |name, image| self.upload_texture(name, image))?;
-        lens.upload(&self.gpu.device, &mut self.gpu.allocator)?;
+        lens.upload(&self.gpu.memory)?;
         self.lens = Some(lens);
 
         Ok(())
@@ -402,7 +384,6 @@ impl Renderer {
         self.write_frame_data(camera)?;
         self.record_frame(image_index)?;
         self.submit_and_present(image_index)?;
-        self.frames[self.frame_index].submitted = true;
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
 
         Ok(())
@@ -421,10 +402,8 @@ impl Renderer {
 
         let extent = self.swapchain.extent();
         let size = u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL as u64;
-        let gpu = &mut self.gpu;
         let buffer = Buffer::new(
-            &gpu.device,
-            &mut gpu.allocator,
+            &self.gpu.memory,
             "capture",
             size,
             vk::BufferUsageFlags::TRANSFER_DST,
@@ -432,8 +411,7 @@ impl Renderer {
         )?;
         self.capture = Some(buffer);
         let pixels = self.render_capture(camera, extent);
-        let mut buffer = self.capture.take().expect("the capture buffer was set above");
-        unsafe { buffer.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+        self.capture = None;
 
         Ok(CapturedImage {
             width: extent.width,
@@ -461,8 +439,10 @@ impl Renderer {
             "the window is not visible, nothing was rendered"
         );
 
-        let device = self.gpu.device.handle();
-        unsafe { device.wait_for_fences(&[self.frames[frame].in_flight], true, u64::MAX) }?;
+        let submitted = self.frames[frame]
+            .submitted
+            .expect("a frame was submitted from the slot drawn above");
+        self.gpu.graphics.wait(submitted)?;
         let mut pixels = vec![0_u8; extent.width as usize * extent.height as usize * BYTES_PER_PIXEL];
         self.capture
             .as_ref()
@@ -514,7 +494,7 @@ impl Renderer {
     fn update_star_visibility(&mut self) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
 
-        if frame.submitted {
+        if frame.submitted.is_some() {
             frame.histogram.read(&mut self.histogram)?;
             self.star_visibility.update(&self.histogram);
         }
@@ -526,7 +506,7 @@ impl Renderer {
         let frame = &self.frames[self.frame_index];
 
         if let Some(timer) = &frame.timer
-            && frame.submitted
+            && frame.submitted.is_some()
         {
             self.gpu_milliseconds = timer.milliseconds(&self.gpu.device)?.or(self.gpu_milliseconds);
         }
@@ -535,14 +515,18 @@ impl Renderer {
     }
 
     fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
-        let device = self.gpu.device.handle();
         let frame = &self.frames[self.frame_index];
-        unsafe { device.wait_for_fences(&[frame.in_flight], true, u64::MAX) }?;
+
+        if let Some(submitted) = frame.submitted {
+            self.gpu.graphics.wait(submitted)?;
+        }
+
+        self.gpu.memory.collect()?;
         let acquired = unsafe {
-            self.swapchain.loader().acquire_next_image(
+            self.gpu.memory.swapchain_loader().acquire_next_image(
                 self.swapchain.handle(),
                 u64::MAX,
-                frame.image_acquired,
+                frame.image_acquired.handle(),
                 vk::Fence::null(),
             )
         };
@@ -557,7 +541,6 @@ impl Renderer {
             }
             Err(err) => return Err(err.into()),
         };
-        unsafe { device.reset_fences(&[frame.in_flight]) }?;
 
         Ok(Some(image_index))
     }
@@ -673,7 +656,7 @@ impl Renderer {
         frame.objects.write(&self.object_data)?;
         frame.tiles.write(&self.tile_data)?;
         frame.stars.write(&self.star_data)?;
-        frame.projected_lights.write(&self.projected_light_data)
+        Ok(frame.projected_lights.write(&self.projected_light_data)?)
     }
 
     fn detail_ranges(&self, radius: f64) -> DetailRanges {
@@ -769,18 +752,13 @@ impl Renderer {
     }
 
     fn record_frame(&mut self, image_index: u32) -> anyhow::Result<()> {
-        let GpuContext {
-            bindless,
-            allocator,
-            device,
-            ..
-        } = &mut self.gpu;
+        let GpuContext { bindless, device, .. } = &mut self.gpu;
         let frame = &self.frames[self.frame_index];
 
         unsafe {
             device
                 .handle()
-                .reset_command_pool(frame.command_pool, vk::CommandPoolResetFlags::empty())?;
+                .reset_command_pool(frame.command_pool.handle(), vk::CommandPoolResetFlags::empty())?;
             let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
             device
                 .handle()
@@ -805,14 +783,14 @@ impl Renderer {
             histogram: graph.import_buffer(ImportedBuffer {
                 name: "luminance histogram",
                 buffer: frame.histogram.handle(),
-                initial: READ_BACK_AFTER_FENCE,
+                initial: READ_BACK_AFTER_WAIT,
                 final_state: HOST_READABLE,
             }),
             capture: self.capture.as_ref().map(|capture| {
                 graph.import_buffer(ImportedBuffer {
                     name: "capture",
                     buffer: capture.handle(),
-                    initial: READ_BACK_AFTER_FENCE,
+                    initial: READ_BACK_AFTER_WAIT,
                     final_state: HOST_READABLE,
                 })
             }),
@@ -820,7 +798,7 @@ impl Renderer {
             lens_loaded: self.lens.is_some(),
         };
         self.passes.add_to(&mut graph, &self.render, inputs);
-        let compiled = graph.compile(device.handle(), allocator.gpu_allocator())?;
+        let compiled = graph.compile()?;
         self.graph_textures
             .register(device, bindless, compiled.graph(), compiled.created_images())?;
         let context = FrameContext {
@@ -862,22 +840,17 @@ impl Renderer {
         let frame = &self.frames[self.frame_index];
         let render_finished = self.swapchain.render_finished(image_index);
         let wait_semaphores = [vk::SemaphoreSubmitInfo::default()
-            .semaphore(frame.image_acquired)
+            .semaphore(frame.image_acquired.handle())
             .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)];
         let command_buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(frame.command_buffer)];
         let signal_semaphores = [vk::SemaphoreSubmitInfo::default()
             .semaphore(render_finished)
             .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)];
-        let submit = vk::SubmitInfo2::default()
-            .wait_semaphore_infos(&wait_semaphores)
-            .command_buffer_infos(&command_buffers)
-            .signal_semaphore_infos(&signal_semaphores);
-        let device = &self.gpu.device;
-        unsafe {
-            device
-                .handle()
-                .queue_submit2(device.queue(), &[submit], frame.in_flight)
-        }?;
+        let submitted = self
+            .gpu
+            .graphics
+            .submit(&wait_semaphores, &command_buffers, &signal_semaphores)?;
+        self.frames[self.frame_index].submitted = Some(submitted);
 
         let present_wait = [render_finished];
         let swapchains = [self.swapchain.handle()];
@@ -887,9 +860,9 @@ impl Renderer {
             .swapchains(&swapchains)
             .image_indices(&image_indices);
 
-        match unsafe { self.swapchain.loader().queue_present(device.queue(), &present_info) } {
+        match self.gpu.memory.present(self.gpu.device.queue(), present_info) {
             Ok(suboptimal) => self.swapchain_outdated |= suboptimal,
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.swapchain_outdated = true,
+            Err(MemoryError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR)) => self.swapchain_outdated = true,
             Err(err) => return Err(err.into()),
         }
 
@@ -903,13 +876,10 @@ impl Renderer {
             return Ok(());
         }
 
-        self.gpu.wait_idle()?;
         self.object_capacity = object_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            let objects = Frame::create_object_buffer(&self.gpu.device, &mut self.gpu.allocator, self.object_capacity)?;
-            let mut old_objects = std::mem::replace(&mut frame.objects, objects);
-            unsafe { old_objects.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+            frame.objects = Frame::create_object_buffer(&self.gpu.memory, self.object_capacity)?;
         }
 
         Ok(())
@@ -922,13 +892,10 @@ impl Renderer {
             return Ok(());
         }
 
-        self.gpu.wait_idle()?;
         self.tile_capacity = tile_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            let tiles = Frame::create_tile_buffer(&self.gpu.device, &mut self.gpu.allocator, self.tile_capacity)?;
-            let mut old_tiles = std::mem::replace(&mut frame.tiles, tiles);
-            unsafe { old_tiles.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+            frame.tiles = Frame::create_tile_buffer(&self.gpu.memory, self.tile_capacity)?;
         }
 
         Ok(())
@@ -941,13 +908,10 @@ impl Renderer {
             return Ok(());
         }
 
-        self.gpu.wait_idle()?;
         self.star_capacity = star_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            let stars = Frame::create_star_buffer(&self.gpu.device, &mut self.gpu.allocator, self.star_capacity)?;
-            let mut old_stars = std::mem::replace(&mut frame.stars, stars);
-            unsafe { old_stars.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+            frame.stars = Frame::create_star_buffer(&self.gpu.memory, self.star_capacity)?;
         }
 
         Ok(())
@@ -960,39 +924,28 @@ impl Renderer {
             return Ok(());
         }
 
-        self.gpu.wait_idle()?;
         self.light_capacity = light_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            let projected_lights =
-                Frame::create_projected_light_buffer(&self.gpu.device, &mut self.gpu.allocator, self.light_capacity)?;
-            let mut old_projected_lights = std::mem::replace(&mut frame.projected_lights, projected_lights);
-            unsafe { old_projected_lights.destroy(&self.gpu.device, &mut self.gpu.allocator) };
+            frame.projected_lights = Frame::create_projected_light_buffer(&self.gpu.memory, self.light_capacity)?;
         }
 
         Ok(())
     }
 
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        self.gpu.wait_idle()?;
-        let swapchain = Swapchain::new(
-            &self.gpu.instance,
+        self.swapchain = Swapchain::new(
+            &self.gpu.memory,
             &self.gpu.surface,
             &self.gpu.device,
             self.window_extent,
             self.swapchain.handle(),
         )?;
-        let mut old_swapchain = std::mem::replace(&mut self.swapchain, swapchain);
-        unsafe { old_swapchain.destroy(&self.gpu.device) };
-
+        let recreated = self.graph.resize(self.swapchain.extent())?;
+        // Workaround: the recreated images' bindless slots are rewritten in place, which no frame still in flight may
+        // read. Waiting goes away once freed slots are reused only after those frames (tracked in #285).
+        self.wait_for_frames_in_flight()?;
         let gpu = &mut self.gpu;
-        let recreated = unsafe {
-            self.graph.resize(
-                gpu.device.handle(),
-                gpu.allocator.gpu_allocator(),
-                self.swapchain.extent(),
-            )
-        }?;
         self.graph_textures
             .register(&gpu.device, &mut gpu.bindless, &self.graph, &recreated)?;
         self.temporal.reset();
@@ -1002,47 +955,18 @@ impl Renderer {
         Ok(())
     }
 
+    fn wait_for_frames_in_flight(&self) -> anyhow::Result<()> {
+        for submitted in self.frames.iter().filter_map(|frame| frame.submitted) {
+            self.gpu.graphics.wait(submitted)?;
+        }
+
+        Ok(())
+    }
+
     fn extent_of(size: PhysicalSize<u32>) -> vk::Extent2D {
         vk::Extent2D {
             width: size.width,
             height: size.height,
-        }
-    }
-}
-
-impl Drop for Renderer {
-    fn drop(&mut self) {
-        let _ = self.gpu.wait_idle();
-        let gpu = &mut self.gpu;
-
-        unsafe {
-            self.passes.destroy(gpu);
-
-            if let Err(err) = self.graph.destroy(gpu.device.handle(), gpu.allocator.gpu_allocator()) {
-                tracing::error!("destroying the render graph: {err}");
-            }
-
-            for image in self.cube_maps.iter_mut().chain(&mut self.textures) {
-                image.destroy(&gpu.device, &mut gpu.allocator);
-            }
-
-            for material in &mut self.materials {
-                material.destroy(gpu);
-            }
-
-            for terrain in &mut self.terrain_buffers {
-                terrain.destroy(gpu);
-            }
-
-            if let Some(lens) = &mut self.lens {
-                lens.destroy(&gpu.device, &mut gpu.allocator);
-            }
-
-            for frame in &mut self.frames {
-                frame.destroy(&gpu.device, &mut gpu.allocator);
-            }
-
-            self.swapchain.destroy(&gpu.device);
         }
     }
 }

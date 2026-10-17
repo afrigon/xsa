@@ -1,5 +1,3 @@
-use gpu_allocator::vulkan::Allocator;
-
 use crate::pass_recording::PassRecording;
 use crate::recorded_pass::RecordedPass;
 use crate::{
@@ -48,13 +46,9 @@ impl<'graph, 'passes, Context> GraphBuilder<'graph, 'passes, Context> {
 
     /// Compiles the frame, or reuses an earlier frame's result when the declarations match, and allocates the images
     /// it needs.
-    pub fn compile(
-        self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-    ) -> Result<CompiledFrame<'graph, 'passes, Context>, RenderGraphError> {
+    pub fn compile(self) -> Result<CompiledFrame<'graph, 'passes, Context>, RenderGraphError> {
         let mut created = Vec::new();
-        let entry = self.graph.compile(device, allocator, &mut created)?;
+        let entry = self.graph.compile(&mut created)?;
 
         Ok(CompiledFrame::new(self.graph, self.passes, entry, created))
     }

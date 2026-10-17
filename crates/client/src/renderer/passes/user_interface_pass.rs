@@ -1,6 +1,6 @@
-use ash::vk::{self, Handle};
+use ash::vk;
 use render_graph_vulkan::{Attachment, ImportedImageHandle, PassContext, PassDeclaration, PassError, RenderPass};
-use xui_vulkan::{FrameTarget, VulkanHost};
+use xui_vulkan::FrameTarget;
 
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
@@ -15,19 +15,9 @@ impl UserInterfacePass {
         output_format: vk::Format,
         frames_in_flight: usize,
     ) -> anyhow::Result<UserInterfacePass> {
-        let host = VulkanHost {
-            get_instance_proc_addr: gpu.instance.entry().static_fn().get_instance_proc_addr as *const _,
-            instance: gpu.instance.handle().handle().as_raw(),
-            physical_device: gpu.device.physical_device().as_raw(),
-            device: gpu.device.handle().handle().as_raw(),
-        };
-        let renderer = unsafe { xui_vulkan::Renderer::new(&host, output_format.as_raw(), frames_in_flight) }?;
+        let renderer = xui_vulkan::Renderer::new(&gpu.memory, output_format, frames_in_flight)?;
 
         Ok(UserInterfacePass { renderer })
-    }
-
-    pub unsafe fn destroy(&mut self) {
-        unsafe { self.renderer.destroy() };
     }
 }
 
@@ -51,8 +41,8 @@ impl<'frame> RenderPass<FrameContext<'frame>> for UserInterfacePass {
     ) -> Result<(), PassError> {
         let extent = pass.extent(*output);
         let target = FrameTarget {
-            command_buffer: frame.frame.command_buffer.as_raw(),
-            image_view: pass.view(*output).as_raw(),
+            command_buffer: frame.frame.command_buffer,
+            image_view: pass.view(*output),
             width: extent.width,
             height: extent.height,
             frame_slot: frame.frame_slot,

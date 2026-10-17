@@ -1,8 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use ash::vk;
-use gpu_allocator::AllocationError;
+use memory_vulkan::MemoryError;
 
 use crate::PassError;
 
@@ -27,20 +26,7 @@ pub enum RenderGraphError {
     HistoryUsageChanged {
         history: &'static str,
     },
-    /// Creating an image failed, then destroying what was already created failed too.
-    ImageCleanup {
-        image: &'static str,
-        creation: Box<RenderGraphError>,
-        cleanup: Box<RenderGraphError>,
-    },
-    /// Creating a buffer failed, then destroying what was already created failed too.
-    BufferCleanup {
-        buffer: &'static str,
-        creation: Box<RenderGraphError>,
-        cleanup: Box<RenderGraphError>,
-    },
-    Vulkan(vk::Result),
-    Allocation(AllocationError),
+    Memory(MemoryError),
 }
 
 impl fmt::Display for RenderGraphError {
@@ -59,20 +45,7 @@ impl fmt::Display for RenderGraphError {
                     "{history} is used differently than in the frame that created it"
                 )
             }
-            RenderGraphError::ImageCleanup { image, cleanup, .. } => {
-                write!(
-                    formatter,
-                    "creating {image} failed, then destroying its parts failed: {cleanup}"
-                )
-            }
-            RenderGraphError::BufferCleanup { buffer, cleanup, .. } => {
-                write!(
-                    formatter,
-                    "creating {buffer} failed, then destroying its parts failed: {cleanup}"
-                )
-            }
-            RenderGraphError::Vulkan(result) => write!(formatter, "a Vulkan call failed: {result}"),
-            RenderGraphError::Allocation(error) => write!(formatter, "allocating GPU memory: {error}"),
+            RenderGraphError::Memory(_) => write!(formatter, "creating a graph image or buffer"),
         }
     }
 }
@@ -81,11 +54,7 @@ impl Error for RenderGraphError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             RenderGraphError::Pass { source, .. } => Some(source.as_ref()),
-            RenderGraphError::ImageCleanup { creation, .. } | RenderGraphError::BufferCleanup { creation, .. } => {
-                Some(creation.as_ref())
-            }
-            RenderGraphError::Vulkan(result) => Some(result),
-            RenderGraphError::Allocation(error) => Some(error),
+            RenderGraphError::Memory(error) => Some(error),
             RenderGraphError::Declaration { .. }
             | RenderGraphError::StepCount { .. }
             | RenderGraphError::HistoryUsageChanged { .. } => None,
@@ -93,14 +62,8 @@ impl Error for RenderGraphError {
     }
 }
 
-impl From<vk::Result> for RenderGraphError {
-    fn from(result: vk::Result) -> RenderGraphError {
-        RenderGraphError::Vulkan(result)
-    }
-}
-
-impl From<AllocationError> for RenderGraphError {
-    fn from(error: AllocationError) -> RenderGraphError {
-        RenderGraphError::Allocation(error)
+impl From<MemoryError> for RenderGraphError {
+    fn from(error: MemoryError) -> RenderGraphError {
+        RenderGraphError::Memory(error)
     }
 }

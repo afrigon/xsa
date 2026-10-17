@@ -10,6 +10,7 @@ pub struct Buffer {
     buffer: DeviceObject<vk::Buffer>,
     allocation: DeviceObject<Allocation>,
     device_address: Option<vk::DeviceAddress>,
+    size: u64,
     name: String,
 }
 
@@ -40,6 +41,7 @@ impl Buffer {
             buffer,
             allocation,
             device_address,
+            size,
             name: name.to_owned(),
         })
     }
@@ -59,6 +61,11 @@ impl Buffer {
 
     pub fn handle(&self) -> vk::Buffer {
         self.buffer.handle()
+    }
+
+    /// The size it was created with, in bytes.
+    pub fn size(&self) -> u64 {
+        self.size
     }
 
     /// # Panics

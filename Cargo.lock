@@ -1921,7 +1921,7 @@ name = "render-graph-vulkan"
 version = "0.0.1"
 dependencies = [
  "ash",
- "gpu-allocator",
+ "memory-vulkan",
 ]
 
 [[package]]
@@ -3182,9 +3182,9 @@ dependencies = [
  "anyhow",
  "ash",
  "glam",
- "gpu-allocator",
  "image",
  "kdl",
+ "memory-vulkan",
  "render-graph-vulkan",
  "resource-loader",
  "tokio",
@@ -3294,6 +3294,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "ash",
+ "memory-vulkan",
  "xui",
 ]
 

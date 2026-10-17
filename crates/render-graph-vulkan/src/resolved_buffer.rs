@@ -37,7 +37,7 @@ impl ResolvedBuffer {
         ResolvedBuffer {
             name: physical.description.name,
             used: true,
-            buffer: physical.buffer,
+            buffer: physical.buffer(),
             id: Some(id),
         }
     }

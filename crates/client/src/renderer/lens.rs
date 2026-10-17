@@ -2,12 +2,12 @@ use std::path::Path;
 
 use ash::vk;
 use glam::{Vec2, Vec3};
+use memory_vulkan::{Buffer, MemoryContext};
 use resource_loader::texture::{ColorSpace, TextureImage};
 use xsa_packs::LensDefinition;
 
 use super::TextureHandle;
 use super::gpu_data::{GhostData, ProjectedLightData};
-use crate::vulkan::{Allocator, Buffer, Device, MemoryLocation};
 
 // The smallest scene value that can change an 8-bit pixel: half an output step, decoded through sRGB's linear segment.
 // Every tonemapper darkens values near black, so none shows a smaller one.
@@ -156,39 +156,23 @@ impl Lens {
         (pixel - viewport * 0.5).extend(focal_length).normalize()
     }
 
-    pub fn upload(&mut self, device: &Device, allocator: &mut Allocator) -> anyhow::Result<()> {
+    pub fn upload(&mut self, memory: &MemoryContext) -> anyhow::Result<()> {
         if self.ghost_data.is_empty() {
             return Ok(());
         }
 
-        let mut ghosts = Buffer::new(
-            device,
-            allocator,
+        self.ghosts = Some(Buffer::with_data(
+            memory,
             "lens ghosts",
-            size_of_val(self.ghost_data.as_slice()) as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
-        )?;
-
-        if let Err(err) = ghosts.write(&self.ghost_data) {
-            unsafe { ghosts.destroy(device, allocator) };
-            return Err(err);
-        }
-
-        self.ghosts = Some(ghosts);
+            &self.ghost_data,
+        )?);
 
         Ok(())
     }
 
     pub fn ghosts(&self) -> vk::DeviceAddress {
         self.ghosts.as_ref().map_or(0, Buffer::device_address)
-    }
-
-    // Safety: only once the GPU has finished every frame that used the lens.
-    pub unsafe fn destroy(&mut self, device: &Device, allocator: &mut Allocator) {
-        if let Some(ghosts) = &mut self.ghosts {
-            unsafe { ghosts.destroy(device, allocator) };
-        }
     }
 }
 

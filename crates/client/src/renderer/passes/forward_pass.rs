@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use std::mem::offset_of;
 
 use ash::vk;
-use render_graph_vulkan::{Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass};
+use memory_vulkan::Buffer;
+use render_graph_vulkan::{
+    Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass,
+};
 
 use crate::mesh::{GridMesh, GridVertex};
 use crate::renderer::frame_context::FrameContext;
@@ -14,7 +17,7 @@ use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
 use crate::renderer::{Shader, ShaderBinaries};
-use crate::vulkan::{Buffer, GraphicsPipeline, GraphicsPipelineDescription};
+use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
 const TRIANGLES_PER_CELL: u64 = 2;
 pub(in crate::renderer) const HDR_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
@@ -31,7 +34,7 @@ pub(in crate::renderer) struct ForwardPass {
 }
 
 impl ForwardPass {
-    pub fn new(gpu: &mut GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
+    pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
         let pipelines = ForwardPass::object_shaders()
             .map(|shader| {
                 let pipeline = ForwardPass::create_pipeline(gpu, &binaries.shaders[shader.index()])?;
@@ -40,15 +43,13 @@ impl ForwardPass {
             .collect::<anyhow::Result<_>>()?;
         let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
         let vertex_buffer = Buffer::with_data(
-            &gpu.device,
-            &mut gpu.allocator,
+            &gpu.memory,
             "tile grid vertices",
             vk::BufferUsageFlags::VERTEX_BUFFER,
             &grids.vertices,
         )?;
         let index_buffer = Buffer::with_data(
-            &gpu.device,
-            &mut gpu.allocator,
+            &gpu.memory,
             "tile grid indices",
             vk::BufferUsageFlags::INDEX_BUFFER,
             &grids.indices,
@@ -60,17 +61,6 @@ impl ForwardPass {
             vertex_buffer,
             index_buffer,
         })
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe {
-            for pipeline in self.pipelines.values_mut() {
-                pipeline.destroy(&gpu.device);
-            }
-
-            self.vertex_buffer.destroy(&gpu.device, &mut gpu.allocator);
-            self.index_buffer.destroy(&gpu.device, &mut gpu.allocator);
-        }
     }
 
     fn target(name: &'static str, format: vk::Format) -> GraphImageDescription {
@@ -158,7 +148,7 @@ impl ForwardPass {
             push_constant_size: size_of::<PushConstants>() as u32,
             descriptor_set_layouts: &[gpu.bindless.layout()],
         };
-        GraphicsPipeline::new(&gpu.device, &description)
+        GraphicsPipeline::new(&gpu.memory, &gpu.device, &description)
     }
 }
 

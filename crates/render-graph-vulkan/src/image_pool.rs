@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ash::vk;
-use gpu_allocator::vulkan::Allocator;
+use memory_vulkan::MemoryContext;
 
 use crate::declared_image::DeclaredImage;
 use crate::frame_declaration::FrameDeclaration;
@@ -40,8 +40,7 @@ impl ImagePool {
     // nth image of a kind takes the pool's nth image of that kind.
     pub fn assign_transients(
         &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
+        memory: &MemoryContext,
         declaration: &FrameDeclaration,
         usage_flags: &[vk::ImageUsageFlags],
         created: &mut Vec<ImageId>,
@@ -69,14 +68,8 @@ impl ImagePool {
             let id = match existing {
                 Some(id) => id,
                 None => {
-                    let physical = PhysicalImage::new(
-                        device,
-                        allocator,
-                        *description,
-                        *usage,
-                        self.output,
-                        ImageOwner::Transient,
-                    )?;
+                    let physical =
+                        PhysicalImage::new(memory, *description, *usage, self.output, ImageOwner::Transient)?;
                     let id = self.add(physical);
                     self.transients.entry(key).or_default().push(id);
                     created.push(id);
@@ -93,8 +86,7 @@ impl ImagePool {
     // Returns whether the pair was created. Its usage is fixed by the first frame that uses it.
     pub fn ensure_history(
         &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
+        memory: &MemoryContext,
         id: HistoryId,
         description: GraphImageDescription,
         usage: vk::ImageUsageFlags,
@@ -111,34 +103,15 @@ impl ImagePool {
         }
 
         let owner = ImageOwner::History { id };
-        let first = self.add(PhysicalImage::new(
-            device,
-            allocator,
-            description,
-            usage,
-            self.output,
-            owner,
-        )?);
-        let second = self.add(PhysicalImage::new(
-            device,
-            allocator,
-            description,
-            usage,
-            self.output,
-            owner,
-        )?);
+        let first = self.add(PhysicalImage::new(memory, description, usage, self.output, owner)?);
+        let second = self.add(PhysicalImage::new(memory, description, usage, self.output, owner)?);
         *pair = Some([first, second]);
 
         Ok(true)
     }
 
-    // Safety: the GPU must be done with every image.
-    pub unsafe fn resize(
-        &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-        output: vk::Extent2D,
-    ) -> Result<Vec<ImageId>, RenderGraphError> {
+    // A replaced image is destroyed once the GPU is done with the frames that used it.
+    pub fn resize(&mut self, memory: &MemoryContext, output: vk::Extent2D) -> Result<Vec<ImageId>, RenderGraphError> {
         self.output = output;
         let mut recreated = Vec::new();
 
@@ -149,31 +122,12 @@ impl ImagePool {
                 continue;
             }
 
-            let physical = PhysicalImage::new(
-                device,
-                allocator,
-                current.description,
-                current.usage,
-                self.output,
-                current.owner,
-            )?;
-            let mut previous = std::mem::replace(&mut self.images[index], physical);
-            unsafe { previous.destroy(device, allocator) }?;
+            let physical = PhysicalImage::new(memory, current.description, current.usage, self.output, current.owner)?;
+            self.images[index] = physical;
             recreated.push(ImageId { index });
         }
 
         Ok(recreated)
-    }
-
-    // Safety: the GPU must be done with every image.
-    pub unsafe fn destroy(&mut self, device: &ash::Device, allocator: &mut Allocator) -> Result<(), RenderGraphError> {
-        self.transients.clear();
-
-        for mut image in self.images.drain(..) {
-            unsafe { image.destroy(device, allocator) }?;
-        }
-
-        Ok(())
     }
 
     fn add(&mut self, image: PhysicalImage) -> ImageId {

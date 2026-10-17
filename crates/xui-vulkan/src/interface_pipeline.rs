@@ -1,25 +1,27 @@
 use std::io::Cursor;
 
 use ash::vk;
+use memory_vulkan::{DeviceObject, MemoryContext};
 
 use crate::push_constants::PushConstants;
 
 const SHADER: &[u8] = include_bytes!("../shaders/xui.spv");
 
 pub(crate) struct InterfacePipeline {
-    pub set_layout: vk::DescriptorSetLayout,
-    pub layout: vk::PipelineLayout,
-    pub pipeline: vk::Pipeline,
-    pub sampler: vk::Sampler,
-    pub descriptor_pool: vk::DescriptorPool,
+    descriptor_pool: DeviceObject<vk::DescriptorPool>,
+    sampler: DeviceObject<vk::Sampler>,
+    pipeline: DeviceObject<vk::Pipeline>,
+    layout: DeviceObject<vk::PipelineLayout>,
+    set_layout: DeviceObject<vk::DescriptorSetLayout>,
 }
 
 impl InterfacePipeline {
-    pub unsafe fn new(
-        device: &ash::Device,
+    pub fn new(
+        memory: &MemoryContext,
         color_format: vk::Format,
         frames_in_flight: u32,
     ) -> anyhow::Result<InterfacePipeline> {
+        let device = memory.device();
         let bindings = [
             vk::DescriptorSetLayoutBinding::default()
                 .binding(0)
@@ -32,22 +34,22 @@ impl InterfacePipeline {
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::VERTEX),
         ];
-        let set_layout = unsafe {
+        let set_layout = DeviceObject::new(memory, unsafe {
             device.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None)
-        }?;
-        let set_layouts = [set_layout];
+        }?);
+        let set_layouts = [set_layout.handle()];
         let push_constant_ranges = [vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .size(size_of::<PushConstants>() as u32)];
-        let layout = unsafe {
+        let layout = DeviceObject::new(memory, unsafe {
             device.create_pipeline_layout(
                 &vk::PipelineLayoutCreateInfo::default()
                     .set_layouts(&set_layouts)
                     .push_constant_ranges(&push_constant_ranges),
                 None,
             )
-        }?;
-        let pipeline = unsafe { InterfacePipeline::create_pipeline(device, layout, color_format) }?;
+        }?);
+        let pipeline = InterfacePipeline::create_pipeline(memory, layout.handle(), color_format)?;
         let sampler_info = vk::SamplerCreateInfo::default()
             .mag_filter(vk::Filter::NEAREST)
             .min_filter(vk::Filter::NEAREST)
@@ -55,7 +57,7 @@ impl InterfacePipeline {
             .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
             .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
             .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE);
-        let sampler = unsafe { device.create_sampler(&sampler_info, None) }?;
+        let sampler = DeviceObject::new(memory, unsafe { device.create_sampler(&sampler_info, None) }?);
         let pool_sizes = [
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
@@ -64,58 +66,63 @@ impl InterfacePipeline {
                 .ty(vk::DescriptorType::STORAGE_BUFFER)
                 .descriptor_count(frames_in_flight),
         ];
-        let descriptor_pool = unsafe {
+        let descriptor_pool = DeviceObject::new(memory, unsafe {
             device.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::default()
                     .max_sets(frames_in_flight)
                     .pool_sizes(&pool_sizes),
                 None,
             )
-        }?;
+        }?);
 
         Ok(InterfacePipeline {
-            set_layout,
-            layout,
-            pipeline,
-            sampler,
             descriptor_pool,
+            sampler,
+            pipeline,
+            layout,
+            set_layout,
         })
     }
 
-    pub unsafe fn allocate_sets(&self, device: &ash::Device, count: usize) -> anyhow::Result<Vec<vk::DescriptorSet>> {
-        let layouts = vec![self.set_layout; count];
+    pub fn pipeline(&self) -> vk::Pipeline {
+        self.pipeline.handle()
+    }
+
+    pub fn layout(&self) -> vk::PipelineLayout {
+        self.layout.handle()
+    }
+
+    pub fn sampler(&self) -> vk::Sampler {
+        self.sampler.handle()
+    }
+
+    pub fn allocate_sets(&self, device: &ash::Device, count: usize) -> anyhow::Result<Vec<vk::DescriptorSet>> {
+        let layouts = vec![self.set_layout.handle(); count];
         let info = vk::DescriptorSetAllocateInfo::default()
-            .descriptor_pool(self.descriptor_pool)
+            .descriptor_pool(self.descriptor_pool.handle())
             .set_layouts(&layouts);
 
         Ok(unsafe { device.allocate_descriptor_sets(&info) }?)
     }
 
-    pub unsafe fn destroy(&mut self, device: &ash::Device) {
-        unsafe {
-            device.destroy_descriptor_pool(self.descriptor_pool, None);
-            device.destroy_sampler(self.sampler, None);
-            device.destroy_pipeline(self.pipeline, None);
-            device.destroy_pipeline_layout(self.layout, None);
-            device.destroy_descriptor_set_layout(self.set_layout, None);
-        }
-    }
-
-    unsafe fn create_pipeline(
-        device: &ash::Device,
+    fn create_pipeline(
+        memory: &MemoryContext,
         layout: vk::PipelineLayout,
         color_format: vk::Format,
-    ) -> anyhow::Result<vk::Pipeline> {
+    ) -> anyhow::Result<DeviceObject<vk::Pipeline>> {
+        let device = memory.device();
         let code = ash::util::read_spv(&mut Cursor::new(SHADER))?;
-        let module = unsafe { device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&code), None) }?;
+        let module = DeviceObject::new(memory, unsafe {
+            device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&code), None)
+        }?);
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::VERTEX)
-                .module(module)
+                .module(module.handle())
                 .name(c"vertexMain"),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::FRAGMENT)
-                .module(module)
+                .module(module.handle())
                 .name(c"fragmentMain"),
         ];
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
@@ -158,9 +165,9 @@ impl InterfacePipeline {
             .dynamic_state(&dynamic_state)
             .layout(layout)
             .push_next(&mut rendering);
-        let pipeline = unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None) };
-        unsafe { device.destroy_shader_module(module, None) };
+        let pipelines = unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None) }
+            .map_err(|(_, error)| error)?;
 
-        Ok(pipeline.map_err(|(_, error)| error)?[0])
+        Ok(DeviceObject::new(memory, pipelines[0]))
     }
 }

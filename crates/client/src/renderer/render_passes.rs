@@ -26,7 +26,7 @@ pub(super) struct RenderPasses {
 
 impl RenderPasses {
     pub fn new(
-        gpu: &mut GpuContext,
+        gpu: &GpuContext,
         graph: &mut RenderGraph,
         shaders: &ShaderBinaries,
         output_format: vk::Format,
@@ -91,20 +91,6 @@ impl RenderPasses {
                     capture,
                 },
             );
-        }
-    }
-
-    // Safety: only once the GPU has finished every frame that used the passes.
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe {
-            self.forward.destroy(gpu);
-            self.histogram.destroy(gpu);
-            self.skybox.destroy(gpu);
-            self.taa.destroy(gpu);
-            self.bloom.destroy(gpu);
-            self.lens.destroy(gpu);
-            self.tonemap.destroy(gpu);
-            self.user_interface.destroy();
         }
     }
 }

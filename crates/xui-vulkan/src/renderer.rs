@@ -1,82 +1,45 @@
 use anyhow::Context;
-use ash::vk::{self, Handle};
+use ash::vk;
+use memory_vulkan::MemoryContext;
 use xui::{ATLAS_SIZE, DrawList};
 
+use crate::FrameTarget;
 use crate::atlas_image::AtlasImage;
 use crate::frame_resources::FrameResources;
 use crate::interface_pipeline::InterfacePipeline;
-use crate::memory_types::MemoryTypes;
 use crate::primitive_instance::PrimitiveInstance;
 use crate::push_constants::PushConstants;
-use crate::vulkan_functions::VulkanFunctions;
-use crate::{FrameTarget, VulkanHost};
 
 const QUAD_VERTICES: u32 = 6;
 
-/// Records `xui` draw lists into a host's command buffers.
+/// Records `xui` draw lists into a host's command buffers. Its Vulkan objects are destroyed through the host's
+/// deletion queue once dropped.
 pub struct Renderer {
-    functions: VulkanFunctions,
-    memory_types: MemoryTypes,
-    pipeline: InterfacePipeline,
-    atlas: AtlasImage,
+    memory: MemoryContext,
     frames: Vec<FrameResources>,
+    atlas: AtlasImage,
+    pipeline: InterfacePipeline,
     instances: Vec<PrimitiveInstance>,
 }
 
 impl Renderer {
-    /// Creates the pipeline, the glyph atlas and the per-frame buffers. `color_format` is the raw `VkFormat` of
-    /// the images frames are recorded into; `frames_in_flight` is how many frames the host records ahead.
-    ///
-    /// # Safety
-    ///
-    /// The handles in `host` are valid and stay alive until [`Renderer::destroy`], and the device meets the
-    /// requirements listed on [`VulkanHost`].
-    pub unsafe fn new(host: &VulkanHost, color_format: i32, frames_in_flight: usize) -> anyhow::Result<Renderer> {
-        let functions = unsafe { VulkanFunctions::load(host) }?;
-        let device = &functions.device;
-        let memory_types = unsafe { MemoryTypes::new(&functions) };
-        let mut pipeline = unsafe {
-            InterfacePipeline::new(
-                device,
-                vk::Format::from_raw(color_format),
-                u32::try_from(frames_in_flight)?,
-            )
-        }?;
-        let mut atlas = match unsafe { AtlasImage::new(device, &memory_types) } {
-            Ok(atlas) => atlas,
-            Err(error) => {
-                unsafe { pipeline.destroy(device) };
-                return Err(error);
-            }
-        };
-        let mut frames = Vec::with_capacity(frames_in_flight);
-        let created = unsafe { pipeline.allocate_sets(device, frames_in_flight) }.and_then(|sets| {
-            for set in sets {
-                frames
-                    .push(unsafe { FrameResources::new(device, &memory_types, set, atlas.view(), pipeline.sampler) }?);
-            }
-
-            Ok(())
-        });
-
-        if let Err(error) = created {
-            unsafe {
-                for frame in &mut frames {
-                    frame.destroy(device);
-                }
-
-                atlas.destroy(device);
-                pipeline.destroy(device);
-            }
-            return Err(error);
-        }
+    /// Creates the pipeline, the glyph atlas and the per-frame buffers from `memory`, whose device has Vulkan 1.3's
+    /// dynamic rendering and synchronization2 enabled. `color_format` is the format of the images frames are
+    /// recorded into; `frames_in_flight` is how many frames the host records ahead.
+    pub fn new(memory: &MemoryContext, color_format: vk::Format, frames_in_flight: usize) -> anyhow::Result<Renderer> {
+        let pipeline = InterfacePipeline::new(memory, color_format, u32::try_from(frames_in_flight)?)?;
+        let atlas = AtlasImage::new(memory)?;
+        let frames = pipeline
+            .allocate_sets(memory.device(), frames_in_flight)?
+            .into_iter()
+            .map(|set| FrameResources::new(memory, set, atlas.view(), pipeline.sampler()))
+            .collect::<anyhow::Result<_>>()?;
 
         Ok(Renderer {
-            functions,
-            memory_types,
-            pipeline,
-            atlas,
+            memory: memory.clone(),
             frames,
+            atlas,
+            pipeline,
             instances: Vec::new(),
         })
     }
@@ -89,8 +52,8 @@ impl Renderer {
     /// color attachment, and is left in that layout. The GPU has finished the frame previously recorded with the
     /// same `frame_slot`.
     pub unsafe fn record(&mut self, target: &FrameTarget, draw_list: &DrawList) -> anyhow::Result<()> {
-        let device = &self.functions.device;
-        let command_buffer = vk::CommandBuffer::from_raw(target.command_buffer);
+        let device = self.memory.device();
+        let command_buffer = target.command_buffer;
         let frame = self
             .frames
             .get_mut(target.frame_slot)
@@ -122,7 +85,7 @@ impl Renderer {
         }
 
         unsafe {
-            frame.write_staging(device, &self.memory_types, &pixels)?;
+            frame.write_staging(&self.memory, &pixels)?;
             self.atlas
                 .record_updates(device, command_buffer, frame.staging(), &regions);
         }
@@ -135,7 +98,7 @@ impl Renderer {
             return Ok(());
         }
 
-        unsafe { frame.write_instances(device, &self.memory_types, &self.instances) }?;
+        frame.write_instances(&self.memory, &self.instances)?;
 
         let attachment_barriers = [vk::MemoryBarrier2::default()
             .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
@@ -147,7 +110,7 @@ impl Renderer {
             height: target.height,
         };
         let color_attachments = [vk::RenderingAttachmentInfo::default()
-            .image_view(vk::ImageView::from_raw(target.image_view))
+            .image_view(target.image_view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::LOAD)
             .store_op(vk::AttachmentStoreOp::STORE)];
@@ -176,18 +139,22 @@ impl Renderer {
             device.cmd_begin_rendering(command_buffer, &rendering);
             device.cmd_set_viewport(command_buffer, 0, &[viewport]);
             device.cmd_set_scissor(command_buffer, 0, &[extent.into()]);
-            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline.pipeline);
+            device.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.pipeline(),
+            );
             device.cmd_bind_descriptor_sets(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.layout,
+                self.pipeline.layout(),
                 0,
                 &[frame.descriptor_set()],
                 &[],
             );
             device.cmd_push_constants(
                 command_buffer,
-                self.pipeline.layout,
+                self.pipeline.layout(),
                 vk::ShaderStageFlags::VERTEX,
                 0,
                 push_constants.bytes(),
@@ -197,23 +164,5 @@ impl Renderer {
         }
 
         Ok(())
-    }
-
-    /// Destroys every Vulkan object the renderer created.
-    ///
-    /// # Safety
-    ///
-    /// The GPU has finished every frame recorded with this renderer, and the renderer is not used afterward.
-    pub unsafe fn destroy(&mut self) {
-        let device = &self.functions.device;
-
-        unsafe {
-            for frame in &mut self.frames {
-                frame.destroy(device);
-            }
-
-            self.atlas.destroy(device);
-            self.pipeline.destroy(device);
-        }
     }
 }

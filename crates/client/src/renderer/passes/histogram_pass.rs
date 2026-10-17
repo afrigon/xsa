@@ -21,17 +21,13 @@ pub(in crate::renderer) struct HistogramPass {
 impl HistogramPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<HistogramPass> {
         let pipeline = ComputePipeline::new(
-            &gpu.device,
+            &gpu.memory,
             &binaries.histogram,
             size_of::<HistogramPushConstants>() as u32,
             &[gpu.bindless.layout()],
         )?;
 
         Ok(HistogramPass { pipeline })
-    }
-
-    pub unsafe fn destroy(&mut self, gpu: &mut GpuContext) {
-        unsafe { self.pipeline.destroy(&gpu.device) };
     }
 }
 

@@ -1,46 +1,37 @@
+use memory_vulkan::{MemoryContext, Timeline};
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;
 
-use crate::vulkan::{Allocator, BindlessTextures, Device, Instance, Surface};
+use crate::vulkan::{BindlessTextures, Device, Instance, SuitableDevice, Surface};
 
+// Every GPU object must drop before this context, so the memory context's last clone, here, destroys the device before
+// the surface and the instance. Validation layers report a violation.
 pub(super) struct GpuContext {
     pub bindless: BindlessTextures,
-    // Declaration order is drop order: allocator before device, device before surface, surface before instance.
-    pub allocator: Allocator,
+    pub graphics: Timeline,
+    pub memory: MemoryContext,
     pub device: Device,
     pub surface: Surface,
-    pub instance: Instance,
+    _instance: Instance,
 }
 
 impl GpuContext {
     pub fn new(window: &Window) -> anyhow::Result<GpuContext> {
         let instance = Instance::new(window.display_handle()?.as_raw())?;
         let surface = Surface::new(&instance, window)?;
-        let device = Device::new(&instance, &surface)?;
-        let allocator = Allocator::new(&instance, &device)?;
-        let bindless = BindlessTextures::new(&device)?;
+        let suitable = SuitableDevice::select(instance.handle(), &surface)?;
+        let memory = Device::create_memory(&instance, &suitable)?;
+        let device = Device::new(&instance, &memory, &suitable);
+        let graphics = memory.create_timeline(device.queue())?;
+        let bindless = BindlessTextures::new(&memory, &device)?;
 
         Ok(GpuContext {
             bindless,
-            allocator,
+            graphics,
+            memory,
             device,
             surface,
-            instance,
+            _instance: instance,
         })
-    }
-
-    pub fn wait_idle(&self) -> anyhow::Result<()> {
-        unsafe { self.device.handle().device_wait_idle() }?;
-
-        Ok(())
-    }
-}
-
-impl Drop for GpuContext {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = self.device.handle().device_wait_idle();
-            self.bindless.destroy(&self.device);
-        }
     }
 }

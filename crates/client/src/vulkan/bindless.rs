@@ -1,5 +1,6 @@
 use anyhow::ensure;
 use ash::vk;
+use memory_vulkan::{DeviceObject, MemoryContext};
 
 use super::Device;
 
@@ -35,18 +36,19 @@ impl ImageWrite {
 }
 
 pub struct BindlessTextures {
-    layout: vk::DescriptorSetLayout,
-    pool: vk::DescriptorPool,
+    // Declaration order is destruction order: the pool frees its set before the layout and samplers it uses.
+    _pool: DeviceObject<vk::DescriptorPool>,
     set: vk::DescriptorSet,
-    sampler: vk::Sampler,
-    wrapping_sampler: vk::Sampler,
+    layout: DeviceObject<vk::DescriptorSetLayout>,
+    _sampler: DeviceObject<vk::Sampler>,
+    _wrapping_sampler: DeviceObject<vk::Sampler>,
     cube_texture_count: u32,
     texture_count: u32,
     storage_image_count: u32,
 }
 
 impl BindlessTextures {
-    pub fn new(device: &Device) -> anyhow::Result<Self> {
+    pub fn new(memory: &MemoryContext, device: &Device) -> anyhow::Result<Self> {
         let sampler_info = vk::SamplerCreateInfo::default()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
@@ -57,10 +59,12 @@ impl BindlessTextures {
             .anisotropy_enable(true)
             .max_anisotropy(device.max_sampler_anisotropy())
             .max_lod(vk::LOD_CLAMP_NONE);
-        let device_handle = device.handle();
-        let sampler = unsafe { device_handle.create_sampler(&sampler_info, None) }?;
+        let device_handle = memory.device();
+        let sampler = DeviceObject::new(memory, unsafe { device_handle.create_sampler(&sampler_info, None) }?);
         let wrapping_sampler_info = sampler_info.address_mode_u(vk::SamplerAddressMode::REPEAT);
-        let wrapping_sampler = unsafe { device_handle.create_sampler(&wrapping_sampler_info, None) }?;
+        let wrapping_sampler = DeviceObject::new(memory, unsafe {
+            device_handle.create_sampler(&wrapping_sampler_info, None)
+        }?);
 
         let bindings = [
             vk::DescriptorSetLayoutBinding::default()
@@ -108,7 +112,9 @@ impl BindlessTextures {
             .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
             .bindings(&bindings)
             .push_next(&mut binding_flags_info);
-        let layout = unsafe { device_handle.create_descriptor_set_layout(&layout_info, None) }?;
+        let layout = DeviceObject::new(memory, unsafe {
+            device_handle.create_descriptor_set_layout(&layout_info, None)
+        }?);
 
         let pool_sizes = [
             vk::DescriptorPoolSize::default()
@@ -125,16 +131,18 @@ impl BindlessTextures {
             .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
             .max_sets(1)
             .pool_sizes(&pool_sizes);
-        let pool = unsafe { device_handle.create_descriptor_pool(&pool_info, None) }?;
+        let pool = DeviceObject::new(memory, unsafe {
+            device_handle.create_descriptor_pool(&pool_info, None)
+        }?);
 
-        let layouts = [layout];
+        let layouts = [layout.handle()];
         let allocate_info = vk::DescriptorSetAllocateInfo::default()
-            .descriptor_pool(pool)
+            .descriptor_pool(pool.handle())
             .set_layouts(&layouts);
         let set = unsafe { device_handle.allocate_descriptor_sets(&allocate_info) }?[0];
 
-        let sampler_infos = [vk::DescriptorImageInfo::default().sampler(sampler)];
-        let wrapping_sampler_infos = [vk::DescriptorImageInfo::default().sampler(wrapping_sampler)];
+        let sampler_infos = [vk::DescriptorImageInfo::default().sampler(sampler.handle())];
+        let wrapping_sampler_infos = [vk::DescriptorImageInfo::default().sampler(wrapping_sampler.handle())];
         let writes = [
             vk::WriteDescriptorSet::default()
                 .dst_set(set)
@@ -150,11 +158,11 @@ impl BindlessTextures {
         unsafe { device_handle.update_descriptor_sets(&writes, &[]) };
 
         Ok(Self {
-            layout,
-            pool,
+            _pool: pool,
             set,
-            sampler,
-            wrapping_sampler,
+            layout,
+            _sampler: sampler,
+            _wrapping_sampler: wrapping_sampler,
             cube_texture_count: 0,
             texture_count: 0,
             storage_image_count: 0,
@@ -162,7 +170,7 @@ impl BindlessTextures {
     }
 
     pub fn layout(&self) -> vk::DescriptorSetLayout {
-        self.layout
+        self.layout.handle()
     }
 
     pub fn set(&self) -> vk::DescriptorSet {
@@ -232,16 +240,5 @@ impl BindlessTextures {
             .descriptor_type(image.descriptor_type)
             .image_info(&image_infos);
         unsafe { device.handle().update_descriptor_sets(&[write], &[]) };
-    }
-
-    pub unsafe fn destroy(&mut self, device: &Device) {
-        let device = device.handle();
-
-        unsafe {
-            device.destroy_descriptor_pool(self.pool, None);
-            device.destroy_descriptor_set_layout(self.layout, None);
-            device.destroy_sampler(self.sampler, None);
-            device.destroy_sampler(self.wrapping_sampler, None);
-        }
     }
 }

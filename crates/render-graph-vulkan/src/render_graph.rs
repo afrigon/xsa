@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use ash::vk;
-use gpu_allocator::vulkan::Allocator;
+use memory_vulkan::MemoryContext;
 
 use crate::barrier_recorder::BarrierRecorder;
 use crate::buffer_pool::BufferPool;
@@ -23,6 +23,7 @@ const COMPILED_GRAPH_CAPACITY: usize = 16;
 
 /// Owns the images and buffers passes create, the history images kept across frames and the compiled frames to reuse.
 pub struct RenderGraph {
+    memory: MemoryContext,
     frame_number: usize,
     frame: FrameDeclaration,
     imported_images: Vec<ImportedImage>,
@@ -40,9 +41,11 @@ pub struct RenderGraph {
 }
 
 impl RenderGraph {
-    /// `output` is the size images declared with `ImageSize::Output` are allocated at.
-    pub fn new(output: vk::Extent2D) -> RenderGraph {
+    /// Allocates images and buffers from `memory`; `output` is the size images declared with `ImageSize::Output` are
+    /// allocated at. Dropping the graph destroys them once the GPU is done with the frames that used them.
+    pub fn new(memory: &MemoryContext, output: vk::Extent2D) -> RenderGraph {
         RenderGraph {
+            memory: memory.clone(),
             frame_number: 0,
             frame: FrameDeclaration::default(),
             imported_images: Vec::new(),
@@ -75,22 +78,13 @@ impl RenderGraph {
     }
 
     /// Reallocates every image sized from the output and returns their ids; their views changed. History images lose
-    /// their contents.
-    ///
-    /// # Safety
-    ///
-    /// The GPU must be done with every frame recorded through the graph.
-    pub unsafe fn resize(
-        &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-        output: vk::Extent2D,
-    ) -> Result<Vec<ImageId>, RenderGraphError> {
-        unsafe { self.image_pool.resize(device, allocator, output) }
+    /// their contents. The replaced images are destroyed once the GPU is done with the frames that used them.
+    pub fn resize(&mut self, output: vk::Extent2D) -> Result<Vec<ImageId>, RenderGraphError> {
+        self.image_pool.resize(&self.memory, output)
     }
 
     pub fn image_view(&self, id: ImageId) -> vk::ImageView {
-        self.image_pool.image(id).view
+        self.image_pool.image(id).view()
     }
 
     pub fn level_view(&self, id: ImageId, level: u32) -> vk::ImageView {
@@ -108,19 +102,6 @@ impl RenderGraph {
     /// The layout every shader samples the image in, which a bindless descriptor for it must name.
     pub fn sampled_layout(&self, id: ImageId) -> vk::ImageLayout {
         self.image_pool.image(id).sampled_layout()
-    }
-
-    /// # Safety
-    ///
-    /// The GPU must be done with every frame recorded through the graph.
-    pub unsafe fn destroy(&mut self, device: &ash::Device, allocator: &mut Allocator) -> Result<(), RenderGraphError> {
-        self.cache.clear();
-        self.last_entry = None;
-        self.history_images.fill(None);
-
-        unsafe { self.image_pool.destroy(device, allocator) }?;
-
-        unsafe { self.buffer_pool.destroy(device, allocator) }
     }
 
     pub(crate) fn begin_declaration(&mut self) {
@@ -163,18 +144,13 @@ impl RenderGraph {
         pass.declare(&mut declaration, inputs)
     }
 
-    pub(crate) fn compile(
-        &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-        created: &mut Vec<ImageId>,
-    ) -> Result<usize, RenderGraphError> {
+    pub(crate) fn compile(&mut self, created: &mut Vec<ImageId>) -> Result<usize, RenderGraphError> {
         let entry = match self.cached_entry() {
             Some(entry) => entry,
-            None => self.compile_entry(device, allocator, created)?,
+            None => self.compile_entry(created)?,
         };
         self.last_entry = Some(entry);
-        self.ensure_histories(device, allocator, entry, created)?;
+        self.ensure_histories(entry, created)?;
         self.resolve(entry);
 
         Ok(entry)
@@ -251,19 +227,14 @@ impl RenderGraph {
         self.cache.iter().position(|entry| entry.declaration == self.frame)
     }
 
-    fn compile_entry(
-        &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-        created: &mut Vec<ImageId>,
-    ) -> Result<usize, RenderGraphError> {
+    fn compile_entry(&mut self, created: &mut Vec<ImageId>) -> Result<usize, RenderGraphError> {
         let compiled = GraphCompiler::new(&self.frame).compile()?;
         let image_slots =
             self.image_pool
-                .assign_transients(device, allocator, &self.frame, &compiled.image_usage_flags, created)?;
+                .assign_transients(&self.memory, &self.frame, &compiled.image_usage_flags, created)?;
         let buffer_slots =
             self.buffer_pool
-                .assign_transients(device, allocator, &self.frame, &compiled.buffer_usage_flags)?;
+                .assign_transients(&self.memory, &self.frame, &compiled.buffer_usage_flags)?;
 
         if self.cache.len() == COMPILED_GRAPH_CAPACITY {
             self.cache.remove(0);
@@ -279,13 +250,7 @@ impl RenderGraph {
         Ok(self.cache.len() - 1)
     }
 
-    fn ensure_histories(
-        &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
-        entry: usize,
-        created: &mut Vec<ImageId>,
-    ) -> Result<(), RenderGraphError> {
+    fn ensure_histories(&mut self, entry: usize, created: &mut Vec<ImageId>) -> Result<(), RenderGraphError> {
         let entry = &self.cache[entry];
 
         for (image, usage) in entry.declaration.images.iter().zip(&entry.compiled.image_usage_flags) {
@@ -296,7 +261,7 @@ impl RenderGraph {
 
                 if self
                     .image_pool
-                    .ensure_history(device, allocator, *id, *description, *usage, pair)?
+                    .ensure_history(&self.memory, *id, *description, *usage, pair)?
                     && let Some(ids) = pair
                 {
                     created.extend(ids.iter());

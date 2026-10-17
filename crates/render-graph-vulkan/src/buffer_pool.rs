@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ash::vk;
-use gpu_allocator::vulkan::Allocator;
+use memory_vulkan::MemoryContext;
 
 use crate::RenderGraphError;
 use crate::buffer_id::BufferId;
@@ -30,8 +30,7 @@ impl BufferPool {
     // nth buffer of a kind takes the pool's nth buffer of that kind.
     pub fn assign_transients(
         &mut self,
-        device: &ash::Device,
-        allocator: &mut Allocator,
+        memory: &MemoryContext,
         declaration: &FrameDeclaration,
         usage_flags: &[vk::BufferUsageFlags],
     ) -> Result<Vec<Option<BufferId>>, RenderGraphError> {
@@ -58,7 +57,7 @@ impl BufferPool {
             let id = match existing {
                 Some(id) => id,
                 None => {
-                    let id = self.add(PhysicalBuffer::new(device, allocator, *description, *usage)?);
+                    let id = self.add(PhysicalBuffer::new(memory, *description, *usage)?);
                     self.transients.entry(key).or_default().push(id);
                     id
                 }
@@ -68,17 +67,6 @@ impl BufferPool {
         }
 
         Ok(slots)
-    }
-
-    // Safety: the GPU must be done with every buffer.
-    pub unsafe fn destroy(&mut self, device: &ash::Device, allocator: &mut Allocator) -> Result<(), RenderGraphError> {
-        self.transients.clear();
-
-        for mut buffer in self.buffers.drain(..) {
-            unsafe { buffer.destroy(device, allocator) }?;
-        }
-
-        Ok(())
     }
 
     fn add(&mut self, buffer: PhysicalBuffer) -> BufferId {
