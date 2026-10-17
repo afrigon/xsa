@@ -6,7 +6,7 @@ mod surface;
 mod swapchain;
 
 pub use bindless::{BindlessTextures, SAMPLED_LAYOUT};
-pub use device::{Device, SuitableDevice};
+pub use device::{Device, SuitableDevice, TransferQueueLocation};
 pub use instance::Instance;
 pub use pipeline::{ComputePipeline, GraphicsPipeline, GraphicsPipelineDescription};
 pub use surface::Surface;

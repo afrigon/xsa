@@ -2,12 +2,14 @@ use anyhow::Context;
 use ash::vk;
 use ash::{ext, khr};
 
+use super::TransferQueueLocation;
 use crate::vulkan::Surface;
 
 #[derive(Clone, Copy)]
 pub struct SuitableDevice {
     pub physical_device: vk::PhysicalDevice,
     pub queue_family: u32,
+    pub transfer: TransferQueueLocation,
     pub device_type: vk::PhysicalDeviceType,
     // Wireframe needs the polygon mode to be dynamic state (VK_EXT_extended_dynamic_state3).
     pub dynamic_polygon_mode: bool,
@@ -19,9 +21,11 @@ impl SuitableDevice {
 
         for physical_device in unsafe { instance.enumerate_physical_devices() }? {
             if let Some(queue_family) = SuitableDevice::find_queue_family(instance, surface, physical_device)? {
+                let queue_families = unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
                 suitable.push(SuitableDevice {
                     physical_device,
                     queue_family,
+                    transfer: TransferQueueLocation::select(&queue_families, queue_family),
                     device_type: unsafe { instance.get_physical_device_properties(physical_device) }.device_type,
                     dynamic_polygon_mode: SuitableDevice::supports_dynamic_polygon_mode(instance, physical_device)?,
                 });
