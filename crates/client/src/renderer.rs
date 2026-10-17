@@ -52,7 +52,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use glam::{DVec2, DVec3, Mat4, Vec2};
-use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation};
+use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation, Recording};
 use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -382,8 +382,8 @@ impl Renderer {
         self.update_star_visibility()?;
         self.update_gpu_time()?;
         self.write_frame_data(camera)?;
-        self.record_frame(image_index)?;
-        self.submit_and_present(image_index)?;
+        let recording = self.record_frame(image_index)?;
+        self.submit_and_present(image_index, recording)?;
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
 
         Ok(())
@@ -751,19 +751,22 @@ impl Renderer {
         }
     }
 
-    fn record_frame(&mut self, image_index: u32) -> anyhow::Result<()> {
-        let GpuContext { bindless, device, .. } = &mut self.gpu;
+    fn record_frame(&mut self, image_index: u32) -> anyhow::Result<Recording> {
+        let GpuContext {
+            bindless,
+            device,
+            graphics,
+            ..
+        } = &mut self.gpu;
         let frame = &self.frames[self.frame_index];
 
         unsafe {
             device
                 .handle()
                 .reset_command_pool(frame.command_pool.handle(), vk::CommandPoolResetFlags::empty())?;
-            let begin_info = vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            device
-                .handle()
-                .begin_command_buffer(frame.command_buffer, &begin_info)?;
         }
+
+        let recording = graphics.begin(frame.command_buffer)?;
 
         if let Some(timer) = &frame.timer {
             timer.begin(device, frame.command_buffer);
@@ -824,7 +827,6 @@ impl Renderer {
             timer.end(device, frame.command_buffer);
         }
 
-        unsafe { device.handle().end_command_buffer(frame.command_buffer) }?;
         self.statistics = FrameStatistics {
             triangles: context.triangles.get(),
             tiles: self.selected_tiles.len(),
@@ -833,23 +835,19 @@ impl Renderer {
         };
         self.user_interface.atlas_updates.clear();
 
-        Ok(())
+        Ok(recording)
     }
 
-    fn submit_and_present(&mut self, image_index: u32) -> anyhow::Result<()> {
+    fn submit_and_present(&mut self, image_index: u32, recording: Recording) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
         let render_finished = self.swapchain.render_finished(image_index);
         let wait_semaphores = [vk::SemaphoreSubmitInfo::default()
             .semaphore(frame.image_acquired.handle())
             .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)];
-        let command_buffers = [vk::CommandBufferSubmitInfo::default().command_buffer(frame.command_buffer)];
         let signal_semaphores = [vk::SemaphoreSubmitInfo::default()
             .semaphore(render_finished)
             .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)];
-        let submitted = self
-            .gpu
-            .graphics
-            .submit(&wait_semaphores, &command_buffers, &signal_semaphores)?;
+        let submitted = recording.submit(&wait_semaphores, &signal_semaphores)?;
         self.frames[self.frame_index].submitted = Some(submitted);
 
         let present_wait = [render_finished];

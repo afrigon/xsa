@@ -10,7 +10,7 @@ use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, 
 
 use bookkeeping::Bookkeeping;
 
-use crate::{Deletion, DeviceObject, Frontier, MemoryError, Timeline, TimelineId, TimelineSemaphore};
+use crate::{Deletion, DeviceObject, Frontier, MemoryError, RecordingId, Timeline, TimelineId, TimelineSemaphore};
 
 /// Owns the device, its memory allocator and the queue of objects waiting for the GPU to finish with them.
 ///
@@ -87,15 +87,13 @@ impl MemoryContext {
         Ok(Timeline::new(self.clone(), id, queue))
     }
 
-    /// Queues a deletion until the GPU has finished all work submitted so far.
+    /// Queues a deletion until the GPU has finished all work submitted so far, and every recording open now.
     pub fn defer(&self, deletion: Deletion) {
-        let mut bookkeeping = self.bookkeeping();
-        let frontier = bookkeeping.submitted();
-        bookkeeping.deletions.push(&frontier, deletion);
+        self.bookkeeping().defer(deletion);
     }
 
-    /// Runs `action` once the GPU has finished all work submitted so far. The action must not own device objects:
-    /// they would keep this context alive from inside its own queue.
+    /// Runs `action` once the GPU has finished all work submitted so far, and every recording open now. The action
+    /// must not own device objects: they would keep this context alive from inside its own queue.
     pub fn defer_action(&self, action: impl FnOnce(&ash::Device) + Send + 'static) {
         self.defer(Deletion::Action(Box::new(action)));
     }
@@ -205,6 +203,14 @@ impl MemoryContext {
         self.bookkeeping().timelines[timeline.index].submitted = value;
 
         Ok(value)
+    }
+
+    pub(crate) fn open_recording(&self) -> RecordingId {
+        self.bookkeeping().recordings.open()
+    }
+
+    pub(crate) fn close_recording(&self, id: RecordingId) {
+        self.bookkeeping().close_recording(id);
     }
 
     pub(crate) fn wait_timeline(&self, timeline: TimelineId, value: u64) -> Result<(), MemoryError> {

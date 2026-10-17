@@ -1,6 +1,8 @@
+mod recording;
 mod timeline_id;
 mod timeline_semaphore;
 
+pub use recording::Recording;
 pub(crate) use timeline_id::TimelineId;
 pub(crate) use timeline_semaphore::TimelineSemaphore;
 
@@ -10,9 +12,9 @@ use ash::vk;
 
 use crate::{MemoryContext, MemoryError};
 
-/// A queue's timeline semaphore: every submission to the queue goes through it and signals the next value, so the
-/// deletion queue knows what the GPU may still be using. It lives as long as its `MemoryContext`, and its clones share
-/// the queue, which it keeps externally synchronized across threads.
+/// A queue's timeline semaphore: every submission to the queue goes through a `Recording` and signals the next value,
+/// so the deletion queue knows what the GPU may still be using. It lives as long as its `MemoryContext`, and its clones
+/// share the queue, which it keeps externally synchronized across threads.
 #[derive(Clone)]
 pub struct Timeline {
     memory: MemoryContext,
@@ -29,8 +31,12 @@ impl Timeline {
         }
     }
 
-    /// Submits to the timeline's queue and returns the value the submission signals once it completes.
-    pub fn submit(
+    /// Begins recording `command_buffer`, which must be in the initial state, for a submission to this timeline.
+    pub fn begin(&self, command_buffer: vk::CommandBuffer) -> Result<Recording, MemoryError> {
+        Recording::begin(self, command_buffer)
+    }
+
+    pub(crate) fn submit(
         &self,
         waits: &[vk::SemaphoreSubmitInfo],
         command_buffers: &[vk::CommandBufferSubmitInfo],
@@ -51,6 +57,10 @@ impl Timeline {
     /// Blocks until the GPU has completed the submission that signals `value`.
     pub fn wait(&self, value: u64) -> Result<(), MemoryError> {
         self.memory.wait_timeline(self.id, value)
+    }
+
+    pub(crate) fn memory(&self) -> &MemoryContext {
+        &self.memory
     }
 
     fn queue(&self) -> MutexGuard<'_, vk::Queue> {

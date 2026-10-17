@@ -154,9 +154,12 @@ enables only the kinds it reads.
 - **Object lifetime:** `memory-vulkan`'s `MemoryContext` owns the device, its
   allocator and a deletion queue. Everything created from the device is wrapped
   in a `DeviceObject` (or built from them, like `Buffer` and `Image`) as soon as
-  it exists; dropping it queues its destruction until the GPU has finished all
-  work submitted so far, so replacing an object never waits for the GPU and a
-  failure halfway through a constructor leaks nothing. Plain actions wait in the
+  it exists; dropping it, from any thread, queues its destruction until the GPU
+  has finished all work submitted so far and every recording open at that
+  moment, so replacing an object never waits for the GPU and a failure halfway
+  through a constructor leaks nothing. A `Recording` (`Timeline::begin`) begins
+  a command buffer; submitting it ends and submits it, and dropping it
+  abandons it. Plain actions wait in the
   same queue (`defer_action`). The device is destroyed with the last
   `MemoryContext` clone, so every GPU object drops before `GpuContext`; the
   instance and surface are destroyed by `Drop` after it.
@@ -275,7 +278,7 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
 
 ## Gotchas
 
-- Every queue submission goes through `Timeline::submit` and every present
+- Every queue submission goes through a `Recording` and every present
   through `Timeline::present`: the deletion queue only knows the GPU is
   done with an object from the timelines and present fences.
 - Validation layers (`vulkan-validation-layers`) are enabled in debug builds and

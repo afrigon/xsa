@@ -1,8 +1,12 @@
 mod deletion;
 mod frontier;
+mod open_recordings;
+mod recording_id;
 
 pub use deletion::Deletion;
 pub(crate) use frontier::Frontier;
+pub(crate) use open_recordings::OpenRecordings;
+pub(crate) use recording_id::RecordingId;
 
 use std::collections::VecDeque;
 
