@@ -74,7 +74,7 @@ enables only the kinds it reads.
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains |
-| `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue), `DeviceObject`, `Buffer`, `Image`, timelines and present fences |
+| `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue), `DeviceObject`, `Buffer`, `Image`, timelines and present fences, and the `TransferQueue` every copy between CPU and GPU goes through |
 | `render-graph-vulkan` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images and transient buffers |
 
 ## Architecture
@@ -281,6 +281,13 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
 - Every queue submission goes through a `Recording` and every present
   through `Timeline::present`: the deletion queue only knows the GPU is
   done with an object from the timelines and present fences.
+- Every upload and readback goes through `memory-vulkan`'s `TransferQueue`,
+  never a staging buffer and a wait for the GPU. A copied resource is used only
+  once its ticket completed, and every frame's submission waits on
+  `TransferQueue::visibility_wait`, which makes those copies visible to it; the
+  resources are created with `TransferQueue::sharing`. Data a frame rewrites and
+  consumes itself (per-frame buffers, the interface's glyph atlas) stays in that
+  frame.
 - Validation layers (`vulkan-validation-layers`) are enabled in debug builds and
   logged under the `vulkan` target; any validation message is a bug. Messages mentioning
   `obs-vkcapture` come from that injected layer.
