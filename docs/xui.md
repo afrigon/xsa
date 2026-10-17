@@ -14,7 +14,8 @@ difference here.
   names) once the API is stable enough that most xsa UI work no longer changes
   xui, or a second project wants it. Before that move, xui needs its own error
   type instead of `anyhow`, and a test font of its own instead of reading
-  Inter from xsa's `data/`.
+  Inter from xsa's `data/`. `memory-vulkan`, which `xui-vulkan` creates its GPU
+  objects through, becomes its own repository too.
 - **Three layers, like SwiftUI, Core Animation and a design system:**
   - `xui` holds views, layout, environment, state, text shaping and the glyph
     atlas. It is renderer-agnostic: its output is a draw list of primitives in
