@@ -18,6 +18,7 @@ mod light_projection;
 mod material;
 mod object_pose;
 mod passes;
+mod pending_capture;
 mod quad_sphere;
 mod render_passes;
 mod scene;
@@ -38,6 +39,7 @@ pub use lens_lights::LensLights;
 pub use material::{
     EmissiveMaterial, HapkeParameters, LitMaterial, Material, PlanetMaterial, Shader, ShadingModel, SkyboxMaterial,
 };
+pub use pending_capture::PendingCapture;
 pub use resource_loader::texture::ColorSpace;
 pub use scene::{
     LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainBufferHandle, TerrainHandle,
@@ -53,7 +55,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use glam::{DVec2, DVec3, Mat4, Vec2};
-use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation, QueueSharing, Recording};
+use memory_vulkan::{Buffer, Image, MemoryError, MemoryLocation, Recording, TimelineValue, TransferPriority};
 use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -81,6 +83,7 @@ use light_projection::LightProjection;
 use material::MaterialBuffer;
 use object_pose::ObjectPose;
 use passes::TaaPass;
+use pending_capture::BYTES_PER_PIXEL;
 use quad_sphere::{DetailRanges, HeightBounds, QuadSphere, SelectedTile};
 use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
@@ -92,7 +95,6 @@ use tonemapper::NO_TONEMAPPER;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
 const FRAMES_IN_FLIGHT: usize = 2;
-const BYTES_PER_PIXEL: usize = 4;
 const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_TILE_CAPACITY: usize = 4096;
@@ -456,8 +458,8 @@ impl Renderer {
         Ok(())
     }
 
-    // Renders one frame now and blocks until its pixels are back on the CPU.
-    pub fn capture(&mut self, camera: &Camera) -> anyhow::Result<CapturedImage> {
+    // Renders one frame now and starts copying its pixels back to the CPU.
+    pub fn capture(&mut self, camera: &Camera) -> anyhow::Result<PendingCapture> {
         anyhow::ensure!(
             self.swapchain.supports_capture(),
             "this display does not allow copying the rendered image"
@@ -473,22 +475,23 @@ impl Renderer {
             &self.gpu.memory,
             "capture",
             size,
-            vk::BufferUsageFlags::TRANSFER_DST,
-            MemoryLocation::GpuToCpu,
-            &QueueSharing::Exclusive,
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::TRANSFER_SRC,
+            MemoryLocation::GpuOnly,
+            &self.gpu.transfer.sharing(),
         )?;
         self.capture = Some(buffer);
-        let pixels = self.render_capture(camera, extent);
-        self.capture = None;
+        let rendered = self.render_capture(camera, extent);
+        let buffer = self.capture.take().expect("the capture buffer is set while capturing");
+        let readback = self
+            .gpu
+            .transfer
+            .read_buffer(buffer, Some(rendered?), TransferPriority::High);
 
-        Ok(CapturedImage {
-            width: extent.width,
-            height: extent.height,
-            rgba: pixels?,
-        })
+        Ok(PendingCapture::new(extent, self.swapchain.format(), readback))
     }
 
-    fn render_capture(&mut self, camera: &Camera, extent: vk::Extent2D) -> anyhow::Result<Vec<u8>> {
+    // The point the graphics timeline reaches once the captured frame is rendered.
+    fn render_capture(&mut self, camera: &Camera, extent: vk::Extent2D) -> anyhow::Result<TimelineValue> {
         let frame = self.frame_index;
         self.draw(camera)?;
 
@@ -507,28 +510,10 @@ impl Renderer {
             "the window is not visible, nothing was rendered"
         );
 
-        let submitted = self.frames[frame]
+        Ok(self.frames[frame]
             .submitted
-            .as_ref()
-            .expect("a frame was submitted from the slot drawn above");
-        self.gpu.graphics.wait(submitted.value)?;
-        let mut pixels = vec![0_u8; extent.width as usize * extent.height as usize * BYTES_PER_PIXEL];
-        self.capture
-            .as_ref()
-            .expect("the capture buffer is set while capturing")
-            .read(&mut pixels)?;
-
-        match self.swapchain.format() {
-            vk::Format::B8G8R8A8_SRGB | vk::Format::B8G8R8A8_UNORM => {
-                for pixel in pixels.as_chunks_mut::<BYTES_PER_PIXEL>().0 {
-                    pixel.swap(0, 2);
-                }
-            }
-            vk::Format::R8G8B8A8_SRGB | vk::Format::R8G8B8A8_UNORM => {}
-            format => anyhow::bail!("capturing a {format:?} swapchain is not supported"),
-        }
-
-        Ok(pixels)
+            .clone()
+            .expect("a frame was submitted from the slot drawn above"))
     }
 
     fn update_exposure(&mut self) {
