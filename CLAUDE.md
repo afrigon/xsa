@@ -55,7 +55,8 @@ touches files or KDL, and `proto` does not depend on `core` or `packs`.
 incubated here to become its own repository (`xui-rs`), and the game uses them
 like any external library. `render-graph-vulkan` depends on no xsa crate
 either: the renderer uses it like an external library, through its public API
-only.
+only. `memory-vulkan` depends on no xsa crate: `render-graph-vulkan`,
+`xui-vulkan` and `client` all create their GPU objects through it.
 `resource-loader` depends on no xsa crate: it decodes resource files, one module
 per kind of file behind a feature of the same name (`texture`), so each crate
 enables only the kinds it reads.
@@ -71,8 +72,9 @@ enables only the kinds it reads.
 | `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
-| `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, given raw Vulkan handles |
+| `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains |
+| `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue), `DeviceObject`, `Buffer`, `Image`, timelines and present fences |
 | `render-graph-vulkan` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images and transient buffers |
 
 ## Architecture
@@ -149,10 +151,15 @@ enables only the kinds it reads.
   plus typed parameters in a per-frame GPU buffer.
 - Every rendering feature is explained before it is implemented: what it is,
   why the renderer needs it, how it fits the pipeline.
-- **Object lifetime:** `Instance`, `Surface`, `Device` and `Allocator` are
-  destroyed by `Drop`, in `GpuContext`'s field order. Everything created from the
-  device has an explicit `unsafe fn destroy`, called once the GPU is done with
-  it — the shape a deletion queue needs.
+- **Object lifetime:** `memory-vulkan`'s `MemoryContext` owns the device, its
+  allocator and a deletion queue. Everything created from the device is wrapped
+  in a `DeviceObject` (or built from them, like `Buffer` and `Image`) as soon as
+  it exists; dropping it queues its destruction until the GPU has finished all
+  work submitted so far, so replacing an object never waits for the GPU and a
+  failure halfway through a constructor leaks nothing. Plain actions wait in the
+  same queue (`defer_action`). The device is destroyed with the last
+  `MemoryContext` clone, so every GPU object drops before `GpuContext`; the
+  instance and surface are destroyed by `Drop` after it.
 
 ## Shaders
 
@@ -266,6 +273,9 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
 
 ## Gotchas
 
+- Every queue submission goes through `Timeline::submit` and every present
+  through `MemoryContext::present`: the deletion queue only knows the GPU is
+  done with an object from the timelines and present fences.
 - Validation layers (`vulkan-validation-layers`) are enabled in debug builds and
   logged under the `vulkan` target; any validation message is a bug. Messages mentioning
   `obs-vkcapture` come from that injected layer.

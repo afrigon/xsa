@@ -188,12 +188,14 @@ for any app.
 
 ## xui-vulkan
 
-- A binding-agnostic contract. The host passes raw handles as `u64` and
-  `vkGetInstanceProcAddr`. `ash` is a private implementation detail.
-  Requirements: Vulkan 1.3 with dynamic rendering and synchronization2.
-- It owns its memory (a few raw allocations), its pipeline, its own
-  descriptor set (the atlas and a storage buffer of instances) and its
-  shader, compiled by `mise run shaders` and embedded in the crate.
+- The host passes its `memory-vulkan` `MemoryContext`; xui-vulkan creates its
+  objects through it, so they share the host's allocator and are destroyed
+  through the host's deletion queue once the GPU is done with them. The host
+  and xui-vulkan use the same `ash` version. Requirements: Vulkan 1.3 with
+  dynamic rendering and synchronization2.
+- It owns its buffers, glyph atlas image, pipeline, its own descriptor set (the
+  atlas and a storage buffer of instances) and its shader, compiled by
+  `mise run shaders` and embedded in the crate.
 - It records into the host's command buffer over an image in
   color-attachment layout and leaves it there, blending with premultiplied
   alpha. Atlas updates are copied in the same command buffer before drawing.
