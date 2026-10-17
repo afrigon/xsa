@@ -17,6 +17,7 @@ mod memory_context;
 mod memory_error;
 mod queue_sharing;
 mod timeline;
+mod transfer_queue;
 
 pub(crate) use deletion_queue::{DeletionQueue, Frontier, OpenRecordings, RecordingId};
 pub(crate) use timeline::{TimelineId, TimelineSemaphore};
@@ -32,6 +33,9 @@ pub use memory_context::MemoryContext;
 pub use memory_error::MemoryError;
 pub use queue_sharing::QueueSharing;
 pub use timeline::{Recording, Timeline, TimelineValue};
+pub use transfer_queue::{
+    ImageCopy, ImageUpload, ReadbackTicket, TexelBlock, TransferPriority, TransferQueue, TransferStatus, UploadTicket,
+};
 
 #[cfg(test)]
 mod tests {
@@ -49,5 +53,8 @@ mod tests {
         assert_thread_safe::<DeviceObject<vk::Buffer>>();
         assert_thread_safe::<Buffer>();
         assert_thread_safe::<Image>();
+        assert_thread_safe::<TransferQueue>();
+        assert_thread_safe::<UploadTicket<Image>>();
+        assert_thread_safe::<ReadbackTicket>();
     }
 }

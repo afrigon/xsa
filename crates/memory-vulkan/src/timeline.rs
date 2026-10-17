@@ -61,6 +61,10 @@ impl Timeline {
         self.memory.wait_timeline(self.id, value)
     }
 
+    pub(crate) fn semaphore(&self) -> vk::Semaphore {
+        self.memory.timeline_semaphore(self.id)
+    }
+
     pub(crate) fn memory(&self) -> &MemoryContext {
         &self.memory
     }
