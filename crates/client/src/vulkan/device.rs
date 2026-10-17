@@ -50,6 +50,7 @@ impl Device {
         let mut extensions = vec![
             khr::swapchain::NAME.as_ptr(),
             ext::swapchain_maintenance1::NAME.as_ptr(),
+            ext::memory_budget::NAME.as_ptr(),
         ];
 
         if dynamic_polygon_mode {

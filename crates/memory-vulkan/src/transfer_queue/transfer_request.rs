@@ -1,10 +1,11 @@
 use std::collections::VecDeque;
 
 use crate::TransferPriority;
-use crate::transfer_queue::{Piece, TransferCompletion, TransferWork};
+use crate::transfer_queue::{Piece, RequestId, TransferCompletion, TransferWork};
 
 // A request waiting for, or partway through, its copies.
 pub(crate) struct TransferRequest {
+    pub id: RequestId,
     pub priority: TransferPriority,
     pub work: TransferWork,
     pub pieces: VecDeque<Piece>,

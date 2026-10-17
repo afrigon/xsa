@@ -10,7 +10,9 @@ use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, 
 
 use bookkeeping::Bookkeeping;
 
-use crate::{Deletion, DeviceObject, Frontier, MemoryError, RecordingId, Timeline, TimelineId, TimelineSemaphore};
+use crate::{
+    Deletion, DeviceObject, Frontier, HeapUsage, MemoryError, RecordingId, Timeline, TimelineId, TimelineSemaphore,
+};
 
 /// Owns the device, its memory allocator and the queue of objects waiting for the GPU to finish with them.
 ///
@@ -24,6 +26,9 @@ pub struct MemoryContext {
 
 // Lock order: a timeline's queue lock before the bookkeeping lock. The allocator lock is never held with another.
 struct SharedMemory {
+    // The instance's function table, not its ownership: the instance outlives the device.
+    instance: ash::Instance,
+    physical_device: vk::PhysicalDevice,
     device: ash::Device,
     swapchain: khr::swapchain::Device,
     // Dropped by hand, after the queued deletions free their allocations and before the device is destroyed.
@@ -32,8 +37,8 @@ struct SharedMemory {
 }
 
 impl MemoryContext {
-    /// Creates the device described by `create_info`, which must enable timeline semaphores, buffer device addresses
-    /// and VK_EXT_swapchain_maintenance1, then its allocator.
+    /// Creates the device described by `create_info`, which must enable timeline semaphores, buffer device addresses,
+    /// VK_EXT_swapchain_maintenance1 and VK_EXT_memory_budget, then its allocator.
     pub fn new(
         instance: &ash::Instance,
         physical_device: vk::PhysicalDevice,
@@ -59,6 +64,8 @@ impl MemoryContext {
 
         Ok(MemoryContext {
             shared: Arc::new(SharedMemory {
+                instance: instance.clone(),
+                physical_device,
                 device,
                 swapchain,
                 allocator: ManuallyDrop::new(Mutex::new(allocator)),
@@ -73,6 +80,29 @@ impl MemoryContext {
 
     pub fn swapchain_loader(&self) -> &khr::swapchain::Device {
         &self.shared.swapchain
+    }
+
+    /// The device-local heaps' budget and this process's usage of them, as the driver reports them now.
+    pub fn video_memory(&self) -> HeapUsage {
+        let shared = &self.shared;
+        let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
+        let mut properties = vk::PhysicalDeviceMemoryProperties2::default().push_next(&mut budget);
+        unsafe {
+            shared
+                .instance
+                .get_physical_device_memory_properties2(shared.physical_device, &mut properties)
+        };
+        let memory_properties = properties.memory_properties;
+        let heaps = &memory_properties.memory_heaps[..memory_properties.memory_heap_count as usize];
+
+        heaps
+            .iter()
+            .enumerate()
+            .filter(|(_, heap)| heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL))
+            .fold(HeapUsage::default(), |total, (index, _)| HeapUsage {
+                budget: total.budget + budget.heap_budget[index],
+                usage: total.usage + budget.heap_usage[index],
+            })
     }
 
     /// Creates the timeline every submission and present to `queue` must go through. A queue has one timeline.

@@ -11,6 +11,7 @@ mod piece;
 mod piece_copy;
 mod readback_completion;
 mod readback_ticket;
+mod request_id;
 mod staged_readback;
 mod staging_block;
 mod staging_ring;
@@ -48,6 +49,7 @@ pub(crate) use pending_requests::PendingRequests;
 pub(crate) use piece::Piece;
 pub(crate) use piece_copy::PieceCopy;
 pub(crate) use readback_completion::ReadbackCompletion;
+pub(crate) use request_id::RequestId;
 pub(crate) use staged_readback::StagedReadback;
 pub(crate) use staging_block::StagingBlock;
 pub(crate) use staging_ring::{STAGING_BLOCK_SIZE, StagingRing};
@@ -166,7 +168,9 @@ impl TransferQueue {
             result: Arc::clone(&result),
         };
         let completion = ReadbackCompletion::new(buffer, result, Arc::downgrade(&slot));
+        let id = self.shared().next_request_id();
         self.shared().enqueue(TransferRequest {
+            id,
             priority,
             work,
             pieces: Piece::split_bytes(size),
@@ -174,7 +178,7 @@ impl TransferQueue {
             completion: Box::new(completion),
         });
 
-        ReadbackTicket::new(TransferTicket::new(slot, self.clone()))
+        ReadbackTicket::new(TransferTicket::new(slot, id, self.clone()))
     }
 
     /// A wait for every copy whose ticket was seen complete, for the submissions that use their results. Its value
@@ -198,9 +202,11 @@ impl TransferQueue {
     ) -> UploadTicket<T> {
         let slot = Arc::new(TicketSlot::pending());
         let completion = Box::new(OwnedUploadCompletion::new(destination, Arc::downgrade(&slot)));
+        let id = self.shared().next_request_id();
 
         match pieces {
             Ok(pieces) => self.shared().enqueue(TransferRequest {
+                id,
                 priority,
                 work: TransferWork::Upload {
                     data,
@@ -213,7 +219,11 @@ impl TransferQueue {
             Err(err) => completion.fail(err),
         }
 
-        UploadTicket::new(TransferTicket::new(slot, self.clone()))
+        UploadTicket::new(TransferTicket::new(slot, id, self.clone()))
+    }
+
+    fn reprioritize(&self, id: RequestId, priority: TransferPriority) {
+        self.shared().reprioritize(id, priority);
     }
 
     fn shared(&self) -> &TransferShared {

@@ -1,5 +1,5 @@
 use crate::transfer_queue::TransferTicket;
-use crate::{MemoryError, TransferStatus};
+use crate::{MemoryError, TransferPriority, TransferStatus};
 
 /// A pending upload. It hands its destination back once written: the GPU may use the destination from the next
 /// submission that waits on `TransferQueue::visibility_wait`. Dropping it cancels the upload if it has not started.
@@ -17,6 +17,11 @@ impl<T> UploadTicket<T> {
     /// If polled again after it returned a completed or failed upload.
     pub fn poll(&mut self) -> TransferStatus<T> {
         self.ticket.poll()
+    }
+
+    /// Moves the upload to `priority` if it has not started; a started upload finishes where it is.
+    pub fn set_priority(&self, priority: TransferPriority) {
+        self.ticket.set_priority(priority);
     }
 
     /// Blocks until the upload completes.

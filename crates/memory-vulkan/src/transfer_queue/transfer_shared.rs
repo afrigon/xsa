@@ -3,8 +3,8 @@ use std::sync::{Mutex, MutexGuard};
 
 use ash::vk;
 
-use crate::transfer_queue::{PendingRequests, TransferRequest};
-use crate::{DeviceObject, MemoryContext, MemoryError, QueueSharing, Timeline};
+use crate::transfer_queue::{PendingRequests, RequestId, TransferRequest};
+use crate::{DeviceObject, MemoryContext, MemoryError, QueueSharing, Timeline, TransferPriority};
 
 // What the queue's handles and its submission thread share.
 pub(crate) struct TransferShared {
@@ -19,6 +19,7 @@ pub(crate) struct TransferShared {
     requests: Mutex<PendingRequests>,
     // The latest transfer timeline value the thread saw completed, raised before it settles any ticket.
     observed: AtomicU64,
+    next_request: AtomicU64,
 }
 
 impl TransferShared {
@@ -43,6 +44,7 @@ impl TransferShared {
             wake,
             requests: Mutex::new(PendingRequests::default()),
             observed: AtomicU64::new(0),
+            next_request: AtomicU64::new(0),
         })
     }
 
@@ -56,6 +58,21 @@ impl TransferShared {
 
         requests.push(request);
         self.wake(&mut requests);
+    }
+
+    pub fn next_request_id(&self) -> RequestId {
+        RequestId {
+            value: self.next_request.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+
+    // A raised request may now preempt the one being copied, so the thread looks again.
+    pub fn reprioritize(&self, id: RequestId, priority: TransferPriority) {
+        let mut requests = self.requests();
+
+        if requests.reprioritize(id, priority) {
+            self.wake(&mut requests);
+        }
     }
 
     // Signalled under the requests' lock: host signals of a timeline semaphore must increase.
