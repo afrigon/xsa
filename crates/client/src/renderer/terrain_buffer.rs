@@ -6,6 +6,7 @@ use super::static_buffer::StaticBuffer;
 
 pub(in crate::renderer) struct TerrainBuffer {
     buffer: StaticBuffer,
+    uploaded: bool,
 }
 
 impl TerrainBuffer {
@@ -17,14 +18,19 @@ impl TerrainBuffer {
             &[data],
         )?;
 
-        Ok(Self { buffer })
+        Ok(Self {
+            buffer,
+            uploaded: false,
+        })
     }
 
-    pub fn device_address(&self) -> vk::DeviceAddress {
-        self.buffer.device_address()
+    // None until its upload completes.
+    pub fn device_address(&self) -> Option<vk::DeviceAddress> {
+        self.uploaded.then(|| self.buffer.device_address())
     }
 
-    pub fn wait(&mut self) -> anyhow::Result<()> {
-        self.buffer.wait()
+    pub fn poll(&mut self) -> anyhow::Result<()> {
+        self.uploaded = self.buffer.poll()?;
+        Ok(())
     }
 }

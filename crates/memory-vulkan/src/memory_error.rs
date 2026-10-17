@@ -5,6 +5,8 @@ use std::sync::Arc;
 use ash::vk;
 use gpu_allocator::AllocationError;
 
+use crate::BindlessBinding;
+
 #[derive(Debug)]
 pub enum MemoryError {
     Vulkan(vk::Result),
@@ -16,6 +18,8 @@ pub enum MemoryError {
     },
     /// A transfer failed along with the others submitted with it, which share its cause.
     Transfer(Arc<MemoryError>),
+    /// Every slot of a bindless binding is held.
+    OutOfBindlessSlots(BindlessBinding),
 }
 
 impl fmt::Display for MemoryError {
@@ -25,6 +29,7 @@ impl fmt::Display for MemoryError {
             MemoryError::Allocation(error) => write!(formatter, "allocating GPU memory: {error}"),
             MemoryError::HostAccess { buffer, reason } => write!(formatter, "accessing {buffer}: {reason}"),
             MemoryError::Transfer(cause) => write!(formatter, "a transfer failed: {cause}"),
+            MemoryError::OutOfBindlessSlots(binding) => write!(formatter, "every {binding:?} bindless slot is held"),
         }
     }
 }
@@ -34,7 +39,7 @@ impl Error for MemoryError {
         match self {
             MemoryError::Vulkan(result) => Some(result),
             MemoryError::Allocation(error) => Some(error),
-            MemoryError::HostAccess { .. } => None,
+            MemoryError::HostAccess { .. } | MemoryError::OutOfBindlessSlots(_) => None,
             MemoryError::Transfer(cause) => Some(cause.as_ref()),
         }
     }

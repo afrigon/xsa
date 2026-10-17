@@ -1,8 +1,9 @@
+use resource_vulkan::LoadPriority;
 use tokio::sync::oneshot;
 use xsa_commands::command::{Overlay, ViewControllerId};
 
 use super::App;
-use crate::ui::{GameViewController, PauseViewController};
+use crate::ui::{GameViewController, LoadingViewController, PauseViewController};
 
 impl App {
     pub(super) fn push_view_controller(&mut self, id: ViewControllerId) {
@@ -18,6 +19,23 @@ impl App {
     pub(super) fn set_view_controller(&mut self, id: ViewControllerId) {
         let environment = self.environment();
         self.navigation.set_root(self.view_controllers.build(id), &environment);
+    }
+
+    // The loading screen raises the scene's loads, and gives way to the game once every one settled.
+    pub(super) fn advance_loading(&mut self) {
+        if !self.navigation.top().is::<LoadingViewController>() || self.navigation.is_transitioning() {
+            return;
+        }
+
+        let (Some(world), Some(resources)) = (&mut self.world, &self.resources) else {
+            return;
+        };
+
+        if world.progress().is_loaded() {
+            self.set_view_controller(ViewControllerId::Game);
+        } else {
+            world.set_priority(resources, LoadPriority::High);
+        }
     }
 
     pub(super) fn is_overlay_shown(&self, overlay: Overlay) -> bool {

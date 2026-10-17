@@ -1,29 +1,22 @@
 use ash::vk;
+use memory_vulkan::{BindlessBinding, BindlessSlot, BindlessTable};
 use render_graph_vulkan::{ImageId, RenderGraph};
-
-use crate::vulkan::{BindlessTextures, Device};
 
 #[derive(Default)]
 struct GraphTexture {
-    texture: Option<u32>,
-    storage_images: Vec<u32>,
+    texture: Option<BindlessSlot>,
+    storage_images: Vec<BindlessSlot>,
 }
 
-// The bindless slots of the images the render graph allocates, by image id. A recreated image keeps its id, so its
-// slots are rewritten instead of added again.
+// The bindless slots of the images the render graph allocates, by image id. A recreated image keeps its id and gets
+// fresh slots, since frames in flight may still read the old ones.
 #[derive(Default)]
 pub(super) struct GraphTextures {
     images: Vec<GraphTexture>,
 }
 
 impl GraphTextures {
-    pub fn register(
-        &mut self,
-        device: &Device,
-        bindless: &mut BindlessTextures,
-        graph: &RenderGraph,
-        ids: &[ImageId],
-    ) -> anyhow::Result<()> {
+    pub fn register(&mut self, bindless: &BindlessTable, graph: &RenderGraph, ids: &[ImageId]) -> anyhow::Result<()> {
         for id in ids {
             if self.images.len() <= id.index() {
                 self.images.resize_with(id.index() + 1, GraphTexture::default);
@@ -33,24 +26,19 @@ impl GraphTextures {
             let image = &mut self.images[id.index()];
 
             if usage.contains(vk::ImageUsageFlags::SAMPLED) {
-                let view = graph.image_view(*id);
-                let layout = graph.sampled_layout(*id);
-
-                match image.texture {
-                    Some(index) => bindless.set_texture(device, index, view, layout),
-                    None => image.texture = Some(bindless.add_texture(device, view, layout)?),
-                }
+                let slot = bindless.allocate(BindlessBinding::Texture)?;
+                bindless.write(&slot, graph.image_view(*id), graph.sampled_layout(*id));
+                image.texture = Some(slot);
             }
 
             if usage.contains(vk::ImageUsageFlags::STORAGE) {
-                for level in 0..graph.mip_levels(*id) {
-                    let view = graph.level_view(*id, level);
-
-                    match image.storage_images.get(level as usize) {
-                        Some(index) => bindless.set_storage_image(device, *index, view),
-                        None => image.storage_images.push(bindless.add_storage_image(device, view)?),
-                    }
-                }
+                image.storage_images = (0..graph.mip_levels(*id))
+                    .map(|level| -> anyhow::Result<BindlessSlot> {
+                        let slot = bindless.allocate(BindlessBinding::StorageImage)?;
+                        bindless.write(&slot, graph.level_view(*id, level), vk::ImageLayout::GENERAL);
+                        Ok(slot)
+                    })
+                    .collect::<anyhow::Result<_>>()?;
             }
         }
 
@@ -61,7 +49,8 @@ impl GraphTextures {
     pub fn texture(&self, image: ImageId) -> u32 {
         self.images
             .get(image.index())
-            .and_then(|registered| registered.texture)
+            .and_then(|registered| registered.texture.as_ref())
+            .map(BindlessSlot::index)
             .unwrap_or_else(|| panic!("image {} is not sampled through the render graph", image.index()))
     }
 
@@ -69,7 +58,8 @@ impl GraphTextures {
     pub fn storage_image(&self, image: ImageId, level: u32) -> u32 {
         self.images
             .get(image.index())
-            .and_then(|registered| registered.storage_images.get(level as usize).copied())
+            .and_then(|registered| registered.storage_images.get(level as usize))
+            .map(BindlessSlot::index)
             .unwrap_or_else(|| panic!("level {level} of image {} is not a storage image", image.index()))
     }
 }

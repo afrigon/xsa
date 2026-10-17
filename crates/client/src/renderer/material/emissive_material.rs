@@ -11,10 +11,10 @@ impl Material for EmissiveMaterial {
     type Data = EmissiveData;
     const SHADER: Shader = Shader::Emissive;
 
-    fn gpu_data(&self) -> EmissiveData {
-        EmissiveData {
+    fn gpu_data(&self) -> Option<EmissiveData> {
+        Some(EmissiveData {
             luminance: self.luminance,
             padding: 0,
-        }
+        })
     }
 }

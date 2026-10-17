@@ -8,12 +8,12 @@ use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
 use super::gpu_data::PushConstants;
 use super::graph_textures::GraphTextures;
-use super::lens::Lens;
+use super::lens_flare::LensFlare;
 use super::material::MaterialBuffer;
 use super::temporal_history::TemporalHistory;
-use super::terrain_buffer::TerrainBuffer;
+use super::terrain_displacement::TerrainDisplacement;
 use super::terrain_draw::TerrainDraw;
-use super::{MaterialHandle, Scene, TerrainBufferHandle};
+use super::{MaterialHandle, Scene, TerrainHandle};
 use crate::config::RenderConfig;
 use crate::vulkan::GraphicsPipeline;
 
@@ -28,8 +28,8 @@ pub(super) struct FrameContext<'a> {
     pub render: &'a RenderConfig,
     pub scene: &'a Scene,
     pub materials: &'a [MaterialBuffer],
-    pub terrain_buffers: &'a [TerrainBuffer],
-    pub lens: Option<&'a Lens>,
+    pub terrain_displacements: &'a [Option<TerrainDisplacement>],
+    pub lens: Option<&'a LensFlare>,
     pub focal_length_pixels: f32,
     pub terrain_draws: &'a [TerrainDraw],
     pub descriptor_set: vk::DescriptorSet,
@@ -44,22 +44,35 @@ impl FrameContext<'_> {
         object_index: usize,
         material: MaterialHandle,
         first_tile: u32,
-        terrain: Option<TerrainBufferHandle>,
+        terrain: Option<TerrainHandle>,
     ) {
         self.recorder.push_graphics_constants(
             pipeline,
             &PushConstants {
                 frame: self.frame.frame_data.device_address(),
                 objects: self.frame.objects.device_address(),
-                material: self.material(material).device_address(),
+                material: self
+                    .material(material)
+                    .device_address()
+                    .expect("only drawable materials are drawn"),
                 object_index: object_index as u32,
                 first_tile,
                 tiles: self.frame.tiles.device_address(),
-                terrain: terrain.map_or(NULL_ADDRESS, |terrain| {
-                    self.terrain_buffers[terrain.index].device_address()
-                }),
+                terrain: terrain.map_or(NULL_ADDRESS, |terrain| self.terrain_address(terrain)),
             },
         );
+    }
+
+    // Whether its parameters are in GPU memory.
+    pub fn is_drawable(&self, material: MaterialHandle) -> bool {
+        self.material(material).device_address().is_some()
+    }
+
+    // Null for a terrain drawn smooth: without a height map, or until its displacement is uploaded.
+    fn terrain_address(&self, terrain: TerrainHandle) -> vk::DeviceAddress {
+        TerrainDisplacement::uploaded(self.terrain_displacements, terrain)
+            .and_then(|displacement| displacement.buffer.device_address())
+            .unwrap_or(NULL_ADDRESS)
     }
 
     pub fn material(&self, handle: MaterialHandle) -> &MaterialBuffer {

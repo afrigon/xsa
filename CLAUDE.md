@@ -59,7 +59,9 @@ only. `memory-vulkan` depends on no xsa crate: `render-graph-vulkan`,
 `xui-vulkan` and `client` all create their GPU objects through it.
 `resource-loader` depends on no xsa crate: it decodes resource files, one module
 per kind of file behind a feature of the same name (`texture`), so each crate
-enables only the kinds it reads.
+enables only the kinds it reads. `resource-vulkan` depends on no xsa crate
+either, only on `memory-vulkan` and `resource-loader`: the client adds its own
+kinds (height maps, lens textures) through its `ResourceKind` trait.
 
 | Crate | Responsibility |
 | --- | --- |
@@ -74,7 +76,8 @@ enables only the kinds it reads.
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains |
-| `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue), `DeviceObject`, `Buffer`, `Image`, timelines and present fences, and the `TransferQueue` every copy between CPU and GPU goes through |
+| `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue, video memory budget), `DeviceObject`, `Buffer`, `Image`, timelines and present fences, the `TransferQueue` every copy between CPU and GPU goes through, and the `BindlessTable` whose owned slots return once no frame reads them |
+| `resource-vulkan` | `Resources`: background, reference-counted loading of the files content refers to, on a worker pool of its own; typed `ResourceHandle`s, groups with byte progress, priorities, and a memory budget that evicts unreferenced cached resources least recently used first. Ships the texture and cube map kinds |
 | `render-graph-vulkan` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images and transient buffers |
 
 ## Architecture
@@ -288,6 +291,10 @@ mouse. Debug toggles are commands (`config toggle render.stars`,
   resources are created with `TransferQueue::sharing`. Data a frame rewrites and
   consumes itself (per-frame buffers, the interface's glyph atlas) stays in that
   frame.
+- Every file content refers to loads through `Resources`, never on the thread
+  that draws. Whoever uses a resource holds its `ResourceHandle` and derives what
+  it needs (a material's parameters, a terrain's displacement, the lens flare)
+  once the handle is ready; until then it draws its fallback.
 - Validation layers (`vulkan-validation-layers`) are enabled in debug builds and
   logged under the `vulkan` target; any validation message is a bug. Messages mentioning
   `obs-vkcapture` come from that injected layer.

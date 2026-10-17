@@ -1,4 +1,4 @@
-use crate::{MemoryError, TransferStatus, UploadTicket};
+use crate::{MemoryError, TransferPriority, TransferStatus, UploadTicket};
 
 /// A resource being uploaded, held by whoever owns it: pending until its ticket completes, then ready to use.
 pub enum GpuUpload<T> {
@@ -35,6 +35,13 @@ impl<T> GpuUpload<T> {
         }
 
         Ok(self.get().expect("a waited upload is ready"))
+    }
+
+    /// Moves a pending upload to `priority` if it has not started.
+    pub fn set_priority(&self, priority: TransferPriority) {
+        if let GpuUpload::Pending(ticket) = self {
+            ticket.set_priority(priority);
+        }
     }
 
     pub fn get(&self) -> Option<&T> {

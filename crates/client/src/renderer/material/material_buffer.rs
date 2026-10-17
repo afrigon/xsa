@@ -1,38 +1,64 @@
 use ash::vk;
 
-use super::{Material, Shader};
+use super::{Material, MaterialSource, Shader};
 use crate::renderer::GpuContext;
 use crate::renderer::static_buffer::StaticBuffer;
 
+// A material's parameters in GPU memory. They change when a texture they name becomes ready: a new buffer is then
+// uploaded and replaces the drawn one once its copy completes.
 pub(in crate::renderer) struct MaterialBuffer {
-    shader: Shader,
-    buffer: StaticBuffer,
+    name: String,
+    source: Box<dyn MaterialSource>,
+    // The bytes of the latest upload.
+    uploaded: Vec<u8>,
+    drawn: Option<StaticBuffer>,
+    uploading: Option<StaticBuffer>,
 }
 
 impl MaterialBuffer {
-    pub fn new<M: Material>(gpu: &GpuContext, name: &str, material: &M) -> anyhow::Result<Self> {
-        let buffer = StaticBuffer::new(
-            gpu,
-            name,
-            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            &[material.gpu_data()],
-        )?;
+    pub fn new<M: Material + 'static>(gpu: &GpuContext, name: &str, material: M) -> anyhow::Result<MaterialBuffer> {
+        let mut buffer = MaterialBuffer {
+            name: name.to_owned(),
+            source: Box::new(material),
+            uploaded: Vec::new(),
+            drawn: None,
+            uploading: None,
+        };
+        buffer.refresh(gpu)?;
 
-        Ok(Self {
-            shader: M::SHADER,
-            buffer,
-        })
+        Ok(buffer)
     }
 
     pub fn shader(&self) -> Shader {
-        self.shader
+        self.source.shader()
     }
 
-    pub fn device_address(&self) -> vk::DeviceAddress {
-        self.buffer.device_address()
+    // None until its first upload completes.
+    pub fn device_address(&self) -> Option<vk::DeviceAddress> {
+        self.drawn.as_ref().map(StaticBuffer::device_address)
     }
 
-    pub fn wait(&mut self) -> anyhow::Result<()> {
-        self.buffer.wait()
+    pub fn refresh(&mut self, gpu: &GpuContext) -> anyhow::Result<()> {
+        if let Some(uploading) = &mut self.uploading
+            && uploading.poll()?
+        {
+            self.drawn = self.uploading.take();
+        }
+
+        let Some(bytes) = self.source.gpu_bytes() else {
+            return Ok(());
+        };
+
+        if bytes != self.uploaded {
+            self.uploading = Some(StaticBuffer::new(
+                gpu,
+                &self.name,
+                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                &bytes,
+            )?);
+            self.uploaded = bytes;
+        }
+
+        Ok(())
     }
 }

@@ -8,6 +8,7 @@ mod input;
 mod mesh;
 mod remote_server;
 mod renderer;
+mod resource_kinds;
 mod theme;
 mod ui;
 mod vulkan;

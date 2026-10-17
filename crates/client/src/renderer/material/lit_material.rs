@@ -11,10 +11,10 @@ impl Material for LitMaterial {
     type Data = LitData;
     const SHADER: Shader = Shader::Lit;
 
-    fn gpu_data(&self) -> LitData {
-        LitData {
+    fn gpu_data(&self) -> Option<LitData> {
+        Some(LitData {
             base_color: self.base_color,
             padding: 0,
-        }
+        })
     }
 }

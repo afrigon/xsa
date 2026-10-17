@@ -56,7 +56,10 @@ impl SuitableDevice {
                 .any(|extension| extension.extension_name_as_c_str() == Ok(name))
         };
 
-        if !supports(khr::swapchain::NAME) || !supports(ext::swapchain_maintenance1::NAME) {
+        if !supports(khr::swapchain::NAME)
+            || !supports(ext::swapchain_maintenance1::NAME)
+            || !supports(ext::memory_budget::NAME)
+        {
             return Ok(None);
         }
 

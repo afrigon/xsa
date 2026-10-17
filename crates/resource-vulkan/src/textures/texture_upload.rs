@@ -1,51 +1,51 @@
 use anyhow::ensure;
 use ash::vk;
+use memory_vulkan::{BindlessBinding, Image, ImageCopy, ImageDescription, ImageUpload, TexelBlock};
 use resource_loader::texture::{TextureFormat, TextureImage};
 
-use memory_vulkan::{Image, ImageCopy, ImageDescription, ImageUpload, TexelBlock, TransferPriority, UploadTicket};
-
-use crate::renderer::gpu_context::GpuContext;
+use crate::LoadContext;
+use crate::textures::PendingTexture;
 
 const CUBE_FACE_COUNT: usize = 6;
 
-// Creates a texture's image and queues the upload of every level of every layer.
-pub(in crate::renderer) struct TextureUpload {
+// Creates a texture's image, takes its bindless slot and queues the upload of every level of every layer.
+pub(crate) struct TextureUpload {
     image: TextureImage,
 }
 
 impl TextureUpload {
-    pub fn new(image: TextureImage) -> Self {
-        Self { image }
+    pub fn new(image: TextureImage) -> TextureUpload {
+        TextureUpload { image }
     }
 
-    pub fn cube_map(self, gpu: &GpuContext, name: &str) -> anyhow::Result<UploadTicket<Image>> {
+    pub fn cube_map(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
         ensure!(
             self.image.layers().len() == CUBE_FACE_COUNT,
-            "{name}: a cube map needs {CUBE_FACE_COUNT} faces"
+            "a cube map needs {CUBE_FACE_COUNT} faces"
         );
         ensure!(
             self.image.width() == self.image.height(),
-            "{name}: cube map faces must be square"
+            "cube map faces must be square"
         );
 
-        self.upload(gpu, name, true)
+        self.upload(context, BindlessBinding::CubeMap)
     }
 
-    pub fn texture(self, gpu: &GpuContext, name: &str) -> anyhow::Result<UploadTicket<Image>> {
+    pub fn texture(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
         ensure!(
             self.image.layers().len() == 1,
-            "{name}: expected a 2D texture, found a cube map"
+            "expected a 2D texture, found a cube map"
         );
 
-        self.upload(gpu, name, false)
+        self.upload(context, BindlessBinding::Texture)
     }
 
-    fn upload(self, gpu: &GpuContext, name: &str, cube: bool) -> anyhow::Result<UploadTicket<Image>> {
+    fn upload(self, context: &LoadContext, binding: BindlessBinding) -> anyhow::Result<PendingTexture> {
         let format = self.image.format();
         let image = Image::new(
-            &gpu.memory,
+            context.memory,
             &ImageDescription {
-                name,
+                name: context.name,
                 extent: vk::Extent2D {
                     width: self.image.width(),
                     height: self.image.height(),
@@ -54,10 +54,11 @@ impl TextureUpload {
                 usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: self.image.mip_levels(),
-                cube,
-                sharing: gpu.transfer.sharing(),
+                cube: binding == BindlessBinding::CubeMap,
+                sharing: context.transfer.sharing(),
             },
         )?;
+        let slot = context.bindless.allocate(binding)?;
         let copies = self.copies();
         let upload = ImageUpload {
             data: self.image.into_layers(),
@@ -70,8 +71,9 @@ impl TextureUpload {
                 size: format.block_size() as u32,
             },
         };
+        let ticket = context.transfer.upload_image(image, upload, context.priority);
 
-        Ok(gpu.transfer.upload_image(image, upload, TransferPriority::High))
+        Ok(PendingTexture::new(ticket.into(), slot))
     }
 
     // Each layer holds its mip chain, largest level first, packed without padding.

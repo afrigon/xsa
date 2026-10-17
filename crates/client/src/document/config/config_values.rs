@@ -1,7 +1,7 @@
 use kdl::KdlValue;
 
 use super::{ConfigChoice, ConfigKey, ConfigLayer};
-use crate::config::KeyChord;
+use crate::config::{ByteSize, KeyChord};
 
 // The session layer takes precedence; only persisted keys are read from the file.
 pub struct ConfigValues<'a> {
@@ -45,6 +45,34 @@ impl ConfigValues<'_> {
         ConfigValues::warn_if_invalid(key, value, parsed.is_some());
 
         parsed
+    }
+
+    // The outer None when unset, the inner one for `none`.
+    pub fn optional_count(&self, key: ConfigKey) -> Option<Option<u32>> {
+        self.optional(key, |value| {
+            value
+                .as_integer()
+                .and_then(|count| u32::try_from(count).ok())
+                .filter(|count| *count > 0)
+        })
+    }
+
+    // The outer None when unset, the inner one for `none`.
+    pub fn optional_byte_size(&self, key: ConfigKey) -> Option<Option<ByteSize>> {
+        self.optional(key, |value| value.as_string().and_then(ByteSize::from_config_name))
+    }
+
+    fn optional<T>(&self, key: ConfigKey, parse: impl Fn(&KdlValue) -> Option<T>) -> Option<Option<T>> {
+        let value = self.value(key)?;
+
+        if value.is_null() {
+            return Some(None);
+        }
+
+        let parsed = parse(value);
+        ConfigValues::warn_if_invalid(key, value, parsed.is_some());
+
+        parsed.map(Some)
     }
 
     fn value(&self, key: ConfigKey) -> Option<&KdlValue> {

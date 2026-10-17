@@ -50,6 +50,7 @@ impl Device {
         let mut extensions = vec![
             khr::swapchain::NAME.as_ptr(),
             ext::swapchain_maintenance1::NAME.as_ptr(),
+            ext::memory_budget::NAME.as_ptr(),
         ];
 
         if dynamic_polygon_mode {
@@ -70,6 +71,7 @@ impl Device {
             .descriptor_binding_partially_bound(true)
             .descriptor_binding_sampled_image_update_after_bind(true)
             .descriptor_binding_storage_image_update_after_bind(true)
+            .descriptor_binding_update_unused_while_pending(true)
             .shader_sampled_image_array_non_uniform_indexing(true);
         let mut vulkan_13_features = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)

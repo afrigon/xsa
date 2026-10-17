@@ -1,9 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use anyhow::{Context, bail, ensure};
 use glam::{DQuat, DVec3, Vec3};
-use resource_loader::texture::{TextureFormat, TextureImage};
+use resource_vulkan::{GroupProgress, LoadPriority, LoadRequest, ResourceGroup, ResourceHandle, Resources};
 use xsa_commands::completion::CompletionCandidate;
 use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
@@ -18,8 +17,9 @@ use super::body_step::BodyStep;
 use crate::camera::Attitude;
 use crate::renderer::{
     ColorSpace, EmissiveMaterial, HapkeParameters, LightSource, LitMaterial, MaterialHandle, ObjectHandle,
-    PlanetMaterial, Renderer, SceneObject, SkyboxMaterial, Star, Terrain, TerrainHeight,
+    PlanetMaterial, Renderer, SceneObject, SkyboxMaterial, Star, Terrain,
 };
+use crate::resource_kinds::{HeightMapRange, TerrainHeightMap};
 use crate::ui::SurfaceReading;
 
 const DEFAULT_NAMESPACE: &str = "base";
@@ -33,18 +33,22 @@ pub(super) struct ClientWorld {
     state: SimulationState,
     illumination: Illumination,
     body_objects: Vec<ObjectHandle>,
-    // One per body; None for a smooth body.
-    height_maps: Vec<Option<Arc<HeightMap>>>,
+    // One per body; None for a smooth body. Its ground is the sea until it loads.
+    height_maps: Vec<Option<ResourceHandle<TerrainHeightMap>>>,
     skybox: Option<MaterialHandle>,
-}
-
-struct LoadedTerrain {
-    height: TerrainHeight,
-    map: Arc<HeightMap>,
+    // Every file the scene needs, for its progress.
+    resources: ResourceGroup,
+    priority: LoadPriority,
 }
 
 impl ClientWorld {
-    pub fn load(packs_directory: &Path, world: &WorldState, renderer: &mut Renderer) -> anyhow::Result<ClientWorld> {
+    // Builds the scene at once; its files load in the background and appear as they arrive.
+    pub fn load(
+        packs_directory: &Path,
+        world: &WorldState,
+        renderer: &mut Renderer,
+        resources: &Resources,
+    ) -> anyhow::Result<ClientWorld> {
         let pack_ids: Vec<String> = world.packs.iter().map(|pack| pack.id.clone()).collect();
         let stack = PackStack::load(packs_directory, &pack_ids)?;
 
@@ -58,6 +62,7 @@ impl ClientWorld {
             );
         }
 
+        let mut group = ResourceGroup::new();
         let simulation_id = Id::parse(&world.simulation, DEFAULT_NAMESPACE)?;
         let simulation = stack.load_data::<SimulationDefinition>(&simulation_id)?.build(&stack)?;
         let illumination = Illumination::new(simulation.bodies());
@@ -69,34 +74,19 @@ impl ClientWorld {
                 let definition =
                     MaterialDefinition::load_for_body(&stack, &Id::parse(&body.id.value, DEFAULT_NAMESPACE)?)?;
                 let star_light = illumination.star_light(BodyIndex { value });
-                ClientWorld::create_material(renderer, &body.id, definition, star_light)
+                ClientWorld::create_material(renderer, resources, &mut group, &body.id, definition, star_light)
                     .with_context(|| format!("loading the material of {}", body.id))
             })
             .collect::<anyhow::Result<Vec<MaterialHandle>>>()?;
-        let terrains = simulation
+        let height_maps = simulation
             .bodies()
             .iter()
             .map(|body| {
                 let id = Id::parse(&body.id.value, DEFAULT_NAMESPACE)?;
-                ClientWorld::load_terrain(&stack, &id, body.radius, renderer)
+                ClientWorld::load_height_map(&stack, &id, resources, &mut group)
                     .with_context(|| format!("loading the terrain of {}", body.id))
             })
-            .collect::<anyhow::Result<Vec<Option<LoadedTerrain>>>>()?;
-        let mut heights = Vec::with_capacity(terrains.len());
-        let mut height_maps = Vec::with_capacity(terrains.len());
-
-        for terrain in terrains {
-            match terrain {
-                Some(terrain) => {
-                    heights.push(Some(terrain.height));
-                    height_maps.push(Some(terrain.map));
-                }
-                None => {
-                    heights.push(None);
-                    height_maps.push(None);
-                }
-            }
-        }
+            .collect::<anyhow::Result<Vec<Option<ResourceHandle<TerrainHeightMap>>>>>()?;
         let mut state = SimulationState::default();
         simulation.state_at(world.time, &mut state);
 
@@ -105,20 +95,19 @@ impl ClientWorld {
             .bodies()
             .iter()
             .zip(&materials)
-            .zip(heights)
+            .zip(&height_maps)
             .zip(&state.bodies)
-            .map(|(((body, &material), height), body_state)| {
-                let highest_point = body.radius + height.as_ref().map_or(0.0, TerrainHeight::maximum);
+            .map(|(((body, &material), height_map), body_state)| {
                 let object = scene.add(SceneObject {
                     position: body_state.position,
                     orientation: body_state.orientation,
                     scale: body.radius,
-                    bounding_radius: highest_point,
+                    bounding_radius: body.radius,
                 });
                 scene.add_terrain(Terrain {
                     object,
                     material,
-                    height,
+                    height_map: height_map.clone(),
                 });
                 scene.add_occluder(object);
                 object
@@ -135,10 +124,9 @@ impl ClientWorld {
             }
         }
 
-        let skybox = ClientWorld::load_skybox(&stack, &simulation_id, renderer)?;
+        let skybox = ClientWorld::load_skybox(&stack, &simulation_id, renderer, resources, &mut group)?;
         renderer.scene_mut().skybox = skybox;
-        ClientWorld::load_lens(&stack, renderer);
-        renderer.finish_uploads()?;
+        ClientWorld::load_lens(&stack, renderer, resources, &mut group);
 
         Ok(ClientWorld {
             simulation_id,
@@ -148,7 +136,20 @@ impl ClientWorld {
             body_objects,
             height_maps,
             skybox,
+            resources: group,
+            priority: LoadPriority::Normal,
         })
+    }
+
+    pub fn progress(&self) -> GroupProgress {
+        self.resources.progress()
+    }
+
+    pub fn set_priority(&mut self, resources: &Resources, priority: LoadPriority) {
+        if self.priority != priority {
+            resources.set_priority(&self.resources, priority);
+            self.priority = priority;
+        }
     }
 
     pub fn skybox(&self) -> Option<MaterialHandle> {
@@ -217,9 +218,7 @@ impl ClientWorld {
             body: body.id.to_string(),
             latitude,
             longitude,
-            above_ground: self.height_maps[index.value]
-                .as_ref()
-                .map(|map| above_sea - map.height_at(direction)),
+            above_ground: self.height_map(index).map(|map| above_sea - map.height_at(direction)),
             above_sea,
             attitude: Attitude::of(orientation, up, self.local_north(index, latitude, longitude)),
         }
@@ -239,9 +238,7 @@ impl ClientWorld {
 
     // Meters relative to the radius at `direction`, a unit vector in the body's frame; 0 on a smooth body.
     pub fn ground_height(&self, index: BodyIndex, direction: DVec3) -> f64 {
-        self.height_maps[index.value]
-            .as_ref()
-            .map_or(0.0, |map| map.height_at(direction))
+        self.height_map(index).map_or(0.0, |map| map.height_at(direction))
     }
 
     // Where the eyes are when the feet stand `altitude` above the ground at `direction`, in the body's frame.
@@ -250,6 +247,13 @@ impl ClientWorld {
         let distance = self.body(index).radius + self.ground_height(index, direction) + altitude + EYE_HEIGHT_METERS;
 
         state.position + state.orientation * (direction * distance)
+    }
+
+    // None for a smooth body, and until its height map loads.
+    fn height_map(&self, index: BodyIndex) -> Option<&HeightMap> {
+        let loaded = self.height_maps[index.value].as_ref()?.get()?;
+
+        Some(loaded.map())
     }
 
     pub fn body_candidates(&self) -> Vec<CompletionCandidate> {
@@ -303,85 +307,82 @@ impl ClientWorld {
         }
     }
 
-    fn load_lens(stack: &PackStack, renderer: &mut Renderer) {
-        let loaded = Id::parse(MAIN_LENS, DEFAULT_NAMESPACE)
-            .and_then(|profile| LensDefinition::load(stack, &profile))
-            .and_then(|definition| renderer.load_lens(&definition));
-
-        if let Err(err) = loaded {
-            tracing::warn!("skipping lens effects: lens {MAIN_LENS}: {err:#}");
-        }
+    fn load_lens(stack: &PackStack, renderer: &mut Renderer, resources: &Resources, group: &mut ResourceGroup) {
+        let definition =
+            match Id::parse(MAIN_LENS, DEFAULT_NAMESPACE).and_then(|profile| LensDefinition::load(stack, &profile)) {
+                Ok(definition) => definition,
+                Err(err) => {
+                    tracing::warn!("skipping lens effects: lens {MAIN_LENS}: {err:#}");
+                    return;
+                }
+            };
+        let starburst = resources.load(LoadRequest::new(&definition.starburst.texture, "lens starburst"), ());
+        group.add(&starburst);
+        let ghosts = definition
+            .ghosts
+            .iter()
+            .enumerate()
+            .map(|(index, ghost)| {
+                let ghost = resources.load(LoadRequest::new(&ghost.texture, format!("lens ghost {index}")), ());
+                group.add(&ghost);
+                ghost
+            })
+            .collect();
+        renderer.load_lens(definition, starburst, ghosts);
     }
 
+    // Drawn once its cube map loads.
     fn load_skybox(
         stack: &PackStack,
         simulation_id: &Id,
         renderer: &mut Renderer,
+        resources: &Resources,
+        group: &mut ResourceGroup,
     ) -> anyhow::Result<Option<MaterialHandle>> {
         let Some(skybox) = SkyboxDefinition::load(stack, simulation_id)? else {
             return Ok(None);
         };
+        let cube_map = resources.load(LoadRequest::new(&skybox.texture, "skybox"), ColorSpace::Srgb);
+        group.add(&cube_map);
+        let material = renderer.add_material(
+            "skybox",
+            SkyboxMaterial {
+                cube_map,
+                orientation: skybox.orientation,
+                luminance: skybox.luminance,
+            },
+        )?;
 
-        match renderer.load_cube_map("skybox", &skybox.texture) {
-            Ok(cube_map) => Ok(Some(renderer.add_material(
-                "skybox",
-                SkyboxMaterial {
-                    cube_map,
-                    orientation: skybox.orientation,
-                    luminance: skybox.luminance,
-                },
-            )?)),
-            Err(err) => {
-                tracing::warn!("skipping the skybox: {err:#}");
-                Ok(None)
-            }
-        }
+        Ok(Some(material))
     }
 
     // A terrain without its height map is drawn smooth, so it needs no height.
-    fn load_terrain(
+    fn load_height_map(
         stack: &PackStack,
         body: &Id,
-        radius: f64,
-        renderer: &mut Renderer,
-    ) -> anyhow::Result<Option<LoadedTerrain>> {
+        resources: &Resources,
+        group: &mut ResourceGroup,
+    ) -> anyhow::Result<Option<ResourceHandle<TerrainHeightMap>>> {
         let Some(definition) = TerrainDefinition::load_for_body(stack, body)? else {
             return Ok(None);
         };
         let Some(path) = definition.height_map else {
             return Ok(None);
         };
+        let range = HeightMapRange {
+            minimum: definition.minimum_height,
+            maximum: definition.maximum_height,
+        };
+        let height_map = resources.load(LoadRequest::new(path, format!("{body} height map")), range);
+        group.add(&height_map);
 
-        let image = TextureImage::read(&path, ColorSpace::Linear)?;
-        ensure!(
-            image.format() == TextureFormat::R16Unorm,
-            "{}: a height map must be R16_UNORM, not {:?}",
-            path.display(),
-            image.format()
-        );
-
-        let width = image.width() as usize;
-        let height = image.height() as usize;
-        let texels = image.layers()[0][..width * height * size_of::<u16>()]
-            .as_chunks::<{ size_of::<u16>() }>()
-            .0
-            .iter()
-            .map(|&bytes| u16::from_le_bytes(bytes))
-            .collect();
-        let map = Arc::new(HeightMap::new(
-            width,
-            height,
-            texels,
-            definition.minimum_height,
-            definition.maximum_height,
-        )?);
-        let height = renderer.add_terrain_height(&format!("{body} terrain"), image, Arc::clone(&map), radius)?;
-
-        Ok(Some(LoadedTerrain { height, map }))
+        Ok(Some(height_map))
     }
 
     fn create_material(
         renderer: &mut Renderer,
+        resources: &Resources,
+        group: &mut ResourceGroup,
         body: &BodyId,
         definition: MaterialDefinition,
         star_light: Option<&StarLight>,
@@ -412,27 +413,21 @@ impl ClientWorld {
                 hapke,
             } => {
                 let mut load = |kind: &str, path: &PathBuf, color_space| {
-                    renderer.load_texture(&format!("{body} {kind}"), path, color_space)
+                    let texture = resources.load(LoadRequest::new(path, format!("{body} {kind}")), color_space);
+                    group.add(&texture);
+                    texture
                 };
 
                 let material = PlanetMaterial {
                     base_color,
-                    color: color.map(|path| load("color", &path, ColorSpace::Srgb)).transpose()?,
-                    normal: normal
-                        .map(|path| load("normal", &path, ColorSpace::Linear))
-                        .transpose()?,
-                    emissive: emissive
-                        .map(|path| load("emissive", &path, ColorSpace::Srgb))
-                        .transpose()?,
+                    color: color.map(|path| load("color", &path, ColorSpace::Srgb)),
+                    normal: normal.map(|path| load("normal", &path, ColorSpace::Linear)),
+                    emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
                     emissive_luminance,
-                    hapke: hapke
-                        .map(|hapke| -> anyhow::Result<HapkeParameters> {
-                            Ok(HapkeParameters {
-                                medium: load("hapke medium", &hapke.medium, ColorSpace::Linear)?,
-                                opposition: load("hapke opposition", &hapke.opposition, ColorSpace::Linear)?,
-                            })
-                        })
-                        .transpose()?,
+                    hapke: hapke.map(|hapke| HapkeParameters {
+                        medium: load("hapke medium", &hapke.medium, ColorSpace::Linear),
+                        opposition: load("hapke opposition", &hapke.opposition, ColorSpace::Linear),
+                    }),
                 };
                 renderer.add_material(&name, material)
             }

@@ -96,6 +96,11 @@ impl ForwardPass {
 
             for draw in frame.terrain_draws {
                 let terrain = frame.scene.terrain(draw.terrain);
+
+                if !frame.is_drawable(terrain.material) {
+                    continue;
+                }
+
                 let terrain_shader = frame
                     .render
                     .shader_override
@@ -115,7 +120,7 @@ impl ForwardPass {
                     terrain.object.index,
                     terrain.material,
                     draw.first_tile,
-                    terrain.height.as_ref().map(|height| height.buffer),
+                    Some(draw.terrain),
                 );
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);

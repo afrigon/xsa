@@ -5,6 +5,7 @@ mod hapke_parameters;
 mod lit_data;
 mod lit_material;
 mod material_buffer;
+mod material_source;
 mod planet_data;
 mod planet_material;
 mod shader;
@@ -16,6 +17,7 @@ pub use emissive_material::EmissiveMaterial;
 pub use hapke_parameters::HapkeParameters;
 pub use lit_material::LitMaterial;
 pub(super) use material_buffer::MaterialBuffer;
+pub(super) use material_source::MaterialSource;
 pub use planet_material::PlanetMaterial;
 pub use shader::Shader;
 pub use shading_model::ShadingModel;
@@ -30,5 +32,6 @@ pub trait Material {
     type Data: GpuData;
     const SHADER: Shader;
 
-    fn gpu_data(&self) -> Self::Data;
+    // None while it cannot be drawn, such as before a texture it cannot do without is loaded.
+    fn gpu_data(&self) -> Option<Self::Data>;
 }

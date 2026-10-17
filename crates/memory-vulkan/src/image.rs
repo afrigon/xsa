@@ -11,7 +11,7 @@ pub struct Image {
     // Declaration order is destruction order: the view, then the image, then its memory.
     view: DeviceObject<vk::ImageView>,
     image: DeviceObject<vk::Image>,
-    _allocation: DeviceObject<Allocation>,
+    allocation: DeviceObject<Allocation>,
     format: vk::Format,
     aspect: vk::ImageAspectFlags,
     mip_levels: u32,
@@ -56,7 +56,7 @@ impl Image {
         Ok(Image {
             view,
             image,
-            _allocation: allocation,
+            allocation,
             format: description.format,
             aspect: description.aspect,
             mip_levels: description.mip_levels,
@@ -66,6 +66,11 @@ impl Image {
 
     pub fn handle(&self) -> vk::Image {
         self.image.handle()
+    }
+
+    /// The bytes of memory it occupies.
+    pub fn size(&self) -> u64 {
+        self.allocation.get().size()
     }
 
     /// The view of every level and layer.
