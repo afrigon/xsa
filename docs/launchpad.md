@@ -109,6 +109,19 @@ addressing relies on them.
 `launchpad terrain create --help` lists these requirements in full, for the
 artists producing the cube maps.
 
+```
+launchpad terrain inspect [--verify] [--face <face> --level <n> --page <x>,<y>] <file>
+```
+
+Prints what a `.terrain` file holds: its header and size, then each level over
+its six faces (face size, pages present and expected, compressed size and ratio,
+and for heights the range their pages span), and a coverage map of each face of
+a level missing pages. It always checks the index (keys sorted, unique and
+inside their level, page data inside the file); `--verify` also decompresses
+every page. It fails when a check finds a problem. `--face` (`+x` to `-z`),
+`--level` and `--page` together print one page's entry instead, and with
+`--verify` what its data decodes to.
+
 ### `.xsaignore`
 
 A pack directory can hold files that are not content: the scripts that produce
@@ -262,6 +275,7 @@ it too.
 | `upgrade [<pack>]` | Resolves to the latest matching releases and syncs |
 | `pack package <pack directory>` | Packages a pack for release (see Packaging) |
 | `terrain create <input>` | Converts a terrain layer's cube map into a `.terrain` file (see Terrain conversion) |
+| `terrain inspect <file>` | Prints a `.terrain` file's levels and coverage and checks it (see Terrain conversion) |
 
 Publishing is not a launchpad command: an author uploads archives to their own
 host and opens a pull request on the repository.

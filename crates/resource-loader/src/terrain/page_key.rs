@@ -1,3 +1,7 @@
+use std::str::FromStr;
+
+use anyhow::Context;
+
 /// A page's place within its face and level: the Morton code of its column and row, the column in the even bits.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct PageKey {
@@ -44,5 +48,24 @@ impl PageKey {
         bits = (bits | bits >> 4) & 0x00FF_00FF_00FF_00FF;
         bits = (bits | bits >> 8) & 0x0000_FFFF_0000_FFFF;
         ((bits | bits >> 16) & 0xFFFF_FFFF) as u32
+    }
+}
+
+/// Reads a page key from its column and row: `x,y`.
+impl FromStr for PageKey {
+    type Err = anyhow::Error;
+
+    fn from_str(text: &str) -> anyhow::Result<PageKey> {
+        let (x, y) = text
+            .split_once(',')
+            .with_context(|| format!("page {text:?}: expected <column>,<row>"))?;
+        let coordinate = |value: &str| {
+            value
+                .trim()
+                .parse::<u32>()
+                .with_context(|| format!("page {text:?}: {value:?} is not a page coordinate"))
+        };
+
+        Ok(PageKey::from_coordinates(coordinate(x)?, coordinate(y)?))
     }
 }

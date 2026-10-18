@@ -76,7 +76,7 @@ kinds (height maps, lens textures) through its `ResourceKind` trait.
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
 | `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
-| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), and the converter of terrain layers into `.terrain` files (`terrain create`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
+| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), the converter of terrain layers into `.terrain` files (`terrain create`) and their inspector (`terrain inspect`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
 | `logging` | The verbosity flags (`-v`, `-q`) and the `tracing` subscriber shared by `xsa` and `launchpad` |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
