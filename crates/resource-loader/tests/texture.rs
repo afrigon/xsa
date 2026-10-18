@@ -92,7 +92,10 @@ fn a_ktx2_cube_map_regroups_its_levels_by_face() {
         supercompression: SUPERCOMPRESSION_ZSTANDARD,
         levels,
     };
-    let image = Ktx2Loader::load(&file.bytes()).unwrap().in_color_space(ColorSpace::Srgb).unwrap();
+    let image = Ktx2Loader::load(&file.bytes())
+        .unwrap()
+        .in_color_space(ColorSpace::Srgb)
+        .unwrap();
 
     assert_eq!(image.format(), TextureFormat::Rgba8Srgb);
     assert_eq!(image.mip_levels(), 2);
@@ -115,7 +118,10 @@ fn an_uncompressed_ktx2_height_map_reads_as_is() {
         supercompression: SUPERCOMPRESSION_NONE,
         levels: vec![(0..16).collect()],
     };
-    let image = Ktx2Loader::load(&file.bytes()).unwrap().in_color_space(ColorSpace::Linear).unwrap();
+    let image = Ktx2Loader::load(&file.bytes())
+        .unwrap()
+        .in_color_space(ColorSpace::Linear)
+        .unwrap();
 
     assert_eq!(image.format(), TextureFormat::R16Unorm);
     assert_eq!((image.width(), image.height()), (4, 2));
@@ -138,8 +144,14 @@ fn a_ktx2_texture_keeps_the_format_it_stores() {
         ..colors
     };
 
-    assert_eq!(Ktx2Loader::load(&colors.bytes()).unwrap().format(), TextureFormat::Rgba8Srgb);
-    assert_eq!(Ktx2Loader::load(&heights.bytes()).unwrap().format(), TextureFormat::R32Float);
+    assert_eq!(
+        Ktx2Loader::load(&colors.bytes()).unwrap().format(),
+        TextureFormat::Rgba8Srgb
+    );
+    assert_eq!(
+        Ktx2Loader::load(&heights.bytes()).unwrap().format(),
+        TextureFormat::R32Float
+    );
 }
 
 #[test]
@@ -153,7 +165,12 @@ fn data_formats_cannot_be_read_as_colors() {
         levels: vec![vec![0; 8]],
     };
 
-    assert!(Ktx2Loader::load(&file.bytes()).unwrap().in_color_space(ColorSpace::Srgb).is_err());
+    assert!(
+        Ktx2Loader::load(&file.bytes())
+            .unwrap()
+            .in_color_space(ColorSpace::Srgb)
+            .is_err()
+    );
 }
 
 #[test]
@@ -181,7 +198,10 @@ fn a_dds_texture_reads_its_mip_chain() {
     bytes[128..132].copy_from_slice(&DXGI_FORMAT_BC7_UNORM.to_le_bytes());
     bytes.extend(vec![1; 4 * BC7_BLOCK_BYTES]);
     bytes.extend(vec![2; BC7_BLOCK_BYTES]);
-    let image = DdsLoader::load(&bytes).unwrap().in_color_space(ColorSpace::Srgb).unwrap();
+    let image = DdsLoader::load(&bytes)
+        .unwrap()
+        .in_color_space(ColorSpace::Srgb)
+        .unwrap();
 
     assert_eq!(image.format(), TextureFormat::Bc7Srgb);
     assert_eq!(image.mip_levels(), 2);
@@ -196,7 +216,10 @@ fn a_png_reads_as_one_rgba_level() {
         .unwrap()
         .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
         .unwrap();
-    let image = PngLoader::load(&bytes).unwrap().in_color_space(ColorSpace::Linear).unwrap();
+    let image = PngLoader::load(&bytes)
+        .unwrap()
+        .in_color_space(ColorSpace::Linear)
+        .unwrap();
 
     assert_eq!(image.format(), TextureFormat::Rgba8Unorm);
     assert_eq!(image.mip_levels(), 1);

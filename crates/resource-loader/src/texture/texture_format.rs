@@ -98,7 +98,9 @@ impl TextureFormat {
     /// Whether the format stores compressed blocks rather than texels.
     pub fn is_block_compressed(self) -> bool {
         match self {
-            TextureFormat::Bc4Unorm | TextureFormat::Bc5Unorm | TextureFormat::Bc7Unorm | TextureFormat::Bc7Srgb => true,
+            TextureFormat::Bc4Unorm | TextureFormat::Bc5Unorm | TextureFormat::Bc7Unorm | TextureFormat::Bc7Srgb => {
+                true
+            }
             TextureFormat::Rg8Unorm
             | TextureFormat::Rgba8Unorm
             | TextureFormat::Rgba8Srgb
