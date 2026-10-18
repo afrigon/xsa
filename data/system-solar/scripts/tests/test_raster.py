@@ -55,3 +55,19 @@ def test_ground_rising_northward_tilts_the_normal_south():
     normals = Raster(heights).normals(radius=1000.0).pixels
 
     assert normals[16, 10, 1] < 0
+
+
+# In the game's layout: longitude 0 a quarter of the way along each row, longitudes growing westward, rows from the
+# south pole.
+def test_interpolation_at_pixel_centers_gives_the_pixels_and_wraps_around():
+    width, height = 8, 4
+    pixels = np.arange(width * height, dtype=np.float32).reshape(height, width, 1)
+    raster = Raster(pixels)
+    columns = np.arange(width)
+    longitudes = (0.25 - (columns + 0.5) / width) * 2 * np.pi
+    latitude = ((1 + 0.5) / height - 0.5) * np.pi
+
+    assert np.allclose(raster.interpolated_at(np.full(width, latitude), longitudes)[..., 0], pixels[1, :, 0])
+
+    seam = (0.25 - 1.0) * 2 * np.pi
+    assert np.isclose(raster.interpolated_at(np.array(latitude), np.array(seam))[0], (pixels[1, 0, 0] + pixels[1, -1, 0]) / 2)

@@ -19,7 +19,7 @@ class TextureWriter:
 
     @staticmethod
     def color() -> "TextureWriter":
-        return TextureWriter(TextureFormat.BC7_SRGB, TextureWriter._srgb)
+        return TextureWriter(TextureFormat.RGBA8_SRGB, TextureWriter._srgb)
 
     @staticmethod
     def normal() -> "TextureWriter":

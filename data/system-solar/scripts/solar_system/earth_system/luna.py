@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 
 from operations.band_color import BandColor
@@ -17,11 +19,15 @@ from operations.recipe import Recipe
 from operations.source import Source
 from operations.texture_writer import TextureWriter
 
+logger = logging.getLogger(__name__)
+
 # The reference sphere of every LRO data product.
 RADIUS = 1737400.0
 METERS_PER_KILOMETER = 1000.0
 # Untiered: the server and every client read the same terrain.
 TERRAIN_FACE_SIZE = 4096
+# The mosaic's 76 pixels per degree resolve texels of this size.
+COLOR_FACE_SIZE = 4096
 # The Hapke parameter maps are 1° per pixel: about one pixel per texel.
 HAPKE_FACE_SIZE = 128
 CGI_MOON_KIT = SourceLayout(left_edge_longitude=-180.0, north_up=True)
@@ -131,7 +137,7 @@ class Luna(Recipe):
 
     def build(self, context: BuildContext) -> None:
         color = self._color(context)
-        TextureWriter.color().write(context.texture_path("bodies/luna/color"), [color])
+        TextureWriter.color().write(context.terrain_layer_path("bodies/luna/color"), color.faces)
 
         elevation_path = self.elevation.fetch(context.cache)
         width = context.output_width(Raster.native_width(elevation_path))
@@ -162,8 +168,8 @@ class Luna(Recipe):
 
         return heights
 
-    # Hapke 2012's parameters of one band, as they are, in the medium and opposition textures.
-    # Computed on the parameter maps' own pixels, then averaged into the cubes.
+    # Hapke 2012's parameters of one band, as they are, in the medium and opposition maps: computed on the parameter
+    # maps' own pixels, then averaged into the cubes.
     def _hapke(self, context: BuildContext) -> HapkeMaterial:
         parameters = self._parameters(self.parameter_map.fetch(context.cache), HAPKE_WAVELENGTH).extended_toward_poles()
         medium = self._channels(parameters, ["b", "c", "theta"])
@@ -190,25 +196,34 @@ class Luna(Recipe):
 
         return np.where(term > 0, porosity, 1.0).astype(np.float32)
 
-    # Each pixel's diffusive reflectance, per band, from the single-scattering albedo that reproduces the mosaic's
-    # measurement with the Hapke parameters of its region; then the bands as sRGB.
-    def _color(self, context: BuildContext) -> Raster:
+    # Each mosaic pixel's diffusive reflectance, per band, from the single-scattering albedo that reproduces its
+    # measurement with the Hapke parameters at that pixel, averaged into the cube; then the bands as sRGB.
+    def _color(self, context: BuildContext) -> CubeMap:
         parameter_path = self.parameter_map.fetch(context.cache)
         reflectances = []
-        width = None
 
         for wavelength, sources in self.mosaic.items():
-            tiles = [source.fetch(context.cache) for source in sources]
-            width = width or context.output_width(4 * Raster.native_width(tiles[0]))
-            radiance_factor = Raster.read_tiles(tiles, width).pixels[..., 0]
-            parameters = self._parameters(parameter_path, wavelength).extended_toward_poles().interpolated(width)
-            model = self._model(parameters.pixels)
-            albedo = model.single_scattering_albedo(radiance_factor, STANDARD_GEOMETRY)
-            reflectances.append(HapkeModel.diffusive_reflectance(albedo))
+            parameters = self._parameters(parameter_path, wavelength).extended_toward_poles()
+            cube = CubeAccumulator(COLOR_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
 
-        color = Raster(BandColor(list(self.mosaic)).linear_srgb(np.stack(reflectances, axis=-1)).astype(np.float32))
-        filled = CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context, width))
-        return ColorGrade(SATURATION).apply(filled)
+            for tile in sources:
+                source = EquirectangularSource.georeferenced(tile.fetch(context.cache))
+                subdivisions = cube.subdivisions(source)
+
+                for band in source.bands():
+                    model = self._model(parameters.interpolated_at(band.latitudes, band.longitudes), parameters.pixels)
+                    albedo = model.single_scattering_albedo(band.values[..., 0], STANDARD_GEOMETRY)
+                    reflectance = HapkeModel.diffusive_reflectance(albedo)
+                    cube.add_band(source, band.with_values(reflectance[..., None]), subdivisions)
+
+                logger.info("%d nm: %s", wavelength, tile.file_name)
+
+            reflectances.append(np.stack([face.pixels[..., 0] for face in cube.cube_map().faces]))
+
+        bands = BandColor(list(self.mosaic)).linear_srgb(np.stack(reflectances, axis=-1)).astype(np.float32)
+        color = CubeMap([Raster(face) for face in bands], CubeProjection.EQUAL_ANGLE)
+        filled = CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context))
+        return CubeMap([ColorGrade(SATURATION).apply(face) for face in filled.faces], CubeProjection.EQUAL_ANGLE)
 
     @staticmethod
     def _channels(parameters: Raster, names: list[str]) -> Raster:
@@ -218,27 +233,28 @@ class Luna(Recipe):
         first = CAMERA_WAVELENGTHS.index(wavelength) * len(PARAMETERS) + 1
         return Raster.read_tiles([path], 360, bands=list(range(first, first + len(PARAMETERS))))
 
-    # Sato et al. hold Bc0, hc and θ constant over the Moon; their filling factor φ = 0 makes the porosity K exactly 1.
+    # Sato et al. hold Bc0, hc and θ constant over the Moon, taken here from the whole parameter map; their filling
+    # factor φ = 0 makes the porosity K exactly 1.
     @staticmethod
-    def _model(parameters: np.ndarray) -> HapkeModel:
+    def _model(parameters: np.ndarray, whole_map: np.ndarray) -> HapkeModel:
         value = {name: parameters[..., index] for index, name in enumerate(PARAMETERS)}
+        constant = {name: whole_map[..., index] for index, name in enumerate(PARAMETERS)}
         return HapkeModel(
             lobe_width=value["b"],
             lobe_balance=value["c"],
             shadow_hiding_amplitude=value["Bs0"],
             shadow_hiding_width=value["hs"],
-            backscatter_amplitude=float(np.nanmean(value["Bc0"])),
-            backscatter_width=float(np.nanmean(value["hc"])),
+            backscatter_amplitude=float(np.nanmean(constant["Bc0"])),
+            backscatter_width=float(np.nanmean(constant["hc"])),
             porosity=1.0,
-            roughness=float(np.radians(np.nanmean(value["theta"]))),
+            roughness=float(np.radians(np.nanmean(constant["theta"]))),
         )
 
-    def _polar_albedo(self, context: BuildContext, width: int) -> Raster:
-        hemispheres = []
+    def _polar_albedo(self, context: BuildContext) -> CubeMap:
+        cube = CubeAccumulator(COLOR_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
 
         for image, label in self.polar_albedo:
             image.fetch(context.cache)
-            hemispheres.append(Raster.read_reprojected(label.fetch(context.cache), width).pixels)
+            cube.add(PolarStereographicSource(label.fetch(context.cache)))
 
-        north, south = hemispheres
-        return Raster(np.where(np.isnan(north), south, north))
+        return cube.cube_map()

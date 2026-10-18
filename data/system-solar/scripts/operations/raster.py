@@ -146,6 +146,21 @@ class Raster:
         bottom = self.pixels[y1][:, x0] * (1 - fx) + self.pixels[y1][:, x1] * fx
         return Raster((top * (1 - fy) + bottom * fy).astype(np.float32))
 
+    # Bilinear interpolation at any latitude and longitude, in radians, broadcast together: for smooth fields such as
+    # fitted parameters, evaluated where another map's pixels sit.
+    def interpolated_at(self, latitudes: np.ndarray, longitudes: np.ndarray) -> np.ndarray:
+        x = (0.25 - longitudes / (2 * np.pi)) * self.width - 0.5
+        y = np.clip((latitudes / np.pi + 0.5) * self.height - 0.5, 0, self.height - 1)
+        x, y = np.broadcast_arrays(x, y)
+        x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+        fx, fy = (x - x0)[..., None], (y - y0)[..., None]
+        x1, y1 = (x0 + 1) % self.width, np.minimum(y0 + 1, self.height - 1)
+        x0 %= self.width
+        pixels = self.pixels.astype(np.float64)
+        top = pixels[y0, x0] * (1 - fx) + pixels[y0, x1] * fx
+        bottom = pixels[y1, x0] * (1 - fx) + pixels[y1, x1] * fx
+        return top * (1 - fy) + bottom * fy
+
     def resampled(self, width: int) -> "Raster":
         return Raster(Raster._resampled(self.pixels, width))
 
