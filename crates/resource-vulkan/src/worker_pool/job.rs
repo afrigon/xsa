@@ -1,7 +1,7 @@
-use crate::EntryId;
+use crate::JobOwner;
 
-// Loads one entry's file on a worker.
+// Loads one entry's file, or reads one streamed page, on a worker.
 pub(crate) struct Job {
-    pub entry: EntryId,
+    pub owner: JobOwner,
     pub run: Box<dyn FnOnce() + Send>,
 }

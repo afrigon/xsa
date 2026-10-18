@@ -2,33 +2,42 @@ mod budget_reading;
 
 pub(crate) use budget_reading::BudgetReading;
 
-use crate::{EntryId, MemoryUsage, ResourceLimits};
+use crate::{MemoryUsage, ResourceLimits};
 
-// Picks which unreferenced resources go when usage is over budget. Resources fill memory up to what the system
-// reports; the limits only lower that.
+// Decides how far usage is over budget and which soft usage goes. Resources and streamed pages fill memory up to what
+// the system reports; the limits only lower that.
 #[derive(Default)]
 pub(crate) struct MemoryBudget {
     pub limits: ResourceLimits,
 }
 
 impl MemoryBudget {
-    // `soft` lists the unreferenced resources, least recently used first.
-    pub fn evictions(
-        &self,
-        reading: &BudgetReading,
-        soft: impl IntoIterator<Item = (EntryId, MemoryUsage)>,
-    ) -> Vec<EntryId> {
-        let video_budget = MemoryBudget::capped(reading.video.budget, self.limits.max_video_memory_usage);
-        let reported_ram = reading.available_ram.map(|available| reading.held_ram + available);
-        let ram_budget = match (reported_ram, self.limits.max_memory_usage) {
-            (Some(reported), limit) => Some(MemoryBudget::capped(reported, limit)),
-            (None, limit) => limit,
-        };
-        let mut video_over = (reading.video.usage.saturating_sub(reading.evicting_video)).saturating_sub(video_budget);
-        let mut ram_over = ram_budget.map_or(0, |budget| reading.held_ram.saturating_sub(budget));
+    // The bytes of video memory and RAM above budget.
+    pub fn overage(&self, reading: &BudgetReading) -> MemoryUsage {
+        let ram = self
+            .ram_budget(reading)
+            .map_or(0, |budget| reading.held_ram.saturating_sub(budget));
+
+        MemoryUsage {
+            video: self.video_in_use(reading).saturating_sub(self.video_budget(reading)),
+            ram,
+        }
+    }
+
+    // The video memory that can be taken without going over budget once `reclaimable` bytes of soft usage go.
+    pub fn video_room(&self, reading: &BudgetReading, reclaimable: u64) -> u64 {
+        let in_use = self.video_in_use(reading).saturating_sub(reclaimable);
+
+        self.video_budget(reading).saturating_sub(in_use)
+    }
+
+    // `soft` lists what may go, in the order it should; picks from it until `overage` is covered.
+    pub fn evictions<T>(overage: MemoryUsage, soft: impl IntoIterator<Item = (T, MemoryUsage)>) -> Vec<T> {
+        let mut video_over = overage.video;
+        let mut ram_over = overage.ram;
         let mut evicted = Vec::new();
 
-        for (entry, memory) in soft {
+        for (owner, memory) in soft {
             if video_over == 0 && ram_over == 0 {
                 break;
             }
@@ -39,11 +48,28 @@ impl MemoryBudget {
             if frees_video || frees_ram {
                 video_over = video_over.saturating_sub(memory.video);
                 ram_over = ram_over.saturating_sub(memory.ram);
-                evicted.push(entry);
+                evicted.push(owner);
             }
         }
 
         evicted
+    }
+
+    fn video_budget(&self, reading: &BudgetReading) -> u64 {
+        MemoryBudget::capped(reading.video.budget, self.limits.max_video_memory_usage)
+    }
+
+    fn video_in_use(&self, reading: &BudgetReading) -> u64 {
+        reading.video.usage.saturating_sub(reading.evicting_video)
+    }
+
+    fn ram_budget(&self, reading: &BudgetReading) -> Option<u64> {
+        let reported = reading.available_ram.map(|available| reading.held_ram + available);
+
+        match (reported, self.limits.max_memory_usage) {
+            (Some(reported), limit) => Some(MemoryBudget::capped(reported, limit)),
+            (None, limit) => limit,
+        }
     }
 
     fn capped(reported: u64, limit: Option<u64>) -> u64 {
@@ -59,8 +85,8 @@ mod tests {
 
     const MIB: u64 = 1024 * 1024;
 
-    fn entry(value: u64, video: u64, ram: u64) -> (EntryId, MemoryUsage) {
-        (EntryId { value }, MemoryUsage { video, ram })
+    fn entry(value: u64, video: u64, ram: u64) -> (u64, MemoryUsage) {
+        (value, MemoryUsage { video, ram })
     }
 
     fn reading(video_budget: u64, video_usage: u64) -> BudgetReading {
@@ -75,12 +101,8 @@ mod tests {
         }
     }
 
-    fn evicted(budget: &MemoryBudget, reading: &BudgetReading, soft: Vec<(EntryId, MemoryUsage)>) -> Vec<u64> {
-        budget
-            .evictions(reading, soft)
-            .into_iter()
-            .map(|entry| entry.value)
-            .collect()
+    fn evicted(budget: &MemoryBudget, reading: &BudgetReading, soft: Vec<(u64, MemoryUsage)>) -> Vec<u64> {
+        MemoryBudget::evictions(budget.overage(reading), soft)
     }
 
     #[test]
@@ -153,5 +175,14 @@ mod tests {
         over.held_ram = 150 * MIB;
 
         assert!(evicted(&MemoryBudget::default(), &over, vec![entry(0, 0, 80 * MIB)]).is_empty());
+    }
+
+    #[test]
+    fn room_counts_reclaimable_usage_as_free() {
+        let budget = MemoryBudget::default();
+        let full = reading(1000 * MIB, 1000 * MIB);
+
+        assert_eq!(budget.video_room(&full, 0), 0);
+        assert_eq!(budget.video_room(&full, 64 * MIB), 64 * MIB);
     }
 }

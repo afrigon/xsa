@@ -7,11 +7,16 @@ use std::thread::available_parallelism;
 use anyhow::bail;
 use memory_vulkan::{BindlessTable, MemoryContext, TransferQueue};
 
+use crate::streaming::{PageFormat, PageSource, StreamedSet, Streamer};
 use crate::{
-    AnyEntry, AvailableMemory, BudgetReading, Entry, EntryId, Events, Job, LoadEnvironment, LoadPriority, LoadRequest,
-    MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKey, ResourceKind, ResourceLimits, ResourceState,
-    Unavailable, WorkerPool,
+    AnyEntry, AvailableMemory, BudgetReading, Entry, EntryId, Events, Job, JobOwner, LoadEnvironment, LoadPriority,
+    LoadRequest, MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKey, ResourceKind, ResourceLimits,
+    ResourceState, SoftOwner, SoftUsage, Unavailable, WorkerPool,
 };
+
+// Page reads queued ahead per worker: enough to keep every worker busy, few enough that the order follows each frame's
+// scores.
+const READS_PER_WORKER: usize = 2;
 
 /// Loads resource files in the background and frees them once nothing uses them.
 ///
@@ -34,6 +39,9 @@ struct SharedResources {
     available_memory: Mutex<Option<AvailableMemory>>,
     // Evicted video memory the deletion queue has not freed yet.
     evicting_video: Arc<AtomicU64>,
+    streamer: Mutex<Streamer>,
+    // Counts updates: the clock last uses are measured in.
+    now: AtomicU64,
 }
 
 impl Resources {
@@ -56,6 +64,8 @@ impl Resources {
                 budget: Mutex::new(MemoryBudget::default()),
                 available_memory: Mutex::new(available_memory),
                 evicting_video: Arc::new(AtomicU64::new(0)),
+                streamer: Mutex::new(Streamer::new()),
+                now: AtomicU64::new(0),
             }),
         }
     }
@@ -74,6 +84,12 @@ impl Resources {
         handle
     }
 
+    /// Registers paged data that streams through `source` in pages of `format`, named `name` in messages. The set's
+    /// pages load and evict in `update`, by what it requests and what the memory budget allows.
+    pub fn stream<S: PageSource>(&self, source: S, format: PageFormat, name: impl Into<String>) -> StreamedSet<S> {
+        self.shared.streamer().register(source, format, name.into())
+    }
+
     /// Moves every resource of `group` still loading to `priority`, including uploads already queued.
     pub fn set_priority(&self, group: &ResourceGroup, priority: LoadPriority) {
         for entry in group.entries() {
@@ -84,13 +100,16 @@ impl Resources {
 
     pub fn set_limits(&self, limits: ResourceLimits) {
         self.shared.pool.set_worker_count(Resources::worker_count(limits));
+        self.shared.pool.set_read_delay(limits.read_delay);
         self.shared.budget().limits = limits;
     }
 
-    /// Finishes the loads whose uploads completed, reports missing and failed files, frees what is no longer used
-    /// and keeps memory within budget. Fails when a required resource is missing or failed.
+    /// Finishes the loads whose uploads completed, reports missing and failed files, frees what is no longer used,
+    /// streams the pages streamed sets want and keeps memory within budget. Fails when a required resource is missing
+    /// or failed.
     pub fn update(&self) -> anyhow::Result<()> {
         let shared = &self.shared;
+        let now = shared.now.fetch_add(1, Ordering::AcqRel) + 1;
         let events = std::mem::take(&mut *shared.events());
         let mut registry = shared.registry();
         let required_failures = Resources::report(&registry, &events.unavailable);
@@ -107,7 +126,7 @@ impl Resources {
             let has_value = !matches!(entry.state(), ResourceState::Missing | ResourceState::Failed(_));
 
             if entry.is_cached() && has_value {
-                registry.keep_unreferenced(entry.as_ref());
+                registry.keep_unreferenced(entry.as_ref(), now);
             } else {
                 registry.forget(entry.as_ref());
             }
@@ -116,7 +135,11 @@ impl Resources {
         registry.compact();
         drop(registry);
         self.finish_uploads();
-        self.keep_within_budget();
+        let max_reads = Resources::worker_count(shared.budget().limits) * READS_PER_WORKER;
+        shared
+            .streamer()
+            .update(now, &shared.environment, &shared.pool, max_reads);
+        self.keep_within_budget(now);
 
         if !required_failures.is_empty() {
             bail!("required resources are unavailable:\n{}", required_failures.join("\n"));
@@ -164,7 +187,7 @@ impl Resources {
                 shared.pool.push(
                     priority,
                     Job {
-                        entry: id,
+                        owner: JobOwner::Entry(id),
                         run: Box::new(move || entry.load(&environment, &uploading)),
                     },
                 );
@@ -204,7 +227,72 @@ impl Resources {
         self.shared.uploading().extend(uploading);
     }
 
-    fn keep_within_budget(&self) {
+    fn keep_within_budget(&self, now: u64) {
+        let shared = &self.shared;
+        let mut reading = self.budget_reading();
+        let budget = shared.budget();
+        let mut streamer = shared.streamer();
+
+        if streamer.is_starved() {
+            let registry = shared.registry();
+            let unreferenced_video: u64 = registry.unreferenced_usage().map(|usage| usage.memory.video).sum();
+            drop(registry);
+            let idle_chunks: u64 = streamer
+                .chunk_usage()
+                .iter()
+                .filter(|usage| usage.last_use < now)
+                .map(|usage| usage.memory.video)
+                .sum();
+            let room = budget.video_room(&reading, unreferenced_video + idle_chunks);
+
+            if streamer.grow(room, now, &shared.environment) {
+                reading.video = shared.environment.memory.video_memory();
+            }
+        }
+
+        let overage = budget.overage(&reading);
+        drop(budget);
+
+        if overage.video == 0 && overage.ram == 0 {
+            return;
+        }
+
+        let mut registry = shared.registry();
+        let mut soft: Vec<SoftUsage> = registry.unreferenced_usage().collect();
+
+        if overage.video > 0 {
+            soft.extend(streamer.chunk_usage());
+        }
+
+        if overage.ram > 0 {
+            soft.extend(streamer.page_bytes_usage());
+        }
+
+        soft.sort_by(SoftUsage::eviction_order);
+        let evictions = MemoryBudget::evictions(overage, soft.into_iter().map(|usage| (usage.owner, usage.memory)));
+
+        for owner in evictions {
+            match owner {
+                SoftOwner::Entry(id) => {
+                    let Some(entry) = registry.entries.get(&id).cloned() else {
+                        continue;
+                    };
+                    let video = entry.memory().video;
+                    registry.forget(entry.as_ref());
+                    drop(entry);
+                    self.count_evicting(video);
+                }
+                SoftOwner::Chunk(chunk) => {
+                    if let Some(chunk) = streamer.release_chunk(chunk) {
+                        self.count_evicting(chunk.size);
+                    }
+                }
+                SoftOwner::PageBytes(page) => streamer.evict_page_bytes(page),
+            }
+        }
+    }
+
+    fn budget_reading(&self) -> BudgetReading {
         let shared = &self.shared;
         let available_ram = shared
             .available_memory
@@ -217,32 +305,30 @@ impl Resources {
                     .inspect_err(|err| tracing::warn!("reading the available memory: {err:#}"))
                     .ok()
             });
-        let mut registry = shared.registry();
-        let reading = BudgetReading {
+        let held_ram = shared
+            .registry()
+            .entries
+            .values()
+            .map(|entry| entry.memory().ram)
+            .sum::<u64>()
+            + shared.streamer().ram_bytes();
+
+        BudgetReading {
             video: shared.environment.memory.video_memory(),
             evicting_video: shared.evicting_video.load(Ordering::Acquire),
-            held_ram: registry.entries.values().map(|entry| entry.memory().ram).sum(),
+            held_ram,
             available_ram,
-        };
-        let soft = registry
-            .least_recently_used()
-            .map(|entry| (entry.id(), entry.memory()))
-            .collect::<Vec<_>>();
-        let evictions = shared.budget().evictions(&reading, soft);
-
-        for id in evictions {
-            let Some(entry) = registry.entries.get(&id).cloned() else {
-                continue;
-            };
-            let video = entry.memory().video;
-            registry.forget(entry.as_ref());
-            drop(entry);
-            shared.evicting_video.fetch_add(video, Ordering::AcqRel);
-            let evicting_video = Arc::clone(&shared.evicting_video);
-            shared.environment.memory.defer_action(move |_| {
-                evicting_video.fetch_sub(video, Ordering::AcqRel);
-            });
         }
+    }
+
+    // Counts `video` bytes as freed until the deletion queue frees them.
+    fn count_evicting(&self, video: u64) {
+        let shared = &self.shared;
+        shared.evicting_video.fetch_add(video, Ordering::AcqRel);
+        let evicting_video = Arc::clone(&shared.evicting_video);
+        shared.environment.memory.defer_action(move |_| {
+            evicting_video.fetch_sub(video, Ordering::AcqRel);
+        });
     }
 
     fn worker_count(limits: ResourceLimits) -> usize {
@@ -269,5 +355,9 @@ impl SharedResources {
 
     fn budget(&self) -> MutexGuard<'_, MemoryBudget> {
         self.budget.lock().expect("the memory budget's lock is poisoned")
+    }
+
+    fn streamer(&self) -> MutexGuard<'_, Streamer> {
+        self.streamer.lock().expect("the streamer's lock is poisoned")
     }
 }
