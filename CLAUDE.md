@@ -37,6 +37,7 @@ Everything runs through mise; tools are pinned in `mise.toml`.
 | `mise run client -- --remote <host>:<port> --fingerprint <hash>` | Run the game against a dedicated server |
 | `mise run server [--release]` | Run a dedicated server (`-- --host <address> --port <port>`) |
 | `mise run ipc -- <command>` | Send a command to a running game or server (`--name <name>` when several run) |
+| `mise run launchpad [--release] -- <arguments>` | Run `launchpad`, the instance and pack manager (`docs/launchpad.md`) |
 | `mise run build [--release]` / `build-server` | Build everything / the server-only binary |
 | `mise run test` / `fmt` / `lint` | Unit tests / format (120 columns) / Clippy with warnings as errors, full and server-only builds |
 | `mise run shaders` | Compile the Slang shaders to SPIR-V and validate them |
@@ -73,6 +74,8 @@ kinds (height maps, lens textures) through its `ResourceKind` trait.
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
 | `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
+| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`); thin command handlers over a context carrying the output shell |
+| `logging` | The verbosity flags (`-v`, `-q`) and the `tracing` subscriber shared by `xsa` and `launchpad` |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains |

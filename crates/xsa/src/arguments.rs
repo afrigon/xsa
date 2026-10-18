@@ -1,4 +1,5 @@
 use usage::Cli;
+use xsa_logging::VerbosityArguments;
 
 use crate::command::Command;
 
@@ -12,10 +13,8 @@ use crate::command::Command;
     args_override_self = false
 )]
 pub struct Arguments {
-    #[usage(short, long, count, global, help = "Log more: -v info, -vv debug, -vvv trace")]
-    pub verbose: u8,
-    #[usage(short, long, global, help = "Log errors only")]
-    pub quiet: bool,
+    #[usage(flatten)]
+    pub verbosity: VerbosityArguments,
     #[usage(subcommand)]
     pub command: Command,
 }

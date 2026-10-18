@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph-vulkan", "crates/memory-vulkan", "crates/resource-loader", "crates/resource-vulkan"]
+members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph-vulkan", "crates/memory-vulkan", "crates/resource-loader", "crates/resource-vulkan", "crates/logging", "crates/launchpad"]
 
 [workspace.package]
 version = "0.0.1"
@@ -24,6 +24,7 @@ winit = "0.30.13"
 xsa-client = { path = "crates/client" }
 xsa-commands = { path = "crates/commands" }
 xsa-core = { path = "crates/core" }
+xsa-logging = { path = "crates/logging" }
 xsa-packs = { path = "crates/packs" }
 xsa-proto = { path = "crates/proto" }
 xsa-server = { path = "crates/server" }

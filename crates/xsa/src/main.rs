@@ -7,16 +7,16 @@ mod client_arguments;
 mod command;
 mod completion_arguments;
 mod ipc_arguments;
-mod logging;
 mod server_arguments;
 mod world_arguments;
 
 use arguments::Arguments;
-use logging::Logging;
+use xsa_commands::console_log::ConsoleLog;
+use xsa_logging::Logging;
 
 fn main() -> anyhow::Result<()> {
     let arguments = Arguments::parse();
-    Logging::from_verbosity(arguments.verbose, arguments.quiet).install();
+    Logging::new(arguments.verbosity.verbosity()).install(ConsoleLog::writer);
 
     arguments.command.run()
 }

@@ -92,6 +92,17 @@ if [[ "${1:-}" == "--release" ]]; then release=(--release); shift; fi
 cargo run -q -p xsa "${release[@]}" -- ipc "$@"
 """
 
+[tasks.launchpad]
+description = "Run launchpad, the instance and pack manager; --release first for an optimized build, then launchpad arguments after --, e.g. -- completion fish"
+# No usage spec: mise would take --help meant for launchpad as a request for this task's help.
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+release=()
+if [[ "${1:-}" == "--release" ]]; then release=(--release); shift; fi
+cargo run -q -p xsa-launchpad "${release[@]}" -- "$@"
+"""
+
 [tasks.server]
 description = "Run the server-only build as a dedicated server; --release first for an optimized build, then xsa server arguments after --, e.g. -- --host :: --port 1969"
 run = """

@@ -1,0 +1,16 @@
+[package]
+name = "xsa-launchpad"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "launchpad"
+path = "src/main.rs"
+
+[dependencies]
+anstream = "1.0.0"
+anstyle = "1.0.14"
+anyhow.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+usage = { workspace = true, features = ["completions"] }
+xsa-logging.workspace = true
