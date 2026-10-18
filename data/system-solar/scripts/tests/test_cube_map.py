@@ -1,7 +1,9 @@
 import numpy as np
+import pytest
 import rasterio
 
 from operations.cube_map import CUBE_FACE_COUNT, CubeMap
+from operations.cube_projection import CubeProjection
 from operations.raster import SourceLayout
 
 FACE_SIZE = 4
@@ -19,21 +21,32 @@ def longitudes(width):
     return -180 + (np.arange(width) + 0.5) * 360 / width
 
 
-def test_texel_inverts_direction_on_every_face():
+@pytest.mark.parametrize("projection", list(CubeProjection))
+def test_texel_inverts_direction_on_every_face(projection):
     centers = (np.arange(FACE_SIZE) + 0.5) / FACE_SIZE * 2 - 1
 
     for face in range(CUBE_FACE_COUNT):
-        direction = CubeMap._direction(face, centers[None, :], centers[:, None])
-        faces, columns, rows = CubeMap._texel(direction, FACE_SIZE)
+        direction = CubeMap._direction(face, centers[None, :], centers[:, None], projection)
+        faces, columns, rows = CubeMap._texel(direction, FACE_SIZE, projection)
 
         assert (faces == face).all()
         assert (columns == np.arange(FACE_SIZE)[None, :]).all()
         assert (rows == np.arange(FACE_SIZE)[:, None]).all()
 
 
+def test_equal_angle_texels_span_equal_angles_along_a_faces_center_row():
+    edges = np.linspace(-1, 1, FACE_SIZE + 1)
+    direction = CubeMap._direction(FRONT, edges, np.zeros_like(edges), CubeProjection.EQUAL_ANGLE)
+    angles = np.arctan2(-direction[:, 2], direction[:, 0])
+
+    assert np.allclose(np.diff(angles), np.pi / 2 / FACE_SIZE)
+
+
 def test_a_constant_source_gives_constant_faces(tmp_path):
     write_source(tmp_path / "flat.tif", np.full((180, 360), 2.5))
-    cube = CubeMap.from_equirectangular(tmp_path / "flat.tif", FACE_SIZE, SourceLayout(), scale=1000)
+    cube = CubeMap.from_equirectangular(
+        tmp_path / "flat.tif", FACE_SIZE, CubeProjection.EQUAL_ANGLE, SourceLayout(), scale=1000
+    )
 
     assert all(np.allclose(face.pixels, 2500) for face in cube.faces)
 
@@ -43,8 +56,12 @@ def test_faces_sit_on_the_body_frame_axes(tmp_path):
     latitude = 90 - (np.arange(width // 2) + 0.5) * 180 / (width // 2)
     write_source(tmp_path / "latitude.tif", np.repeat(latitude[:, None], width, axis=1))
     write_source(tmp_path / "longitude.tif", np.repeat(longitudes(width)[None, :], width // 2, axis=0))
-    by_latitude = CubeMap.from_equirectangular(tmp_path / "latitude.tif", FACE_SIZE, SourceLayout())
-    by_longitude = CubeMap.from_equirectangular(tmp_path / "longitude.tif", FACE_SIZE, SourceLayout())
+    by_latitude = CubeMap.from_equirectangular(
+        tmp_path / "latitude.tif", FACE_SIZE, CubeProjection.EQUAL_ANGLE, SourceLayout()
+    )
+    by_longitude = CubeMap.from_equirectangular(
+        tmp_path / "longitude.tif", FACE_SIZE, CubeProjection.EQUAL_ANGLE, SourceLayout()
+    )
     center = slice(FACE_SIZE // 2 - 1, FACE_SIZE // 2 + 1)
 
     assert abs(by_longitude.faces[FRONT].pixels[center, center].mean()) < 1
