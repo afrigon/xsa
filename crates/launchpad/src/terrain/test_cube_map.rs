@@ -43,7 +43,7 @@ impl TestCubeMap {
             .collect();
         let mut bytes = KTX2_IDENTIFIER.to_vec();
         let header = [
-            self.format.vulkan_format(),
+            self.format.vulkan_format().value,
             KTX2_TYPE_SIZE,
             self.extent,
             self.extent,

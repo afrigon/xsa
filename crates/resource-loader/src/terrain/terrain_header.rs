@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use anyhow::{Context, ensure};
 
 use super::{PAGE_BORDER, PAGE_EXTENT, PageEncoding};
-use crate::texture::TextureFormat;
+use crate::texture::{TextureFormat, VulkanFormat};
 
 /// The start of a `.terrain` file: what every page holds and how many levels there are.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -43,11 +43,13 @@ impl TerrainHeader {
             "{page_extent}-texel pages with a {border}-texel border: expected {PAGE_EXTENT} and {PAGE_BORDER}"
         );
 
-        let vulkan_format = word(Self::FORMAT_OFFSET);
+        let vulkan_format = VulkanFormat {
+            value: word(Self::FORMAT_OFFSET),
+        };
 
         Ok(TerrainHeader {
             format: TextureFormat::from_vulkan_format(vulkan_format)
-                .with_context(|| format!("unsupported Vulkan format {vulkan_format}"))?,
+                .with_context(|| format!("unsupported Vulkan format {}", vulkan_format.value))?,
             encoding: PageEncoding::from_value(word(Self::ENCODING_OFFSET))?,
             level_count: word(Self::LEVEL_COUNT_OFFSET),
         })
@@ -58,7 +60,7 @@ impl TerrainHeader {
 
         for word in [
             Self::VERSION,
-            self.format.vulkan_format(),
+            self.format.vulkan_format().value,
             self.encoding.value(),
             PAGE_EXTENT,
             PAGE_BORDER,

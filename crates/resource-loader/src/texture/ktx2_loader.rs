@@ -3,7 +3,7 @@ use std::io::Read;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{TextureFormat, TextureImage, TextureLoader};
+use super::{TextureFormat, TextureImage, TextureLoader, VulkanFormat};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const VK_FORMAT_OFFSET: usize = 12;
@@ -37,9 +37,11 @@ impl TextureLoader for Ktx2Loader {
         );
 
         let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + WORD_BYTES].try_into().unwrap());
-        let vulkan_format = word(VK_FORMAT_OFFSET);
+        let vulkan_format = VulkanFormat {
+            value: word(VK_FORMAT_OFFSET),
+        };
         let format = TextureFormat::from_vulkan_format(vulkan_format)
-            .with_context(|| format!("unsupported Vulkan format {vulkan_format}"))?;
+            .with_context(|| format!("unsupported Vulkan format {}", vulkan_format.value))?;
         ensure!(word(PIXEL_DEPTH_OFFSET) == 0, "3D textures are not supported");
         ensure!(word(LAYER_COUNT_OFFSET) == 0, "texture arrays are not supported");
 

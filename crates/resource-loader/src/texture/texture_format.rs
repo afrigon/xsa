@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use anyhow::bail;
 
-use super::ColorSpace;
+use super::{ColorSpace, VulkanFormat};
 
 const COMPRESSED_BLOCK_EXTENT: u32 = 4;
 const BC4_BLOCK_BYTES: usize = 8;
@@ -56,16 +56,16 @@ impl TextureFormat {
         TextureFormat::R32Float,
     ];
 
-    /// The format a `VkFormat` value names, if it is one of these.
-    pub fn from_vulkan_format(vulkan_format: u32) -> Option<TextureFormat> {
+    /// The format a Vulkan format value names, if it is one of these.
+    pub fn from_vulkan_format(vulkan_format: VulkanFormat) -> Option<TextureFormat> {
         TextureFormat::ALL
             .into_iter()
             .find(|format| format.vulkan_format() == vulkan_format)
     }
 
-    /// The `VkFormat` value of the Vulkan format of the same name.
-    pub fn vulkan_format(self) -> u32 {
-        match self {
+    /// The Vulkan format of the same name.
+    pub fn vulkan_format(self) -> VulkanFormat {
+        let value = match self {
             TextureFormat::Bc4Unorm => VK_FORMAT_BC4_UNORM_BLOCK,
             TextureFormat::Bc5Unorm => VK_FORMAT_BC5_UNORM_BLOCK,
             TextureFormat::Bc7Unorm => VK_FORMAT_BC7_UNORM_BLOCK,
@@ -77,7 +77,9 @@ impl TextureFormat {
             TextureFormat::R16Unorm => VK_FORMAT_R16_UNORM,
             TextureFormat::Rg16Unorm => VK_FORMAT_R16G16_UNORM,
             TextureFormat::R32Float => VK_FORMAT_R32_SFLOAT,
-        }
+        };
+
+        VulkanFormat { value }
     }
 
     /// The size in bytes of one mip level of the given size.
