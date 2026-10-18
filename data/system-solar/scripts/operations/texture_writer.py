@@ -23,7 +23,7 @@ class TextureWriter:
 
     @staticmethod
     def normal() -> "TextureWriter":
-        return TextureWriter(TextureFormat.BC5_UNORM, TextureWriter._signed_pair)
+        return TextureWriter(TextureFormat.RG8_UNORM, TextureWriter._signed_pair)
 
     @staticmethod
     def sky() -> "TextureWriter":
@@ -52,7 +52,7 @@ class TextureWriter:
 
     @staticmethod
     def _signed_pair(values: np.ndarray) -> np.ndarray:
-        return TextureWriter._rgba(values * 0.5 + 0.5)
+        return np.round(np.clip(values * 0.5 + 0.5, 0.0, 1.0) * UNORM8_MAX).astype(np.uint8)
 
     @staticmethod
     def _four_channels(values: np.ndarray) -> np.ndarray:

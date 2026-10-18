@@ -20,6 +20,7 @@ FACE_BASES = np.array(
     ]
 )
 NORMAL, COLUMN_AXIS, ROW_AXIS = range(3)
+ROWS_PER_NORMAL_BAND = 256
 
 
 class CubeMap:
@@ -107,6 +108,60 @@ class CubeMap:
         axis = np.abs(normals).argmax(axis=-1)
         negative = np.take_along_axis(normals, axis[:, None], axis=-1)[:, 0] < 0
         return 2 * axis + negative
+
+    # From a height map in meters: the planet shader's tangent-space normal in each face's own frame, x along the
+    # face's columns and y along its rows, both projected onto the sphere. The slope comes from the neighbours' height
+    # differences over their offsets in the texel's tangent plane, neighbours across a face edge sitting where their
+    # own face puts them, so a sphere is upright everywhere and slopes stay continuous over edges.
+    def normals(self, radius: float) -> "CubeMap":
+        size = self.face_size
+        directions = np.stack(
+            [CubeMap.texel_directions(face, size, self.projection).astype(np.float32) for face in range(CUBE_FACE_COUNT)]
+        )
+        heights = np.stack([face.pixels[..., :1].astype(np.float32) for face in self.faces])
+        both = CubeMap([Raster(face) for face in np.concatenate([directions, heights], axis=-1)], self.projection)
+        padded = both.padded(1)
+        faces = []
+
+        centers = (np.arange(size) + 0.5) / size * 2 - 1
+
+        for face in range(CUBE_FACE_COUNT):
+            normals = np.empty((size, size, 2), np.float32)
+            column_axis = FACE_BASES[face, COLUMN_AXIS]
+
+            for top in range(0, size, ROWS_PER_NORMAL_BAND):
+                count = min(ROWS_PER_NORMAL_BAND, size - top)
+                around = padded[face, top : top + count + 2].astype(np.float64)
+                neighbours = around[..., :3] / np.linalg.norm(around[..., :3], axis=-1, keepdims=True)
+                direction = CubeMap._direction(face, centers[None, :], centers[top : top + count, None], self.projection)
+                tangent = column_axis - (direction @ column_axis)[..., None] * direction
+                tangent /= np.linalg.norm(tangent, axis=-1, keepdims=True)
+                bitangent = np.cross(tangent, direction)
+                frame = np.stack([tangent, bitangent], axis=-2)
+                heights = around[1:-1, 1:-1, 3]
+
+                # Meters along the tangent plane from each texel to a neighbour, and the height gained.
+                def step(row: int, column: int) -> tuple[np.ndarray, np.ndarray]:
+                    rows = slice(1 + row, count + 1 + row)
+                    columns = slice(1 + column, size + 1 + column)
+                    other = neighbours[rows, columns]
+                    offset = radius * (other / (other * direction).sum(-1, keepdims=True) - direction)
+                    return (frame @ offset[..., None])[..., 0], around[rows, columns, 3] - heights
+
+                right, rise_right = step(0, 1)
+                left, rise_left = step(0, -1)
+                down, rise_down = step(1, 0)
+                up, rise_up = step(-1, 0)
+                offsets = np.stack([right - left, down - up], axis=-2)
+                rises = np.stack([rise_right - rise_left, rise_down - rise_up], axis=-1)
+                slope = np.linalg.solve(offsets, rises[..., None])[..., 0] * (radius / (radius + heights))[..., None]
+                tilted = np.concatenate([-slope, np.ones(slope.shape[:-1] + (1,))], axis=-1)
+                tilted /= np.linalg.norm(tilted, axis=-1, keepdims=True)
+                normals[top : top + count] = tilted[..., :2]
+
+            faces.append(Raster(normals))
+
+        return CubeMap(faces, self.projection)
 
     # Each texel center's direction on one face, rows top to bottom.
     @staticmethod

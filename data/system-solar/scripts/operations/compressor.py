@@ -10,8 +10,8 @@ class Compressor:
 
     # pixels: height × width × channels: bytes, 16-bit integers, or floats for a float format.
     def compress(self, pixels: np.ndarray) -> bytes:
-        if self.format == TextureFormat.RGBA8_SRGB:
-            return np.ascontiguousarray(pixels).tobytes()
+        if self.format in (TextureFormat.RGBA8_SRGB, TextureFormat.RG8_UNORM):
+            return np.ascontiguousarray(pixels, np.uint8).tobytes()
 
         if self.format == TextureFormat.RGBA16_SFLOAT:
             return np.ascontiguousarray(pixels, np.float16).tobytes()

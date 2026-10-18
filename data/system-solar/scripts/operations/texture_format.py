@@ -64,6 +64,14 @@ def _rgba16_float_samples() -> tuple[Sample, ...]:
 class TextureFormat(Enum):
     RGBA8_SRGB = FormatDescription(43, MODEL_RGBSDA, TRANSFER_SRGB, 1, 4, _rgba8_samples(TRANSFER_SRGB))
     RGBA16_SFLOAT = FormatDescription(97, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 8, _rgba16_float_samples())
+    RG8_UNORM = FormatDescription(
+        16,
+        MODEL_RGBSDA,
+        TRANSFER_LINEAR,
+        1,
+        2,
+        (Sample(0, 8, 0, UNSIGNED_BYTE_MAX), Sample(8, 8, 1, UNSIGNED_BYTE_MAX)),
+    )
     R16_UNORM = FormatDescription(70, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 2, (Sample(0, 16, 0, UNSIGNED_SHORT_MAX),))
     R32_SFLOAT = FormatDescription(
         100,
