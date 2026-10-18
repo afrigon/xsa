@@ -17,35 +17,37 @@ pub struct TerrainCommand {
 #[derive(Subcommands)]
 pub enum TerrainSubcommand {
     /// Convert a terrain layer's cube map into the .terrain file the game streams
-    ///
-    /// Each terrain layer (heights, colour, normals, each Hapke map) is authored as a
-    /// KTX2 cube map:
-    ///
-    /// - Six square faces, in Vulkan's cube-map order: +X, -X, +Y, -Y, +Z, -Z of the
-    ///     body's frame, where +X points at longitude 0 on the equator and +Z at the
-    ///     north pole.
-    /// - Each face oriented as Vulkan samples it, its columns running left to right
-    ///     and its rows top to bottom along:
-    ///       +X  columns toward -Z, rows toward -Y
-    ///       -X  columns toward +Z, rows toward -Y
-    ///       +Y  columns toward +X, rows toward +Z
-    ///       -Y  columns toward +X, rows toward -Z
-    ///       +Z  columns toward +X, rows toward -Y
-    ///       -Z  columns toward -X, rows toward -Y
-    /// - A face size that is a power of two, at least 128 texels: 128, 256, 512, ...
-    /// - The full mip chain down to 1x1, each level the average of the one above.
-    /// - Uncompressed texels, in one of these formats:
-    ///       R32_SFLOAT           heights, with --height: metres relative to the
-    ///                            body's radius, signed
-    ///       R8G8B8A8_SRGB        colour, stored as BC7_SRGB_BLOCK
-    ///       R8G8_UNORM           normals, stored as BC5_UNORM_BLOCK
-    ///       R16G16B16A16_SFLOAT  Hapke maps, stored as is
-    ///     This command compresses each page itself: page borders are rotated across
-    ///     face edges, and compressed blocks cannot be.
-    ///
-    /// The KTX2 file may use Zstandard supercompression. Without --output, the
-    /// .terrain file is written next to the input, with the same name.
-    #[usage(verbatim_doc_comment)]
+    #[usage(
+        long_help = r#"Convert a terrain layer's cube map into the .terrain file the game streams
+
+Each terrain layer (heights, colour, normals, each Hapke map) is authored as a
+KTX2 cube map:
+
+- Six square faces, in Vulkan's cube-map order: +X, -X, +Y, -Y, +Z, -Z of the
+    body's frame, where +X points at longitude 0 on the equator and +Z at the
+    north pole.
+- Each face oriented as Vulkan samples it, its columns running left to right
+    and its rows top to bottom along:
+      +X  columns toward -Z, rows toward -Y
+      -X  columns toward +Z, rows toward -Y
+      +Y  columns toward +X, rows toward +Z
+      -Y  columns toward +X, rows toward -Z
+      +Z  columns toward +X, rows toward -Y
+      -Z  columns toward -X, rows toward -Y
+- A face size that is a power of two, at least 128 texels: 128, 256, 512, ...
+- The full mip chain down to 1x1, each level the average of the one above.
+- Uncompressed texels, in one of these formats:
+      R32_SFLOAT           heights, with --height: metres relative to the
+                           body's radius, signed
+      R8G8B8A8_SRGB        colour, stored as BC7_SRGB_BLOCK
+      R8G8_UNORM           normals, stored as BC5_UNORM_BLOCK
+      R16G16B16A16_SFLOAT  Hapke maps, stored as is
+    This command compresses each page itself: page borders are rotated across
+    face edges, and compressed blocks cannot be.
+
+The KTX2 file may use Zstandard supercompression. Without --output, the
+.terrain file is written next to the input, with the same name."#
+    )]
     Create(TerrainCreateCommand),
 }
 
