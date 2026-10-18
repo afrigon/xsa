@@ -87,3 +87,58 @@ impl CubeMapInput {
         &self.faces[face.index()][offset..offset + self.format.level_size(extent, extent)]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::terrain::TestCubeMap;
+
+    fn refusal(cube_map: TestCubeMap) -> String {
+        let texel_size = cube_map.format.block_size();
+        cube_map
+            .input(|_, _, _, _| vec![0; texel_size])
+            .err()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn faces_smaller_than_a_page_are_refused() {
+        assert!(refusal(TestCubeMap::full_chain(TextureFormat::R32Float, 64)).contains("at least 128"));
+    }
+
+    #[test]
+    fn faces_that_are_not_a_power_of_two_are_refused() {
+        assert!(refusal(TestCubeMap::full_chain(TextureFormat::R32Float, 192)).contains("power of two"));
+    }
+
+    #[test]
+    fn a_partial_mip_chain_is_refused() {
+        let cube_map = TestCubeMap {
+            format: TextureFormat::R32Float,
+            extent: 256,
+            mip_levels: 3,
+        };
+
+        assert!(refusal(cube_map).contains("full chain of 9"));
+    }
+
+    #[test]
+    fn compressed_texels_are_refused() {
+        // A BC7 block is one byte per texel, so down to the 4×4 level the builder's texels fill whole blocks.
+        let cube_map = TestCubeMap {
+            format: TextureFormat::Bc7Srgb,
+            extent: 256,
+            mip_levels: 7,
+        };
+
+        assert!(
+            cube_map
+                .input(|_, _, _, _| vec![0])
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("uncompressed")
+        );
+    }
+}

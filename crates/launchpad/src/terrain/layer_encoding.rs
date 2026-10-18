@@ -3,6 +3,8 @@ use block_compression::{BC7Settings, CompressionVariant};
 use resource_loader::terrain::{HeightRange, PAGE_EXTENT, PageEncoding};
 use resource_loader::texture::{HalfFloat, TextureFormat};
 
+use super::EncodedPage;
+
 const RGBA8_CHANNELS: usize = 4;
 const RG8_CHANNELS: usize = 2;
 const UNORM8_MAXIMUM: f32 = u8::MAX as f32;
@@ -72,7 +74,7 @@ impl LayerEncoding {
     }
 
     /// Encodes a page's input texels, rows top to bottom, into the page format, with its height range for heights.
-    pub fn encode(self, texels: &[u8]) -> (Vec<u8>, Option<HeightRange>) {
+    pub fn encode(self, texels: &[u8]) -> EncodedPage {
         match self {
             LayerEncoding::Heights => {
                 let heights = texels
@@ -81,14 +83,16 @@ impl LayerEncoding {
                     .iter()
                     .map(|bytes| f32::from_le_bytes(*bytes));
                 let range = HeightRange::spanning(heights.clone()).unwrap();
-                let values = heights.flat_map(|height| range.value(height).to_le_bytes()).collect();
 
-                (values, Some(range))
+                EncodedPage {
+                    data: heights.flat_map(|height| range.value(height).to_le_bytes()).collect(),
+                    range: Some(range),
+                }
             }
-            LayerEncoding::Bc7 => (
-                LayerEncoding::compressed(CompressionVariant::BC7(BC7Settings::alpha_slow()), texels),
-                None,
-            ),
+            LayerEncoding::Bc7 => EncodedPage {
+                data: LayerEncoding::compressed(CompressionVariant::BC7(BC7Settings::alpha_slow()), texels),
+                range: None,
+            },
             LayerEncoding::Bc5 => {
                 let rgba: Vec<u8> = texels
                     .as_chunks::<RG8_CHANNELS>()
@@ -97,9 +101,15 @@ impl LayerEncoding {
                     .flat_map(|[red, green]| [*red, *green, 0, OPAQUE])
                     .collect();
 
-                (LayerEncoding::compressed(CompressionVariant::BC5, &rgba), None)
+                EncodedPage {
+                    data: LayerEncoding::compressed(CompressionVariant::BC5, &rgba),
+                    range: None,
+                }
             }
-            LayerEncoding::Rgba16Float => (texels.to_vec(), None),
+            LayerEncoding::Rgba16Float => EncodedPage {
+                data: texels.to_vec(),
+                range: None,
+            },
         }
     }
 
@@ -139,10 +149,13 @@ impl LayerEncoding {
                         .iter()
                         .map(|texel| {
                             let offset = channel * size_of::<u16>();
-                            HalfFloat(u16::from_le_bytes([texel[offset], texel[offset + 1]])).to_f32()
+                            HalfFloat {
+                                bits: u16::from_le_bytes([texel[offset], texel[offset + 1]]),
+                            }
+                            .to_f32()
                         })
                         .sum();
-                    *half = HalfFloat::from_f32(sum / count).0.to_le_bytes();
+                    *half = HalfFloat::from_f32(sum / count).bits.to_le_bytes();
                 }
             }
         }
@@ -176,5 +189,59 @@ fn linear_to_srgb(value: f32) -> f32 {
         value * SRGB_LINEAR_SLOPE
     } else {
         (1.0 + SRGB_OFFSET) * value.powf(1.0 / SRGB_GAMMA) - SRGB_OFFSET
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inputs_matching_no_layer_are_refused() {
+        assert!(LayerEncoding::new(PageEncoding::Direct, TextureFormat::Rgba8Unorm).is_err());
+        assert!(LayerEncoding::new(PageEncoding::Direct, TextureFormat::R32Float).is_err());
+        assert!(LayerEncoding::new(PageEncoding::PageHeights, TextureFormat::R16Unorm).is_err());
+        assert!(LayerEncoding::new(PageEncoding::PageHeights, TextureFormat::Rgba8Srgb).is_err());
+    }
+
+    #[test]
+    fn colours_average_in_linear_light() {
+        let mut output = [0; RGBA8_CHANNELS];
+        LayerEncoding::Bc7.average(&[&[0, 0, 0, 0], &[255, 255, 255, 255], &[0, 0, 0, 255]], &mut output);
+
+        assert_eq!(output, [156, 156, 156, 170]);
+    }
+
+    #[test]
+    fn half_floats_average_as_their_values() {
+        let texel = |value: f32| HalfFloat::from_f32(value).bits.to_le_bytes().repeat(4);
+        let mut output = [0; 8];
+        LayerEncoding::Rgba16Float.average(&[&texel(1.0), &texel(2.0), &texel(6.0)], &mut output);
+
+        assert_eq!(output.as_slice(), texel(3.0));
+    }
+
+    #[test]
+    fn a_page_of_heights_spans_its_own_range() {
+        let texels: Vec<u8> = [-5.0f32, 20.0, 7.5]
+            .iter()
+            .flat_map(|height| height.to_le_bytes())
+            .collect();
+        let page = LayerEncoding::Heights.encode(&texels);
+
+        assert_eq!(
+            page.range,
+            Some(HeightRange {
+                minimum: -5.0,
+                maximum: 20.0
+            })
+        );
+        assert_eq!(
+            page.data,
+            [0u16, u16::MAX, 32768]
+                .iter()
+                .flat_map(|value| value.to_le_bytes())
+                .collect::<Vec<_>>()
+        );
     }
 }

@@ -33,7 +33,7 @@ impl PageEntry {
         let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + size_of::<u32>()].try_into().unwrap());
 
         PageEntry {
-            key: PageKey(long(0)),
+            key: PageKey { code: long(0) },
             data_offset: long(Self::DATA_OFFSET_OFFSET),
             data_size: word(Self::DATA_SIZE_OFFSET),
             range: match encoding {
@@ -47,7 +47,7 @@ impl PageEntry {
     }
 
     pub fn write(&self, output: &mut impl Write) -> io::Result<()> {
-        output.write_all(&self.key.0.to_le_bytes())?;
+        output.write_all(&self.key.code.to_le_bytes())?;
         output.write_all(&self.data_offset.to_le_bytes())?;
         output.write_all(&self.data_size.to_le_bytes())?;
 

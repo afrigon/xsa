@@ -1,27 +1,31 @@
 /// A page's place within its face and level: the Morton code of its column and row, the column in the even bits.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct PageKey(pub u64);
+pub struct PageKey {
+    pub code: u64,
+}
 
 impl PageKey {
     const EVEN_BITS: u64 = 0x5555_5555_5555_5555;
 
     pub fn from_coordinates(x: u32, y: u32) -> PageKey {
-        PageKey(Self::spread(x) | Self::spread(y) << 1)
+        PageKey {
+            code: Self::spread(x) | Self::spread(y) << 1,
+        }
     }
 
     /// The page's column, left to right from 0.
     pub fn x(self) -> u32 {
-        Self::gather(self.0)
+        Self::gather(self.code)
     }
 
     /// The page's row, top to bottom from 0.
     pub fn y(self) -> u32 {
-        Self::gather(self.0 >> 1)
+        Self::gather(self.code >> 1)
     }
 
     /// The page one level coarser that covers this one.
     pub fn parent(self) -> PageKey {
-        PageKey(self.0 >> 2)
+        PageKey { code: self.code >> 2 }
     }
 
     fn spread(coordinate: u32) -> u64 {

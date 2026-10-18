@@ -20,7 +20,9 @@ const DROPPED_MANTISSA_BITS: u32 = SINGLE_MANTISSA_BITS - HALF_MANTISSA_BITS;
 
 /// An IEEE 754 binary16 float, as its bits.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct HalfFloat(pub u16);
+pub struct HalfFloat {
+    pub bits: u16,
+}
 
 impl HalfFloat {
     /// The nearest half to a value, ties to even; values beyond its range become infinite.
@@ -35,37 +37,45 @@ impl HalfFloat {
         let mantissa = bits & SINGLE_MANTISSA_MASK;
 
         if exponent == SINGLE_SPECIAL_EXPONENT {
-            return HalfFloat(sign | if mantissa == 0 { HALF_INFINITY } else { HALF_QUIET_NAN });
+            return HalfFloat {
+                bits: sign | if mantissa == 0 { HALF_INFINITY } else { HALF_QUIET_NAN },
+            };
         }
 
         let half_exponent = exponent - SINGLE_EXPONENT_BIAS + HALF_EXPONENT_BIAS;
 
         if half_exponent >= HALF_SPECIAL_EXPONENT {
-            return HalfFloat(sign | HALF_INFINITY);
+            return HalfFloat {
+                bits: sign | HALF_INFINITY,
+            };
         }
 
         if half_exponent > 0 {
             let truncated = (half_exponent as u32) << HALF_MANTISSA_BITS | mantissa >> DROPPED_MANTISSA_BITS;
 
-            return HalfFloat(sign | HalfFloat::rounded(truncated, mantissa, DROPPED_MANTISSA_BITS) as u16);
+            return HalfFloat {
+                bits: sign | HalfFloat::rounded(truncated, mantissa, DROPPED_MANTISSA_BITS) as u16,
+            };
         }
 
         // A subnormal half keeps the implicit leading bit in its mantissa, one more bit dropped per exponent below 1.
         let shift = (DROPPED_MANTISSA_BITS + 1) as i32 - half_exponent;
 
         if shift > (SINGLE_MANTISSA_BITS + 1) as i32 {
-            return HalfFloat(sign);
+            return HalfFloat { bits: sign };
         }
 
         let shift = shift as u32;
 
         let mantissa = mantissa | SINGLE_IMPLICIT_BIT;
 
-        HalfFloat(sign | HalfFloat::rounded(mantissa >> shift, mantissa, shift) as u16)
+        HalfFloat {
+            bits: sign | HalfFloat::rounded(mantissa >> shift, mantissa, shift) as u16,
+        }
     }
 
     pub fn to_f32(self) -> f32 {
-        let bits = self.0;
+        let bits = self.bits;
         let sign = if bits >> HALF_SIGN_SHIFT == 1 { -1.0 } else { 1.0 };
         let exponent = ((bits >> HALF_MANTISSA_BITS) & HALF_EXPONENT_MASK) as i32;
         let mantissa = f32::from(bits & HALF_MANTISSA_MASK) / (1 << HALF_MANTISSA_BITS) as f32;
@@ -95,17 +105,17 @@ mod tests {
 
     #[test]
     fn half_floats_decode_to_their_values() {
-        assert_eq!(HalfFloat(0x3c00).to_f32(), 1.0);
-        assert_eq!(HalfFloat(0xc000).to_f32(), -2.0);
-        assert_eq!(HalfFloat(0x3555).to_f32(), 0.333_251_95);
-        assert_eq!(HalfFloat(0x0001).to_f32(), 2.0_f32.powi(-24));
-        assert_eq!(HalfFloat(0x7c00).to_f32(), f32::INFINITY);
+        assert_eq!(HalfFloat { bits: 0x3c00 }.to_f32(), 1.0);
+        assert_eq!(HalfFloat { bits: 0xc000 }.to_f32(), -2.0);
+        assert_eq!(HalfFloat { bits: 0x3555 }.to_f32(), 0.333_251_95);
+        assert_eq!(HalfFloat { bits: 0x0001 }.to_f32(), 2.0_f32.powi(-24));
+        assert_eq!(HalfFloat { bits: 0x7c00 }.to_f32(), f32::INFINITY);
     }
 
     #[test]
     fn every_finite_half_encodes_back_to_itself() {
         for bits in 0..=u16::MAX {
-            let half = HalfFloat(bits);
+            let half = HalfFloat { bits };
 
             if half.to_f32().is_finite() {
                 assert_eq!(HalfFloat::from_f32(half.to_f32()), half, "{bits:#06x}");
@@ -117,13 +127,16 @@ mod tests {
     fn floats_round_to_the_nearest_half_ties_to_even() {
         let one_and_half_a_step = 1.0 + 2.0_f32.powi(-11);
 
-        assert_eq!(HalfFloat::from_f32(one_and_half_a_step), HalfFloat(0x3c00));
-        assert_eq!(HalfFloat::from_f32(1.0 + 3.0 * 2.0_f32.powi(-11)), HalfFloat(0x3c02));
-        assert_eq!(HalfFloat::from_f32(0.333_333), HalfFloat(0x3555));
-        assert_eq!(HalfFloat::from_f32(2.0_f32.powi(-25) * 1.5), HalfFloat(0x0001));
-        assert_eq!(HalfFloat::from_f32(2.0_f32.powi(-26)), HalfFloat(0x0000));
-        assert_eq!(HalfFloat::from_f32(65520.0), HalfFloat(HALF_INFINITY));
-        assert_eq!(HalfFloat::from_f32(-0.0), HalfFloat(HALF_SIGN_BIT));
+        assert_eq!(HalfFloat::from_f32(one_and_half_a_step), HalfFloat { bits: 0x3c00 });
+        assert_eq!(
+            HalfFloat::from_f32(1.0 + 3.0 * 2.0_f32.powi(-11)),
+            HalfFloat { bits: 0x3c02 }
+        );
+        assert_eq!(HalfFloat::from_f32(0.333_333), HalfFloat { bits: 0x3555 });
+        assert_eq!(HalfFloat::from_f32(2.0_f32.powi(-25) * 1.5), HalfFloat { bits: 0x0001 });
+        assert_eq!(HalfFloat::from_f32(2.0_f32.powi(-26)), HalfFloat { bits: 0x0000 });
+        assert_eq!(HalfFloat::from_f32(65520.0), HalfFloat { bits: HALF_INFINITY });
+        assert_eq!(HalfFloat::from_f32(-0.0), HalfFloat { bits: HALF_SIGN_BIT });
         assert!(HalfFloat::from_f32(f32::NAN).to_f32().is_nan());
     }
 }

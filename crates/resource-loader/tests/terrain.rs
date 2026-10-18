@@ -1,15 +1,16 @@
 use std::io::Cursor;
 
 use resource_loader::terrain::{
-    CubeFace, HeightRange, LevelRecord, PAGE_EXTENT, PageEncoding, PageEntry, PageKey, TerrainHeader, TerrainReader,
+    CubeFace, HeightRange, LevelRecord, PAGE_EXTENT, PageAddress, PageEncoding, PageEntry, PageKey, TerrainHeader,
+    TerrainReader,
 };
 use resource_loader::texture::TextureFormat;
 
 #[test]
 fn a_page_key_interleaves_its_column_in_the_even_bits() {
-    assert_eq!(PageKey::from_coordinates(1, 0).0, 0b01);
-    assert_eq!(PageKey::from_coordinates(0, 1).0, 0b10);
-    assert_eq!(PageKey::from_coordinates(3, 2).0, 0b1101);
+    assert_eq!(PageKey::from_coordinates(1, 0).code, 0b01);
+    assert_eq!(PageKey::from_coordinates(0, 1).code, 0b10);
+    assert_eq!(PageKey::from_coordinates(3, 2).code, 0b1101);
 
     let key = PageKey::from_coordinates(12345, 678);
     assert_eq!((key.x(), key.y()), (12345, 678));
@@ -116,14 +117,19 @@ fn the_reader_finds_pages_by_key_and_decompresses_them() {
 
     assert_eq!(reader.entries(CubeFace::NegativeY, 1).unwrap().len(), 2);
     assert!(reader.entries(CubeFace::PositiveX, 0).unwrap().is_empty());
+    let address = |key: PageKey| PageAddress {
+        face: CubeFace::NegativeY,
+        level: 1,
+        key,
+    };
     assert!(
         reader
-            .entry(CubeFace::NegativeY, 1, PageKey::from_coordinates(1, 0))
+            .entry(address(PageKey::from_coordinates(1, 0)))
             .unwrap()
             .is_none()
     );
 
-    let entry = reader.entry(CubeFace::NegativeY, 1, keys[1]).unwrap().unwrap();
+    let entry = reader.entry(address(keys[1])).unwrap().unwrap();
     assert_eq!(entry.range.unwrap().minimum, 1.0);
     assert_eq!(reader.page(&entry).unwrap(), page);
     assert_eq!(header.page_size(), (PAGE_EXTENT * PAGE_EXTENT) as usize * 2);

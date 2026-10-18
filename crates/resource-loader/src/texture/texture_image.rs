@@ -83,10 +83,9 @@ impl TextureImage {
         );
         let texel_count = (self.width * self.height) as usize;
         let channel = |texel: &[u8; RGBA16_FLOAT_TEXEL_BYTES], index: usize| {
-            HalfFloat(u16::from_le_bytes([
-                texel[index * HALF_BYTES],
-                texel[index * HALF_BYTES + 1],
-            ]))
+            HalfFloat {
+                bits: u16::from_le_bytes([texel[index * HALF_BYTES], texel[index * HALF_BYTES + 1]]),
+            }
             .to_f32()
         };
 

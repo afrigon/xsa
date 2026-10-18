@@ -2,7 +2,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use anyhow::{Context, ensure};
 
-use super::{CubeFace, LevelRecord, PageEncoding, PageEntry, PageKey, TerrainHeader};
+use super::{CubeFace, LevelRecord, PageAddress, PageEncoding, PageEntry, TerrainHeader};
 
 /// Reads a `.terrain` file: its header and level index at once, page entries and page data on demand.
 pub struct TerrainReader<R> {
@@ -48,8 +48,8 @@ impl<R: Read + Seek> TerrainReader<R> {
     }
 
     /// A page's entry, found by binary search over its face and level's entries, or `None` when it is absent.
-    pub fn entry(&mut self, face: CubeFace, level: u32, key: PageKey) -> anyhow::Result<Option<PageEntry>> {
-        let record = self.record(face, level)?;
+    pub fn entry(&mut self, address: PageAddress) -> anyhow::Result<Option<PageEntry>> {
+        let record = self.record(address.face, address.level)?;
         let size = PageEntry::size(self.header.encoding);
         let mut bytes = vec![0; size];
         let (mut low, mut high) = (0, record.entry_count);
@@ -61,7 +61,7 @@ impl<R: Read + Seek> TerrainReader<R> {
             self.source.read_exact(&mut bytes)?;
             let entry = PageEntry::read(&bytes, self.header.encoding);
 
-            match entry.key.cmp(&key) {
+            match entry.key.cmp(&address.key) {
                 std::cmp::Ordering::Less => low = middle + 1,
                 std::cmp::Ordering::Greater => high = middle,
                 std::cmp::Ordering::Equal => return Ok(Some(entry)),
