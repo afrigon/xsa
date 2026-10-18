@@ -6,8 +6,8 @@ use usage::{Args, Subcommands};
 use crate::cli::CommandHandler;
 use crate::launchpad_context::LaunchpadContext;
 use crate::ops;
-use crate::ops::terrain::{TerrainCreateOptions, TerrainInspectOptions};
-use crate::terrain::PageCheck;
+use crate::ops::terrain::{TerrainCreateOptions, TerrainExtractOptions, TerrainInspectOptions};
+use crate::terrain::{LevelSelection, PageCheck, TerrainRegion};
 
 #[derive(Args)]
 pub struct TerrainCommand {
@@ -66,6 +66,28 @@ decompresses every page. The command fails when a check finds a problem.
 --face, --level and --page together print one page's entry instead."#
     )]
     Inspect(TerrainInspectCommand),
+    /// Write a .terrain file, or part of it, back out as a KTX2 texture in its cube map's texels
+    #[usage(
+        long_help = r#"Write a .terrain file, or part of it, back out as a KTX2 texture in its cube map's texels
+
+Pages are decoded back to the texel format terrain create reads: heights to
+R32_SFLOAT metres, BC7_SRGB_BLOCK to R8G8B8A8_SRGB, BC5_UNORM_BLOCK to
+R8G8_UNORM, R16G16B16A16_SFLOAT as is. Faces are stitched from their pages'
+interiors; absent pages are transparent, NaN heights, or 0 for R8G8_UNORM.
+
+    (no options)             a cube map, every level as a mip level, finest
+                             first, down to 128 texels
+    --level                  a cube map of that level
+    --face                   that face as a 2D texture, every level as a mip
+                             level
+    --face --level           that face at that level
+    --face --level --page    that page, 136x136 texels with its border
+
+The extract stops at 128 texels, so terrain create does not take it back;
+compare it with the cube map level by level. Without --output, it is written
+next to the file as <name>.extract.ktx2."#
+    )]
+    Extract(TerrainExtractCommand),
 }
 
 #[derive(Args)]
@@ -108,11 +130,38 @@ pub struct TerrainInspectCommand {
     file: PathBuf,
 }
 
+#[derive(Args)]
+pub struct TerrainExtractCommand {
+    #[usage(
+        long,
+        allow_hyphen_values,
+        help = "Extract only this face, as a 2D texture: +x, -x, +y, -y, +z or -z"
+    )]
+    face: Option<CubeFace>,
+    #[usage(long, help = "Extract only this level, from 0")]
+    level: Option<u32>,
+    #[usage(
+        long,
+        value_name = "x,y",
+        requires("--face", "--level"),
+        help = "Extract only the page at this column and row, from 0 at the face's top left"
+    )]
+    page: Option<PageKey>,
+    #[usage(
+        long,
+        help = "Where to write the KTX2 file; defaults to the file's path with a .extract.ktx2 extension"
+    )]
+    output: Option<PathBuf>,
+    #[usage(arg, help = "The .terrain file")]
+    file: PathBuf,
+}
+
 impl CommandHandler for TerrainCommand {
     async fn handle(&self, context: &mut LaunchpadContext) -> anyhow::Result<()> {
         match &self.command {
             TerrainSubcommand::Create(command) => command.handle(context).await,
             TerrainSubcommand::Inspect(command) => command.handle(context).await,
+            TerrainSubcommand::Extract(command) => command.handle(context).await,
         }
     }
 }
@@ -153,5 +202,29 @@ impl CommandHandler for TerrainInspectCommand {
         };
 
         ops::terrain::inspect(context, &options)
+    }
+}
+
+impl CommandHandler for TerrainExtractCommand {
+    async fn handle(&self, context: &mut LaunchpadContext) -> anyhow::Result<()> {
+        let levels = match self.level {
+            Some(level) => LevelSelection::One(level),
+            None => LevelSelection::Every,
+        };
+        let region = match (self.face, self.level, self.page) {
+            (Some(face), Some(level), Some(key)) => TerrainRegion::Page(PageAddress { face, level, key }),
+            (Some(face), _, _) => TerrainRegion::Face(face, levels),
+            (None, _, _) => TerrainRegion::Cube(levels),
+        };
+        let options = TerrainExtractOptions {
+            file: self.file.clone(),
+            output: self
+                .output
+                .clone()
+                .unwrap_or_else(|| self.file.with_extension("extract.ktx2")),
+            region,
+        };
+
+        ops::terrain::extract(context, &options)
     }
 }
