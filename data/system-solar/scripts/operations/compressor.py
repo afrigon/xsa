@@ -19,6 +19,9 @@ class Compressor:
         if self.format == TextureFormat.R16_UNORM:
             return np.ascontiguousarray(pixels, np.uint16).tobytes()
 
+        if self.format == TextureFormat.R32_SFLOAT:
+            return np.ascontiguousarray(pixels, np.float32).tobytes()
+
         padded = self._padded(pixels)
         height, width = padded.shape[:2]
         data = padded.tobytes()

@@ -19,6 +19,7 @@ BLOCK_SAMPLE_MAX = 0xFFFFFFFF
 FLOAT_SAMPLE_LOWER = 0xBF800000
 FLOAT_SAMPLE_UPPER = 0x3F800000
 HALF_BITS = 16
+FLOAT_BITS = 32
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,14 @@ class TextureFormat(Enum):
     RGBA8_SRGB = FormatDescription(43, MODEL_RGBSDA, TRANSFER_SRGB, 1, 4, _rgba8_samples(TRANSFER_SRGB))
     RGBA16_SFLOAT = FormatDescription(97, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 8, _rgba16_float_samples())
     R16_UNORM = FormatDescription(70, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 2, (Sample(0, 16, 0, UNSIGNED_SHORT_MAX),))
+    R32_SFLOAT = FormatDescription(
+        100,
+        MODEL_RGBSDA,
+        TRANSFER_LINEAR,
+        1,
+        4,
+        (Sample(0, FLOAT_BITS, QUALIFIER_FLOAT | QUALIFIER_SIGNED, FLOAT_SAMPLE_UPPER, FLOAT_SAMPLE_LOWER),),
+    )
     BC4_UNORM = FormatDescription(139, MODEL_BC4, TRANSFER_LINEAR, 4, 8, (Sample(0, 64, 0, BLOCK_SAMPLE_MAX),))
     BC5_UNORM = FormatDescription(
         141, MODEL_BC5, TRANSFER_LINEAR, 4, 16, (Sample(0, 64, 0, BLOCK_SAMPLE_MAX), Sample(64, 64, 1, BLOCK_SAMPLE_MAX))

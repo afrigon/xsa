@@ -223,7 +223,7 @@ of them is binary.
 
 ### Terrains — `<namespace>/data/terrains/`
 
-A body's shape: a height map and the range its values cover. A body names its
+A body's shape: a height map and the range its heights span. A body names its
 terrain with `terrain "<id>"`.
 
 ```kdl
@@ -235,15 +235,15 @@ maximum 10752
 - **`height-map`:** the height map, relative to `data/terrains/` like every
   reference is relative to its kind's folder: `luna` is
   `data/terrains/luna.ktx2`.
-- **`minimum`, `maximum`** (m): the heights the map's values span, relative to
-  the body's `radius`, signed.
+- **`minimum`, `maximum`** (m): the lowest and highest heights in the map,
+  relative to the body's `radius`, signed.
 
-The height map is a KTX2 cube map, `R16_UNORM` and uncompressed: six square
+The height map is a KTX2 cube map, `R32_SFLOAT` and uncompressed: six square
 faces in Vulkan's face order and orientation, +X, −X, +Y, −Y, +Z, −Z of the
 body's frame (+X at longitude 0, +Z the north pole). It is sampled by
 direction, so neighbouring faces blend across their edges and no face
-stretches toward the poles. A value `v` is the height
-`minimum + v / 65535 × (maximum − minimum)`. It carries its full mip chain,
+stretches toward the poles. Each texel is a height in meters relative to the
+body's `radius`. It carries its full mip chain,
 each level the average of the one above, so the game only reads and uploads
 it. The server and every client read the same file, so the terrain has one
 resolution whatever texture tier a player installs.

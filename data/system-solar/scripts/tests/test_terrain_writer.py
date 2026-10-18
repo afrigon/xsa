@@ -8,7 +8,7 @@ from operations.cube_projection import CubeProjection
 from operations.raster import Raster
 from operations.terrain_writer import TerrainWriter
 
-R16_UNORM = 70
+R32_SFLOAT = 100
 
 
 def test_the_range_is_the_maps_own_rounded_outward(tmp_path):
@@ -20,17 +20,15 @@ def test_the_range_is_the_maps_own_rounded_outward(tmp_path):
     assert (tmp_path / "luna.kdl").read_text() == 'height-map "luna"\nminimum -9129\nmaximum 10787\n'
 
 
-def test_heights_read_back_within_half_a_step(tmp_path):
+def test_heights_read_back_as_written(tmp_path):
     heights = np.linspace(-9000, 11000, CUBE_FACE_COUNT * 4 * 4, dtype=np.float32).reshape(CUBE_FACE_COUNT, 4, 4, 1)
     TerrainWriter(tmp_path).write("luna", CubeMap([Raster(face) for face in heights], CubeProjection.EQUAL_ANGLE))
     data = (tmp_path / "luna.ktx2").read_bytes()
 
     vk_format, type_size, width, height = struct.unpack_from("<4I", data, 12)
     face_count, level_count = struct.unpack_from("<2I", data, 36)
-    assert (vk_format, type_size, width, height, face_count, level_count) == (R16_UNORM, 2, 4, 4, CUBE_FACE_COUNT, 3)
+    assert (vk_format, type_size, width, height, face_count, level_count) == (R32_SFLOAT, 4, 4, 4, CUBE_FACE_COUNT, 3)
 
     offset, length, _ = struct.unpack_from("<3Q", data, 80)
-    stored = np.frombuffer(zstandard.ZstdDecompressor().decompress(data[offset : offset + length]), np.uint16)
-    meters = -9000 + stored.reshape(heights.shape) / 65535 * 20000
-    step = 20000 / 65535
-    assert np.abs(meters - heights).max() <= step / 2 + 1e-3
+    stored = np.frombuffer(zstandard.ZstdDecompressor().decompress(data[offset : offset + length]), np.float32)
+    assert np.array_equal(stored.reshape(heights.shape), heights)
