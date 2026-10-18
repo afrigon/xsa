@@ -5,5 +5,5 @@ from dataclasses import dataclass
 # opposition effects (B_S0, h_S, B_C0, h_C), in that channel order.
 @dataclass(frozen=True)
 class HapkeMaterial:
-    medium_texture: str
-    opposition_texture: str
+    medium_terrain: str
+    opposition_terrain: str

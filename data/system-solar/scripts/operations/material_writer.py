@@ -19,15 +19,15 @@ class MaterialWriter:
         self,
         body: str,
         base_color: np.ndarray,
-        color_texture: str,
-        normal_texture: str,
+        color_terrain: str,
+        normal_terrain: str,
         hapke: HapkeMaterial | None = None,
     ) -> Path:
         path = self.materials / f"{body}.kdl"
-        text = self.planet(base_color) + f'color-texture "{color_texture}"\nnormal-texture "{normal_texture}"\n'
+        text = self.planet(base_color) + f'color-terrain "{color_terrain}"\nnormal-terrain "{normal_terrain}"\n'
 
         if hapke is not None:
-            text += f'hapke medium-texture="{hapke.medium_texture}" opposition-texture="{hapke.opposition_texture}"\n'
+            text += f'hapke medium-terrain="{hapke.medium_terrain}" opposition-terrain="{hapke.opposition_terrain}"\n'
 
         path.write_text(text)
         return path

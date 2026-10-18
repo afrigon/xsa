@@ -1,5 +1,6 @@
 import numpy as np
 import rasterio
+import rasterio.warp
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
 

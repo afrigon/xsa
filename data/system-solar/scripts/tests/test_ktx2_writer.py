@@ -10,7 +10,7 @@ from operations.texture_format import TextureFormat
 
 def test_header_and_levels_read_back(tmp_path):
     path = tmp_path / "texture.ktx2"
-    texture_format = TextureFormat.BC7_SRGB
+    texture_format = TextureFormat.RGBA8_SRGB
     compressor = Compressor(texture_format)
     sizes = [(8, 4), (4, 2), (2, 1), (1, 1)]
     levels = [[compressor.compress(np.full((height, width, 4), 128, np.uint8))] for width, height in sizes]
@@ -19,7 +19,7 @@ def test_header_and_levels_read_back(tmp_path):
 
     assert data[:12] == IDENTIFIER
     vk_format, _, width, height, depth, layers, faces, level_count, supercompression = struct.unpack_from("<9I", data, 12)
-    assert (vk_format, width, height, depth, layers, faces, level_count, supercompression) == (146, 8, 4, 0, 0, 1, 4, 2)
+    assert (vk_format, width, height, depth, layers, faces, level_count, supercompression) == (43, 8, 4, 0, 0, 1, 4, 2)
 
     for level, (level_width, level_height) in enumerate(sizes):
         offset, length, uncompressed = struct.unpack_from("<3Q", data, 80 + 24 * level)

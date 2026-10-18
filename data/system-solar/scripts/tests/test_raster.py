@@ -38,25 +38,6 @@ def test_mipmaps_reach_one_texel_and_keep_the_mean():
     assert np.isclose(levels[-1][0, 0, 0], raster.pixels.mean())
 
 
-def test_ground_rising_eastward_tilts_the_normal_west():
-    width = 64
-    columns = np.arange(width)
-    eastward = -columns.astype(float)
-    heights = np.tile(eastward, (width // 2, 1))[..., None]
-    normals = Raster(heights).normals(radius=1000.0).pixels
-    equator = width // 4
-
-    assert normals[equator, width // 2, 0] > 0
-    assert abs(normals[equator, width // 2, 1]) < 1e-9
-
-
-def test_ground_rising_northward_tilts_the_normal_south():
-    heights = np.tile(np.arange(32.0)[:, None], (1, 64))[..., None]
-    normals = Raster(heights).normals(radius=1000.0).pixels
-
-    assert normals[16, 10, 1] < 0
-
-
 # In the game's layout: longitude 0 a quarter of the way along each row, longitudes growing westward, rows from the
 # south pole.
 def test_interpolation_at_pixel_centers_gives_the_pixels_and_wraps_around():

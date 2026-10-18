@@ -121,7 +121,7 @@ class Luna(Recipe):
     ]
     credits = [
         Credit(
-            "Moon textures (system-solar/resources/textures/bodies/luna/)",
+            "Moon surface (system-solar/resources/terrains/bodies/luna/, system-solar/data/terrains/luna.ktx2)",
             "Color: the Lunar Reconnaissance Orbiter Camera (LROC) Wide Angle Camera Hapke-normalized mosaic "
             "(LRO-L-LROC-5-RDR-V1.0, WAC_HAPKE; Sato et al. 2017, Icarus 296) and Hapke parameter maps "
             "(WAC_HAPKEPARAMMAP; Sato et al. 2014, Journal of Geophysical Research: Planets 119), NASA/GSFC/Arizona "
