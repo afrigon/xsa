@@ -5,7 +5,8 @@ from operations.build_context import BuildContext
 from operations.color_grade import ColorGrade
 from operations.coverage_fill import CoverageFill
 from operations.credit import Credit
-from operations.cube_map import CubeMap
+from operations.equirectangular_source import EquirectangularSource
+from operations.cube_accumulator import CubeAccumulator
 from operations.cube_projection import CubeProjection
 from operations.hapke_material import HapkeMaterial
 from operations.hapke_model import Geometry, HapkeModel
@@ -122,12 +123,9 @@ class Luna(Recipe):
         width = context.output_width(Raster.native_width(elevation_path))
         heights = Raster.read(elevation_path, width, CGI_MOON_KIT, scale=METERS_PER_KILOMETER)
         TextureWriter.normal().write(context.texture_path("bodies/luna/normal"), [heights.normals(RADIUS)])
-        context.terrains.write(
-            "luna",
-            CubeMap.from_equirectangular(
-                elevation_path, TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, CGI_MOON_KIT, METERS_PER_KILOMETER
-            ),
-        )
+        terrain = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
+        terrain.add(EquirectangularSource.global_map(elevation_path, CGI_MOON_KIT, METERS_PER_KILOMETER))
+        context.terrains.write("luna", terrain.cube_map())
 
         hapke = self._hapke(context)
         context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)

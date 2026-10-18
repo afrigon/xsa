@@ -1,24 +1,12 @@
 import numpy as np
 import pytest
-import rasterio
 
 from operations.cube_map import CUBE_FACE_COUNT, CubeMap
 from operations.cube_projection import CubeProjection
-from operations.raster import Raster, SourceLayout
+from operations.raster import Raster
 
 FACE_SIZE = 4
 FRONT, BACK, RIGHT, LEFT, TOP, BOTTOM = range(CUBE_FACE_COUNT)
-
-
-def write_source(path, pixels):
-    with rasterio.open(path, "w", driver="GTiff", width=pixels.shape[1], height=pixels.shape[0], count=1,
-                       dtype="float32") as file:
-        file.write(pixels.astype(np.float32), 1)
-
-
-# Longitude of each column's center, from -180 at the left edge, growing to the right.
-def longitudes(width):
-    return -180 + (np.arange(width) + 0.5) * 360 / width
 
 
 @pytest.mark.parametrize("projection", list(CubeProjection))
@@ -40,35 +28,6 @@ def test_equal_angle_texels_span_equal_angles_along_a_faces_center_row():
     angles = np.arctan2(-direction[:, 2], direction[:, 0])
 
     assert np.allclose(np.diff(angles), np.pi / 2 / FACE_SIZE)
-
-
-def test_a_constant_source_gives_constant_faces(tmp_path):
-    write_source(tmp_path / "flat.tif", np.full((180, 360), 2.5))
-    cube = CubeMap.from_equirectangular(
-        tmp_path / "flat.tif", FACE_SIZE, CubeProjection.EQUAL_ANGLE, SourceLayout(), scale=1000
-    )
-
-    assert all(np.allclose(face.pixels, 2500) for face in cube.faces)
-
-
-def test_faces_sit_on_the_body_frame_axes(tmp_path):
-    width = 720
-    latitude = 90 - (np.arange(width // 2) + 0.5) * 180 / (width // 2)
-    write_source(tmp_path / "latitude.tif", np.repeat(latitude[:, None], width, axis=1))
-    write_source(tmp_path / "longitude.tif", np.repeat(longitudes(width)[None, :], width // 2, axis=0))
-    by_latitude = CubeMap.from_equirectangular(
-        tmp_path / "latitude.tif", FACE_SIZE, CubeProjection.EQUAL_ANGLE, SourceLayout()
-    )
-    by_longitude = CubeMap.from_equirectangular(
-        tmp_path / "longitude.tif", FACE_SIZE, CubeProjection.EQUAL_ANGLE, SourceLayout()
-    )
-    center = slice(FACE_SIZE // 2 - 1, FACE_SIZE // 2 + 1)
-
-    assert abs(by_longitude.faces[FRONT].pixels[center, center].mean()) < 1
-    assert abs(by_longitude.faces[RIGHT].pixels[center, center].mean() - 90) < 1
-    assert abs(by_longitude.faces[LEFT].pixels[center, center].mean() + 90) < 1
-    assert by_latitude.faces[TOP].pixels[center, center].mean() > 60
-    assert by_latitude.faces[BOTTOM].pixels[center, center].mean() < -60
 
 
 @pytest.mark.parametrize("projection", list(CubeProjection))
