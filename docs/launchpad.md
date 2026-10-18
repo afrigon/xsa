@@ -53,8 +53,9 @@ launchpad package <pack directory> [--bump major|minor|patch] [--output <directo
    with its comments and layout kept. Without it, the current version is
    packaged.
 3. Lists the pack's files, leaving out what `.xsaignore` excludes.
-4. Converts authored sources into their shipped form, such as terrain cube maps
-   into streamed pages.
+4. Converts every terrain layer the pack's terrain definitions name from its
+   cube map into a `.terrain` file (see Terrain conversion); the archives ship
+   the `.terrain` files in place of the cube maps.
 5. Writes both archives to the output directory and prints, for each, its path,
    size and SHA-256.
 
@@ -63,6 +64,51 @@ nothing installed on the system. Compression uses zstd level 19 on every core:
 slow to package, as fast as any level to extract. Entries are sorted, with a
 fixed modification time, owner and permissions, so the same files always
 produce the same archive.
+
+### Terrain conversion
+
+```
+launchpad terrain create [--height] [--output <path>] <input>
+```
+
+Streamed terrain ships as `.terrain` files, one per terrain layer (heights,
+colour, normals, each Hapke map), holding every page of the layer at every
+level. Creators author each layer as a KTX2 cube map and never write a
+`.terrain` file by hand; the format is specified in #299 (Convert terrain cube
+maps into streamed pages). Packaging runs this conversion on every layer; the
+command also runs on its own, so a creator can check their data before
+packaging. system-solar's terrain layers are produced by it.
+
+The input is a KTX2 cube map:
+
+- six square faces, +X, −X, +Y, −Y, +Z, −Z of the body's frame (+X at longitude
+  0, +Z the north pole), in Vulkan's cube-map face order and orientation;
+- a face size that is a power of two, at least 128;
+- its full mip chain, each level the average of the one above;
+- uncompressed texels, since page borders are rotated across face edges and
+  compressed blocks cannot be.
+
+The output is 136×136-texel pages (a 128×128 interior and a 4-texel border
+copied from the neighbouring pages), each compressed with zstd. Without
+`--output`, it is written next to the input, with the same name and the
+`.terrain` extension.
+
+| Layer | Input texels | Pages |
+| --- | --- | --- |
+| Heights (`--height`) | `R32_SFLOAT`, metres relative to the body's radius | `R16_UNORM` over each page's own height range, stored in the table of contents |
+| Any other layer | `R8G8B8A8_SRGB` | `BC7_SRGB_BLOCK` |
+| | `R8G8_UNORM` | `BC5_UNORM_BLOCK` |
+| | `R16G16B16A16_SFLOAT` | `R16G16B16A16_SFLOAT` |
+
+`--height` selects the height encoding, the only one whose pages differ in
+structure; every other layer keeps its texel format, block-compressed when it
+has 8 bits per channel, whatever the layer means. An input that matches no row
+is refused. The page size and border are constants of the format: they match
+4-tap cubic filtering and 4×4 compression blocks, and the game's page
+addressing relies on them.
+
+`launchpad terrain create --help` lists these requirements in full, for the
+artists producing the cube maps.
 
 ### `.xsaignore`
 
@@ -198,6 +244,7 @@ instance; an instance's `config.kdl` overrides individual keys.
 | `update [<pack>]` | Resolves to the latest matching releases and syncs |
 | `sync` | Makes `packs/` match the lockfile |
 | `package <pack directory>` | Packages a pack for release (see Packaging) |
+| `terrain create <input>` | Converts a terrain layer's cube map into a `.terrain` file (see Terrain conversion) |
 
 Publishing is not a launchpad command: an author uploads archives to their own
 host and opens a pull request on the repository.
