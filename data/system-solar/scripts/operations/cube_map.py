@@ -5,6 +5,7 @@ import numpy as np
 import OpenEXR
 import rasterio
 
+from operations.cube_projection import CubeProjection
 from operations.raster import Raster, SourceLayout
 
 CUBE_FACE_COUNT = 6
@@ -16,13 +17,16 @@ logger = logging.getLogger(__name__)
 
 
 class CubeMap:
-    def __init__(self, faces: list[Raster]):
+    def __init__(self, faces: list[Raster], projection: CubeProjection):
         self.faces = faces
+        self.projection = projection
 
     # Each texel is the area-weighted average of the equirectangular source's ground it covers, so no texel depends
     # on the source's rows shrinking toward the poles.
     @staticmethod
-    def from_equirectangular(path: Path, face_size: int, layout: SourceLayout, scale: float = 1.0) -> "CubeMap":
+    def from_equirectangular(
+        path: Path, face_size: int, projection: CubeProjection, layout: SourceLayout, scale: float = 1.0
+    ) -> "CubeMap":
         texel_count = CUBE_FACE_COUNT * face_size * face_size
         sums = np.zeros(texel_count)
         weights = np.zeros(texel_count)
@@ -46,7 +50,7 @@ class CubeMap:
                     ),
                     axis=-1,
                 )
-                face, column, row = CubeMap._texel(direction, face_size)
+                face, column, row = CubeMap._texel(direction, face_size, projection)
                 texels = ((face * face_size + row) * face_size + column).ravel()
                 area = np.broadcast_to(np.cos(latitudes)[:, None], face.shape).ravel()
                 values = band.repeat(SUBDIVISIONS, axis=0).repeat(SUBDIVISIONS, axis=1).ravel()
@@ -58,11 +62,13 @@ class CubeMap:
             raise ValueError(f"{path.name}: too coarse for {face_size}-texel faces, some texels cover no pixel")
 
         faces = (sums / weights).astype(np.float32).reshape(CUBE_FACE_COUNT, face_size, face_size, 1)
-        return CubeMap([Raster(face) for face in faces])
+        return CubeMap([Raster(face) for face in faces], projection)
 
     # A sky map holds right ascension 0 at its center, growing to the left, and the celestial north pole on row 0.
     @staticmethod
-    def from_sky_map(path: Path, face_size: int, samples_per_axis: int) -> "CubeMap":
+    def from_sky_map(
+        path: Path, face_size: int, projection: CubeProjection, samples_per_axis: int
+    ) -> "CubeMap":
         with OpenEXR.File(str(path)) as file:
             sky = np.asarray(file.channels()["RGB"].pixels, np.float32)
 
@@ -76,16 +82,16 @@ class CubeMap:
                 for column_offset in offsets:
                     t = (np.arange(face_size)[:, None] + row_offset) / face_size * 2 - 1
                     s = (np.arange(face_size)[None, :] + column_offset) / face_size * 2 - 1
-                    total += CubeMap._sample(sky, CubeMap._direction(face, s, t))
+                    total += CubeMap._sample(sky, CubeMap._direction(face, s, t, projection))
 
             faces.append(Raster(total / samples_per_axis**2))
 
-        return CubeMap(faces)
+        return CubeMap(faces, projection)
 
     # Inverse of the cube map face selection table in the Vulkan specification.
     @staticmethod
-    def _direction(face: int, s: np.ndarray, t: np.ndarray) -> np.ndarray:
-        s, t = np.broadcast_arrays(s, t)
+    def _direction(face: int, s: np.ndarray, t: np.ndarray, projection: CubeProjection) -> np.ndarray:
+        s, t = np.broadcast_arrays(projection.to_plane(s), projection.to_plane(t))
         one = np.ones_like(s)
         x, y, z = [
             (one, -t, -s),
@@ -100,15 +106,17 @@ class CubeMap:
 
     # The cube map face selection table in the Vulkan specification: the face and the texel a direction falls in.
     @staticmethod
-    def _texel(direction: np.ndarray, face_size: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _texel(
+        direction: np.ndarray, face_size: int, projection: CubeProjection
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         x, y, z = direction[..., 0], direction[..., 1], direction[..., 2]
         ax, ay, az = np.abs(x), np.abs(y), np.abs(z)
         on_x = (ax >= ay) & (ax >= az)
         on_y = ~on_x & (ay >= az)
         face = np.where(on_x, np.where(x > 0, 0, 1), np.where(on_y, np.where(y > 0, 2, 3), np.where(z > 0, 4, 5)))
         major = np.where(on_x, ax, np.where(on_y, ay, az))
-        s = np.choose(face, [-z, z, x, x, x, -x]) / major
-        t = np.choose(face, [-y, -y, z, -z, -y, -y]) / major
+        s = projection.from_plane(np.choose(face, [-z, z, x, x, x, -x]) / major)
+        t = projection.from_plane(np.choose(face, [-y, -y, z, -z, -y, -y]) / major)
         column = np.minimum(((s + 1) / 2 * face_size).astype(np.int64), face_size - 1)
         row = np.minimum(((t + 1) / 2 * face_size).astype(np.int64), face_size - 1)
         return face, column, row

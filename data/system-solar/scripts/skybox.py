@@ -1,6 +1,7 @@
 from operations.build_context import BuildContext
 from operations.credit import Credit
 from operations.cube_map import CubeMap
+from operations.cube_projection import CubeProjection
 from operations.recipe import Recipe
 from operations.source import Source
 from operations.texture_writer import TextureWriter
@@ -25,5 +26,7 @@ class Skybox(Recipe):
     ]
 
     def build(self, context: BuildContext) -> None:
-        cube_map = CubeMap.from_sky_map(self.star_map.fetch(context.cache), FACE_SIZE, SAMPLES_PER_AXIS)
+        cube_map = CubeMap.from_sky_map(
+            self.star_map.fetch(context.cache), FACE_SIZE, CubeProjection.GNOMONIC, SAMPLES_PER_AXIS
+        )
         TextureWriter.sky().write(context.texture_path("skyboxes/deep-star-maps"), cube_map.faces)
