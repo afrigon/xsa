@@ -164,7 +164,9 @@ pack "system-solar" {
 
 ## Instances
 
-Instances live in `$HOME/xsa/instances/`; the default is `main`.
+Instances live in `$HOME/xsa/instances/`. The client and the dedicated server
+use instances the same way; the client's default instance is `main`, the
+server's is `server`, and `--instance <name>` selects another.
 
 ```
 $HOME/xsa/instances/main/
@@ -222,13 +224,18 @@ with `--packs data`, so the repository's packs take precedence over installed
 ones.
 
 When the instance does not exist, the game creates it as `launchpad`
-would, with the first-party packs in its manifest, and syncs it before loading.
+would, with `system-solar` in its manifest, and syncs it before loading.
 Once synced, an instance runs without a network connection.
 
 ## Config
 
 The game's config (`$XDG_CONFIG_HOME/xsa/config.kdl`) applies to every
 instance; an instance's `config.kdl` overrides individual keys.
+
+`launchpad`'s own settings live in `$XDG_CONFIG_HOME/xsa/launchpad.kdl` (falling
+back to `~/.config/xsa/launchpad.kdl`): the instances directory and repositories
+besides `afrigon/xsa-repository`. The game reads the instances directory from
+it too.
 
 ## Commands
 
@@ -237,7 +244,7 @@ instance; an instance's `config.kdl` overrides individual keys.
 
 | Command | Does |
 | --- | --- |
-| `instance create <name>` | Creates an instance with `base` and syncs it |
+| `instance create <name>` | Creates an instance with `system-solar` in its manifest and syncs it |
 | `instance list` | Lists the instances |
 | `install <pack>[@<requirement>]` | Adds the pack to `launchpad.kdl`, resolves and syncs |
 | `uninstall <pack>` | Removes the pack from `launchpad.kdl`, resolves and syncs |
@@ -266,11 +273,6 @@ client, and manifest edits keep the document's layout.
 
 ## Open questions
 
-- Whether the dedicated server runs from an instance, and whether its identity
-  moves into it.
-- `xsa client --instance` already names a running client for `xsa ipc`; the
-  game's instance needs another flag, or the two concepts merge.
-- Where launchpad's own settings live (extra repositories, the instances
-  directory).
+- Whether the dedicated server's identity, written to `.xsa/server/` relative
+  to the working directory, moves into its instance.
 - The default output directory of `package`.
-- Which first-party packs a new instance gets besides `base`.
