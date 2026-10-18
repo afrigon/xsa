@@ -2,14 +2,14 @@ use std::io::{self, Write};
 
 use anyhow::bail;
 
-use super::{TextureFormat, TextureImage};
+use resource_loader::texture::{TextureFormat, TextureImage};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const HEADER_SIZE: usize = 80;
 const LEVEL_INDEX_ENTRY_SIZE: usize = 24;
 const SUPERCOMPRESSION_NONE: u32 = 0;
 const WRITER_KEY: &str = "KTXwriter";
-const WRITER: &str = concat!("resource-loader ", env!("CARGO_PKG_VERSION"));
+const WRITER: &str = concat!("launchpad ", env!("CARGO_PKG_VERSION"));
 const WORD_BYTES: usize = 4;
 
 /// Writes uncompressed textures and cube maps as KTX2 files, without supercompression.
@@ -222,5 +222,86 @@ impl DataFormatDescriptor {
         }
 
         bytes
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use resource_loader::texture::{Ktx2Loader, TextureLoader};
+
+    use super::*;
+
+    const BC7_BLOCK_BYTES: usize = 16;
+
+    // Every byte of a level's face holds the level and face it belongs to.
+    fn tagged(level: u8, face: u8, size: usize) -> Vec<u8> {
+        vec![level * 16 + face; size]
+    }
+
+    fn written(image: &TextureImage) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        Ktx2Writer::write(image, &mut bytes).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_written_cube_map_reads_back_with_every_level() {
+        let layers: Vec<Vec<u8>> = (0..6u8)
+            .map(|face| {
+                let mut layer = tagged(0, face, 4 * 4 * 2);
+                layer.extend(tagged(1, face, 2 * 2 * 2));
+                layer.extend(tagged(2, face, 2));
+                layer
+            })
+            .collect();
+        let image = TextureImage::new(TextureFormat::Rg8Unorm, 4, 4, 3, layers.clone()).unwrap();
+        let read = Ktx2Loader::load(&written(&image)).unwrap();
+
+        assert_eq!(read.format(), TextureFormat::Rg8Unorm);
+        assert_eq!((read.width(), read.height(), read.mip_levels()), (4, 4, 3));
+        assert_eq!(read.layers(), layers.as_slice());
+    }
+
+    #[test]
+    fn every_uncompressed_format_reads_back_as_written() {
+        for format in [
+            TextureFormat::Rgba8Unorm,
+            TextureFormat::Rgba8Srgb,
+            TextureFormat::Rgba16Float,
+            TextureFormat::R16Unorm,
+            TextureFormat::Rg16Unorm,
+            TextureFormat::R32Float,
+        ] {
+            let size = format.level_size(2, 1) + format.level_size(1, 1);
+            let layer: Vec<u8> = (0..size as u8).collect();
+            let image = TextureImage::new(format, 2, 1, 2, vec![layer.clone()]).unwrap();
+            let read = Ktx2Loader::load(&written(&image)).unwrap();
+
+            assert_eq!(read.format(), format, "{format}");
+            assert_eq!(read.layers(), &[layer], "{format}");
+        }
+    }
+
+    #[test]
+    fn a_written_file_describes_its_texels() {
+        let image = TextureImage::new(TextureFormat::Rgba8Srgb, 1, 1, 1, vec![vec![0; 4]]).unwrap();
+        let bytes = written(&image);
+        let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        let descriptor = word(48) as usize;
+        let block = descriptor + 4;
+        let alpha_sample = block + 24 + 3 * 16;
+
+        assert_eq!(word(16), 1, "typeSize");
+        assert_eq!(word(descriptor) as usize, word(52) as usize);
+        assert_eq!(&bytes[block + 8..block + 11], &[1, 1, 2], "RGBSDA, BT.709, sRGB");
+        assert_eq!(bytes[block + 16], 4, "bytes per texel");
+        assert_eq!(bytes[alpha_sample + 3], 0x1F, "linear alpha");
+    }
+
+    #[test]
+    fn block_compressed_textures_are_not_written() {
+        let image = TextureImage::new(TextureFormat::Bc7Srgb, 4, 4, 1, vec![vec![0; BC7_BLOCK_BYTES]]).unwrap();
+
+        assert!(Ktx2Writer::write(&image, &mut Vec::new()).is_err());
     }
 }

@@ -1,4 +1,4 @@
-use anyhow::bail;
+use anyhow::{Context, bail};
 use block_compression::{BC7Settings, CompressionVariant};
 use resource_loader::terrain::{HeightRange, PAGE_EXTENT, PageEncoding};
 use resource_loader::texture::{HalfFloat, TextureFormat};
@@ -29,6 +29,13 @@ pub enum LayerEncoding {
 }
 
 impl LayerEncoding {
+    const ALL: [LayerEncoding; 4] = [
+        LayerEncoding::Heights,
+        LayerEncoding::Bc7,
+        LayerEncoding::Bc5,
+        LayerEncoding::Rgba16Float,
+    ];
+
     pub fn new(encoding: PageEncoding, input: TextureFormat) -> anyhow::Result<LayerEncoding> {
         Ok(match (encoding, input) {
             (PageEncoding::PageHeights, TextureFormat::R32Float) => LayerEncoding::Heights,
@@ -46,6 +53,14 @@ impl LayerEncoding {
                  R32_SFLOAT heights with --height"
             ),
         })
+    }
+
+    /// The layer encoding whose pages a `.terrain` file of that format and encoding holds.
+    pub fn from_page_format(format: TextureFormat, encoding: PageEncoding) -> anyhow::Result<LayerEncoding> {
+        LayerEncoding::ALL
+            .into_iter()
+            .find(|layer| layer.page_format() == format && layer.page_encoding() == encoding)
+            .with_context(|| format!("no terrain layer stores {format} pages with this encoding"))
     }
 
     pub fn input_format(self) -> TextureFormat {
@@ -113,6 +128,39 @@ impl LayerEncoding {
         }
     }
 
+    /// Decodes a page in the page format back into input texels, rows top to bottom; `range` is its entry's.
+    pub fn decode(self, page: &[u8], range: Option<HeightRange>) -> Vec<u8> {
+        match self {
+            LayerEncoding::Heights => {
+                let range = range.expect("the reader refuses height pages without their range");
+
+                page.as_chunks::<{ size_of::<u16>() }>()
+                    .0
+                    .iter()
+                    .flat_map(|value| range.height(u16::from_le_bytes(*value)).to_le_bytes())
+                    .collect()
+            }
+            LayerEncoding::Bc7 => LayerEncoding::decompressed(CompressionVariant::BC7(BC7Settings::alpha_slow()), page),
+            LayerEncoding::Bc5 => LayerEncoding::decompressed(CompressionVariant::BC5, page)
+                .as_chunks::<RGBA8_CHANNELS>()
+                .0
+                .iter()
+                .flat_map(|[red, green, _, _]| [*red, *green])
+                .collect(),
+            LayerEncoding::Rgba16Float => page.to_vec(),
+        }
+    }
+
+    /// The input texel standing for an absent page: transparent, or NaN for heights, or 0 for normals.
+    pub fn absent_texel(self) -> Vec<u8> {
+        match self {
+            LayerEncoding::Heights => f32::NAN.to_le_bytes().to_vec(),
+            LayerEncoding::Bc7 => vec![0; RGBA8_CHANNELS],
+            LayerEncoding::Bc5 => vec![0; RG8_CHANNELS],
+            LayerEncoding::Rgba16Float => vec![0; TextureFormat::Rgba16Float.block_size()],
+        }
+    }
+
     /// The average of several input texels, written into `output`: colors in linear light, everything else as stored.
     pub fn average(self, texels: &[&[u8]], output: &mut [u8]) {
         let count = texels.len() as f32;
@@ -174,6 +222,13 @@ impl LayerEncoding {
 
         blocks
     }
+
+    fn decompressed(variant: CompressionVariant, blocks: &[u8]) -> Vec<u8> {
+        let mut rgba = vec![0; (PAGE_EXTENT * PAGE_EXTENT) as usize * RGBA8_CHANNELS];
+        block_compression::decode::decompress_blocks_as_rgba8(variant, PAGE_EXTENT, PAGE_EXTENT, blocks, &mut rgba);
+
+        rgba
+    }
 }
 
 fn srgb_to_linear(value: f32) -> f32 {
@@ -202,6 +257,30 @@ mod tests {
         assert!(LayerEncoding::new(PageEncoding::Direct, TextureFormat::R32Float).is_err());
         assert!(LayerEncoding::new(PageEncoding::PageHeights, TextureFormat::R16Unorm).is_err());
         assert!(LayerEncoding::new(PageEncoding::PageHeights, TextureFormat::Rgba8Srgb).is_err());
+    }
+
+    #[test]
+    fn each_page_format_leads_back_to_its_layer() {
+        for layer in LayerEncoding::ALL {
+            assert_eq!(
+                LayerEncoding::from_page_format(layer.page_format(), layer.page_encoding()).unwrap(),
+                layer
+            );
+        }
+
+        assert!(LayerEncoding::from_page_format(TextureFormat::R16Unorm, PageEncoding::Direct).is_err());
+    }
+
+    #[test]
+    fn heights_decode_back_through_their_page_range() {
+        let range = HeightRange {
+            minimum: -5.0,
+            maximum: 20.0,
+        };
+        let page: Vec<u8> = [0u16, u16::MAX].iter().flat_map(|value| value.to_le_bytes()).collect();
+        let heights: Vec<u8> = [-5.0f32, 20.0].iter().flat_map(|height| height.to_le_bytes()).collect();
+
+        assert_eq!(LayerEncoding::Heights.decode(&page, Some(range)), heights);
     }
 
     #[test]

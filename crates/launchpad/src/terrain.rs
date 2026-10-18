@@ -1,6 +1,7 @@
 mod coverage_map;
 mod cube_map_input;
 mod encoded_page;
+mod ktx2_writer;
 mod layer_encoding;
 mod level_summary;
 mod page_builder;
@@ -15,6 +16,7 @@ mod test_cube_map;
 pub use coverage_map::CoverageMap;
 pub use cube_map_input::CubeMapInput;
 pub use encoded_page::EncodedPage;
+pub use ktx2_writer::Ktx2Writer;
 pub use layer_encoding::LayerEncoding;
 pub use level_summary::LevelSummary;
 pub use page_builder::PageBuilder;
