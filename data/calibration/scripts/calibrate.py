@@ -7,7 +7,7 @@
 # camera's white balance takes the star's light as white, so each patch shows its own reflectance's color.
 #
 #   uv run calibrate.py generate            write the pack's bodies, system, simulation and materials
-#   uv run calibrate.py measure <instance>  snap every patch in a running game and compare with the prediction
+#   uv run calibrate.py measure <name>      snap every patch in a running game and compare with the prediction
 
 import argparse
 import subprocess
@@ -111,8 +111,8 @@ def generate() -> None:
     write(NAMESPACE / "data/simulations/calibration.kdl", f'system "calibration"\nspawn "{list(colors)[0]}"\n')
 
 
-def ipc(instance: str, *words: str) -> str:
-    command = ["mise", "run", "ipc", "--", "--instance", instance, *words]
+def ipc(name: str, *words: str) -> str:
+    command = ["mise", "run", "ipc", "--", "--name", name, *words]
     return subprocess.run(command, capture_output=True, text=True, check=True).stdout
 
 
@@ -128,23 +128,23 @@ def lab(linear: np.ndarray) -> np.ndarray:
     return colour.XYZ_to_Lab(SRGB.matrix_RGB_to_XYZ @ linear, SRGB.whitepoint)
 
 
-def measure(instance: str, output: Path, tonemapper: str) -> None:
+def measure(name: str, output: Path, tonemapper: str) -> None:
     output.mkdir(parents=True, exist_ok=True)
 
     for setting in ["animations.duration-scale 0", "render.bloom.enabled false", "render.lens.enabled false"]:
-        ipc(instance, "config", "set", *setting.split())
+        ipc(name, "config", "set", *setting.split())
 
-    ipc(instance, "ui", "set", "game")
+    ipc(name, "ui", "set", "game")
     colors = patches()
     measured = {}
 
     for setting in ["none", tonemapper]:
-        ipc(instance, "config", "set", "render.tonemapper", setting)
+        ipc(name, "config", "set", "render.tonemapper", setting)
 
         for patch in colors:
-            ipc(instance, "camera", "target", patch, "--distance", CAMERA_DISTANCE, "--yaw", CAMERA_YAW, "--pitch", "0")
+            ipc(name, "camera", "target", patch, "--distance", CAMERA_DISTANCE, "--yaw", CAMERA_YAW, "--pitch", "0")
             path = output / f"{setting}-{patch}.png"
-            ipc(instance, "camera", "snap", "--output", str(path))
+            ipc(name, "camera", "snap", "--output", str(path))
             measured[setting, patch] = center(path)
 
     print(f"display value per unit albedo {DISPLAY_PER_ALBEDO:.4f}\n")
@@ -173,7 +173,7 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("generate")
     measuring = commands.add_parser("measure")
-    measuring.add_argument("instance")
+    measuring.add_argument("name")
     measuring.add_argument("--output", type=Path, default=PACK / "scripts" / "snaps")
     measuring.add_argument("--tonemapper", default="agx", help="compared with no tone mapping: agx, agx-punchy, …")
     arguments = parser.parse_args()
@@ -181,7 +181,7 @@ def main() -> None:
     if arguments.command == "generate":
         generate()
     else:
-        measure(arguments.instance, arguments.output, arguments.tonemapper)
+        measure(arguments.name, arguments.output, arguments.tonemapper)
 
 
 if __name__ == "__main__":

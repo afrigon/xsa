@@ -36,7 +36,7 @@ Everything runs through mise; tools are pinned in `mise.toml`.
 | `mise run client [--release]` | Compile shaders, run the game with an integrated server (debug builds enable validation layers) |
 | `mise run client -- --remote <host>:<port> --fingerprint <hash>` | Run the game against a dedicated server |
 | `mise run server [--release]` | Run a dedicated server (`-- --host <address> --port <port>`) |
-| `mise run ipc -- <command>` | Send a command to a running instance (`--instance <name>` when several run) |
+| `mise run ipc -- <command>` | Send a command to a running game or server (`--name <name>` when several run) |
 | `mise run build [--release]` / `build-server` | Build everything / the server-only binary |
 | `mise run test` / `fmt` / `lint` | Unit tests / format (120 columns) / Clippy with warnings as errors, full and server-only builds |
 | `mise run shaders` | Compile the Slang shaders to SPIR-V and validate them |
@@ -201,10 +201,10 @@ kinds (height maps, lens textures) through its `ResourceKind` trait.
   `--output` it goes to `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. It
   does not wait for animations: set `animations.duration-scale 0` first so
   camera transitions, eye adaptation and interface transitions finish at once.
-- Agents always send `mise run ipc --instance agent-<workspace> config set
+- Agents always send `mise run ipc --name agent-<workspace> config set
   input.enabled false` before testing in the game, so mouse and keyboard input
   on its window cannot move the camera mid-test, and always send
-  `mise run ipc --instance agent-<workspace> config set input.enabled true`
+  `mise run ipc --name agent-<workspace> config set input.enabled true`
   once the test is done. The session key stops camera input and mouse capture (key binds still
   work), and a red "input disabled" label shows while it is off.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
@@ -215,13 +215,13 @@ kinds (height maps, lens textures) through its `ResourceKind` trait.
   create it as a sibling in the bottom 20% of the workspace
   (`herdr pane split --direction down --ratio 0.8 --no-focus`, where the ratio
   is the share kept by the split pane, then `herdr pane rename`). The pane only hosts the game: they launch it there with
-  `herdr pane run` (`mise run client -- --instance agent-<workspace>`), and
+  `herdr pane run` (`mise run client -- --name agent-<workspace>`), and
   every command, inside herdr or not, goes through
-  `mise run ipc --instance agent-<workspace>`, never typed into the game's
+  `mise run ipc --name agent-<workspace>`, never typed into the game's
   stdin. The game stays running between tests: they restart it (`exit` over
   IPC, then launch it again in the same pane) only to run an updated build,
   and launch it when the pane has no game running. Outside herdr they launch
-  it themselves and stop it with `exit` when done. Other instances may be the
+  it themselves and stop it with `exit` when done. Other running games may be the
   user's: never send them commands.
 
 ## Dependencies and assets
