@@ -81,6 +81,20 @@ fn a_header_reads_back_what_it_wrote() {
 }
 
 #[test]
+fn a_header_with_more_levels_than_a_face_extent_holds_is_refused() {
+    let mut bytes = Vec::new();
+    TerrainHeader {
+        format: TextureFormat::Bc7Srgb,
+        encoding: PageEncoding::Direct,
+        level_count: TerrainHeader::MAXIMUM_LEVEL_COUNT + 1,
+    }
+    .write(&mut bytes)
+    .unwrap();
+
+    assert!(TerrainHeader::read(bytes.as_slice().try_into().unwrap()).is_err());
+}
+
+#[test]
 fn the_reader_finds_pages_by_key_and_decompresses_them() {
     let header = TerrainHeader {
         format: TextureFormat::R16Unorm,

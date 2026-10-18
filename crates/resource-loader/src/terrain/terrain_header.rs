@@ -16,6 +16,8 @@ pub struct TerrainHeader {
 impl TerrainHeader {
     /// The size of the header in bytes.
     pub const SIZE: usize = 28;
+    /// The most levels a file holds: its finest face, `PAGE_INTERIOR << 24` texels, is the widest a `u32` holds.
+    pub const MAXIMUM_LEVEL_COUNT: u32 = 25;
     const MAGIC: &[u8; 4] = b"XSAT";
     const VERSION: u32 = 1;
     const VERSION_OFFSET: usize = 4;
@@ -43,6 +45,13 @@ impl TerrainHeader {
             "{page_extent}-texel pages with a {border}-texel border: expected {PAGE_EXTENT} and {PAGE_BORDER}"
         );
 
+        let level_count = word(Self::LEVEL_COUNT_OFFSET);
+        ensure!(
+            level_count <= Self::MAXIMUM_LEVEL_COUNT,
+            "{level_count} levels: a terrain file holds at most {}",
+            Self::MAXIMUM_LEVEL_COUNT
+        );
+
         let vulkan_format = VulkanFormat {
             value: word(Self::FORMAT_OFFSET),
         };
@@ -51,7 +60,7 @@ impl TerrainHeader {
             format: TextureFormat::from_vulkan_format(vulkan_format)
                 .with_context(|| format!("unsupported Vulkan format {}", vulkan_format.value))?,
             encoding: PageEncoding::from_value(word(Self::ENCODING_OFFSET))?,
-            level_count: word(Self::LEVEL_COUNT_OFFSET),
+            level_count,
         })
     }
 
