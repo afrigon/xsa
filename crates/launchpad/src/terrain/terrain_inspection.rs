@@ -19,10 +19,7 @@ pub struct TerrainInspection {
 }
 
 impl TerrainInspection {
-    pub fn read<R: Read + Seek>(
-        reader: &mut TerrainReader<R>,
-        check: PageCheck,
-    ) -> anyhow::Result<TerrainInspection> {
+    pub fn read<R: Read + Seek>(reader: &mut TerrainReader<R>, check: PageCheck) -> anyhow::Result<TerrainInspection> {
         let header = *reader.header();
         let mut inspection = TerrainInspection {
             header,
@@ -323,7 +320,8 @@ mod tests {
                 },
                 TerrainProblem::DataOutsideFile {
                     address: address(CubeFace::PositiveZ, 0, 0),
-                    end: length + u64::from(PageEntry::read(&converted()[past_the_end..], PageEncoding::Direct).data_size),
+                    end: length
+                        + u64::from(PageEntry::read(&converted()[past_the_end..], PageEncoding::Direct).data_size),
                 },
             ]
         );

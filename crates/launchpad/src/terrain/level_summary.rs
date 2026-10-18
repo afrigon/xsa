@@ -26,7 +26,12 @@ impl LevelSummary {
             .iter()
             .filter_map(|entry| entry.range)
             .flat_map(|range| [range.minimum, range.maximum]);
-        self.range = HeightRange::spanning(self.range.into_iter().flat_map(|range| [range.minimum, range.maximum]).chain(bounds));
+        self.range = HeightRange::spanning(
+            self.range
+                .into_iter()
+                .flat_map(|range| [range.minimum, range.maximum])
+                .chain(bounds),
+        );
     }
 
     /// The width and height of each face at this level, in texels.

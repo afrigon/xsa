@@ -82,7 +82,11 @@ mod tests {
     #[test]
     fn a_fine_level_scales_down_to_the_map_width() {
         let keys = (0..256).flat_map(|y| (0..128).map(move |x| PageKey::from_coordinates(x, y)));
-        let map = CoverageMap::new(CubeFace::NegativeX, 8, keys.chain([PageKey::from_coordinates(255, 255)]));
+        let map = CoverageMap::new(
+            CubeFace::NegativeX,
+            8,
+            keys.chain([PageKey::from_coordinates(255, 255)]),
+        );
         let rows: Vec<String> = map.to_string().lines().skip(1).map(str::to_owned).collect();
 
         assert_eq!(rows.len(), 64);

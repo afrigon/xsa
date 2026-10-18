@@ -169,7 +169,13 @@ fn the_reader_finds_pages_by_key_and_decompresses_them() {
         data_offset: reader.length() - 1,
         ..entry
     };
-    assert!(reader.page(&past_the_end).unwrap_err().to_string().contains("past the end"));
+    assert!(
+        reader
+            .page(&past_the_end)
+            .unwrap_err()
+            .to_string()
+            .contains("past the end")
+    );
 
     let negative_y_level_1 = TerrainHeader::SIZE + (3 * 2 + 1) * LevelRecord::SIZE;
     bytes[negative_y_level_1 + 8..negative_y_level_1 + 16].copy_from_slice(&(u64::MAX / 4).to_le_bytes());

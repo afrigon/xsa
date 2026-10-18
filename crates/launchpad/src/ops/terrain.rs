@@ -55,8 +55,8 @@ pub fn inspect(context: &mut LaunchpadContext, options: &TerrainInspectOptions) 
         return Ok(());
     }
 
-    let inspection = TerrainInspection::read(&mut reader, options.check)
-        .with_context(|| format!("{}", options.file.display()))?;
+    let inspection =
+        TerrainInspection::read(&mut reader, options.check).with_context(|| format!("{}", options.file.display()))?;
     write!(context.shell().out(), "{inspection}")?;
 
     match inspection.problems.len() {
