@@ -500,7 +500,6 @@ into them without a format change.
 
 Pack text files (`.kdl`, `.slang`) are committed to the repository; binary
 files (`.dds`, `.spv`, …) are git-ignored, except the base pack's textures,
-which no task produces. Releases publish each pack, text and binaries together
-but without its `scripts/`, as a versioned `.tar.zst` archive in object storage.
-In the repository, system-solar's binaries come from its scripts:
-`mise run generate`.
+which no task produces. In the repository, system-solar's binaries come from its
+scripts: `mise run generate`. Releases, the pack repository and installation are
+described in `docs/launchpad.md`.

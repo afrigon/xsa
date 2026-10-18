@@ -20,7 +20,9 @@ never preferred because it is easier to implement or already exists.
 The roadmap, known deferred work and loose ideas live in the `xsa-roadmap` GitHub
 project (https://github.com/users/afrigon/projects/7): milestones, one issue per
 item. Read it before proposing what to build next. Design documents live in
-`docs/` (`docs/packs.md`: how game content is packaged and loaded; `docs/xui.md`:
+`docs/` (`docs/packs.md`: how game content is packaged and loaded;
+`docs/launchpad.md`: releases, the pack repository, instances and `xsa-launchpad`;
+`docs/xui.md`:
 the vision and design of xui, the UI framework; read it before changing xui or
 the game's interface).
 
