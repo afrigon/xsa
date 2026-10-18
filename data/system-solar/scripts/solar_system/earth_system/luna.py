@@ -22,6 +22,8 @@ RADIUS = 1737400.0
 METERS_PER_KILOMETER = 1000.0
 # Untiered: the server and every client read the same terrain.
 TERRAIN_FACE_SIZE = 4096
+# The Hapke parameter maps are 1° per pixel: about one pixel per texel.
+HAPKE_FACE_SIZE = 128
 CGI_MOON_KIT = SourceLayout(left_edge_longitude=-180.0, north_up=True)
 MOSAIC = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_HAPKE"
 PARAMETER_MAPS = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/WAC_HAPKEPARAMMAP"
@@ -161,19 +163,22 @@ class Luna(Recipe):
         return heights
 
     # Hapke 2012's parameters of one band, as they are, in the medium and opposition textures.
+    # Computed on the parameter maps' own pixels, then averaged into the cubes.
     def _hapke(self, context: BuildContext) -> HapkeMaterial:
         parameters = self._parameters(self.parameter_map.fetch(context.cache), HAPKE_WAVELENGTH).extended_toward_poles()
-        maps = parameters.resampled(context.output_width(parameters.width))
-        medium = self._channels(maps, ["b", "c", "theta"])
-        porosity = Luna._porosity(maps.pixels[..., PARAMETERS.index("phi")])
-        TextureWriter.values().write(
-            context.texture_path("bodies/luna/hapke-medium"),
-            [Raster(np.concatenate([medium.pixels, porosity[..., None]], axis=-1))],
-        )
-        TextureWriter.values().write(
-            context.texture_path("bodies/luna/hapke-opposition"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
-        )
-        return HapkeMaterial("bodies/luna/hapke-medium", "bodies/luna/hapke-opposition")
+        medium = self._channels(parameters, ["b", "c", "theta"])
+        porosity = Luna._porosity(parameters.pixels[..., PARAMETERS.index("phi")])
+        layers = {
+            "bodies/luna/hapke-medium": Raster(np.concatenate([medium.pixels, porosity[..., None]], axis=-1)),
+            "bodies/luna/hapke-opposition": self._channels(parameters, ["Bs0", "hs", "Bc0", "hc"]),
+        }
+
+        for layer, raster in layers.items():
+            cube = CubeAccumulator(HAPKE_FACE_SIZE, CubeProjection.EQUAL_ANGLE, raster.pixels.shape[-1])
+            cube.add(EquirectangularSource.from_raster(raster))
+            TextureWriter.values().write(context.terrain_layer_path(layer), cube.cube_map().faces)
+
+        return HapkeMaterial(*layers)
 
     # The porosity coefficient K from the filling factor φ (Hapke 2012, eq. 7.45b); K tends to 1 as φ tends to 0.
     @staticmethod

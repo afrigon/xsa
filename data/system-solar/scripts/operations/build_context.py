@@ -29,6 +29,10 @@ class BuildContext:
     def texture_path(self, texture: str) -> Path:
         return self.resources / "textures" / f"{texture}.ktx2"
 
+    # A surface layer's cube map, which packaging converts into the streamed file the game reads.
+    def terrain_layer_path(self, layer: str) -> Path:
+        return self.resources / "terrains" / f"{layer}.ktx2"
+
     # The tier's width, or the source's when it is narrower: a map is never upscaled.
     def output_width(self, native_width: int) -> int:
         width = min(self.width, native_width)
