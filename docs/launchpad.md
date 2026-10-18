@@ -45,7 +45,7 @@ different set of content is a different pack.
 ## Packaging
 
 ```
-launchpad package <pack directory> [--bump major|minor|patch] [--output <directory>]
+launchpad pack package <pack directory> [--bump major|minor|patch] [--output <directory>]
 ```
 
 1. Reads and validates `pack.kdl`; the pack id is the directory's name.
@@ -56,8 +56,13 @@ launchpad package <pack directory> [--bump major|minor|patch] [--output <directo
 4. Converts every terrain layer the pack's terrain definitions name from its
    cube map into a `.terrain` file (see Terrain conversion); the archives ship
    the `.terrain` files in place of the cube maps.
-5. Writes both archives to the output directory and prints, for each, its path,
-   size and SHA-256.
+5. Writes both archives, ready to upload, to the output directory
+   (`<pack directory>/target/` by default) and prints, for each, its path, size
+   and SHA-256.
+
+`target/` is packaging's own directory, like Cargo's: it holds the archives and
+the converted `.terrain` files, which a later run reuses when their cube map has
+not changed. Authors git-ignore it.
 
 Archives are written in Rust (the `tar` and `zstd` crates), so packaging needs
 nothing installed on the system. Compression uses zstd level 19 on every core:
@@ -123,7 +128,7 @@ mise.toml
 ```
 
 `.gitignore` is never consulted: a pack's generated binaries are git-ignored
-but belong in its archives. `.git/` and `.xsaignore` itself are always left
+but belong in its archives. `.git/`, `target/` and `.xsaignore` itself are always left
 out.
 
 ## Repository
@@ -175,7 +180,12 @@ $HOME/xsa/instances/main/
   config.kdl        overrides of the global game config, optional
   packs/<pack>/     installed packs
   saves/
+  identity/         the dedicated server's certificate and key
 ```
+
+Everything the game writes for an instance stays inside it: the dedicated
+server generates its identity in `identity/` on first run, so each server
+instance has its own fingerprint.
 
 `launchpad.kdl` lists the packs the player asked for:
 
@@ -198,7 +208,7 @@ version and each archive's URL and SHA-256. It works like Cargo's:
 
 - It is written by resolution and only read otherwise.
 - Resolution runs when `launchpad.kdl` changes, keeping every locked release
-  that still satisfies it, or on `update`, which picks the latest matching
+  that still satisfies it, or on `upgrade`, which picks the latest matching
   releases.
 - Each pack id resolves to one release: requirements are Cargo-style semantic
   version requirements, and two requirements no release satisfies together
@@ -244,13 +254,11 @@ it too.
 
 | Command | Does |
 | --- | --- |
-| `instance create <name>` | Creates an instance with `system-solar` in its manifest and syncs it |
-| `instance list` | Lists the instances |
-| `install <pack>[@<requirement>]` | Adds the pack to `launchpad.kdl`, resolves and syncs |
-| `uninstall <pack>` | Removes the pack from `launchpad.kdl`, resolves and syncs |
-| `update [<pack>]` | Resolves to the latest matching releases and syncs |
-| `sync` | Makes `packs/` match the lockfile |
-| `package <pack directory>` | Packages a pack for release (see Packaging) |
+| `init <name>` | Creates an instance with `system-solar` in its manifest and syncs it |
+| `add <pack>[@<requirement>]` | Adds the pack to `launchpad.kdl`, resolves and syncs |
+| `remove <pack>` | Removes the pack from `launchpad.kdl`, resolves and syncs |
+| `upgrade [<pack>]` | Resolves to the latest matching releases and syncs |
+| `pack package <pack directory>` | Packages a pack for release (see Packaging) |
 | `terrain create <input>` | Converts a terrain layer's cube map into a `.terrain` file (see Terrain conversion) |
 
 Publishing is not a launchpad command: an author uploads archives to their own
@@ -270,9 +278,3 @@ Dependencies point one way: `packs` ← `repository` ← `instance` ← `launchp
 [mc](https://github.com/afrigon/mc): command handlers stay thin and call
 operations that hold the logic, a context carries the output shell and the HTTP
 client, and manifest edits keep the document's layout.
-
-## Open questions
-
-- Whether the dedicated server's identity, written to `.xsa/server/` relative
-  to the working directory, moves into its instance.
-- The default output directory of `package`.
