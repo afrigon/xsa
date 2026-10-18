@@ -1,11 +1,13 @@
-use std::io::Write;
+use std::io::{self, Write};
 use std::num::NonZero;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 use anyhow::Context;
-use resource_loader::terrain::{CubeFace, LevelRecord, PageAddress, PageEntry, PageKey, TerrainHeader};
+use resource_loader::terrain::{
+    CubeFace, LevelRecord, PAGE_BORDER, PAGE_EXTENT, PageAddress, PageEntry, PageKey, TerrainHeader,
+};
 
 use super::{CubeMapInput, EncodedPage, LayerEncoding, PageBuilder};
 
@@ -36,33 +38,72 @@ impl<'a> TerrainWriter<'a> {
         let entries_start = TerrainHeader::SIZE as u64 + record_count * LevelRecord::SIZE as u64;
         let mut entries_offset = entries_start;
         let mut data_offset = entries_start + pages.len() as u64 * entry_size;
-        header.write(output)?;
+        TerrainWriter::write_header(&header, output)?;
 
         for _ in CubeFace::ALL {
             for level in 0..header.level_count {
                 let entry_count = TerrainWriter::level_page_count(level) as u64;
-                LevelRecord {
-                    entries_offset,
-                    entry_count,
-                }
-                .write(output)?;
+                TerrainWriter::write_record(
+                    &LevelRecord {
+                        entries_offset,
+                        entry_count,
+                    },
+                    output,
+                )?;
                 entries_offset += entry_count * entry_size;
             }
         }
 
         for (address, page) in addresses.iter().zip(&pages) {
-            PageEntry {
-                key: address.key,
-                data_offset,
-                data_size: page.data.len() as u32,
-                range: page.range,
-            }
-            .write(output)?;
+            TerrainWriter::write_entry(
+                &PageEntry {
+                    key: address.key,
+                    data_offset,
+                    data_size: page.data.len() as u32,
+                    range: page.range,
+                },
+                output,
+            )?;
             data_offset += page.data.len() as u64;
         }
 
         for page in &pages {
             output.write_all(&page.data)?;
+        }
+
+        Ok(())
+    }
+
+    fn write_header(header: &TerrainHeader, output: &mut impl Write) -> io::Result<()> {
+        output.write_all(TerrainHeader::MAGIC)?;
+
+        for word in [
+            TerrainHeader::VERSION,
+            header.format.vulkan_format().value,
+            header.encoding.value(),
+            PAGE_EXTENT,
+            PAGE_BORDER,
+            header.level_count,
+        ] {
+            output.write_all(&word.to_le_bytes())?;
+        }
+
+        Ok(())
+    }
+
+    fn write_record(record: &LevelRecord, output: &mut impl Write) -> io::Result<()> {
+        output.write_all(&record.entries_offset.to_le_bytes())?;
+        output.write_all(&record.entry_count.to_le_bytes())
+    }
+
+    fn write_entry(entry: &PageEntry, output: &mut impl Write) -> io::Result<()> {
+        output.write_all(&entry.key.code.to_le_bytes())?;
+        output.write_all(&entry.data_offset.to_le_bytes())?;
+        output.write_all(&entry.data_size.to_le_bytes())?;
+
+        if let Some(range) = entry.range {
+            output.write_all(&range.minimum.to_le_bytes())?;
+            output.write_all(&range.maximum.to_le_bytes())?;
         }
 
         Ok(())

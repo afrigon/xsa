@@ -1,5 +1,3 @@
-use std::io::{self, Write};
-
 use super::{HeightRange, PageEncoding, PageKey};
 
 /// A present page: where its data is and, for page heights, the range its values span.
@@ -44,18 +42,5 @@ impl PageEntry {
                 }),
             },
         }
-    }
-
-    pub fn write(&self, output: &mut impl Write) -> io::Result<()> {
-        output.write_all(&self.key.code.to_le_bytes())?;
-        output.write_all(&self.data_offset.to_le_bytes())?;
-        output.write_all(&self.data_size.to_le_bytes())?;
-
-        if let Some(range) = self.range {
-            output.write_all(&range.minimum.to_le_bytes())?;
-            output.write_all(&range.maximum.to_le_bytes())?;
-        }
-
-        Ok(())
     }
 }
