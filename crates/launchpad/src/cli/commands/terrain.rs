@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
-use resource_loader::terrain::PageEncoding;
+use resource_loader::terrain::{CubeFace, PageAddress, PageEncoding, PageKey};
 use usage::{Args, Subcommands};
 
 use crate::cli::CommandHandler;
 use crate::launchpad_context::LaunchpadContext;
 use crate::ops;
-use crate::ops::terrain::TerrainCreateOptions;
+use crate::ops::terrain::{TerrainCreateOptions, TerrainInspectOptions};
+use crate::terrain::PageCheck;
 
 #[derive(Args)]
 pub struct TerrainCommand {
@@ -49,6 +50,22 @@ The KTX2 file may use Zstandard supercompression. Without --output, the
 .terrain file is written next to the input, with the same name."#
     )]
     Create(TerrainCreateCommand),
+    /// Print a .terrain file's header, levels and page coverage, and check its index
+    #[usage(
+        long_help = r#"Print a .terrain file's header, levels and page coverage, and check its index
+
+The summary lists each level over its six faces: its face size, the pages
+present and expected, their compressed size and compression ratio and, for
+heights, the range their pages span. A level missing pages gets a map of each
+of its faces.
+
+The index is always checked: every face and level's keys sorted, unique and
+inside their level, and every page's data inside the file. --verify also
+decompresses every page. The command fails when a check finds a problem.
+
+--face, --level and --page together print one page's entry instead."#
+    )]
+    Inspect(TerrainInspectCommand),
 }
 
 #[derive(Args)]
@@ -67,10 +84,35 @@ pub struct TerrainCreateCommand {
     input: PathBuf,
 }
 
+#[derive(Args)]
+pub struct TerrainInspectCommand {
+    #[usage(long, help = "Also decompress every page, checking it decodes to a whole page")]
+    verify: bool,
+    #[usage(
+        long,
+        allow_hyphen_values,
+        requires("--level", "--page"),
+        help = "The face of the page to print: +x, -x, +y, -y, +z or -z"
+    )]
+    face: Option<CubeFace>,
+    #[usage(long, requires("--face", "--page"), help = "The level of the page to print, from 0")]
+    level: Option<u32>,
+    #[usage(
+        long,
+        value_name = "x,y",
+        requires("--face", "--level"),
+        help = "The column and row of the page to print, from 0 at the face's top left"
+    )]
+    page: Option<PageKey>,
+    #[usage(arg, help = "The .terrain file")]
+    file: PathBuf,
+}
+
 impl CommandHandler for TerrainCommand {
     async fn handle(&self, context: &mut LaunchpadContext) -> anyhow::Result<()> {
         match &self.command {
             TerrainSubcommand::Create(command) => command.handle(context).await,
+            TerrainSubcommand::Inspect(command) => command.handle(context).await,
         }
     }
 }
@@ -91,5 +133,25 @@ impl CommandHandler for TerrainCreateCommand {
         };
 
         ops::terrain::create(context, &options)
+    }
+}
+
+impl CommandHandler for TerrainInspectCommand {
+    async fn handle(&self, context: &mut LaunchpadContext) -> anyhow::Result<()> {
+        let page = match (self.face, self.level, self.page) {
+            (Some(face), Some(level), Some(key)) => Some(PageAddress { face, level, key }),
+            _ => None,
+        };
+        let options = TerrainInspectOptions {
+            file: self.file.clone(),
+            check: if self.verify {
+                PageCheck::Pages
+            } else {
+                PageCheck::Index
+            },
+            page,
+        };
+
+        ops::terrain::inspect(context, &options)
     }
 }
