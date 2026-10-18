@@ -59,7 +59,7 @@ async fn bind(name: &str) -> anyhow::Result<UnixListener> {
 
     if path.exists() {
         if UnixStream::connect(&path).await.is_ok() {
-            bail!("an xsa instance named {name} is already running");
+            bail!("an xsa process named {name} is already running");
         }
 
         fs::remove_file(&path)?;
@@ -72,7 +72,7 @@ pub async fn connect(name: &str) -> std::io::Result<UnixStream> {
     UnixStream::connect(socket_path(name)).await
 }
 
-pub async fn instances() -> anyhow::Result<Vec<String>> {
+pub async fn names() -> anyhow::Result<Vec<String>> {
     let entries = match fs::read_dir(directory()) {
         Ok(entries) => entries,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),

@@ -6,8 +6,8 @@ use crate::world_arguments::WorldArguments;
 
 #[derive(Args)]
 pub struct ClientArguments {
-    #[usage(long, help = "Name for xsa ipc --instance; defaults to client-<pid>")]
-    pub instance: Option<String>,
+    #[usage(long, help = "Name xsa ipc reaches this client by; defaults to client-<pid>")]
+    pub name: Option<String>,
     #[usage(
         long,
         env_fallback("USER", "USERNAME"),
@@ -41,7 +41,7 @@ impl ClientArguments {
             None => None,
         };
         GameClient::new(ClientOptions {
-            instance: self.instance,
+            name: self.name,
             player: self.player,
             remote,
             world: self.world.into_options(),

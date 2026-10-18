@@ -13,7 +13,7 @@ pub enum Command {
     Client(ClientArguments),
     /// Run a dedicated server
     Server(ServerArguments),
-    /// Send a command to a running xsa instance, e.g. xsa ipc time rate 100
+    /// Send a command to a running xsa process, e.g. xsa ipc time rate 100
     Ipc(IpcArguments),
     /// Print the shell completion script, e.g. xsa completion fish | source
     Completion(CompletionArguments),

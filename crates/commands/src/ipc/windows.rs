@@ -20,7 +20,7 @@ pub async fn serve(name: String, invocations: UnboundedSender<CommandInvocation>
     let mut server = match ServerOptions::new()
         .first_pipe_instance(true)
         .create(&path)
-        .with_context(|| format!("an xsa instance named {name} is already running"))
+        .with_context(|| format!("an xsa process named {name} is already running"))
     {
         Ok(server) => server,
         Err(err) => {
@@ -48,7 +48,7 @@ pub async fn connect(name: &str) -> std::io::Result<NamedPipeClient> {
     ClientOptions::new().open(pipe_name(name))
 }
 
-pub async fn instances() -> anyhow::Result<Vec<String>> {
+pub async fn names() -> anyhow::Result<Vec<String>> {
     let mut names: Vec<String> = fs::read_dir(PIPE_DIRECTORY)?
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| entry.file_name().into_string().ok())

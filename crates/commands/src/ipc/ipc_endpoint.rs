@@ -7,7 +7,7 @@ use anyhow::{Context, bail};
 use tokio::runtime;
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::{InstanceKind, platform};
+use super::{ProcessKind, platform};
 use crate::router::CommandInvocation;
 
 pub struct IpcEndpoint {
@@ -18,7 +18,7 @@ pub struct IpcEndpoint {
 impl IpcEndpoint {
     pub fn spawn(
         name: Option<String>,
-        kind: InstanceKind,
+        kind: ProcessKind,
         invocations: UnboundedSender<CommandInvocation>,
     ) -> anyhow::Result<IpcEndpoint> {
         let name = name.unwrap_or_else(|| kind.default_name());
@@ -47,7 +47,7 @@ impl IpcEndpoint {
                 .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_');
 
         if !valid {
-            bail!("{name:?} is not an instance name: use letters, digits, - and _");
+            bail!("{name:?} is not an IPC name: use letters, digits, - and _");
         }
 
         Ok(())
@@ -66,7 +66,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn instance_names_are_restricted() {
+    fn names_are_restricted() {
         assert!(IpcEndpoint::validate_name("client-1234").is_ok());
         assert!(IpcEndpoint::validate_name("agent_1").is_ok());
 

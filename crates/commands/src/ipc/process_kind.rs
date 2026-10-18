@@ -1,14 +1,14 @@
 #[derive(Clone, Copy)]
-pub enum InstanceKind {
+pub enum ProcessKind {
     Client,
     Server,
 }
 
-impl InstanceKind {
+impl ProcessKind {
     pub(super) fn default_name(self) -> String {
         let kind = match self {
-            InstanceKind::Client => "client",
-            InstanceKind::Server => "server",
+            ProcessKind::Client => "client",
+            ProcessKind::Server => "server",
         };
 
         format!("{kind}-{}", std::process::id())
