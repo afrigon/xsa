@@ -134,7 +134,8 @@ level as a mip level, finest first, down to 128 texels; `--level` keeps one
 level, `--face` one face as a 2D texture, and `--face --level --page` one page
 with its border. Faces are stitched from page interiors, absent pages
 transparent, NaN heights or 0. Without `--output`, it is written next to the
-file as `<name>.extract.ktx2`.
+file, named after what it holds: `luna.extract.ktx2`, `luna.level-3.extract.ktx2`,
+`luna.-x.level-3.page-1-2.extract.ktx2`.
 
 ### `.xsaignore`
 

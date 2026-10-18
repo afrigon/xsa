@@ -86,7 +86,8 @@ interiors; absent pages are transparent, NaN heights, or 0 for R8G8_UNORM.
 
 The extract stops at 128 texels, so terrain create does not take it back;
 compare it with the cube map level by level. Without --output, it is written
-next to the file as <name>.extract.ktx2."#
+next to the file, named after what it holds: <name>.extract.ktx2,
+<name>.level-3.extract.ktx2, <name>.-x.level-3.page-1-2.extract.ktx2, ..."#
     )]
     Extract(TerrainExtractCommand),
 }
@@ -150,7 +151,7 @@ pub struct TerrainExtractCommand {
     page: Option<PageKey>,
     #[usage(
         long,
-        help = "Where to write the KTX2 file; defaults to the file's path with a .extract.ktx2 extension"
+        help = "Where to write the KTX2 file; defaults to the file's path named after the face, level and page extracted"
     )]
     output: Option<PathBuf>,
     #[usage(arg, help = "The .terrain file")]
@@ -217,12 +218,14 @@ impl CommandHandler for TerrainExtractCommand {
             (Some(face), _, _) => TerrainRegion::Face(face, levels),
             (None, _, _) => TerrainRegion::Cube(levels),
         };
+        let output = self.output.clone().unwrap_or_else(|| {
+            let mut parts = region.file_name_parts();
+            parts.push("extract.ktx2".to_owned());
+            self.file.with_extension(parts.join("."))
+        });
         let options = TerrainExtractOptions {
             file: self.file.clone(),
-            output: self
-                .output
-                .clone()
-                .unwrap_or_else(|| self.file.with_extension("extract.ktx2")),
+            output,
             region,
         };
 
