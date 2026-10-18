@@ -82,10 +82,17 @@ impl TextureFormat {
 
     /// The size in bytes of one mip level of the given size.
     pub fn level_size(self, width: u32, height: u32) -> usize {
-        let extent = self.block_extent();
-        let blocks = width.max(1).div_ceil(extent) as usize * height.max(1).div_ceil(extent) as usize;
+        self.checked_level_size(width, height)
+            .expect("a mip level's size overflows usize")
+    }
 
-        blocks * self.block_size()
+    /// The size in bytes of one mip level of the given size, or `None` when it overflows `usize`.
+    pub fn checked_level_size(self, width: u32, height: u32) -> Option<usize> {
+        let extent = self.block_extent();
+        let columns = width.max(1).div_ceil(extent) as usize;
+        let rows = height.max(1).div_ceil(extent) as usize;
+
+        columns.checked_mul(rows)?.checked_mul(self.block_size())
     }
 
     /// The width and height, in texels, of the smallest unit the format stores: a compressed block, or one texel.

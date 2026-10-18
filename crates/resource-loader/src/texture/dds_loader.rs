@@ -65,9 +65,14 @@ impl TextureLoader for DdsLoader {
             mip_levels: word(MIP_COUNT_OFFSET).max(1),
             layers: Vec::new(),
         };
-        let layer_size = image.layer_size();
+        let layer_size = image.layer_size()?;
         let data = &bytes[DDS_HEADER_SIZE..];
-        ensure!(data.len() >= layer_size * layer_count, "the file is truncated");
+        ensure!(
+            layer_size
+                .checked_mul(layer_count)
+                .is_some_and(|size| data.len() >= size),
+            "the file is truncated"
+        );
 
         image.layers = data
             .chunks_exact(layer_size)

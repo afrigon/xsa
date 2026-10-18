@@ -98,9 +98,32 @@ impl TextureImage {
             .collect())
     }
 
-    pub(super) fn layer_size(&self) -> usize {
+    // The size in bytes of a layer's mip chain as the file's header declares it, refusing shapes no valid file has
+    // and sizes that overflow, so nothing is allocated from an impossible header.
+    pub(super) fn layer_size(&self) -> anyhow::Result<usize> {
+        ensure!(
+            self.width > 0 && self.height > 0,
+            "{}×{} texels",
+            self.width,
+            self.height
+        );
+
+        let full_chain = self.width.max(self.height).ilog2() + 1;
+        ensure!(
+            self.mip_levels <= full_chain,
+            "{} mip levels: a {}×{} texture has at most {full_chain}",
+            self.mip_levels,
+            self.width,
+            self.height
+        );
+
         (0..self.mip_levels)
-            .map(|level| self.format.level_size(self.width >> level, self.height >> level))
-            .sum()
+            .try_fold(0usize, |size, level| {
+                size.checked_add(
+                    self.format
+                        .checked_level_size(self.width >> level, self.height >> level)?,
+                )
+            })
+            .with_context(|| format!("{}×{} texels are too large", self.width, self.height))
     }
 }
