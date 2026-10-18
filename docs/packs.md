@@ -248,6 +248,28 @@ each level the average of the one above, so the game only reads and uploads
 it. The server and every client read the same file, so the terrain has one
 resolution whatever texture tier a player installs.
 
+#### Terrain layers
+
+Every terrain layer (the height map, and in time its colour, normals and Hapke
+maps) is a KTX2 cube map in the same shape, which the game streams in pages:
+
+- six square faces in Vulkan's face order and orientation, as above;
+- a face size that is a power of two, at least 128;
+- its full mip chain, each level the average of the one above;
+- uncompressed texels, in the layer's format:
+
+| Layer | Texels |
+| --- | --- |
+| Heights | `R32_SFLOAT`, meters relative to the body's `radius` |
+| Colour | `R8G8B8A8_SRGB` |
+| Normals | `R8G8_UNORM` |
+| Hapke maps | `R16G16B16A16_SFLOAT` |
+
+Packaging converts each layer into the paged file the game reads, compressing
+it there; a creator only provides the cube maps. `launchpad terrain create
+[--height] <cube map>` runs that conversion on its own to check a layer
+before packaging, and its `--help` lists each face's orientation.
+
 ## Resources
 
 ### Objects — `<namespace>/resources/objects/`
