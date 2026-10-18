@@ -34,7 +34,6 @@ impl Shell {
         &mut self.stderr
     }
 
-    #[expect(dead_code, reason = "for the commands that print progress")]
     pub fn status(&mut self, status: impl Display, message: impl Display) -> io::Result<()> {
         if self.verbosity == Verbosity::Quiet {
             return Ok(());
