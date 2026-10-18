@@ -18,6 +18,23 @@ fn a_page_key_interleaves_its_column_in_the_even_bits() {
 }
 
 #[test]
+fn a_page_key_reads_from_its_column_and_row() {
+    assert_eq!("12,7".parse::<PageKey>().unwrap(), PageKey::from_coordinates(12, 7));
+    assert!("12".parse::<PageKey>().is_err());
+    assert!("12,-1".parse::<PageKey>().is_err());
+}
+
+#[test]
+fn a_face_reads_back_the_name_it_prints() {
+    for face in CubeFace::ALL {
+        assert_eq!(face.to_string().parse::<CubeFace>().unwrap(), face);
+    }
+
+    assert_eq!(CubeFace::NegativeZ.to_string(), "-z");
+    assert!("x".parse::<CubeFace>().is_err());
+}
+
+#[test]
 fn page_heights_quantise_within_half_a_step() {
     let range = HeightRange::spanning([-9000.0, 3.25, 11000.0]).unwrap();
     let step = (range.maximum - range.minimum) / f32::from(u16::MAX);

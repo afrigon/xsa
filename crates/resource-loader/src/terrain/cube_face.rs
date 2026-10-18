@@ -1,3 +1,7 @@
+use std::fmt;
+use std::str::FromStr;
+
+use anyhow::bail;
 use glam::IVec3;
 
 /// A face of a body's cube map, in Vulkan's face order and orientation in the body's frame.
@@ -21,6 +25,8 @@ impl CubeFace {
         CubeFace::PositiveZ,
         CubeFace::NegativeZ,
     ];
+
+    const NAMES: [&str; 6] = ["+x", "-x", "+y", "-y", "+z", "-z"];
 
     /// The face's index, 0 to 5.
     pub fn index(self) -> usize {
@@ -60,6 +66,24 @@ impl CubeFace {
             CubeFace::PositiveY => IVec3::Z,
             CubeFace::NegativeY => IVec3::NEG_Z,
             CubeFace::PositiveX | CubeFace::NegativeX | CubeFace::PositiveZ | CubeFace::NegativeZ => IVec3::NEG_Y,
+        }
+    }
+}
+
+impl fmt::Display for CubeFace {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str(Self::NAMES[self.index()])
+    }
+}
+
+/// Reads a face by its name: `+x`, `-x`, `+y`, `-y`, `+z` or `-z`.
+impl FromStr for CubeFace {
+    type Err = anyhow::Error;
+
+    fn from_str(text: &str) -> anyhow::Result<CubeFace> {
+        match CubeFace::ALL.into_iter().find(|face| Self::NAMES[face.index()] == text) {
+            Some(face) => Ok(face),
+            None => bail!("unknown face {text:?}: expected +x, -x, +y, -y, +z or -z"),
         }
     }
 }
