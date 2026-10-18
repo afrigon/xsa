@@ -50,7 +50,7 @@ impl IpcConnection {
         });
 
         if self.invocations.send(invocation).is_err() {
-            return Output::failure("the instance is shutting down");
+            return Output::failure("the process is shutting down");
         }
 
         receiver

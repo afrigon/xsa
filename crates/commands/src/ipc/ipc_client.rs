@@ -9,58 +9,58 @@ use crate::completion::Completions;
 use crate::router::Output;
 
 pub struct IpcClient {
-    instance: Option<String>,
+    name: Option<String>,
 }
 
 impl IpcClient {
-    pub fn new(instance: Option<String>) -> IpcClient {
-        IpcClient { instance }
+    pub fn new(name: Option<String>) -> IpcClient {
+        IpcClient { name }
     }
 
     pub fn list() -> anyhow::Result<Vec<String>> {
-        IpcClient::block_on(platform::instances())
+        IpcClient::block_on(platform::names())
     }
 
     pub fn send(&self, words: Vec<String>) -> anyhow::Result<Output> {
         match IpcClient::block_on(self.request(IpcRequest::Execute { words }))? {
             IpcResponse::Output { text, succeeded } => Ok(Output { text, succeeded }),
-            IpcResponse::Completions { .. } => bail!("the instance answered a command with completions"),
+            IpcResponse::Completions { .. } => bail!("the process answered a command with completions"),
         }
     }
 
     pub fn complete(&self, line: String, cursor: usize) -> anyhow::Result<Completions> {
         match IpcClient::block_on(self.request(IpcRequest::Complete { line, cursor }))? {
             IpcResponse::Completions { completions } => Ok(completions),
-            IpcResponse::Output { .. } => bail!("the instance answered a completion with command output"),
+            IpcResponse::Output { .. } => bail!("the process answered a completion with command output"),
         }
     }
 
     async fn request(&self, request: IpcRequest) -> anyhow::Result<IpcResponse> {
-        let name = match &self.instance {
+        let name = match &self.name {
             Some(name) => name.clone(),
-            None => IpcClient::only_instance().await?,
+            None => IpcClient::only_name().await?,
         };
         let stream = platform::connect(&name)
             .await
-            .with_context(|| format!("no xsa instance named {name} is running"))?;
+            .with_context(|| format!("no xsa process named {name} is running"))?;
         let mut stream = FrameStream::new(stream);
         stream.write(&request).await?;
 
         stream
             .read()
             .await?
-            .with_context(|| format!("instance {name} closed the connection without answering"))
+            .with_context(|| format!("process {name} closed the connection without answering"))
     }
 
-    async fn only_instance() -> anyhow::Result<String> {
-        let mut instances = platform::instances().await?;
+    async fn only_name() -> anyhow::Result<String> {
+        let mut names = platform::names().await?;
 
-        match instances.len() {
-            0 => bail!("no xsa instance is running"),
-            1 => Ok(instances.remove(0)),
+        match names.len() {
+            0 => bail!("no xsa process is running"),
+            1 => Ok(names.remove(0)),
             _ => bail!(
-                "several xsa instances are running, pick one with --instance: {}",
-                instances.join(", ")
+                "several xsa processes are running, pick one with --name: {}",
+                names.join(", ")
             ),
         }
     }
