@@ -1,18 +1,13 @@
+mod terrain_create_options;
+
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::path::PathBuf;
 
 use anyhow::Context;
-use resource_loader::terrain::PageEncoding;
+pub use terrain_create_options::TerrainCreateOptions;
 
 use crate::launchpad_context::LaunchpadContext;
 use crate::terrain::{CubeMapInput, LayerEncoding, TerrainWriter};
-
-pub struct TerrainCreateOptions {
-    pub input: PathBuf,
-    pub output: PathBuf,
-    pub encoding: PageEncoding,
-}
 
 /// Converts a terrain layer's cube map into its `.terrain` file.
 pub fn create(context: &mut LaunchpadContext, options: &TerrainCreateOptions) -> anyhow::Result<()> {
