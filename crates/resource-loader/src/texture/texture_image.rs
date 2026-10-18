@@ -2,8 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use super::half_float::half_to_f32;
-use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
+use super::{ColorSpace, DdsLoader, HalfFloat, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
 
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;
@@ -84,10 +83,11 @@ impl TextureImage {
         );
         let texel_count = (self.width * self.height) as usize;
         let channel = |texel: &[u8; RGBA16_FLOAT_TEXEL_BYTES], index: usize| {
-            half_to_f32(u16::from_le_bytes([
+            HalfFloat(u16::from_le_bytes([
                 texel[index * HALF_BYTES],
                 texel[index * HALF_BYTES + 1],
             ]))
+            .to_f32()
         };
 
         Ok(self.layers[0]
