@@ -1,9 +1,9 @@
 # Launchpad
 
-How packs are released, listed, installed and loaded. `xsa-launchpad` is the
+How packs are released, listed, installed and loaded. `launchpad` is the
 instance and pack manager: it packages packs for release, creates instances
 and installs packs into them. The game uses the same library, so an instance
-the game creates on its own is identical to one created by `xsa-launchpad`.
+the game creates on its own is identical to one created by `launchpad`.
 The pack format itself is described in `docs/packs.md`.
 
 ## Terms
@@ -45,7 +45,7 @@ different set of content is a different pack.
 ## Packaging
 
 ```
-xsa-launchpad package <pack directory> [--bump major|minor|patch] [--output <directory>]
+launchpad package <pack directory> [--bump major|minor|patch] [--output <directory>]
 ```
 
 1. Reads and validates `pack.kdl`; the pack id is the directory's name.
@@ -175,7 +175,7 @@ pack id, the first directory containing that pack wins. Development builds run
 with `--packs data`, so the repository's packs take precedence over installed
 ones.
 
-When the instance does not exist, the game creates it as `xsa-launchpad`
+When the instance does not exist, the game creates it as `launchpad`
 would, with the first-party packs in its manifest, and syncs it before loading.
 Once synced, an instance runs without a network connection.
 
@@ -186,7 +186,7 @@ instance; an instance's `config.kdl` overrides individual keys.
 
 ## Commands
 
-`xsa-launchpad` acts on the instance in the current directory, or on
+`launchpad` acts on the instance in the current directory, or on
 `--instance <name>`.
 
 | Command | Does |
@@ -209,7 +209,7 @@ host and opens a pull request on the repository.
 | `packs` | The manifest (`PackManifest`), with `base` implicit |
 | `repository` | Reads the index, downloads archives and verifies them, the archive cache |
 | `instance` | Instance layout, `launchpad.kdl`, the lockfile and resolution, sync |
-| `launchpad` | The `xsa-launchpad` binary: commands and packaging |
+| `launchpad` | `xsa-launchpad`, building the `launchpad` binary: commands, packaging, terrain conversion |
 
 Dependencies point one way: `packs` ← `repository` ← `instance` ← `launchpad`,
 `xsa`. `launchpad` follows the architecture of
