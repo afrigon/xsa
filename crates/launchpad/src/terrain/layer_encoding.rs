@@ -33,7 +33,7 @@ impl LayerEncoding {
         Ok(match (encoding, input) {
             (PageEncoding::PageHeights, TextureFormat::R32Float) => LayerEncoding::Heights,
             (PageEncoding::PageHeights, other) => {
-                bail!("{other:?} texels: heights (--height) must be R32_SFLOAT metres relative to the body's radius")
+                bail!("{other} texels: heights (--height) must be R32_SFLOAT metres relative to the body's radius")
             }
             (PageEncoding::Direct, TextureFormat::Rgba8Srgb) => LayerEncoding::Bc7,
             (PageEncoding::Direct, TextureFormat::Rg8Unorm) => LayerEncoding::Bc5,
@@ -42,7 +42,7 @@ impl LayerEncoding {
                 bail!("R32_SFLOAT texels are heights: convert them with --height")
             }
             (PageEncoding::Direct, other) => bail!(
-                "{other:?} texels: a terrain layer is R8G8B8A8_SRGB, R8G8_UNORM or R16G16B16A16_SFLOAT, or \
+                "{other} texels: a terrain layer is R8G8B8A8_SRGB, R8G8_UNORM or R16G16B16A16_SFLOAT, or \
                  R32_SFLOAT heights with --height"
             ),
         })

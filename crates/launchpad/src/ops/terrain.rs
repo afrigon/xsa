@@ -24,7 +24,7 @@ pub fn create(context: &mut LaunchpadContext, options: &TerrainCreateOptions) ->
     context.shell().status(
         "Converting",
         format!(
-            "{}-texel {:?} faces into {} levels, {} {:?} pages",
+            "{}-texel {} faces into {} levels, {} {} pages",
             input.face_extent(),
             encoding.input_format(),
             input.level_count(),

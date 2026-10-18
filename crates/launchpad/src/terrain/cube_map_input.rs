@@ -24,7 +24,7 @@ impl CubeMapInput {
         let face_extent = image.width();
         ensure!(
             !format.is_block_compressed(),
-            "{format:?} texels: the input must be uncompressed, this command compresses each page itself"
+            "{format} texels: the input must be uncompressed, this command compresses each page itself"
         );
         ensure!(
             image.layers().len() == CubeFace::ALL.len(),

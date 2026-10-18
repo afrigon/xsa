@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use anyhow::bail;
 
 use super::ColorSpace;
@@ -136,6 +138,25 @@ impl TextureFormat {
             (TextureFormat::Rgba16Float, _) => TextureFormat::Rgba16Float,
             (format, ColorSpace::Linear) => format,
             (format, ColorSpace::Srgb) => bail!("{format:?} holds data, not colors"),
+        })
+    }
+}
+
+impl Display for TextureFormat {
+    /// The Vulkan format's name, without its `VK_FORMAT_` prefix.
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            TextureFormat::Bc4Unorm => "BC4_UNORM_BLOCK",
+            TextureFormat::Bc5Unorm => "BC5_UNORM_BLOCK",
+            TextureFormat::Bc7Unorm => "BC7_UNORM_BLOCK",
+            TextureFormat::Bc7Srgb => "BC7_SRGB_BLOCK",
+            TextureFormat::Rg8Unorm => "R8G8_UNORM",
+            TextureFormat::Rgba8Unorm => "R8G8B8A8_UNORM",
+            TextureFormat::Rgba8Srgb => "R8G8B8A8_SRGB",
+            TextureFormat::Rgba16Float => "R16G16B16A16_SFLOAT",
+            TextureFormat::R16Unorm => "R16_UNORM",
+            TextureFormat::Rg16Unorm => "R16G16_UNORM",
+            TextureFormat::R32Float => "R32_SFLOAT",
         })
     }
 }
