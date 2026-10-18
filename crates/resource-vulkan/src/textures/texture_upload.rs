@@ -1,6 +1,6 @@
 use anyhow::ensure;
 use ash::vk;
-use memory_vulkan::{BindlessBinding, Image, ImageCopy, ImageDescription, ImageUpload, TexelBlock};
+use memory_vulkan::{BindlessBinding, Image, ImageCopy, ImageDescription, ImageLayers, ImageUpload, TexelBlock};
 use resource_loader::texture::TextureImage;
 
 use crate::LoadContext;
@@ -28,7 +28,7 @@ impl TextureUpload {
             "cube map faces must be square"
         );
 
-        self.upload(context, BindlessBinding::CubeMap)
+        self.upload(context, BindlessBinding::CubeMap, ImageLayers::Cube)
     }
 
     pub fn texture(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
@@ -37,10 +37,15 @@ impl TextureUpload {
             "expected a 2D texture, found a cube map"
         );
 
-        self.upload(context, BindlessBinding::Texture)
+        self.upload(context, BindlessBinding::Texture, ImageLayers::Single)
     }
 
-    fn upload(self, context: &LoadContext, binding: BindlessBinding) -> anyhow::Result<PendingTexture> {
+    fn upload(
+        self,
+        context: &LoadContext,
+        binding: BindlessBinding,
+        layers: ImageLayers,
+    ) -> anyhow::Result<PendingTexture> {
         let format = self.image.format();
         let image = Image::new(
             context.memory,
@@ -54,7 +59,7 @@ impl TextureUpload {
                 usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: self.image.mip_levels(),
-                cube: binding == BindlessBinding::CubeMap,
+                layers,
                 sharing: context.transfer.sharing(),
             },
         )?;

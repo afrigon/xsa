@@ -1,6 +1,6 @@
 use ash::vk;
 
-use crate::QueueSharing;
+use crate::{ImageLayers, QueueSharing};
 
 pub struct ImageDescription<'a> {
     pub name: &'a str,
@@ -10,7 +10,6 @@ pub struct ImageDescription<'a> {
     /// The aspect the image's views see.
     pub aspect: vk::ImageAspectFlags,
     pub mip_levels: u32,
-    /// Six layers, viewed as a cube.
-    pub cube: bool,
+    pub layers: ImageLayers,
     pub sharing: QueueSharing,
 }

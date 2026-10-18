@@ -2,9 +2,7 @@ use ash::vk;
 use gpu_allocator::MemoryLocation;
 use gpu_allocator::vulkan::Allocation;
 
-use crate::{DeviceObject, ImageDescription, MemoryContext, MemoryError};
-
-const CUBE_FACES: u32 = 6;
+use crate::{DeviceObject, ImageDescription, ImageLayers, MemoryContext, MemoryError};
 
 /// An image in GPU memory and a view of all its levels and layers.
 pub struct Image {
@@ -15,24 +13,19 @@ pub struct Image {
     format: vk::Format,
     aspect: vk::ImageAspectFlags,
     mip_levels: u32,
-    cube: bool,
+    layers: ImageLayers,
 }
 
 impl Image {
     pub fn new(memory: &MemoryContext, description: &ImageDescription) -> Result<Image, MemoryError> {
         let device = memory.device();
-        let (flags, layers) = if description.cube {
-            (vk::ImageCreateFlags::CUBE_COMPATIBLE, CUBE_FACES)
-        } else {
-            (vk::ImageCreateFlags::empty(), 1)
-        };
         let create_info = vk::ImageCreateInfo::default()
-            .flags(flags)
+            .flags(description.layers.create_flags())
             .image_type(vk::ImageType::TYPE_2D)
             .format(description.format)
             .extent(description.extent.into())
             .mip_levels(description.mip_levels)
-            .array_layers(layers)
+            .array_layers(description.layers.count())
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
             .usage(description.usage)
@@ -48,7 +41,7 @@ impl Image {
             image.handle(),
             description.format,
             description.aspect,
-            description.cube,
+            description.layers,
             0,
             description.mip_levels,
         )?;
@@ -60,7 +53,7 @@ impl Image {
             format: description.format,
             aspect: description.aspect,
             mip_levels: description.mip_levels,
-            cube: description.cube,
+            layers: description.layers,
         })
     }
 
@@ -83,7 +76,7 @@ impl Image {
         vk::ImageSubresourceRange::default()
             .aspect_mask(self.aspect)
             .level_count(self.mip_levels)
-            .layer_count(if self.cube { CUBE_FACES } else { 1 })
+            .layer_count(self.layers.count())
     }
 
     /// Another view of `level_count` levels from `base_level`, owned by the caller and dropped before the image.
@@ -98,7 +91,7 @@ impl Image {
             self.image.handle(),
             self.format,
             self.aspect,
-            self.cube,
+            self.layers,
             base_level,
             level_count,
         )
@@ -109,25 +102,20 @@ impl Image {
         image: vk::Image,
         format: vk::Format,
         aspect: vk::ImageAspectFlags,
-        cube: bool,
+        layers: ImageLayers,
         base_level: u32,
         level_count: u32,
     ) -> Result<DeviceObject<vk::ImageView>, MemoryError> {
-        let (view_type, layers) = if cube {
-            (vk::ImageViewType::CUBE, CUBE_FACES)
-        } else {
-            (vk::ImageViewType::TYPE_2D, 1)
-        };
         let view_info = vk::ImageViewCreateInfo::default()
             .image(image)
-            .view_type(view_type)
+            .view_type(layers.view_type())
             .format(format)
             .subresource_range(
                 vk::ImageSubresourceRange::default()
                     .aspect_mask(aspect)
                     .base_mip_level(base_level)
                     .level_count(level_count)
-                    .layer_count(layers),
+                    .layer_count(layers.count()),
             );
         let view = unsafe { memory.device().create_image_view(&view_info, None) }?;
 
