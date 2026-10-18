@@ -31,3 +31,4 @@ xsa-server = { path = "crates/server" }
 xsa-units = { path = "crates/units" }
 xui = { path = "crates/xui" }
 xui-vulkan = { path = "crates/xui-vulkan" }
+zstd = "0.14.2"

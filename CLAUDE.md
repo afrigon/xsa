@@ -76,11 +76,11 @@ kinds (height maps, lens textures) through its `ResourceKind` trait.
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
 | `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
-| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`); thin command handlers over a context carrying the output shell |
+| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), and the converter of terrain layers into `.terrain` files (`terrain create`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
 | `logging` | The verbosity flags (`-v`, `-q`) and the `tracing` subscriber shared by `xsa` and `launchpad` |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
-| `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains |
+| `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains; `terrain` defines the `.terrain` format (pages of a cube map at every level) and reads it |
 | `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue, video memory budget), `DeviceObject`, `Buffer`, `Image`, timelines and present fences, the `TransferQueue` every copy between CPU and GPU goes through, and the `BindlessTable` whose owned slots return once no frame reads them |
 | `resource-vulkan` | `Resources`: background, reference-counted loading of the files content refers to, on a worker pool of its own; typed `ResourceHandle`s, groups with byte progress, priorities, and a memory budget that evicts unreferenced cached resources least recently used first. Ships the texture and cube map kinds |
 | `render-graph-vulkan` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images and transient buffers |

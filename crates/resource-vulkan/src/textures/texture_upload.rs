@@ -1,7 +1,7 @@
 use anyhow::ensure;
 use ash::vk;
 use memory_vulkan::{BindlessBinding, Image, ImageCopy, ImageDescription, ImageUpload, TexelBlock};
-use resource_loader::texture::{TextureFormat, TextureImage};
+use resource_loader::texture::TextureImage;
 
 use crate::LoadContext;
 use crate::textures::PendingTexture;
@@ -50,7 +50,7 @@ impl TextureUpload {
                     width: self.image.width(),
                     height: self.image.height(),
                 },
-                format: TextureUpload::vulkan_format(format),
+                format: vk::Format::from_raw(format.vulkan_format().value as i32),
                 usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: self.image.mip_levels(),
@@ -100,19 +100,5 @@ impl TextureUpload {
         }
 
         copies
-    }
-
-    fn vulkan_format(format: TextureFormat) -> vk::Format {
-        match format {
-            TextureFormat::Bc4Unorm => vk::Format::BC4_UNORM_BLOCK,
-            TextureFormat::Bc5Unorm => vk::Format::BC5_UNORM_BLOCK,
-            TextureFormat::Bc7Unorm => vk::Format::BC7_UNORM_BLOCK,
-            TextureFormat::Bc7Srgb => vk::Format::BC7_SRGB_BLOCK,
-            TextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
-            TextureFormat::Rgba8Srgb => vk::Format::R8G8B8A8_SRGB,
-            TextureFormat::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
-            TextureFormat::R16Unorm => vk::Format::R16_UNORM,
-            TextureFormat::Rg16Unorm => vk::Format::R16G16_UNORM,
-        }
     }
 }

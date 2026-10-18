@@ -2,8 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use super::half_float::half_to_f32;
-use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
+use super::{ColorSpace, DdsLoader, HalfFloat, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
 
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;
@@ -18,21 +17,36 @@ pub struct TextureImage {
 }
 
 impl TextureImage {
-    /// Reads a texture file, choosing its loader from the file's extension.
+    /// Reads a texture file, choosing its loader from the file's extension, its texels meant in a color space.
     pub fn read(path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureImage> {
+        TextureImage::read_stored(path)?
+            .in_color_space(color_space)
+            .with_context(|| format!("{}", path.display()))
+    }
+
+    /// Reads a texture file, choosing its loader from the file's extension, in the texel format the file stores.
+    pub fn read_stored(path: &Path) -> anyhow::Result<TextureImage> {
         let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         let extension = path
             .extension()
             .and_then(|extension| extension.to_str())
             .unwrap_or_default();
         let image = match extension {
-            Ktx2Loader::EXTENSION => Ktx2Loader::load(&bytes, color_space),
-            DdsLoader::EXTENSION => DdsLoader::load(&bytes, color_space),
-            PngLoader::EXTENSION => PngLoader::load(&bytes, color_space),
+            Ktx2Loader::EXTENSION => Ktx2Loader::load(&bytes),
+            DdsLoader::EXTENSION => DdsLoader::load(&bytes),
+            PngLoader::EXTENSION => PngLoader::load(&bytes),
             _ => bail!("{}: not a texture file", path.display()),
         };
 
         image.with_context(|| format!("{}", path.display()))
+    }
+
+    /// The same texels, their format reinterpreted for how they are meant: sRGB-decoded colors or linear data.
+    pub fn in_color_space(self, color_space: ColorSpace) -> anyhow::Result<TextureImage> {
+        Ok(TextureImage {
+            format: self.format.in_color_space(color_space)?,
+            ..self
+        })
     }
 
     pub fn format(&self) -> TextureFormat {
@@ -69,10 +83,10 @@ impl TextureImage {
         );
         let texel_count = (self.width * self.height) as usize;
         let channel = |texel: &[u8; RGBA16_FLOAT_TEXEL_BYTES], index: usize| {
-            half_to_f32(u16::from_le_bytes([
-                texel[index * HALF_BYTES],
-                texel[index * HALF_BYTES + 1],
-            ]))
+            HalfFloat {
+                bits: u16::from_le_bytes([texel[index * HALF_BYTES], texel[index * HALF_BYTES + 1]]),
+            }
+            .to_f32()
         };
 
         Ok(self.layers[0]
@@ -84,9 +98,32 @@ impl TextureImage {
             .collect())
     }
 
-    pub(super) fn layer_size(&self) -> usize {
+    // The size in bytes of a layer's mip chain as the file's header declares it, refusing shapes no valid file has
+    // and sizes that overflow, so nothing is allocated from an impossible header.
+    pub(super) fn layer_size(&self) -> anyhow::Result<usize> {
+        ensure!(
+            self.width > 0 && self.height > 0,
+            "{}×{} texels",
+            self.width,
+            self.height
+        );
+
+        let full_chain = self.width.max(self.height).ilog2() + 1;
+        ensure!(
+            self.mip_levels <= full_chain,
+            "{} mip levels: a {}×{} texture has at most {full_chain}",
+            self.mip_levels,
+            self.width,
+            self.height
+        );
+
         (0..self.mip_levels)
-            .map(|level| self.format.level_size(self.width >> level, self.height >> level))
-            .sum()
+            .try_fold(0usize, |size, level| {
+                size.checked_add(
+                    self.format
+                        .checked_level_size(self.width >> level, self.height >> level)?,
+                )
+            })
+            .with_context(|| format!("{}×{} texels are too large", self.width, self.height))
     }
 }

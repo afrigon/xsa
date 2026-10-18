@@ -4,7 +4,9 @@ const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const KTX2_HEADER_SIZE: usize = 80;
 const KTX2_LEVEL_ENTRY_SIZE: usize = 24;
 const VK_FORMAT_R8G8B8A8_UNORM: u32 = 37;
+const VK_FORMAT_R8G8B8A8_SRGB: u32 = 43;
 const VK_FORMAT_R16_UNORM: u32 = 70;
+const VK_FORMAT_R32_SFLOAT: u32 = 100;
 const VK_FORMAT_BC4_UNORM_BLOCK: u32 = 139;
 const SUPERCOMPRESSION_NONE: u32 = 0;
 const SUPERCOMPRESSION_ZSTANDARD: u32 = 2;
@@ -66,6 +68,18 @@ impl Ktx2 {
     }
 }
 
+// A DDS header with a DX10 extension, for a BC7 texture.
+fn dds_header(width: u32, height: u32, mip_levels: u32) -> Vec<u8> {
+    let mut bytes = vec![0; DDS_HEADER_SIZE];
+    bytes[..4].copy_from_slice(b"DDS ");
+    bytes[12..16].copy_from_slice(&height.to_le_bytes());
+    bytes[16..20].copy_from_slice(&width.to_le_bytes());
+    bytes[28..32].copy_from_slice(&mip_levels.to_le_bytes());
+    bytes[84..88].copy_from_slice(b"DX10");
+    bytes[128..132].copy_from_slice(&DXGI_FORMAT_BC7_UNORM.to_le_bytes());
+    bytes
+}
+
 // Every byte of a level's face holds the level and face it belongs to.
 fn tagged(level: u8, face: u8, size: usize) -> Vec<u8> {
     vec![level * 16 + face; size]
@@ -90,7 +104,10 @@ fn a_ktx2_cube_map_regroups_its_levels_by_face() {
         supercompression: SUPERCOMPRESSION_ZSTANDARD,
         levels,
     };
-    let image = Ktx2Loader::load(&file.bytes(), ColorSpace::Srgb).unwrap();
+    let image = Ktx2Loader::load(&file.bytes())
+        .unwrap()
+        .in_color_space(ColorSpace::Srgb)
+        .unwrap();
 
     assert_eq!(image.format(), TextureFormat::Rgba8Srgb);
     assert_eq!(image.mip_levels(), 2);
@@ -113,11 +130,40 @@ fn an_uncompressed_ktx2_height_map_reads_as_is() {
         supercompression: SUPERCOMPRESSION_NONE,
         levels: vec![(0..16).collect()],
     };
-    let image = Ktx2Loader::load(&file.bytes(), ColorSpace::Linear).unwrap();
+    let image = Ktx2Loader::load(&file.bytes())
+        .unwrap()
+        .in_color_space(ColorSpace::Linear)
+        .unwrap();
 
     assert_eq!(image.format(), TextureFormat::R16Unorm);
     assert_eq!((image.width(), image.height()), (4, 2));
     assert_eq!(image.layers(), &[(0..16).collect::<Vec<u8>>()]);
+}
+
+#[test]
+fn a_ktx2_texture_keeps_the_format_it_stores() {
+    let colors = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_SRGB,
+        width: 1,
+        height: 1,
+        faces: 1,
+        supercompression: SUPERCOMPRESSION_NONE,
+        levels: vec![vec![0; 4]],
+    };
+    let heights = Ktx2 {
+        format: VK_FORMAT_R32_SFLOAT,
+        levels: vec![1.5f32.to_le_bytes().to_vec()],
+        ..colors
+    };
+
+    assert_eq!(
+        Ktx2Loader::load(&colors.bytes()).unwrap().format(),
+        TextureFormat::Rgba8Srgb
+    );
+    assert_eq!(
+        Ktx2Loader::load(&heights.bytes()).unwrap().format(),
+        TextureFormat::R32Float
+    );
 }
 
 #[test]
@@ -131,7 +177,12 @@ fn data_formats_cannot_be_read_as_colors() {
         levels: vec![vec![0; 8]],
     };
 
-    assert!(Ktx2Loader::load(&file.bytes(), ColorSpace::Srgb).is_err());
+    assert!(
+        Ktx2Loader::load(&file.bytes())
+            .unwrap()
+            .in_color_space(ColorSpace::Srgb)
+            .is_err()
+    );
 }
 
 #[test]
@@ -145,21 +196,18 @@ fn a_ktx2_level_of_the_wrong_size_is_rejected() {
         levels: vec![vec![0; 12]],
     };
 
-    assert!(Ktx2Loader::load(&file.bytes(), ColorSpace::Linear).is_err());
+    assert!(Ktx2Loader::load(&file.bytes()).is_err());
 }
 
 #[test]
 fn a_dds_texture_reads_its_mip_chain() {
-    let mut bytes = vec![0; DDS_HEADER_SIZE];
-    bytes[..4].copy_from_slice(b"DDS ");
-    bytes[12..16].copy_from_slice(&8u32.to_le_bytes());
-    bytes[16..20].copy_from_slice(&8u32.to_le_bytes());
-    bytes[28..32].copy_from_slice(&2u32.to_le_bytes());
-    bytes[84..88].copy_from_slice(b"DX10");
-    bytes[128..132].copy_from_slice(&DXGI_FORMAT_BC7_UNORM.to_le_bytes());
+    let mut bytes = dds_header(8, 8, 2);
     bytes.extend(vec![1; 4 * BC7_BLOCK_BYTES]);
     bytes.extend(vec![2; BC7_BLOCK_BYTES]);
-    let image = DdsLoader::load(&bytes, ColorSpace::Srgb).unwrap();
+    let image = DdsLoader::load(&bytes)
+        .unwrap()
+        .in_color_space(ColorSpace::Srgb)
+        .unwrap();
 
     assert_eq!(image.format(), TextureFormat::Bc7Srgb);
     assert_eq!(image.mip_levels(), 2);
@@ -174,9 +222,105 @@ fn a_png_reads_as_one_rgba_level() {
         .unwrap()
         .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
         .unwrap();
-    let image = PngLoader::load(&bytes, ColorSpace::Linear).unwrap();
+    let image = PngLoader::load(&bytes)
+        .unwrap()
+        .in_color_space(ColorSpace::Linear)
+        .unwrap();
 
     assert_eq!(image.format(), TextureFormat::Rgba8Unorm);
     assert_eq!(image.mip_levels(), 1);
     assert_eq!(image.layers(), &[vec![10, 20, 30, 255, 40, 50, 60, 255]]);
+}
+
+fn ktx2_error(file: Ktx2) -> String {
+    Ktx2Loader::load(&file.bytes()).err().unwrap().to_string()
+}
+
+#[test]
+fn a_ktx2_header_too_large_for_any_file_is_rejected_before_allocating() {
+    let overflowing = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_UNORM,
+        width: 1 << 31,
+        height: 1 << 31,
+        faces: 6,
+        supercompression: SUPERCOMPRESSION_NONE,
+        levels: vec![vec![0; 4]],
+    };
+    let unallocatable = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_UNORM,
+        width: 1 << 30,
+        height: 1 << 30,
+        faces: 6,
+        supercompression: SUPERCOMPRESSION_NONE,
+        levels: vec![vec![0; 4]],
+    };
+
+    assert!(ktx2_error(overflowing).contains("too large"));
+    assert!(ktx2_error(unallocatable).contains("cannot be allocated"));
+}
+
+#[test]
+fn ktx2_mip_levels_beyond_the_full_chain_are_rejected() {
+    let file = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_UNORM,
+        width: 2,
+        height: 2,
+        faces: 1,
+        supercompression: SUPERCOMPRESSION_NONE,
+        levels: vec![vec![0; 16], vec![0; 4], vec![0; 4]],
+    };
+
+    assert!(ktx2_error(file).contains("at most 2"));
+}
+
+#[test]
+fn a_ktx2_level_past_the_end_of_the_file_is_rejected() {
+    let file = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_UNORM,
+        width: 1,
+        height: 1,
+        faces: 1,
+        supercompression: SUPERCOMPRESSION_NONE,
+        levels: vec![vec![0; 4]],
+    };
+    let mut bytes = file.bytes();
+    bytes[KTX2_HEADER_SIZE..KTX2_HEADER_SIZE + 8].copy_from_slice(&(u64::MAX - 2).to_le_bytes());
+
+    assert!(
+        Ktx2Loader::load(&bytes)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("truncated")
+    );
+}
+
+#[test]
+fn a_supercompressed_ktx2_level_declaring_another_size_is_rejected() {
+    let file = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_UNORM,
+        width: 2,
+        height: 2,
+        faces: 1,
+        supercompression: SUPERCOMPRESSION_ZSTANDARD,
+        levels: vec![vec![0; 16]],
+    };
+    let mut bytes = file.bytes();
+    let uncompressed_length = KTX2_HEADER_SIZE + 16;
+    bytes[uncompressed_length..uncompressed_length + 8].copy_from_slice(&(1u64 << 60).to_le_bytes());
+
+    assert!(
+        Ktx2Loader::load(&bytes)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("expected 16")
+    );
+}
+
+#[test]
+fn a_dds_header_too_large_for_any_file_is_rejected() {
+    assert!(DdsLoader::load(&dds_header(1 << 31, 1 << 31, 1)).is_err());
+    assert!(DdsLoader::load(&dds_header(8, 8, 40)).is_err());
+    assert!(DdsLoader::load(&dds_header(0, 8, 1)).is_err());
 }
