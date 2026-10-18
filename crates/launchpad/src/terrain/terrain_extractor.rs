@@ -1,8 +1,9 @@
 use std::io::{Read, Seek};
 
 use anyhow::{Context, bail, ensure};
-use resource_loader::terrain::{CubeFace, PAGE_BORDER, PAGE_EXTENT, PAGE_INTERIOR, TerrainReader};
+use resource_loader::terrain::{PAGE_BORDER, PAGE_EXTENT, PAGE_INTERIOR, TerrainReader};
 use resource_loader::texture::TextureImage;
+use resource_loader::utils::CubeFace;
 
 use super::{LayerEncoding, LevelSelection, TerrainRegion};
 
@@ -102,7 +103,8 @@ mod tests {
     use std::io::Cursor;
 
     use resource_loader::terrain::{HeightRange, LevelRecord, PageAddress, PageEncoding, PageKey, TerrainHeader};
-    use resource_loader::texture::{HalfFloat, TextureFormat};
+    use resource_loader::texture::TextureFormat;
+    use resource_loader::utils::HalfFloat;
 
     use super::*;
     use crate::terrain::{CubeMapInput, TerrainWriter, TestCubeMap};

@@ -1,6 +1,7 @@
 use std::fmt;
 
-use resource_loader::terrain::{CubeFace, PageAddress};
+use resource_loader::terrain::PageAddress;
+use resource_loader::utils::CubeFace;
 
 use super::LevelSelection;
 

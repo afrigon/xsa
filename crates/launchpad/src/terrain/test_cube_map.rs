@@ -1,5 +1,5 @@
-use resource_loader::terrain::CubeFace;
 use resource_loader::texture::{Ktx2Loader, TextureFormat, TextureLoader};
+use resource_loader::utils::CubeFace;
 
 use super::CubeMapInput;
 

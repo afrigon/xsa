@@ -1,6 +1,7 @@
 use std::fmt;
 
-use resource_loader::terrain::{CubeFace, PageKey};
+use resource_loader::terrain::PageKey;
+use resource_loader::utils::CubeFace;
 
 /// Which pages of one face at one level are present, scaled to at most `MAP_WIDTH` characters across.
 #[derive(Clone, PartialEq, Eq, Debug)]

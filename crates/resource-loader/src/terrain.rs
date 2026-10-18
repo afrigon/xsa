@@ -1,4 +1,3 @@
-mod cube_face;
 mod height_range;
 mod level_record;
 mod page_address;
@@ -8,7 +7,6 @@ mod page_key;
 mod terrain_header;
 mod terrain_reader;
 
-pub use cube_face::CubeFace;
 pub use height_range::HeightRange;
 pub use level_record::LevelRecord;
 pub use page_address::PageAddress;

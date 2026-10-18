@@ -122,6 +122,20 @@ every page. It fails when a check finds a problem. `--face` (`+x` to `-z`),
 `--level` and `--page` together print one page's entry instead, and with
 `--verify` what its data decodes to.
 
+```
+launchpad terrain extract [--face <face>] [--level <n>] [--page <x>,<y>] [--output <path>] <file>
+```
+
+Writes a `.terrain` file back out as KTX2, its pages decoded to the texel
+format the conversion reads (heights to `R32_SFLOAT` metres, `BC7_SRGB_BLOCK`
+to `R8G8B8A8_SRGB`, `BC5_UNORM_BLOCK` to `R8G8_UNORM`), so it can be compared
+with the cube map it came from. Without options it is a cube map with every
+level as a mip level, finest first, down to 128 texels; `--level` keeps one
+level, `--face` one face as a 2D texture, and `--face --level --page` one page
+with its border. Faces are stitched from page interiors, absent pages
+transparent, NaN heights or 0. Without `--output`, it is written next to the
+file as `<name>.extract.ktx2`.
+
 ### `.xsaignore`
 
 A pack directory can hold files that are not content: the scripts that produce
@@ -276,6 +290,7 @@ it too.
 | `pack package <pack directory>` | Packages a pack for release (see Packaging) |
 | `terrain create <input>` | Converts a terrain layer's cube map into a `.terrain` file (see Terrain conversion) |
 | `terrain inspect <file>` | Prints a `.terrain` file's levels and coverage and checks it (see Terrain conversion) |
+| `terrain extract <file>` | Writes a `.terrain` file back out as a KTX2 texture (see Terrain conversion) |
 
 Publishing is not a launchpad command: an author uploads archives to their own
 host and opens a pull request on the repository.

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use resource_loader::terrain::{CubeFace, PageAddress, PageEncoding, PageKey};
+use resource_loader::terrain::{PageAddress, PageEncoding, PageKey};
+use resource_loader::utils::CubeFace;
 use usage::{Args, Subcommands};
 
 use crate::cli::CommandHandler;

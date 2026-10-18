@@ -1,4 +1,5 @@
-use resource_loader::terrain::{CubeFace, HeightRange, PAGE_INTERIOR, PageEntry};
+use resource_loader::terrain::{HeightRange, PAGE_INTERIOR, PageEntry};
+use resource_loader::utils::CubeFace;
 
 /// One level of a `.terrain` file, summed over its six faces.
 #[derive(Clone, Copy, PartialEq, Debug)]

@@ -2,7 +2,8 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{ColorSpace, DdsLoader, HalfFloat, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
+use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
+use crate::utils::HalfFloat;
 
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;

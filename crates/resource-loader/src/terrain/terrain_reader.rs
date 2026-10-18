@@ -2,7 +2,8 @@ use std::io::{Read, Seek, SeekFrom};
 
 use anyhow::{Context, ensure};
 
-use super::{CubeFace, LevelRecord, PageAddress, PageEncoding, PageEntry, TerrainHeader};
+use super::{LevelRecord, PageAddress, PageEncoding, PageEntry, TerrainHeader};
+use crate::utils::CubeFace;
 
 /// Reads a `.terrain` file: its header and level index at once, page entries and page data on demand.
 pub struct TerrainReader<R> {

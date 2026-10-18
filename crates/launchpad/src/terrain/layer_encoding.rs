@@ -1,7 +1,8 @@
 use anyhow::{Context, bail};
 use block_compression::{BC7Settings, CompressionVariant};
 use resource_loader::terrain::{HeightRange, PAGE_EXTENT, PageEncoding};
-use resource_loader::texture::{HalfFloat, TextureFormat};
+use resource_loader::texture::TextureFormat;
+use resource_loader::utils::HalfFloat;
 
 use super::EncodedPage;
 

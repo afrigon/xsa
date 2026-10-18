@@ -1,10 +1,11 @@
 use std::io::Cursor;
 
 use resource_loader::terrain::{
-    CubeFace, HeightRange, LevelRecord, PAGE_BORDER, PAGE_EXTENT, PageAddress, PageEncoding, PageEntry, PageKey,
-    TerrainHeader, TerrainReader,
+    HeightRange, LevelRecord, PAGE_BORDER, PAGE_EXTENT, PageAddress, PageEncoding, PageEntry, PageKey, TerrainHeader,
+    TerrainReader,
 };
 use resource_loader::texture::TextureFormat;
+use resource_loader::utils::CubeFace;
 
 fn header_bytes(header: &TerrainHeader) -> Vec<u8> {
     let mut bytes = TerrainHeader::MAGIC.to_vec();

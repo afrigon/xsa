@@ -5,9 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 use anyhow::Context;
-use resource_loader::terrain::{
-    CubeFace, LevelRecord, PAGE_BORDER, PAGE_EXTENT, PageAddress, PageEntry, PageKey, TerrainHeader,
-};
+use resource_loader::terrain::{LevelRecord, PAGE_BORDER, PAGE_EXTENT, PageAddress, PageEntry, PageKey, TerrainHeader};
+use resource_loader::utils::CubeFace;
 
 use super::{CubeMapInput, EncodedPage, LayerEncoding, PageBuilder};
 
