@@ -11,7 +11,9 @@ pub enum ImageLayers {
     /// Six layers, viewed as a cube.
     Cube,
     /// Layers viewed as a 2D array.
-    Array { count: NonZeroU32 },
+    Array {
+        count: NonZeroU32,
+    },
 }
 
 impl ImageLayers {

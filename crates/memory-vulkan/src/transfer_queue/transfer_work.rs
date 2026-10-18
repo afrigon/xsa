@@ -8,7 +8,7 @@ use crate::transfer_queue::UploadDestination;
 // The direction of a request and what it copies between.
 pub(crate) enum TransferWork {
     Upload {
-        data: Vec<Vec<u8>>,
+        data: Vec<Box<dyn AsRef<[u8]> + Send + Sync>>,
         destination: UploadDestination,
     },
     Readback {

@@ -66,7 +66,12 @@ impl TextureUpload {
         let slot = context.bindless.allocate(binding)?;
         let copies = self.copies();
         let upload = ImageUpload {
-            data: self.image.into_layers(),
+            data: self
+                .image
+                .into_layers()
+                .into_iter()
+                .map(|layer| Box::new(layer) as Box<dyn AsRef<[u8]> + Send + Sync>)
+                .collect(),
             copies,
             texel_block: TexelBlock {
                 extent: vk::Extent2D {

@@ -5,6 +5,7 @@ pub(crate) enum TransferCommand {
     BufferToImage {
         source: vk::Buffer,
         image: vk::Image,
+        layout: vk::ImageLayout,
         region: vk::BufferImageCopy,
     },
     BufferToBuffer {
@@ -18,11 +19,16 @@ impl TransferCommand {
     pub unsafe fn record(&self, device: &ash::Device, command_buffer: vk::CommandBuffer) {
         unsafe {
             match self {
-                TransferCommand::BufferToImage { source, image, region } => device.cmd_copy_buffer_to_image(
+                TransferCommand::BufferToImage {
+                    source,
+                    image,
+                    layout,
+                    region,
+                } => device.cmd_copy_buffer_to_image(
                     command_buffer,
                     *source,
                     *image,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    *layout,
                     std::slice::from_ref(region),
                 ),
                 TransferCommand::BufferToBuffer {

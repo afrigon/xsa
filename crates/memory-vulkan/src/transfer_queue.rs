@@ -130,10 +130,51 @@ impl TransferQueue {
         let target = UploadTarget::Image {
             image: image.handle(),
             range: image.subresource_range(),
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         };
         let pieces = Piece::split_image(&upload);
 
-        self.upload(image, target, upload.data, pieces, priority)
+        self.upload(image, UploadDestination::Owned(target), upload.data, pieces, priority)
+    }
+
+    /// Moves `image` from undefined contents to `layout` in every level and layer, without writing it.
+    pub fn prepare_image(
+        &self,
+        image: Image,
+        layout: vk::ImageLayout,
+        priority: TransferPriority,
+    ) -> UploadTicket<Image> {
+        let target = UploadTarget::Image {
+            image: image.handle(),
+            range: image.subresource_range(),
+            layout,
+        };
+
+        self.upload(
+            image,
+            UploadDestination::Owned(target),
+            Vec::new(),
+            Ok(VecDeque::new()),
+            priority,
+        )
+    }
+
+    /// Writes `upload` into part of `image`, which stays in `GENERAL` layout: frames may sample the parts not being
+    /// written. The request keeps the image alive until its copies complete, and the ticket hands it back.
+    pub fn upload_region(
+        &self,
+        image: Arc<Image>,
+        upload: ImageUpload,
+        priority: TransferPriority,
+    ) -> UploadTicket<Arc<Image>> {
+        let target = UploadTarget::Image {
+            image: image.handle(),
+            range: image.subresource_range(),
+            layout: vk::ImageLayout::GENERAL,
+        };
+        let pieces = Piece::split_image(&upload);
+
+        self.upload(image, UploadDestination::Region(target), upload.data, pieces, priority)
     }
 
     /// Writes `data` at the start of `buffer`.
@@ -148,7 +189,13 @@ impl TransferQueue {
             Ok(Piece::split_bytes(data.len()))
         };
 
-        self.upload(buffer, target, vec![data], pieces, priority)
+        self.upload(
+            buffer,
+            UploadDestination::Owned(target),
+            vec![Box::new(data)],
+            pieces,
+            priority,
+        )
     }
 
     /// Copies all of `buffer` back to the CPU, once the GPU has reached `after` if given. The buffer is created with
@@ -194,24 +241,21 @@ impl TransferQueue {
 
     fn upload<T: Send + 'static>(
         &self,
-        destination: T,
-        target: UploadTarget,
-        data: Vec<Vec<u8>>,
+        resource: T,
+        destination: UploadDestination,
+        data: Vec<Box<dyn AsRef<[u8]> + Send + Sync>>,
         pieces: Result<VecDeque<Piece>, MemoryError>,
         priority: TransferPriority,
     ) -> UploadTicket<T> {
         let slot = Arc::new(TicketSlot::pending());
-        let completion = Box::new(OwnedUploadCompletion::new(destination, Arc::downgrade(&slot)));
+        let completion = Box::new(OwnedUploadCompletion::new(resource, Arc::downgrade(&slot)));
         let id = self.shared().next_request_id();
 
         match pieces {
             Ok(pieces) => self.shared().enqueue(TransferRequest {
                 id,
                 priority,
-                work: TransferWork::Upload {
-                    data,
-                    destination: UploadDestination::Owned(target),
-                },
+                work: TransferWork::Upload { data, destination },
                 pieces,
                 started: false,
                 completion,

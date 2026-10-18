@@ -25,7 +25,7 @@ impl BatchBuilder {
 
     // An owned image leaves its undefined layout before its first copy.
     pub fn begin(&mut self, request: &TransferRequest) {
-        if let Some((image, range)) = BatchBuilder::owned_image(request) {
+        if let Some((image, range, _)) = BatchBuilder::owned_image(request) {
             self.before.push(
                 vk::ImageMemoryBarrier2::default()
                     .dst_stage_mask(vk::PipelineStageFlags2::COPY)
@@ -52,10 +52,10 @@ impl BatchBuilder {
         }
     }
 
-    // The request's last copy is in this batch: an owned image ends ready to sample, which the semaphore the batch
-    // signals makes visible to the submissions waiting on it.
+    // The request's last copy is in this batch: an owned image ends in its target layout. The semaphore the batch
+    // signals makes every copy visible to the submissions waiting on it, regions included.
     pub fn finish(&mut self, request: TransferRequest) {
-        if let Some((image, range)) = BatchBuilder::owned_image(&request) {
+        if let Some((image, range, layout)) = BatchBuilder::owned_image(&request) {
             let old_layout = if request.started {
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL
             } else {
@@ -67,7 +67,7 @@ impl BatchBuilder {
                     .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
                     .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
                     .old_layout(old_layout)
-                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .new_layout(layout)
                     .image(image)
                     .subresource_range(range),
             );
@@ -110,12 +110,12 @@ impl BatchBuilder {
         }
     }
 
-    fn owned_image(request: &TransferRequest) -> Option<(vk::Image, vk::ImageSubresourceRange)> {
+    fn owned_image(request: &TransferRequest) -> Option<(vk::Image, vk::ImageSubresourceRange, vk::ImageLayout)> {
         match &request.work {
             TransferWork::Upload {
-                destination: UploadDestination::Owned(UploadTarget::Image { image, range }),
+                destination: UploadDestination::Owned(UploadTarget::Image { image, range, layout }),
                 ..
-            } => Some((*image, *range)),
+            } => Some((*image, *range, *layout)),
             _ => None,
         }
     }
