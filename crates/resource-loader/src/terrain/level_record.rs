@@ -1,5 +1,3 @@
-use std::io::{self, Write};
-
 /// Where a face and level's page entries are: the level index holds one record per face and level.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct LevelRecord {
@@ -19,10 +17,5 @@ impl LevelRecord {
             entries_offset: u64::from_le_bytes(entries_offset.try_into().unwrap()),
             entry_count: u64::from_le_bytes(entry_count.try_into().unwrap()),
         }
-    }
-
-    pub fn write(&self, output: &mut impl Write) -> io::Result<()> {
-        output.write_all(&self.entries_offset.to_le_bytes())?;
-        output.write_all(&self.entry_count.to_le_bytes())
     }
 }

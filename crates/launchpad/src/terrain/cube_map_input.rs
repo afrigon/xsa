@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use anyhow::{Context, ensure};
-use resource_loader::terrain::{CubeFace, PAGE_INTERIOR};
+use resource_loader::terrain::PAGE_INTERIOR;
 use resource_loader::texture::{TextureFormat, TextureImage};
+use resource_loader::utils::CubeFace;
 
 /// A terrain layer's cube map, checked against what the conversion needs: six square power-of-two faces of at least
 /// one page, with their full mip chain, uncompressed.

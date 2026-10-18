@@ -3,9 +3,10 @@ use std::fmt;
 use std::io::{Read, Seek};
 
 use resource_loader::terrain::{
-    CubeFace, PAGE_BORDER, PAGE_EXTENT, PAGE_INTERIOR, PageAddress, PageEncoding, PageEntry, PageKey, TerrainHeader,
+    PAGE_BORDER, PAGE_EXTENT, PAGE_INTERIOR, PageAddress, PageEncoding, PageEntry, PageKey, TerrainHeader,
     TerrainReader,
 };
+use resource_loader::utils::CubeFace;
 
 use super::{CoverageMap, LevelSummary, PageCheck, TerrainProblem};
 
@@ -241,7 +242,8 @@ mod tests {
     use std::io::Cursor;
 
     use resource_loader::terrain::LevelRecord;
-    use resource_loader::texture::{HalfFloat, TextureFormat};
+    use resource_loader::texture::TextureFormat;
+    use resource_loader::utils::HalfFloat;
 
     use super::*;
     use crate::terrain::{LayerEncoding, TerrainWriter, TestCubeMap};

@@ -62,7 +62,9 @@ only. `memory-vulkan` depends on no xsa crate: `render-graph-vulkan`,
 `xui-vulkan` and `client` all create their GPU objects through it.
 `resource-loader` depends on no xsa crate: it decodes resource files, one module
 per kind of file behind a feature of the same name (`texture`), so each crate
-enables only the kinds it reads. `resource-vulkan` depends on no xsa crate
+enables only the kinds it reads, and `utils` holds the value types they share
+(`HalfFloat`, `CubeFace`). It only reads: writing files is the job of the tools
+that produce them. `resource-vulkan` depends on no xsa crate
 either, only on `memory-vulkan` and `resource-loader`: the client adds its own
 kinds (height maps, lens textures) through its `ResourceKind` trait.
 
@@ -76,7 +78,7 @@ kinds (height maps, lens textures) through its `ResourceKind` trait.
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
 | `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
-| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), the converter of terrain layers into `.terrain` files (`terrain create`) and their inspector (`terrain inspect`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
+| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), the converter of terrain layers into `.terrain` files (`terrain create`), their inspector (`terrain inspect`) and their extractor back to KTX2 (`terrain extract`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
 | `logging` | The verbosity flags (`-v`, `-q`) and the `tracing` subscriber shared by `xsa` and `launchpad` |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |

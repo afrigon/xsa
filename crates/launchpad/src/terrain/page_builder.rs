@@ -1,5 +1,6 @@
 use glam::IVec3;
-use resource_loader::terrain::{CubeFace, PAGE_BORDER, PAGE_EXTENT, PAGE_INTERIOR, PageKey};
+use resource_loader::terrain::{PAGE_BORDER, PAGE_EXTENT, PAGE_INTERIOR, PageKey};
+use resource_loader::utils::CubeFace;
 
 use super::{CubeMapInput, LayerEncoding};
 

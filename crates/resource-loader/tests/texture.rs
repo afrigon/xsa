@@ -1,4 +1,6 @@
-use resource_loader::texture::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
+use resource_loader::texture::{
+    ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureImage, TextureLoader,
+};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const KTX2_HEADER_SIZE: usize = 80;
@@ -323,4 +325,10 @@ fn a_dds_header_too_large_for_any_file_is_rejected() {
     assert!(DdsLoader::load(&dds_header(1 << 31, 1 << 31, 1)).is_err());
     assert!(DdsLoader::load(&dds_header(8, 8, 40)).is_err());
     assert!(DdsLoader::load(&dds_header(0, 8, 1)).is_err());
+}
+
+#[test]
+fn a_texture_with_layers_of_the_wrong_size_is_refused() {
+    assert!(TextureImage::new(TextureFormat::Rgba8Unorm, 2, 2, 1, vec![vec![0; 15]]).is_err());
+    assert!(TextureImage::new(TextureFormat::Rgba8Unorm, 2, 2, 1, Vec::new()).is_err());
 }

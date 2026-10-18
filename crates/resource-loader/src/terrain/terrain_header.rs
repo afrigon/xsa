@@ -1,5 +1,3 @@
-use std::io::{self, Write};
-
 use anyhow::{Context, ensure};
 
 use super::{PAGE_BORDER, PAGE_EXTENT, PageEncoding};
@@ -18,8 +16,10 @@ impl TerrainHeader {
     pub const SIZE: usize = 28;
     /// The most levels a file holds: its finest face, `PAGE_INTERIOR << 24` texels, is the widest a `u32` holds.
     pub const MAXIMUM_LEVEL_COUNT: u32 = 25;
-    const MAGIC: &[u8; 4] = b"XSAT";
-    const VERSION: u32 = 1;
+    /// The bytes a `.terrain` file starts with.
+    pub const MAGIC: &[u8; 4] = b"XSAT";
+    /// The version of the format this crate reads.
+    pub const VERSION: u32 = 1;
     const VERSION_OFFSET: usize = 4;
     const FORMAT_OFFSET: usize = 8;
     const ENCODING_OFFSET: usize = 12;
@@ -62,23 +62,6 @@ impl TerrainHeader {
             encoding: PageEncoding::from_value(word(Self::ENCODING_OFFSET))?,
             level_count,
         })
-    }
-
-    pub fn write(&self, output: &mut impl Write) -> io::Result<()> {
-        output.write_all(Self::MAGIC)?;
-
-        for word in [
-            Self::VERSION,
-            self.format.vulkan_format().value,
-            self.encoding.value(),
-            PAGE_EXTENT,
-            PAGE_BORDER,
-            self.level_count,
-        ] {
-            output.write_all(&word.to_le_bytes())?;
-        }
-
-        Ok(())
     }
 
     /// The size in bytes of a page's data once decompressed.

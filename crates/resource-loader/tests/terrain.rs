@@ -1,10 +1,48 @@
 use std::io::Cursor;
 
 use resource_loader::terrain::{
-    CubeFace, HeightRange, LevelRecord, PAGE_EXTENT, PageAddress, PageEncoding, PageEntry, PageKey, TerrainHeader,
+    HeightRange, LevelRecord, PAGE_BORDER, PAGE_EXTENT, PageAddress, PageEncoding, PageEntry, PageKey, TerrainHeader,
     TerrainReader,
 };
 use resource_loader::texture::TextureFormat;
+use resource_loader::utils::CubeFace;
+
+fn header_bytes(header: &TerrainHeader) -> Vec<u8> {
+    let mut bytes = TerrainHeader::MAGIC.to_vec();
+
+    for word in [
+        TerrainHeader::VERSION,
+        header.format.vulkan_format().value,
+        header.encoding.value(),
+        PAGE_EXTENT,
+        PAGE_BORDER,
+        header.level_count,
+    ] {
+        bytes.extend_from_slice(&word.to_le_bytes());
+    }
+
+    bytes
+}
+
+fn record_bytes(record: LevelRecord) -> Vec<u8> {
+    [record.entries_offset, record.entry_count]
+        .iter()
+        .flat_map(|long| long.to_le_bytes())
+        .collect()
+}
+
+fn entry_bytes(entry: PageEntry) -> Vec<u8> {
+    let mut bytes = entry.key.code.to_le_bytes().to_vec();
+    bytes.extend_from_slice(&entry.data_offset.to_le_bytes());
+    bytes.extend_from_slice(&entry.data_size.to_le_bytes());
+
+    if let Some(range) = entry.range {
+        bytes.extend_from_slice(&range.minimum.to_le_bytes());
+        bytes.extend_from_slice(&range.maximum.to_le_bytes());
+    }
+
+    bytes
+}
 
 #[test]
 fn a_page_key_interleaves_its_column_in_the_even_bits() {
@@ -61,16 +99,14 @@ fn every_face_looks_outward_with_columns_and_rows_in_vulkan_order() {
 }
 
 #[test]
-fn a_header_reads_back_what_it_wrote() {
+fn a_header_reads_its_fields() {
     let header = TerrainHeader {
         format: TextureFormat::R16Unorm,
         encoding: PageEncoding::PageHeights,
         level_count: 5,
     };
-    let mut bytes = Vec::new();
-    header.write(&mut bytes).unwrap();
+    let mut bytes = header_bytes(&header);
 
-    assert_eq!(&bytes[..4], b"XSAT");
     assert_eq!(
         TerrainHeader::read(bytes.as_slice().try_into().unwrap()).unwrap(),
         header
@@ -82,14 +118,11 @@ fn a_header_reads_back_what_it_wrote() {
 
 #[test]
 fn a_header_with_more_levels_than_a_face_extent_holds_is_refused() {
-    let mut bytes = Vec::new();
-    TerrainHeader {
+    let bytes = header_bytes(&TerrainHeader {
         format: TextureFormat::Bc7Srgb,
         encoding: PageEncoding::Direct,
         level_count: TerrainHeader::MAXIMUM_LEVEL_COUNT + 1,
-    }
-    .write(&mut bytes)
-    .unwrap();
+    });
 
     assert!(TerrainHeader::read(bytes.as_slice().try_into().unwrap()).is_err());
 }
@@ -108,8 +141,7 @@ fn the_reader_finds_pages_by_key_and_decompresses_them() {
     let page = vec![7; header.page_size()];
     let compressed = zstd::bulk::compress(&page, 3).unwrap();
     let data_start = entries_start + (keys.len() * entry_size) as u64;
-    let mut bytes = Vec::new();
-    header.write(&mut bytes).unwrap();
+    let mut bytes = header_bytes(&header);
 
     for face in CubeFace::ALL {
         for level in 0..header.level_count {
@@ -124,12 +156,12 @@ fn the_reader_finds_pages_by_key_and_decompresses_them() {
                     entry_count: 0,
                 }
             };
-            record.write(&mut bytes).unwrap();
+            bytes.extend(record_bytes(record));
         }
     }
 
     for (index, key) in keys.into_iter().enumerate() {
-        PageEntry {
+        bytes.extend(entry_bytes(PageEntry {
             key,
             data_offset: data_start + (index * compressed.len()) as u64,
             data_size: compressed.len() as u32,
@@ -137,9 +169,7 @@ fn the_reader_finds_pages_by_key_and_decompresses_them() {
                 minimum: index as f32,
                 maximum: 10.0,
             }),
-        }
-        .write(&mut bytes)
-        .unwrap();
+        }));
     }
 
     bytes.extend(&compressed);

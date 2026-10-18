@@ -1,4 +1,5 @@
 mod terrain_create_options;
+mod terrain_extract_options;
 mod terrain_inspect_options;
 
 use std::fs::File;
@@ -7,10 +8,13 @@ use std::io::{BufReader, BufWriter, Write};
 use anyhow::{Context, bail};
 use resource_loader::terrain::TerrainReader;
 pub use terrain_create_options::TerrainCreateOptions;
+pub use terrain_extract_options::TerrainExtractOptions;
 pub use terrain_inspect_options::TerrainInspectOptions;
 
 use crate::launchpad_context::LaunchpadContext;
-use crate::terrain::{CubeMapInput, LayerEncoding, PageInspection, TerrainInspection, TerrainWriter};
+use crate::terrain::{
+    CubeMapInput, Ktx2Writer, LayerEncoding, PageInspection, TerrainExtractor, TerrainInspection, TerrainWriter,
+};
 
 /// Converts a terrain layer's cube map into its `.terrain` file.
 pub fn create(context: &mut LaunchpadContext, options: &TerrainCreateOptions) -> anyhow::Result<()> {
@@ -64,4 +68,29 @@ pub fn inspect(context: &mut LaunchpadContext, options: &TerrainInspectOptions) 
         1 => bail!("{}: 1 problem", options.file.display()),
         count => bail!("{}: {count} problems", options.file.display()),
     }
+}
+
+/// Writes part of a `.terrain` file back out as a KTX2 texture, in the texels of the cube map it was made from.
+pub fn extract(context: &mut LaunchpadContext, options: &TerrainExtractOptions) -> anyhow::Result<()> {
+    context.shell().status("Reading", options.file.display())?;
+    let file = File::open(&options.file).with_context(|| format!("opening {}", options.file.display()))?;
+    let mut extractor = TerrainReader::new(BufReader::new(file))
+        .and_then(TerrainExtractor::new)
+        .with_context(|| format!("{}", options.file.display()))?;
+    context.shell().status(
+        "Extracting",
+        format!("{} as {}", options.region, extractor.layer().input_format()),
+    )?;
+    let image = extractor
+        .extract(options.region)
+        .with_context(|| format!("{}", options.file.display()))?;
+
+    let file = File::create(&options.output).with_context(|| format!("creating {}", options.output.display()))?;
+    let mut output = BufWriter::new(file);
+    Ktx2Writer::write(&image, &mut output)
+        .and_then(|()| Ok(output.flush()?))
+        .with_context(|| format!("writing {}", options.output.display()))?;
+    context.shell().status("Created", options.output.display())?;
+
+    Ok(())
 }

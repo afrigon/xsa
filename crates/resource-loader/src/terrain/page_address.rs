@@ -1,4 +1,5 @@
-use super::{CubeFace, PageKey};
+use super::PageKey;
+use crate::utils::CubeFace;
 
 /// Where a page is: its face, its level and its key within them.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
