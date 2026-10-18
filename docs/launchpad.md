@@ -180,15 +180,21 @@ Everything the game writes for an instance stays inside it: the dedicated
 server generates its identity in `identity/` on first run, so each server
 instance has its own fingerprint.
 
-`launchpad.kdl` lists the packs the player asked for:
+`launchpad.kdl` declares what the instance runs, a client or a dedicated
+server, and lists the packs the player asked for:
 
 ```kdl
 format 1
+role "client"
 
 packs {
     system-solar "^0.0.1"
 }
 ```
+
+- **`role`:** `client` or `server`. A new `main` instance is a client, a new
+  `server` instance a server. How the instance is started, and with which
+  options, belongs here too, so one `launchpad run` starts any instance.
 
 `base` is an implicit dependency of every pack and of every instance:
 manifests never list it, and an instance without it is completed before
@@ -210,15 +216,13 @@ version and its archive's URL and SHA-256. It works like Cargo's:
 
 ### Sync
 
-Syncing makes `packs/` match the lockfile, for a role: client or server. A
+Syncing makes `packs/` match the lockfile. A
 missing or outdated pack is downloaded into the archive cache
 (`$XDG_CACHE_HOME/xsa/archives/`), verified against its SHA-256, extracted into
 a staging directory inside the instance, then moved in place of the old
-`packs/<pack>/` as a whole. The role decides what is extracted: a server gets
-`pack.kdl`, `LICENSE` and every `<namespace>/data/`, the only files it reads; a
-client gets the whole pack. The game syncs for the role it runs as, so a pack
-installed for a server is completed the first time a client runs the
-instance. A failed download or
+`packs/<pack>/` as a whole. The instance's role decides what is extracted: a
+server gets `pack.kdl`, `LICENSE` and every `<namespace>/data/`, the only files
+it reads; a client gets the whole pack. A failed download or
 mismatched hash leaves the installed pack untouched. Installing replaces a
 pack's directory entirely; packs are never edited in place.
 
