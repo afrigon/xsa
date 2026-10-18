@@ -144,7 +144,7 @@ fn the_reader_finds_pages_by_key_and_decompresses_them() {
 
     bytes.extend(&compressed);
     bytes.extend(&compressed);
-    let mut reader = TerrainReader::new(Cursor::new(bytes)).unwrap();
+    let mut reader = TerrainReader::new(Cursor::new(bytes.clone())).unwrap();
 
     assert_eq!(reader.entries(CubeFace::NegativeY, 1).unwrap().len(), 2);
     assert!(reader.entries(CubeFace::PositiveX, 0).unwrap().is_empty());
@@ -164,4 +164,20 @@ fn the_reader_finds_pages_by_key_and_decompresses_them() {
     assert_eq!(entry.range.unwrap().minimum, 1.0);
     assert_eq!(reader.page(&entry).unwrap(), page);
     assert_eq!(header.page_size(), (PAGE_EXTENT * PAGE_EXTENT) as usize * 2);
+
+    let past_the_end = PageEntry {
+        data_offset: reader.length() - 1,
+        ..entry
+    };
+    assert!(reader.page(&past_the_end).unwrap_err().to_string().contains("past the end"));
+
+    let negative_y_level_1 = TerrainHeader::SIZE + (3 * 2 + 1) * LevelRecord::SIZE;
+    bytes[negative_y_level_1 + 8..negative_y_level_1 + 16].copy_from_slice(&(u64::MAX / 4).to_le_bytes());
+    assert!(
+        TerrainReader::new(Cursor::new(bytes))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("past the end")
+    );
 }

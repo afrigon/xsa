@@ -7,12 +7,15 @@ use super::{CubeFace, LevelRecord, PageAddress, PageEncoding, PageEntry, Terrain
 /// Reads a `.terrain` file: its header and level index at once, page entries and page data on demand.
 pub struct TerrainReader<R> {
     source: R,
+    length: u64,
     header: TerrainHeader,
     levels: Vec<LevelRecord>,
 }
 
 impl<R: Read + Seek> TerrainReader<R> {
     pub fn new(mut source: R) -> anyhow::Result<TerrainReader<R>> {
+        let length = source.seek(SeekFrom::End(0))?;
+        source.seek(SeekFrom::Start(0))?;
         let mut header = [0; TerrainHeader::SIZE];
         source.read_exact(&mut header).context("reading the header")?;
         let header = TerrainHeader::read(&header)?;
@@ -24,7 +27,32 @@ impl<R: Read + Seek> TerrainReader<R> {
             levels.push(LevelRecord::read(&record));
         }
 
-        Ok(TerrainReader { source, header, levels })
+        let entry_size = PageEntry::size(header.encoding) as u64;
+
+        for (index, record) in levels.iter().enumerate() {
+            let end = record
+                .entry_count
+                .checked_mul(entry_size)
+                .and_then(|size| size.checked_add(record.entries_offset));
+            ensure!(
+                end.is_some_and(|end| end <= length),
+                "the entries of face {:?} at level {} end past the end of the file",
+                CubeFace::ALL[index / header.level_count as usize],
+                index % header.level_count as usize
+            );
+        }
+
+        Ok(TerrainReader {
+            source,
+            length,
+            header,
+            levels,
+        })
+    }
+
+    /// The length of the file in bytes.
+    pub fn length(&self) -> u64 {
+        self.length
     }
 
     pub fn header(&self) -> &TerrainHeader {
@@ -76,6 +104,15 @@ impl<R: Read + Seek> TerrainReader<R> {
         ensure!(
             entry.range.is_some() == (self.header.encoding == PageEncoding::PageHeights),
             "page {:?} does not match the file's encoding",
+            entry.key
+        );
+
+        ensure!(
+            entry
+                .data_offset
+                .checked_add(u64::from(entry.data_size))
+                .is_some_and(|end| end <= self.length),
+            "page {:?} ends past the end of the file",
             entry.key
         );
 
