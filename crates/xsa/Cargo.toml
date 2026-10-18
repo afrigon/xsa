@@ -11,9 +11,8 @@ server = ["dep:xsa-server"]
 [dependencies]
 anyhow.workspace = true
 shlex = "2.0.1"
-tracing.workspace = true
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 usage = { workspace = true, features = ["completions"] }
 xsa-client = { workspace = true, optional = true }
 xsa-commands.workspace = true
+xsa-logging.workspace = true
 xsa-server = { workspace = true, optional = true }

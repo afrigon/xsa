@@ -3178,11 +3178,10 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "shlex",
- "tracing",
- "tracing-subscriber",
  "usage-rs",
  "xsa-client",
  "xsa-commands",
+ "xsa-logging",
  "xsa-server",
 ]
 
@@ -3238,6 +3237,19 @@ dependencies = [
  "anyhow",
  "glam",
  "xsa-units",
+]
+
+[[package]]
+name = "xsa-launchpad"
+version = "0.0.1"
+
+[[package]]
+name = "xsa-logging"
+version = "0.0.1"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+ "usage-rs",
 ]
 
 [[package]]
