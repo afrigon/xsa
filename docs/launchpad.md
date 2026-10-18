@@ -9,10 +9,10 @@ The pack format itself is described in `docs/packs.md`.
 ## Terms
 
 - **Pack:** a directory with a `pack.kdl` manifest (`docs/packs.md`).
-- **Release:** one version of a pack, published as archives.
+- **Release:** one version of a pack, published as one archive.
 - **Archive:** a `.tar.zst` file holding part of a release.
 - **Repository:** `afrigon/xsa-repository`, a GitHub repository whose
-  `index.kdl` lists every pack and where each release's archives are hosted.
+  `index.kdl` lists every pack and where each release's archive is hosted.
 - **Instance:** a directory the game runs from: its packs, its lockfile, its
   saves.
 - **Lockfile:** the exact release of every pack an instance uses, resolved from
@@ -25,18 +25,12 @@ packs are hosted on the xsa repository's GitHub Releases, one release per pack
 version, tagged `<pack>-v<version>` (`base-v0.0.1`, `system-solar-v0.0.1`);
 game releases are tagged `xsa-v<version>`.
 
-A release is two archives, so a dedicated server downloads only what it reads:
-
-| Archive | Holds |
-| --- | --- |
-| `<pack>-v<version>-data.tar.zst` | `pack.kdl`, `LICENSE`, every `<namespace>/data/` |
-| `<pack>-v<version>-resources.tar.zst` | `pack.kdl`, `LICENSE`, every `<namespace>/resources/` |
-
-Each archive holds exactly one top-level directory named after the pack, laid
-out as in `docs/packs.md`, so extracting both into the same directory gives the
-whole pack: `base-v0.0.1-data.tar.zst` contains `base/pack.kdl`,
-`base/base/data/…`. Both carry the manifest, so either archive alone is a valid
-pack.
+A release is one archive, `<pack>-v<version>.tar.zst`, holding the whole pack:
+data and resources together. It holds exactly one top-level directory named
+after the pack, laid out as in `docs/packs.md`: `base-v0.0.1.tar.zst` contains
+`base/pack.kdl`, `base/base/data/…`, `base/base/resources/…`. Which files an
+instance needs is `launchpad`'s concern at install time (see Sync), never the
+author's.
 
 Large packs are split by hand into packs that depend on each other
 (`system-solar` and its per-system packs). There are no variants of a pack: a
@@ -54,13 +48,13 @@ launchpad pack package <pack directory> [--bump major|minor|patch] [--output <di
    packaged.
 3. Lists the pack's files, leaving out what `.xsaignore` excludes.
 4. Converts every terrain layer the pack's terrain definitions name from its
-   cube map into a `.terrain` file (see Terrain conversion); the archives ship
+   cube map into a `.terrain` file (see Terrain conversion); the archive ships
    the `.terrain` files in place of the cube maps.
-5. Writes both archives, ready to upload, to the output directory
-   (`<pack directory>/target/` by default) and prints, for each, its path, size
-   and SHA-256.
+5. Writes the archive, ready to upload, to the output directory
+   (`<pack directory>/target/` by default) and prints its path, size and
+   SHA-256.
 
-`target/` is packaging's own directory, like Cargo's: it holds the archives and
+`target/` is packaging's own directory, like Cargo's: it holds the archive and
 the converted `.terrain` files, which a later run reuses when their cube map has
 not changed. Authors git-ignore it.
 
@@ -128,7 +122,7 @@ mise.toml
 ```
 
 `.gitignore` is never consulted: a pack's generated binaries are git-ignored
-but belong in its archives. `.git/`, `target/` and `.xsaignore` itself are always left
+but belong in its archive. `.git/`, `target/` and `.xsaignore` itself are always left
 out.
 
 ## Repository
@@ -150,8 +144,7 @@ pack "system-solar" {
         dependencies {
             system-solar-earth "^0.0.1"
         }
-        archive "data" url="https://github.com/afrigon/xsa/releases/download/system-solar-v0.0.1/system-solar-v0.0.1-data.tar.zst" size=1048576 sha256="…"
-        archive "resources" url="https://github.com/afrigon/xsa/releases/download/system-solar-v0.0.1/system-solar-v0.0.1-resources.tar.zst" size=268435456 sha256="…"
+        archive url="https://github.com/afrigon/xsa/releases/download/system-solar-v0.0.1/system-solar-v0.0.1.tar.zst" size=268435456 sha256="…"
     }
 }
 ```
@@ -159,10 +152,10 @@ pack "system-solar" {
 - **`pack`:** written by hand once per pack: its description, homepage and
   license.
 - **`release`:** written only by the repository's tool. `xsa-repository
-  add-release <url>…` downloads the archives, checks that each holds one
+  add-release <url>` downloads the archive, checks that it holds one
   top-level directory named after the pack, reads the manifest, and writes the
   entry: the version, the dependencies and `provides` copied from the manifest
-  (so resolution never downloads an archive), and each archive's size and
+  (so resolution never downloads an archive), and the archive's size and
   SHA-256 computed from the download. Hashes are never taken from an author.
 - **`yanked=#true`** on a release: no longer chosen by resolution, still
   installed by lockfiles that already name it.
@@ -204,7 +197,7 @@ anything else runs.
 ### Lockfile
 
 `launchpad.lock` records, for every pack in the resolved set, the exact
-version and each archive's URL and SHA-256. It works like Cargo's:
+version and its archive's URL and SHA-256. It works like Cargo's:
 
 - It is written by resolution and only read otherwise.
 - Resolution runs when `launchpad.kdl` changes, keeping every locked release
@@ -217,10 +210,15 @@ version and each archive's URL and SHA-256. It works like Cargo's:
 
 ### Sync
 
-Syncing makes `packs/` match the lockfile. A missing or outdated pack is
-downloaded into the archive cache (`$XDG_CACHE_HOME/xsa/archives/`), verified
-against its SHA-256, extracted into a staging directory inside the instance,
-then moved in place of the old `packs/<pack>/` as a whole. A failed download or
+Syncing makes `packs/` match the lockfile, for a role: client or server. A
+missing or outdated pack is downloaded into the archive cache
+(`$XDG_CACHE_HOME/xsa/archives/`), verified against its SHA-256, extracted into
+a staging directory inside the instance, then moved in place of the old
+`packs/<pack>/` as a whole. The role decides what is extracted: a server gets
+`pack.kdl`, `LICENSE` and every `<namespace>/data/`, the only files it reads; a
+client gets the whole pack. The game syncs for the role it runs as, so a pack
+installed for a server is completed the first time a client runs the
+instance. A failed download or
 mismatched hash leaves the installed pack untouched. Installing replaces a
 pack's directory entirely; packs are never edited in place.
 
