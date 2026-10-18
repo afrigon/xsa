@@ -5,11 +5,13 @@ from operations.build_context import BuildContext
 from operations.color_grade import ColorGrade
 from operations.coverage_fill import CoverageFill
 from operations.credit import Credit
-from operations.equirectangular_source import EquirectangularSource
 from operations.cube_accumulator import CubeAccumulator
+from operations.cube_map import CUBE_FACE_COUNT, CubeMap
 from operations.cube_projection import CubeProjection
+from operations.equirectangular_source import EquirectangularSource
 from operations.hapke_material import HapkeMaterial
 from operations.hapke_model import Geometry, HapkeModel
+from operations.polar_stereographic_source import PolarStereographicSource
 from operations.raster import Raster, SourceLayout
 from operations.recipe import Recipe
 from operations.source import Source
@@ -24,6 +26,7 @@ CGI_MOON_KIT = SourceLayout(left_edge_longitude=-180.0, north_up=True)
 MOSAIC = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_HAPKE"
 PARAMETER_MAPS = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/WAC_HAPKEPARAMMAP"
 ALBEDO = "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/float_img"
+POLAR_ELEVATION = "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img"
 # The mosaic's photometric normalization: incidence = phase = 60°, emission = 0°.
 STANDARD_GEOMETRY = Geometry(incidence=np.radians(60), emission=0.0, phase=np.radians(60))
 # The parameter map holds 9 parameters for each of the camera's 7 bands, bands by increasing wavelength.
@@ -101,6 +104,13 @@ class Luna(Recipe):
         "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64.tif",
         "af55ea2ed9173d1744b98ac4205501bd0bb0dcfc6ac49a11473a411dc64afd90",
     )
+    # Coarsest first: each covers the texels it fully covers, so every texel ends from the finest product covering it.
+    polar_elevation = [
+        (Source(f"{POLAR_ELEVATION}/ldem_60n_240m.img", "6307de84ed2af969e7b7ad089fb4d87b403afb56d1c4ec3f4fdc3dc3434f4d4f"), Source(f"{POLAR_ELEVATION}/ldem_60n_240m.lbl", "002af6231644625fa5aa6c1fcfdaf2879a1f4eff154e37d0c7aa0606d53091ad")),
+        (Source(f"{POLAR_ELEVATION}/ldem_60s_240m.img", "0f2766bd111bcf9ff05fc93515b79af49696d687a09a801622bae392e384df5a"), Source(f"{POLAR_ELEVATION}/ldem_60s_240m.lbl", "dde15a7f2a64ff8d744913c31d606ef572a992c74a44a72356ff91ca9cf4bfcb")),
+        (Source(f"{POLAR_ELEVATION}/ldem_75n_120m.img", "75c4f50576e763761dbcc73638d1eb65a3c3c73a54127fc8b5e1672829cf7fb1"), Source(f"{POLAR_ELEVATION}/ldem_75n_120m.lbl", "58ff3ddda471f707bc7536f394554e39fa631d93643c5f230a39acf4ef1d0e20")),
+        (Source(f"{POLAR_ELEVATION}/ldem_75s_120m.img", "ae3afc3c75c33d43666ca06c83ca08f0b12ef03b7d36d2d791d972730794391b"), Source(f"{POLAR_ELEVATION}/ldem_75s_120m.lbl", "5c59b16ec8a610792b1776fa082e409c8cc9f6743757710d14876ef366acd99a")),
+    ]
     credits = [
         Credit(
             "Moon textures (system-solar/resources/textures/bodies/luna/)",
@@ -109,7 +119,9 @@ class Luna(Recipe):
             "(WAC_HAPKEPARAMMAP; Sato et al. 2014, Journal of Geophysical Research: Planets 119), NASA/GSFC/Arizona "
             "State University; polar latitudes from the Lunar Orbiter Laser Altimeter (LOLA) 1064 nm albedo maps "
             "(LRO-L-LOLA-4-GDR-V1.0; Lemelin et al. 2016, Icarus 273). Elevation: LOLA gridded data, through the "
-            "CGI Moon Kit of NASA's Scientific Visualization Studio (https://svs.gsfc.nasa.gov/4720). Public domain "
+            "CGI Moon Kit of NASA's Scientific Visualization Studio (https://svs.gsfc.nasa.gov/4720); beyond 60° of "
+            "latitude, LOLA's polar stereographic elevation models (LRO-L-LOLA-4-GDR-V1.0, 240 m and 120 m per "
+            "pixel), NASA/GSFC. Public domain "
             "NASA data; the color is the diffusive reflectance solved from the mosaic with the Hapke parameters, the "
             "normal map is derived from the elevation.",
         )
@@ -123,12 +135,30 @@ class Luna(Recipe):
         width = context.output_width(Raster.native_width(elevation_path))
         heights = Raster.read(elevation_path, width, CGI_MOON_KIT, scale=METERS_PER_KILOMETER)
         TextureWriter.normal().write(context.texture_path("bodies/luna/normal"), [heights.normals(RADIUS)])
-        terrain = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
-        terrain.add(EquirectangularSource.global_map(elevation_path, CGI_MOON_KIT, METERS_PER_KILOMETER))
-        context.terrains.write("luna", terrain.cube_map())
+        context.terrains.write("luna", self._heights(context))
 
         hapke = self._hapke(context)
         context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
+
+    # Meters relative to the radius, each texel from the finest elevation model covering it.
+    def _heights(self, context: BuildContext) -> CubeMap:
+        terrain = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
+        elevation = self.elevation.fetch(context.cache)
+        terrain.add(EquirectangularSource.global_map(elevation, CGI_MOON_KIT, METERS_PER_KILOMETER))
+        heights = terrain.cube_map()
+
+        for image, label in self.polar_elevation:
+            image.fetch(context.cache)
+            source = PolarStereographicSource(label.fetch(context.cache))
+            polar = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
+            polar.add(source)
+            covered = polar.covered(source)
+            polar_heights = polar.cube_map()
+
+            for face in range(CUBE_FACE_COUNT):
+                heights.faces[face].pixels[covered[face]] = polar_heights.faces[face].pixels[covered[face]]
+
+        return heights
 
     # Hapke 2012's parameters of one band, as they are, in the medium and opposition textures.
     def _hapke(self, context: BuildContext) -> HapkeMaterial:
