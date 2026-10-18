@@ -17,6 +17,36 @@ pub struct TextureImage {
 }
 
 impl TextureImage {
+    /// A texture from its layers' texels, each layer its mip chain, largest level first, refusing layers of the wrong
+    /// size.
+    pub fn new(
+        format: TextureFormat,
+        width: u32,
+        height: u32,
+        mip_levels: u32,
+        layers: Vec<Vec<u8>>,
+    ) -> anyhow::Result<TextureImage> {
+        let image = TextureImage {
+            format,
+            width,
+            height,
+            mip_levels,
+            layers,
+        };
+        let layer_size = image.layer_size()?;
+        ensure!(!image.layers.is_empty(), "a texture needs at least one layer");
+
+        for (index, layer) in image.layers.iter().enumerate() {
+            ensure!(
+                layer.len() == layer_size,
+                "layer {index} holds {} bytes, expected {layer_size}",
+                layer.len()
+            );
+        }
+
+        Ok(image)
+    }
+
     /// Reads a texture file, choosing its loader from the file's extension, its texels meant in a color space.
     pub fn read(path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureImage> {
         TextureImage::read_stored(path)?
