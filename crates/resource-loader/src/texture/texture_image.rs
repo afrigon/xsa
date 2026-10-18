@@ -18,21 +18,36 @@ pub struct TextureImage {
 }
 
 impl TextureImage {
-    /// Reads a texture file, choosing its loader from the file's extension.
+    /// Reads a texture file, choosing its loader from the file's extension, its texels meant in a color space.
     pub fn read(path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureImage> {
+        TextureImage::read_stored(path)?
+            .in_color_space(color_space)
+            .with_context(|| format!("{}", path.display()))
+    }
+
+    /// Reads a texture file, choosing its loader from the file's extension, in the texel format the file stores.
+    pub fn read_stored(path: &Path) -> anyhow::Result<TextureImage> {
         let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         let extension = path
             .extension()
             .and_then(|extension| extension.to_str())
             .unwrap_or_default();
         let image = match extension {
-            Ktx2Loader::EXTENSION => Ktx2Loader::load(&bytes, color_space),
-            DdsLoader::EXTENSION => DdsLoader::load(&bytes, color_space),
-            PngLoader::EXTENSION => PngLoader::load(&bytes, color_space),
+            Ktx2Loader::EXTENSION => Ktx2Loader::load(&bytes),
+            DdsLoader::EXTENSION => DdsLoader::load(&bytes),
+            PngLoader::EXTENSION => PngLoader::load(&bytes),
             _ => bail!("{}: not a texture file", path.display()),
         };
 
         image.with_context(|| format!("{}", path.display()))
+    }
+
+    /// The same texels, their format reinterpreted for how they are meant: sRGB-decoded colors or linear data.
+    pub fn in_color_space(self, color_space: ColorSpace) -> anyhow::Result<TextureImage> {
+        Ok(TextureImage {
+            format: self.format.in_color_space(color_space)?,
+            ..self
+        })
     }
 
     pub fn format(&self) -> TextureFormat {

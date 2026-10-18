@@ -108,11 +108,13 @@ impl TextureUpload {
             TextureFormat::Bc5Unorm => vk::Format::BC5_UNORM_BLOCK,
             TextureFormat::Bc7Unorm => vk::Format::BC7_UNORM_BLOCK,
             TextureFormat::Bc7Srgb => vk::Format::BC7_SRGB_BLOCK,
+            TextureFormat::Rg8Unorm => vk::Format::R8G8_UNORM,
             TextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
             TextureFormat::Rgba8Srgb => vk::Format::R8G8B8A8_SRGB,
             TextureFormat::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
             TextureFormat::R16Unorm => vk::Format::R16_UNORM,
             TextureFormat::Rg16Unorm => vk::Format::R16G16_UNORM,
+            TextureFormat::R32Float => vk::Format::R32_SFLOAT,
         }
     }
 }

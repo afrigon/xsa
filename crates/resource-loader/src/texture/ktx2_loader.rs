@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{ColorSpace, TextureFormat, TextureImage, TextureLoader};
+use super::{TextureFormat, TextureImage, TextureLoader};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const VK_FORMAT_OFFSET: usize = 12;
@@ -21,15 +21,6 @@ const WORD_BYTES: usize = 4;
 const LONG_BYTES: usize = 8;
 const SUPERCOMPRESSION_NONE: u32 = 0;
 const SUPERCOMPRESSION_ZSTANDARD: u32 = 2;
-const VK_FORMAT_R8G8B8A8_UNORM: u32 = 37;
-const VK_FORMAT_R8G8B8A8_SRGB: u32 = 43;
-const VK_FORMAT_R16_UNORM: u32 = 70;
-const VK_FORMAT_R16G16_UNORM: u32 = 77;
-const VK_FORMAT_R16G16B16A16_SFLOAT: u32 = 97;
-const VK_FORMAT_BC4_UNORM_BLOCK: u32 = 139;
-const VK_FORMAT_BC5_UNORM_BLOCK: u32 = 141;
-const VK_FORMAT_BC7_UNORM_BLOCK: u32 = 145;
-const VK_FORMAT_BC7_SRGB_BLOCK: u32 = 146;
 const CUBE_FACE_COUNT: u32 = 6;
 
 /// Reads KTX2 files holding a 2D texture or a cube map, uncompressed or with Zstandard supercompression.
@@ -38,23 +29,16 @@ pub struct Ktx2Loader;
 impl TextureLoader for Ktx2Loader {
     const EXTENSION: &'static str = "ktx2";
 
-    fn load(bytes: &[u8], color_space: ColorSpace) -> anyhow::Result<TextureImage> {
+    fn load(bytes: &[u8]) -> anyhow::Result<TextureImage> {
         ensure!(
             bytes.len() >= LEVEL_INDEX_OFFSET && &bytes[..KTX2_IDENTIFIER.len()] == KTX2_IDENTIFIER,
             "not a KTX2 file"
         );
 
         let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + WORD_BYTES].try_into().unwrap());
-        let format = match word(VK_FORMAT_OFFSET) {
-            VK_FORMAT_R8G8B8A8_UNORM | VK_FORMAT_R8G8B8A8_SRGB => TextureFormat::Rgba8Unorm,
-            VK_FORMAT_R16_UNORM => TextureFormat::R16Unorm,
-            VK_FORMAT_R16G16_UNORM => TextureFormat::Rg16Unorm,
-            VK_FORMAT_R16G16B16A16_SFLOAT => TextureFormat::Rgba16Float,
-            VK_FORMAT_BC4_UNORM_BLOCK => TextureFormat::Bc4Unorm,
-            VK_FORMAT_BC5_UNORM_BLOCK => TextureFormat::Bc5Unorm,
-            VK_FORMAT_BC7_UNORM_BLOCK | VK_FORMAT_BC7_SRGB_BLOCK => TextureFormat::Bc7Unorm,
-            other => bail!("unsupported Vulkan format {other}"),
-        };
+        let vulkan_format = word(VK_FORMAT_OFFSET);
+        let format = TextureFormat::from_vulkan_format(vulkan_format)
+            .with_context(|| format!("unsupported Vulkan format {vulkan_format}"))?;
         ensure!(word(PIXEL_DEPTH_OFFSET) == 0, "3D textures are not supported");
         ensure!(word(LAYER_COUNT_OFFSET) == 0, "texture arrays are not supported");
 
@@ -68,7 +52,7 @@ impl TextureLoader for Ktx2Loader {
         let mip_levels = word(LEVEL_COUNT_OFFSET).max(1);
         let supercompression = word(SUPERCOMPRESSION_OFFSET);
         let mut image = TextureImage {
-            format: format.in_color_space(color_space)?,
+            format,
             width: word(PIXEL_WIDTH_OFFSET),
             height: word(PIXEL_HEIGHT_OFFSET),
             mip_levels,

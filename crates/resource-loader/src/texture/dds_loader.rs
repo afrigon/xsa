@@ -1,6 +1,6 @@
 use anyhow::{bail, ensure};
 
-use super::{ColorSpace, TextureFormat, TextureImage, TextureLoader};
+use super::{TextureFormat, TextureImage, TextureLoader};
 
 const DDS_MAGIC: &[u8; 4] = b"DDS ";
 const DX10_FOURCC: &[u8; 4] = b"DX10";
@@ -30,7 +30,7 @@ pub struct DdsLoader;
 impl TextureLoader for DdsLoader {
     const EXTENSION: &'static str = "dds";
 
-    fn load(bytes: &[u8], color_space: ColorSpace) -> anyhow::Result<TextureImage> {
+    fn load(bytes: &[u8]) -> anyhow::Result<TextureImage> {
         ensure!(
             bytes.len() >= DDS_HEADER_SIZE && &bytes[..DDS_MAGIC.len()] == DDS_MAGIC,
             "not a DDS file"
@@ -43,12 +43,14 @@ impl TextureLoader for DdsLoader {
         let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + WORD_BYTES].try_into().unwrap());
         let format = match word(DXGI_FORMAT_OFFSET) {
             DXGI_FORMAT_R16G16B16A16_FLOAT => TextureFormat::Rgba16Float,
-            DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => TextureFormat::Rgba8Unorm,
+            DXGI_FORMAT_R8G8B8A8_UNORM => TextureFormat::Rgba8Unorm,
+            DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => TextureFormat::Rgba8Srgb,
             DXGI_FORMAT_R16G16_UNORM => TextureFormat::Rg16Unorm,
             DXGI_FORMAT_R16_UNORM => TextureFormat::R16Unorm,
             DXGI_FORMAT_BC4_UNORM => TextureFormat::Bc4Unorm,
             DXGI_FORMAT_BC5_UNORM => TextureFormat::Bc5Unorm,
-            DXGI_FORMAT_BC7_UNORM | DXGI_FORMAT_BC7_UNORM_SRGB => TextureFormat::Bc7Unorm,
+            DXGI_FORMAT_BC7_UNORM => TextureFormat::Bc7Unorm,
+            DXGI_FORMAT_BC7_UNORM_SRGB => TextureFormat::Bc7Srgb,
             other => bail!("unsupported DXGI format {other}"),
         };
         let layer_count = if word(MISC_FLAGS_OFFSET) & DDS_RESOURCE_MISC_TEXTURECUBE != 0 {
@@ -57,7 +59,7 @@ impl TextureLoader for DdsLoader {
             1
         };
         let mut image = TextureImage {
-            format: format.in_color_space(color_space)?,
+            format,
             width: word(WIDTH_OFFSET),
             height: word(HEIGHT_OFFSET),
             mip_levels: word(MIP_COUNT_OFFSET).max(1),
