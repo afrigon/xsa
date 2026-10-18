@@ -8,8 +8,8 @@ use crate::world_arguments::WorldArguments;
 
 #[derive(Args)]
 pub struct ServerArguments {
-    #[usage(long, help = "Name for xsa ipc --instance; defaults to server-<pid>")]
-    pub instance: Option<String>,
+    #[usage(long, help = "Name xsa ipc reaches this server by; defaults to server-<pid>")]
+    pub name: Option<String>,
     #[usage(long, default = "::1", help = "Address to listen on")]
     pub host: IpAddr,
     #[usage(long, default = "1969", help = "UDP port to listen on")]
@@ -23,7 +23,7 @@ pub struct ServerArguments {
 impl ServerArguments {
     pub fn run(self) -> anyhow::Result<()> {
         DedicatedServer::new(DedicatedOptions {
-            instance: self.instance,
+            name: self.name,
             host: self.host,
             port: self.port,
             identity: self.identity,

@@ -7,12 +7,12 @@ use xsa_commands::ipc::IpcClient;
 pub struct IpcArguments {
     #[usage(
         long,
-        env = "XSA_INSTANCE",
-        complete = complete_instances,
-        help = "Instance to send to; required when several are running"
+        env = "XSA_NAME",
+        complete = complete_names,
+        help = "Name of the process to send to; required when several are running"
     )]
-    pub instance: Option<String>,
-    #[usage(long, help = "List the running instances")]
+    pub name: Option<String>,
+    #[usage(long, help = "List the names of the running processes")]
     pub list: bool,
     #[usage(
         arg,
@@ -27,15 +27,15 @@ pub struct IpcArguments {
 impl IpcArguments {
     pub fn run(self) -> anyhow::Result<()> {
         if self.list {
-            for instance in IpcClient::list()? {
-                println!("{instance}");
+            for name in IpcClient::list()? {
+                println!("{name}");
             }
 
             return Ok(());
         }
 
         anyhow::ensure!(!self.words.is_empty(), "give a command to send, or --list");
-        let output = IpcClient::new(self.instance).send(self.words)?;
+        let output = IpcClient::new(self.name).send(self.words)?;
         println!("{}", output.text.trim_end());
 
         if !output.succeeded {
@@ -47,7 +47,7 @@ impl IpcArguments {
 }
 
 // usage-rs completers are plain functions.
-fn complete_instances<Partial>(_partial: &Partial, _context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
+fn complete_names<Partial>(_partial: &Partial, _context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
     IpcClient::list()
         .unwrap_or_default()
         .into_iter()
@@ -55,15 +55,15 @@ fn complete_instances<Partial>(_partial: &Partial, _context: &CompleteCtx<'_>) -
         .collect()
 }
 
-// The words after `ipc` belong to the instance's command tree, so the instance completes them.
+// The words after `ipc` belong to the process's command tree, so the process completes them.
 fn complete_ipc_words<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) -> Vec<Candidate<'static>> {
-    let mut instance = std::env::var("XSA_INSTANCE").ok();
+    let mut name = std::env::var("XSA_NAME").ok();
     let mut words = Vec::new();
     let mut given = context.command_words.iter();
 
     while let Some(word) = given.next() {
         match word.as_str() {
-            "--instance" if words.is_empty() => instance = given.next().cloned(),
+            "--name" if words.is_empty() => name = given.next().cloned(),
             "--list" if words.is_empty() => {}
             word => words.push(word.to_string()),
         }
@@ -76,7 +76,7 @@ fn complete_ipc_words<Partial>(_partial: &Partial, context: &CompleteCtx<'_>) ->
     }
 
     line.push_str(context.prefix);
-    let completions = IpcClient::new(instance)
+    let completions = IpcClient::new(name)
         .complete(line.clone(), line.len())
         .unwrap_or_else(|_| Completions::compute(&line, line.len(), |_| Vec::new()));
     completions

@@ -83,7 +83,7 @@ cargo run -p xsa "${release[@]}" -- client "$@"
 """
 
 [tasks.ipc]
-description = "Send a command to a running instance; --release first to use the optimized build, e.g. mise run ipc -- camera target mars"
+description = "Send a command to a running xsa process; --release first to use the optimized build, e.g. mise run ipc -- camera target mars"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
