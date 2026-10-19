@@ -87,12 +87,23 @@ float2 faceOffset(TileData tile, int2 cell) {
     return (float2(cell) / float(tile.gridCells) * 2.0 - 1.0) * tile.halfSize;
 }
 
+// GPU tangents are only accurate to an absolute 2^-11, which swamps the tiny angles of deep tiles' offsets; below
+// this angle, the Taylor series to a^9 is exact in f32.
+static const float seriesTangentLimit = 0.25;
+
+float2 offsetTangent(float2 angle) {
+    float2 square = angle * angle;
+    float2 series =
+        angle * (1.0 + square * (1.0 / 3.0 + square * (2.0 / 15.0 + square * (17.0 / 315.0 + square * 62.0 / 2835.0))));
+    return select(abs(angle) < seriesTangentLimit, series, tan(angle));
+}
+
 // From the tile's center to a grid point on the cube. A face coordinate s lies at tan(π/4 s) on the cube; the tangent
 // of the center's coordinate plus the offset is built from both tangents, so the small offset keeps its precision.
 float3 cubeOffset(TileData tile, int2 cell) {
     float2 centerTangent = float2(dot(tile.cubeCenter, tile.columnAxis), dot(tile.cubeCenter, tile.rowAxis));
-    float2 offsetTangent = tan(pi / 4.0 * faceOffset(tile, cell));
-    float2 along = offsetTangent * (1.0 + centerTangent * centerTangent) / (1.0 - centerTangent * offsetTangent);
+    float2 tangent = offsetTangent(pi / 4.0 * faceOffset(tile, cell));
+    float2 along = tangent * (1.0 + centerTangent * centerTangent) / (1.0 - centerTangent * tangent);
     return along.x * tile.columnAxis + along.y * tile.rowAxis;
 }
 

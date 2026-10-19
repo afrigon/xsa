@@ -19,7 +19,7 @@ struct ColorPage {
 
 static const float pageBorderShade = 0.15;
 static const float pageBorderWidthPixels = 1.5;
-static const float3 noPageColor = float3(1.0, 0.0, 1.0);
+static const float3 noPageColor = float3(1.0);
 
 TerrainPageVaryings terrainPageVertex(TileVertex vertex) {
     TerrainPageVaryings output;

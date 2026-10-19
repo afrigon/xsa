@@ -5,7 +5,7 @@ TerrainPageVaryings vertexMain<G : Geometry>(VertexInput input) {
     return terrainPageVertex(G.transform(input));
 }
 
-// Each pixel takes the hue of the level of the color page it reads; page edges are dark, missing pages magenta.
+// Each pixel takes the hue of the level of the color page it reads; page edges are dark, missing pages white.
 [shader("fragment")]
 SurfaceOutput fragmentMain(TerrainPageVaryings input) {
     ColorPage page = colorPage(input);
