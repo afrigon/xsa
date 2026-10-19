@@ -4,6 +4,7 @@ use anyhow::Context;
 use xsa_packs::{Id, PackStack};
 
 use super::Shader;
+use super::geometry::Geometry;
 
 const BASE_NAMESPACE: &str = "base";
 const SHADERS: &str = "shaders";
@@ -17,6 +18,7 @@ const LENS_LIGHT_SHADER_PATH: &str = "lens-light";
 const LENS_GHOSTS_SHADER_PATH: &str = "lens-ghosts";
 
 pub struct ShaderBinaries {
+    pub geometries: Vec<Vec<u8>>,
     pub shaders: Vec<Vec<u8>>,
     pub tonemap: Vec<u8>,
     pub histogram: Vec<u8>,
@@ -42,6 +44,10 @@ impl ShaderBinaries {
         };
 
         Ok(ShaderBinaries {
+            geometries: Geometry::ALL
+                .iter()
+                .map(|geometry| read(geometry.path()))
+                .collect::<anyhow::Result<_>>()?,
             shaders: Shader::ALL
                 .iter()
                 .map(|shader| read(shader.path()))

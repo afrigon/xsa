@@ -11,7 +11,7 @@ pub(in crate::renderer) struct PushConstants {
     pub object_index: u32,
     pub first_tile: u32,
     pub tiles: vk::DeviceAddress,
-    // Null for a smooth body.
+    // Read only by the terrain's vertex stage.
     pub terrain: vk::DeviceAddress,
 }
 

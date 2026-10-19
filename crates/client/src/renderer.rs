@@ -7,6 +7,7 @@ mod frame_context;
 mod frame_inputs;
 mod frame_statistics;
 mod frustum;
+mod geometry;
 mod gpu_context;
 mod gpu_data;
 mod gpu_timer;
@@ -31,6 +32,7 @@ mod terrain_buffer;
 mod terrain_displacement;
 mod terrain_draw;
 mod terrain_height;
+mod tile_surface;
 mod tonemapper;
 mod white_balance;
 
@@ -87,6 +89,7 @@ use temporal_history::TemporalHistory;
 use terrain_displacement::TerrainDisplacement;
 use terrain_draw::TerrainDraw;
 use terrain_height::TerrainHeight;
+use tile_surface::TileSurface;
 use tonemapper::NO_TONEMAPPER;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
@@ -642,8 +645,13 @@ impl Renderer {
             let object = self.scene.object(terrain.object);
             let center = object.position - camera.position;
 
-            let height = TerrainDisplacement::uploaded(&self.terrain_displacements, TerrainHandle { index })
-                .map(|displacement| &displacement.height);
+            let displacement = TerrainDisplacement::uploaded(&self.terrain_displacements, TerrainHandle { index });
+            let height = displacement.map(|displacement| &displacement.height);
+            let surface = displacement
+                .and_then(|displacement| displacement.buffer.device_address())
+                .map_or(TileSurface::Smooth, |terrain_data| TileSurface::Displaced {
+                    terrain_data,
+                });
             let bounding_radius = object.bounding_radius + height.map_or(0.0, TerrainHeight::maximum);
 
             if !culler.is_visible(center, bounding_radius) {
@@ -667,6 +675,7 @@ impl Renderer {
             }) {
                 self.terrain_draws.push(TerrainDraw {
                     terrain: TerrainHandle { index },
+                    surface,
                     grid_cells: DetailRanges::grid_cells(run[0].detail),
                     first_tile: run_start as u32,
                     tile_count: run.len() as u32,
@@ -778,7 +787,6 @@ impl Renderer {
             render: &self.render,
             scene: &self.scene,
             materials: &self.materials,
-            terrain_displacements: &self.terrain_displacements,
             lens: self.lens.as_ref().and_then(Lens::flare),
             focal_length_pixels: self.focal_length_pixels,
             terrain_draws: &self.terrain_draws,

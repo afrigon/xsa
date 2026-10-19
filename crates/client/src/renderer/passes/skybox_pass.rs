@@ -22,7 +22,8 @@ impl SkyboxPass {
             &gpu.memory,
             &gpu.device,
             &GraphicsPipelineDescription {
-                spirv: &binaries.shaders[Shader::Skybox.index()],
+                vertex_spirv: &binaries.shaders[Shader::Skybox.index()],
+                fragment_spirv: &binaries.shaders[Shader::Skybox.index()],
                 color_formats: &[HDR_FORMAT, MOTION_FORMAT],
                 depth_format: Some(DEPTH_FORMAT),
                 depth_compare_op: vk::CompareOp::GREATER_OR_EQUAL,

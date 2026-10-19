@@ -13,6 +13,7 @@ use render_graph_vulkan::{
 
 use crate::mesh::{GridMesh, GridVertex};
 use crate::renderer::frame_context::FrameContext;
+use crate::renderer::geometry::Geometry;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
@@ -28,7 +29,7 @@ const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
-    pipelines: HashMap<Shader, GraphicsPipeline>,
+    pipelines: HashMap<(Geometry, Shader), GraphicsPipeline>,
     grids: GridMesh,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -36,10 +37,16 @@ pub(in crate::renderer) struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
-        let pipelines = ForwardPass::object_shaders()
-            .map(|shader| {
-                let pipeline = ForwardPass::create_pipeline(gpu, &binaries.shaders[shader.index()])?;
-                Ok((shader, pipeline))
+        let pipelines = Geometry::ALL
+            .iter()
+            .flat_map(|geometry| ForwardPass::object_shaders().map(move |shader| (*geometry, shader)))
+            .map(|(geometry, shader)| {
+                let pipeline = ForwardPass::create_pipeline(
+                    gpu,
+                    &binaries.geometries[geometry.index()],
+                    &binaries.shaders[shader.index()],
+                )?;
+                Ok(((geometry, shader), pipeline))
             })
             .collect::<anyhow::Result<_>>()?;
         let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
@@ -81,8 +88,8 @@ impl ForwardPass {
         Shader::ALL.iter().copied().filter(|shader| *shader != Shader::Skybox)
     }
 
-    fn pipeline(&self, shader: Shader) -> &GraphicsPipeline {
-        &self.pipelines[&shader]
+    fn pipeline(&self, geometry: Geometry, shader: Shader) -> &GraphicsPipeline {
+        &self.pipelines[&(geometry, shader)]
     }
 
     fn record_objects(&self, frame: &FrameContext) {
@@ -90,14 +97,14 @@ impl ForwardPass {
         recorder.set_wireframe(frame.render.wireframe);
         recorder.bind_mesh(&self.vertex_buffer, &self.index_buffer);
 
-        for shader in ForwardPass::object_shaders() {
-            let pipeline = self.pipeline(shader);
+        for (geometry, shader) in self.pipelines.keys().copied() {
+            let pipeline = self.pipeline(geometry, shader);
             let mut bound = false;
 
             for draw in frame.terrain_draws {
                 let terrain = frame.scene.terrain(draw.terrain);
 
-                if !frame.is_drawable(terrain.material) {
+                if draw.surface.geometry() != geometry || !frame.is_drawable(terrain.material) {
                     continue;
                 }
 
@@ -120,7 +127,7 @@ impl ForwardPass {
                     terrain.object.index,
                     terrain.material,
                     draw.first_tile,
-                    Some(draw.terrain),
+                    draw.surface.terrain_data(),
                 );
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);
@@ -133,7 +140,11 @@ impl ForwardPass {
         recorder.set_wireframe(false);
     }
 
-    fn create_pipeline(gpu: &GpuContext, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
+    fn create_pipeline(
+        gpu: &GpuContext,
+        vertex_spirv: &[u8],
+        fragment_spirv: &[u8],
+    ) -> anyhow::Result<GraphicsPipeline> {
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(size_of::<GridVertex>() as u32)
@@ -144,7 +155,8 @@ impl ForwardPass {
             .format(vk::Format::R32G32_UINT)
             .offset(offset_of!(GridVertex, cell) as u32)];
         let description = GraphicsPipelineDescription {
-            spirv,
+            vertex_spirv,
+            fragment_spirv,
             color_formats: &[HDR_FORMAT, MOTION_FORMAT],
             depth_format: Some(DEPTH_FORMAT),
             depth_compare_op: vk::CompareOp::GREATER,

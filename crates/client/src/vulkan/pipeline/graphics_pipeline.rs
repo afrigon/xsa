@@ -20,14 +20,17 @@ impl GraphicsPipeline {
         device: &Device,
         description: &GraphicsPipelineDescription,
     ) -> anyhow::Result<Self> {
-        let code = ash::util::read_spv(&mut Cursor::new(description.spirv)).context("reading SPIR-V")?;
-        let module_info = vk::ShaderModuleCreateInfo::default().code(&code);
-        let module = DeviceObject::new(memory, unsafe {
-            memory.device().create_shader_module(&module_info, None)
-        }?);
+        let vertex_module = GraphicsPipeline::create_module(memory, description.vertex_spirv)?;
+        let fragment_module = GraphicsPipeline::create_module(memory, description.fragment_spirv)?;
         let dynamic_polygon_mode = description.wireframe && device.extended_dynamic_state3().is_some();
 
-        GraphicsPipeline::create_pipeline(memory, module.handle(), description, dynamic_polygon_mode)
+        GraphicsPipeline::create_pipeline(
+            memory,
+            vertex_module.handle(),
+            fragment_module.handle(),
+            description,
+            dynamic_polygon_mode,
+        )
     }
 
     pub fn handle(&self) -> vk::Pipeline {
@@ -38,9 +41,19 @@ impl GraphicsPipeline {
         self.layout.handle()
     }
 
+    fn create_module(memory: &MemoryContext, spirv: &[u8]) -> anyhow::Result<DeviceObject<vk::ShaderModule>> {
+        let code = ash::util::read_spv(&mut Cursor::new(spirv)).context("reading SPIR-V")?;
+        let module_info = vk::ShaderModuleCreateInfo::default().code(&code);
+
+        Ok(DeviceObject::new(memory, unsafe {
+            memory.device().create_shader_module(&module_info, None)
+        }?))
+    }
+
     fn create_pipeline(
         memory: &MemoryContext,
-        module: vk::ShaderModule,
+        vertex_module: vk::ShaderModule,
+        fragment_module: vk::ShaderModule,
         description: &GraphicsPipelineDescription,
         dynamic_polygon_mode: bool,
     ) -> anyhow::Result<GraphicsPipeline> {
@@ -59,11 +72,11 @@ impl GraphicsPipeline {
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::VERTEX)
-                .module(module)
+                .module(vertex_module)
                 .name(c"vertexMain"),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::FRAGMENT)
-                .module(module)
+                .module(fragment_module)
                 .name(c"fragmentMain"),
         ];
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
