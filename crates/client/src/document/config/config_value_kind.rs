@@ -1,7 +1,7 @@
 use anyhow::{Context, bail};
 use kdl::KdlValue;
 
-use super::NumberRange;
+use super::{DurationName, NumberRange};
 use crate::config::{ByteSize, KeyChord};
 
 const TRUE_WORDS: [&str; 2] = ["true", "on"];
@@ -19,6 +19,8 @@ pub enum ConfigValueKind {
     // A whole number, 1 or more.
     Count,
     ByteSize,
+    // A duration with a unit: `50ms`, `0.2s`, `1min`.
+    Duration,
     // `value`, or none.
     Optional { value: &'static ConfigValueKind },
 }
@@ -76,6 +78,12 @@ impl ConfigValueKind {
 
                 Ok(KdlValue::String(size.config_name()))
             }
+            ConfigValueKind::Duration => {
+                let duration = DurationName::parse(text)
+                    .with_context(|| format!("{text:?} is not a duration like 50ms, 0.2s or 1min"))?;
+
+                Ok(KdlValue::String(DurationName::write(duration)))
+            }
             ConfigValueKind::Optional { .. } if text == NONE_WORD => Ok(KdlValue::Null),
             ConfigValueKind::Optional { value } => value.parse(text),
         }
@@ -95,7 +103,7 @@ impl ConfigValueKind {
             ConfigValueKind::Number { .. } => Vec::new(),
             ConfigValueKind::Choice { names } => names(),
             ConfigValueKind::KeyChord => KeyChord::key_names(),
-            ConfigValueKind::Count | ConfigValueKind::ByteSize => Vec::new(),
+            ConfigValueKind::Count | ConfigValueKind::ByteSize | ConfigValueKind::Duration => Vec::new(),
             ConfigValueKind::Optional { value } => [NONE_WORD].into_iter().chain(value.values()).collect(),
         }
     }
@@ -112,6 +120,7 @@ impl ConfigValueKind {
             | ConfigValueKind::Choice { .. }
             | ConfigValueKind::Count
             | ConfigValueKind::ByteSize
+            | ConfigValueKind::Duration
             | ConfigValueKind::Optional { .. } => first == second,
         }
     }
@@ -123,6 +132,7 @@ impl ConfigValueKind {
             | ConfigValueKind::KeyChord
             | ConfigValueKind::Count
             | ConfigValueKind::ByteSize
+            | ConfigValueKind::Duration
             | ConfigValueKind::Optional { .. } => {
                 bail!("only on/off and choice settings toggle")
             }

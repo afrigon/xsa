@@ -29,6 +29,7 @@ impl ConfigKey {
         ResourcesDocument::MAX_CPU_CORES,
         ResourcesDocument::MAX_MEMORY_USAGE,
         ResourcesDocument::MAX_VIDEO_MEMORY_USAGE,
+        ResourcesDocument::STORAGE_DEBUG_DELAY,
     ];
 
     pub fn all() -> Vec<ConfigKey> {

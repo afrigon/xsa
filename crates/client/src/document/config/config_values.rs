@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use kdl::KdlValue;
 
-use super::{ConfigChoice, ConfigKey, ConfigLayer};
+use super::{ConfigChoice, ConfigKey, ConfigLayer, DurationName};
 use crate::config::{ByteSize, KeyChord};
 
 // The session layer takes precedence; only persisted keys are read from the file.
@@ -60,6 +62,11 @@ impl ConfigValues<'_> {
     // The outer None when unset, the inner one for `none`.
     pub fn optional_byte_size(&self, key: ConfigKey) -> Option<Option<ByteSize>> {
         self.optional(key, |value| value.as_string().and_then(ByteSize::from_config_name))
+    }
+
+    // The outer None when unset, the inner one for `none`.
+    pub fn optional_duration(&self, key: ConfigKey) -> Option<Option<Duration>> {
+        self.optional(key, |value| value.as_string().and_then(DurationName::parse))
     }
 
     fn optional<T>(&self, key: ConfigKey, parse: impl Fn(&KdlValue) -> Option<T>) -> Option<Option<T>> {
