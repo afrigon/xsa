@@ -1,32 +1,29 @@
 mod detail_ranges;
-mod height_bounds;
 mod height_range;
 mod horizon_culler;
 mod quad_sphere_tile;
 mod selected_tile;
+mod tile_height_bounds;
 
 pub(in crate::renderer) use detail_ranges::{COARSEST_DETAIL, DetailRanges};
-pub(in crate::renderer) use height_bounds::HeightBounds;
 pub(in crate::renderer) use height_range::HeightRange;
 pub(in crate::renderer) use horizon_culler::HorizonCuller;
 pub(in crate::renderer) use quad_sphere_tile::QuadSphereTile;
 pub(in crate::renderer) use selected_tile::SelectedTile;
-
-use std::f64::consts::SQRT_2;
+pub(in crate::renderer) use tile_height_bounds::TileHeightBounds;
 
 use glam::{DQuat, DVec3};
 
 use super::culler::Culler;
-use super::terrain_height::TerrainHeight;
 
-// Tile centers are sent to the GPU as cube coordinates in f32, which hold them exactly down to this depth.
+// A tile's grid points sit at offsets from its center that f32 holds exactly down to this depth.
 pub(in crate::renderer) const DEEPEST_DEPTH: u32 = 22;
 
 // A sphere whose cube faces split into quadtrees of tiles, finer where the camera is closer.
 pub(in crate::renderer) struct QuadSphere<'a> {
     pub radius: f64,
     // None for a smooth sphere.
-    pub height: Option<&'a TerrainHeight>,
+    pub height: Option<&'a dyn TileHeightBounds>,
     // Relative to the camera.
     pub center: DVec3,
     pub orientation: DQuat,
@@ -35,7 +32,10 @@ pub(in crate::renderer) struct QuadSphere<'a> {
 impl QuadSphere<'_> {
     pub fn select(&self, ranges: &DetailRanges, culler: &Culler, tiles: &mut Vec<SelectedTile>) {
         let camera = self.orientation.inverse() * -self.center;
-        let lowest = self.height.map_or(0.0, |height| height.bounds.minimum());
+        let lowest = self
+            .height
+            .and_then(|height| height.overall_range())
+            .map_or(0.0, |range| range.minimum);
         let horizon = HorizonCuller::new(camera, self.radius + lowest);
 
         for root in QuadSphereTile::roots() {
@@ -56,15 +56,10 @@ impl QuadSphere<'_> {
         let chord_radius = tile.chord_radius();
         let angular_radius = 2.0 * (chord_radius / 2.0).asin();
 
-        let coarsest_detail = if tile.depth == 0 {
-            COARSEST_DETAIL
-        } else {
-            tile.depth as i32
-        };
-        let vertex_spacing = angular_radius * SQRT_2 / f64::from(DetailRanges::grid_cells(coarsest_detail));
-        let height = self.height.map_or(HeightRange::SMOOTH, |terrain| {
-            self.terrain_range(terrain, direction, chord_radius, vertex_spacing, ranges)
-        });
+        let height = self
+            .height
+            .and_then(|height| height.tile_range(tile))
+            .unwrap_or(HeightRange::SMOOTH);
 
         if horizon.is_hidden(direction, angular_radius, self.radius + height.maximum) {
             return;
@@ -83,39 +78,18 @@ impl QuadSphere<'_> {
             .or((tile.depth == DEEPEST_DEPTH).then_some(DEEPEST_DEPTH as i32));
 
         if let Some(detail) = detail {
-            tiles.push(SelectedTile { tile, detail });
+            tiles.push(SelectedTile {
+                tile,
+                detail,
+                nearest,
+                farthest: center.length() + bounding_radius,
+            });
             return;
         }
 
         for child in tile.children() {
             self.select_tile(child, camera, ranges, culler, horizon, tiles);
         }
-    }
-
-    // A tile whose vertices all read the height map's top level, as the shader picks mip levels by distance, is also
-    // bounded by its exact center height and the steepest slope around it, much tighter than the table for small
-    // tiles.
-    fn terrain_range(
-        &self,
-        terrain: &TerrainHeight,
-        direction: DVec3,
-        chord_radius: f64,
-        vertex_spacing: f64,
-        ranges: &DetailRanges,
-    ) -> HeightRange {
-        let angular_radius = 2.0 * (chord_radius / 2.0).asin();
-        let table = terrain.bounds.range(direction, angular_radius, vertex_spacing, None);
-        let full_resolution_distance = self.radius * terrain.bounds.texel_angle() / ranges.vertex_spacing_angle();
-        let farthest = self.bounding_center(direction, table).length() + self.bounding_radius(chord_radius, table);
-
-        if farthest > full_resolution_distance {
-            return table;
-        }
-
-        let center_height = terrain.map.height_at(direction);
-        terrain
-            .bounds
-            .range(direction, angular_radius, vertex_spacing, Some(center_height))
     }
 
     // Relative to the camera.
@@ -148,10 +122,6 @@ mod tests {
 
     use ash::vk;
 
-    use std::sync::Arc;
-
-    use xsa_core::terrain::HeightMap;
-
     use super::*;
     use crate::camera::Camera;
 
@@ -166,11 +136,29 @@ mod tests {
         select_over(center, None)
     }
 
-    fn terrain(map: HeightMap) -> TerrainHeight {
-        TerrainHeight::new(Arc::new(map))
+    const LOWEST: f64 = -9099.0;
+    const HIGHEST: f64 = 10747.0;
+    const MAXIMUM_TILES: usize = 10_000;
+
+    // Every tile spans `tile` within a body spanning LOWEST to HIGHEST.
+    struct UniformHeights {
+        tile: HeightRange,
     }
 
-    fn select_over(center: DVec3, height: Option<&TerrainHeight>) -> Vec<SelectedTile> {
+    impl TileHeightBounds for UniformHeights {
+        fn overall_range(&self) -> Option<HeightRange> {
+            Some(HeightRange {
+                minimum: LOWEST,
+                maximum: HIGHEST,
+            })
+        }
+
+        fn tile_range(&self, _: QuadSphereTile) -> Option<HeightRange> {
+            Some(self.tile)
+        }
+    }
+
+    fn select_over(center: DVec3, height: Option<&dyn TileHeightBounds>) -> Vec<SelectedTile> {
         let camera = Camera::new(FRAC_PI_2, EXTENT.width as f32 / EXTENT.height as f32);
         let culler = Culler::new(&camera, EXTENT);
         let focal_length_pixels = f64::from(EXTENT.height) / 2.0 / f64::from(camera.vertical_fov() / 2.0).tan();
@@ -244,46 +232,28 @@ mod tests {
     // deepest level.
     #[test]
     fn tiles_stay_few_just_above_terrain() {
-        const MAP_WIDTH: usize = 64;
-        const MAP_HEIGHT: usize = 32;
-        const MINIMUM: f64 = -9099.0;
-        const MAXIMUM: f64 = 10747.0;
-        const MAXIMUM_TILES: usize = 10_000;
-        let middle = u16::MAX / 2;
-        let ground = MINIMUM + f64::from(middle) / f64::from(u16::MAX) * (MAXIMUM - MINIMUM);
-        let map = HeightMap::new(
-            MAP_WIDTH,
-            MAP_HEIGHT,
-            vec![middle; MAP_WIDTH * MAP_HEIGHT],
-            MINIMUM,
-            MAXIMUM,
-        )
-        .unwrap();
-        let height = terrain(map);
+        let ground = 812.0;
+        let height = UniformHeights {
+            tile: HeightRange {
+                minimum: ground,
+                maximum: ground,
+            },
+        };
         let tiles = select_over(below(ground + 100.0), Some(&height));
 
         assert!(tiles.len() < MAXIMUM_TILES, "{} tiles", tiles.len());
         assert!(tiles.iter().map(|tile| tile.tile.depth).max().unwrap() > 10);
     }
 
-    // Every texel alternates between the lowest and highest height, so no tile's bounds are tight.
+    // No tile's bounds are tight: each spans the whole body's heights.
     #[test]
     fn tiles_stay_few_inside_rough_terrain() {
-        const MAP_WIDTH: usize = 64;
-        const MAP_HEIGHT: usize = 32;
-        const MINIMUM: f64 = -9099.0;
-        const MAXIMUM: f64 = 10747.0;
-        const MAXIMUM_TILES: usize = 10_000;
-        let texels: Vec<u16> = (0..MAP_WIDTH * MAP_HEIGHT)
-            .map(|index| {
-                if (index + index / MAP_WIDTH).is_multiple_of(2) {
-                    0
-                } else {
-                    u16::MAX
-                }
-            })
-            .collect();
-        let height = terrain(HeightMap::new(MAP_WIDTH, MAP_HEIGHT, texels, MINIMUM, MAXIMUM).unwrap());
+        let height = UniformHeights {
+            tile: HeightRange {
+                minimum: LOWEST,
+                maximum: HIGHEST,
+            },
+        };
         let tiles = select_over(below(0.0), Some(&height));
 
         assert!(tiles.len() < MAXIMUM_TILES, "{} tiles", tiles.len());

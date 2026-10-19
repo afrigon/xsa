@@ -3,7 +3,7 @@ use xui::{Context, EdgeInsets, Text, View};
 
 use super::{CameraReading, ClockReading, SurfaceReading};
 use crate::camera::CameraMode;
-use crate::renderer::FrameStatistics;
+use crate::renderer::{FrameStatistics, TerrainLayer};
 use crate::ui::ThemedView;
 
 const PADDING: f32 = 8.0;
@@ -13,6 +13,7 @@ const KILOMETER_THRESHOLD_METERS: f64 = 10_000.0;
 const MISSING: &str = "–";
 const ANGLE_PRECISION: f64 = 1000.0;
 const FULL_TURN_DEGREES: f64 = 360.0;
+const BYTES_PER_MEBIBYTE: f64 = 1024.0 * 1024.0;
 
 pub struct DebugOverlayView {
     pub frames_per_second: Option<f64>,
@@ -40,6 +41,24 @@ impl DebugOverlayView {
             "FPS: {frames_per_second} · GPU {gpu_milliseconds} ms\n{} faces · {} tiles{depth}",
             self.statistics.triangles, self.statistics.tiles
         )
+    }
+
+    // Each terrain set's pages in atlas cells, those wanted but not yet in one, and the decoded pages kept in RAM.
+    fn terrain_pages(&self) -> String {
+        let pages = &self.statistics.terrain_pages;
+        let sets = std::iter::once(("heights", &pages.heights))
+            .chain(TerrainLayer::ALL.map(|layer| (layer.name(), &pages.layers[layer.index()])));
+
+        sets.map(|(name, set)| {
+            format!(
+                "{name}: {} pages · {} loading · {:.1} MiB",
+                set.resident,
+                set.pending,
+                set.ram_bytes as f64 / BYTES_PER_MEBIBYTE
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
     }
 
     fn camera(&self) -> String {
@@ -129,8 +148,9 @@ fn distance(meters: f64) -> String {
 impl View for DebugOverlayView {
     fn body(&self, _context: &Context) -> impl View {
         Text::new(format!(
-            "{}\n\n{}\n\n{}\n\n{}",
+            "{}\n\n{}\n\n{}\n\n{}\n\n{}",
             self.performance(),
+            self.terrain_pages(),
             self.camera(),
             self.surface(),
             self.clock()

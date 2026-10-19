@@ -114,7 +114,10 @@ impl MaterialDefinition {
                 let opposition = layer("opposition-terrain")?;
 
                 if medium.is_none() || opposition.is_none() {
-                    tracing::warn!("{}: without both Hapke layers, the terrain is shaded with Lambert", context.id);
+                    tracing::warn!(
+                        "{}: without both Hapke layers, the terrain is shaded with Lambert",
+                        context.id
+                    );
                 }
 
                 Ok(MaterialDefinition::Hapke {

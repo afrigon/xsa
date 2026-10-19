@@ -16,8 +16,6 @@ use super::{MaterialHandle, Scene};
 use crate::config::RenderConfig;
 use crate::vulkan::GraphicsPipeline;
 
-const NULL_ADDRESS: vk::DeviceAddress = 0;
-
 pub(super) struct FrameContext<'a> {
     pub recorder: CommandRecorder<'a>,
     pub frame: &'a Frame,
@@ -42,7 +40,6 @@ impl FrameContext<'_> {
         object_index: usize,
         material: MaterialHandle,
         first_tile: u32,
-        terrain_data: Option<vk::DeviceAddress>,
     ) {
         self.recorder.push_graphics_constants(
             pipeline,
@@ -56,7 +53,7 @@ impl FrameContext<'_> {
                 object_index: object_index as u32,
                 first_tile,
                 tiles: self.frame.tiles.device_address(),
-                terrain: terrain_data.unwrap_or(NULL_ADDRESS),
+                tile_pages: self.frame.tile_pages.device_address(),
             },
         );
     }

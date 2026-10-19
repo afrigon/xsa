@@ -46,6 +46,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
+    use glam::IVec2;
     use resource_loader::terrain::{HeightRange, PAGE_BORDER, PAGE_EXTENT, PageKey};
     use resource_loader::utils::CubeFace;
 
@@ -135,6 +136,15 @@ mod tests {
         let expected = point.texel_position(0).x * 0.5;
 
         assert!((ramp.height_at(point.direction()).unwrap() - expected).abs() < TOLERANCE_METERS);
+    }
+
+    #[test]
+    fn a_range_spans_the_texels_it_covers() {
+        let (_, ramp) = page(|x, y| (x + y) as f32);
+        let range = ramp.range_over(IVec2::new(2, 0), IVec2::new(5, 3));
+
+        assert!((f64::from(range.minimum) - 2.0).abs() < TOLERANCE_METERS);
+        assert!((f64::from(range.maximum) - 8.0).abs() < TOLERANCE_METERS);
     }
 
     #[test]

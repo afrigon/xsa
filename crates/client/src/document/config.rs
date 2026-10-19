@@ -18,6 +18,7 @@ mod render_document;
 mod resources_document;
 mod shader_choice;
 mod terrain_lod_document;
+mod terrain_streaming_document;
 mod tonemapper_choice;
 mod white_balance_document;
 
@@ -39,6 +40,7 @@ use config_layer::ConfigLayer;
 use config_values::ConfigValues;
 use input_document::InputDocument;
 use resources_document::ResourcesDocument;
+use terrain_streaming_document::TerrainStreamingDocument;
 
 use std::env;
 use std::fs;
@@ -80,6 +82,7 @@ impl ConfigDocument {
         AnimationDocument::write(&config.animations, &mut defaults);
         InputDocument::write(&config.input, &mut defaults);
         ResourcesDocument::write(&config.resources, &mut defaults);
+        TerrainStreamingDocument::write(&config.terrain_streaming, &mut defaults);
         let mut document = ConfigDocument {
             path,
             session: ConfigLayer::default(),
@@ -133,6 +136,7 @@ impl ConfigDocument {
             animations: AnimationDocument::read(&values).into_config(&defaults.animations),
             input: InputDocument::read(&values).into_config(&defaults.input),
             resources: ResourcesDocument::read(&values).into_config(&defaults.resources),
+            terrain_streaming: TerrainStreamingDocument::read(&values).into_config(&defaults.terrain_streaming),
         }
     }
 

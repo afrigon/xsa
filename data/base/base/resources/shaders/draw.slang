@@ -18,8 +18,8 @@ struct PushConstants {
     uint objectIndex;
     uint firstTile;
     void *tiles;
-    // Read only by the terrain's vertex stage.
-    void *terrain;
+    // The pages each tile reads, by tile index.
+    void *tilePages;
 };
 
 [[vk::push_constant]]

@@ -14,13 +14,16 @@ struct VertexInput {
     uint instance : SV_InstanceID;
 };
 
-// Everything a tile's vertex stage computes; each material passes on the part its fragment stage reads.
+// Everything a tile's vertex stage computes; each material passes on the part its fragment stage reads. The face
+// offset is in the face's equal-angle coordinates from the tile's center, which the tile's pages are read at.
 struct TileVertex {
     SurfaceVaryings surface;
     float2 cell;
     int detail;
     uint gridCells;
     float heightMeters;
+    uint tile;
+    float2 faceOffset;
 };
 
 // How a draw's vertices are placed: each material's vertex stage is specialized with one per pipeline.

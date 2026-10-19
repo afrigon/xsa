@@ -1,5 +1,8 @@
+use super::TerrainPageStatistics;
+
 #[derive(Clone, Copy, Default)]
 pub struct FrameStatistics {
+    pub terrain_pages: TerrainPageStatistics,
     pub triangles: u64,
     pub tiles: usize,
     // The finest terrain tiles drawn; None without terrain.

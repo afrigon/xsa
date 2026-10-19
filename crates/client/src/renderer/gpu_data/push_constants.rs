@@ -11,8 +11,8 @@ pub(in crate::renderer) struct PushConstants {
     pub object_index: u32,
     pub first_tile: u32,
     pub tiles: vk::DeviceAddress,
-    // Read only by the terrain's vertex stage.
-    pub terrain: vk::DeviceAddress,
+    // The pages each tile reads, by tile index.
+    pub tile_pages: vk::DeviceAddress,
 }
 
 const _: () = assert!(size_of::<PushConstants>() == 48);

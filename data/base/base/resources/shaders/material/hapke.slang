@@ -1,29 +1,36 @@
+import material.layers;
 import material.light.hapke;
+import material.light.lambert;
 import material.light.star;
 import material.material;
 import material.texture;
 
+struct HapkeVaryings {
+    SurfaceVaryings surface;
+    float2 faceOffset;
+    nointerpolation uint tile;
+};
+
 [shader("vertex")]
-SurfaceVaryings vertexMain<G : Geometry>(VertexInput input) {
-    return G.transform(input).surface;
+HapkeVaryings vertexMain<G : Geometry>(VertexInput input) {
+    TileVertex vertex = G.transform(input);
+    HapkeVaryings output;
+    output.surface = vertex.surface;
+    output.faceOffset = vertex.faceOffset;
+    output.tile = vertex.tile;
+    return output;
 }
 
 struct HapkeData {
     float3 baseColor;
-    uint colorTexture;
-    uint normalTexture;
     uint emissiveTexture;
     float emissiveLuminance;
-    uint mediumTexture;
-    uint oppositionTexture;
     uint padding[3];
 };
 
-// Hapke 2012's parameters at this point: w from the calibrated color map, the rest from the medium and opposition
-// textures, stored as published (θ̄ in degrees).
-HapkeParameters hapkeParameters(HapkeData material, TextureCoordinates coordinates, float3 diffusiveReflectance) {
-    float4 medium = sampleTexture(material.mediumTexture, coordinates);
-    float4 opposition = sampleTexture(material.oppositionTexture, coordinates);
+// Hapke 2012's parameters at this point: w from the calibrated color layer, the rest from the medium and opposition
+// layers, stored as published (θ̄ in degrees).
+HapkeParameters hapkeParameters(float4 medium, float4 opposition, float3 diffusiveReflectance) {
     HapkeParameters parameters;
     parameters.singleScatteringAlbedo = singleScatteringAlbedo(diffusiveReflectance);
     parameters.lobeWidth = medium.r;
@@ -54,21 +61,36 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, SurfaceVary
     return hapkeReflectance(parameters, geometry) * starIlluminance(star, input.worldPosition);
 }
 
+// Where the tile has no page of either Hapke layer, it is shaded with Lambert.
 [shader("fragment")]
-SurfaceOutput fragmentMain(SurfaceVaryings input) {
+SurfaceOutput fragmentMain(HapkeVaryings input) {
     HapkeData material = currentMaterial<HapkeData>();
-    float3 modelNormal = normalize(input.modelNormal);
-    TextureCoordinates coordinates = equirectangularCoordinates(modelNormal);
-    float3 normal = mappedNormal(material.normalTexture, modelNormal, coordinates);
+    float3 modelNormal = normalize(input.surface.modelNormal);
+    LayerCoordinates coordinates = layerCoordinates(input.tile, input.faceOffset);
+    LayerRead color = readLayer(coordinates, colorLayer);
+    LayerRead medium = readLayer(coordinates, mediumLayer);
+    LayerRead opposition = readLayer(coordinates, oppositionLayer);
+    float3 normal = layerNormal(readLayer(coordinates, normalLayer), coordinates.tile, modelNormal);
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
-    float3 albedo = mappedColor(material.colorTexture, material.baseColor, coordinates);
-    HapkeParameters parameters = hapkeParameters(material, coordinates, albedo);
+    float3 geometricNormal = normalize(input.surface.normal);
+    float3 albedo = color.resident ? color.value.rgb : material.baseColor;
     float3 luminance = starlightLuminance(albedo);
 
-    for (uint index = 0; index < constants.frame.starCount; index++) {
-        luminance += reflectedLuminance(constants.frame.stars[index], parameters, input, worldNormal);
+    if (medium.resident && opposition.resident) {
+        HapkeParameters parameters = hapkeParameters(medium.value, opposition.value, albedo);
+
+        for (uint index = 0; index < constants.frame.starCount; index++) {
+            luminance += reflectedLuminance(constants.frame.stars[index], parameters, input.surface, worldNormal);
+        }
+    } else {
+        for (uint index = 0; index < constants.frame.starCount; index++) {
+            StarData star = constants.frame.stars[index];
+            float cosine = mappedCosine(star, input.surface.worldPosition, geometricNormal, worldNormal);
+            luminance += lambertLuminance(albedo, starIlluminance(star, input.surface.worldPosition), cosine);
+        }
     }
 
-    luminance += mappedEmission(material.emissiveTexture, material.emissiveLuminance, coordinates);
-    return surfaceOutput(float4(luminance * constants.frame.exposure, 1.0), input);
+    TextureCoordinates emissionCoordinates = equirectangularCoordinates(modelNormal);
+    luminance += mappedEmission(material.emissiveTexture, material.emissiveLuminance, emissionCoordinates);
+    return surfaceOutput(float4(luminance * constants.frame.exposure, 1.0), input.surface);
 }

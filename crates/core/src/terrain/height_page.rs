@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use glam::IVec2;
 use resource_loader::terrain::{HeightRange, PAGE_BORDER, PAGE_EXTENT};
 
 // One page of a terrain's heights as stored: 16-bit values row by row, border included, spanning its own range.
@@ -18,6 +19,30 @@ impl HeightPage {
         let value = u16::from_le_bytes([self.values[index], self.values[index + 1]]);
 
         f64::from(self.range.height(value))
+    }
+
+    // The lowest and highest height among the texels from `first` to `last`, both included, clamped to the stored
+    // texels. A cubic B-spline over them never leaves this range: its weights are positive and sum to 1.
+    pub fn range_over(&self, first: IVec2, last: IVec2) -> HeightRange {
+        let border = PAGE_BORDER as i32;
+        let lowest = IVec2::splat(-border);
+        let highest = IVec2::splat(PAGE_EXTENT as i32 - border - 1);
+        let first = first.clamp(lowest, highest);
+        let last = last.clamp(lowest, highest);
+        let mut range = HeightRange {
+            minimum: f32::INFINITY,
+            maximum: f32::NEG_INFINITY,
+        };
+
+        for y in first.y..=last.y {
+            for x in first.x..=last.x {
+                let height = self.height(x, y) as f32;
+                range.minimum = range.minimum.min(height);
+                range.maximum = range.maximum.max(height);
+            }
+        }
+
+        range
     }
 
     // The weights of the four texels around a cubic B-spline sample at fraction `f` past the second.
