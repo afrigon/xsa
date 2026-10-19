@@ -1,7 +1,7 @@
 use glam::{DVec2, DVec3};
 use resource_loader::terrain::{PAGE_INTERIOR, PageAddress};
 
-use super::{FacePoint, HeightPage};
+use super::{FacePoint, HeightPage, HeightSample};
 
 // A terrain's height pages, as far as they are held: the client's stream them for drawing, the server reads them
 // around vessels. Heights are a cubic B-spline over the finest page held, mirrored by the renderer's terrain geometry
@@ -16,6 +16,11 @@ pub trait HeightPages {
     // Meters relative to the body's radius toward `direction`, a unit vector in the body's frame; None while no
     // page covering it is held.
     fn height_at(&self, direction: DVec3) -> Option<f64> {
+        self.height_sample_at(direction).map(|sample| sample.height)
+    }
+
+    // The height toward `direction` with the level of the page it was read on.
+    fn height_sample_at(&self, direction: DVec3) -> Option<HeightSample> {
         let point = FacePoint::from_direction(direction);
         let (address, page) = self.page(point.page(self.finest_level()))?;
         let page_origin = f64::from(PAGE_INTERIOR);
@@ -37,7 +42,10 @@ pub trait HeightPages {
             sum += weight_y * row_sum;
         }
 
-        Some(sum)
+        Some(HeightSample {
+            height: sum,
+            level: address.level,
+        })
     }
 }
 

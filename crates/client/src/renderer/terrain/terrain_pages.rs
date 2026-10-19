@@ -67,6 +67,23 @@ impl TerrainPages {
         self.heights()?.height_at(direction)
     }
 
+    // Whether the ground toward `direction` is as fine as it will get: read from the finest heights, or with no
+    // heights left loading. True for a terrain without heights.
+    pub fn is_ground_settled(&self, direction: DVec3) -> bool {
+        let Some(layer) = &self.heights else {
+            return true;
+        };
+        let Some(heights) = self.heights() else {
+            return false;
+        };
+        let loading = layer.set().is_some_and(|set| set.statistics().pending > 0);
+
+        !loading
+            || heights
+                .height_sample_at(direction)
+                .is_some_and(|sample| sample.level == heights.finest_level)
+    }
+
     // Registers the sets of the files loaded since, and keeps every set's pages following its requests or frozen.
     pub(in crate::renderer) fn update(&self, residency: Residency) {
         if let Some(heights) = &self.heights {

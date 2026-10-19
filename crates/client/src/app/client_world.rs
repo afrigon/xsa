@@ -236,6 +236,14 @@ impl ClientWorld {
         self.terrain_height(index, direction).unwrap_or(0.0)
     }
 
+    // Whether the ground toward `direction` is as fine as it will get: its heights loaded to the finest level, or
+    // nothing finer on its way.
+    pub fn is_ground_settled(&self, index: BodyIndex, direction: DVec3) -> bool {
+        self.terrains[index.value]
+            .as_ref()
+            .is_none_or(|terrain| terrain.is_ground_settled(direction))
+    }
+
     // Where the eyes are when the feet stand `altitude` above the ground at `direction`, in the body's frame.
     pub fn eye_position(&self, index: BodyIndex, direction: DVec3, altitude: f64) -> DVec3 {
         let state = self.body_state(index);

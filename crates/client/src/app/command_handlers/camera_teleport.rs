@@ -2,11 +2,36 @@ use anyhow::Context;
 use xsa_commands::command::CameraTeleportCommand;
 
 use crate::app::App;
-use crate::app::immediate_command_handler::ImmediateCommandHandler;
+use crate::app::camera_controller::TeleportTarget;
+use crate::app::client_command_handler::ClientCommandHandler;
+use crate::app::command_progress::CommandProgress;
+use crate::app::command_task::CommandTask;
+use crate::app::task_status::TaskStatus;
 use crate::camera::CameraMode;
 
-impl ImmediateCommandHandler for CameraTeleportCommand {
-    fn run(self, app: &mut App) -> anyhow::Result<String> {
+// Tiles drawn around the new position request their pages in the frame after it is placed, and the streamer counts
+// them as loading in the frame after that.
+const FRAMES_BEFORE_REQUESTS_SHOW: u32 = 2;
+
+impl ClientCommandHandler for CameraTeleportCommand {
+    fn start(self, app: &mut App) -> CommandProgress {
+        match TeleportTask::start(&self, app) {
+            Ok(task) => CommandProgress::Running(Box::new(task)),
+            Err(err) => CommandProgress::Done(Err(err)),
+        }
+    }
+}
+
+// Keeps the camera at the asked altitude above the ground while the heights there load finer, replying once the
+// ground is as fine as it will get.
+struct TeleportTask {
+    target: TeleportTarget,
+    reply: String,
+    frames: u32,
+}
+
+impl TeleportTask {
+    fn start(command: &CameraTeleportCommand, app: &mut App) -> anyhow::Result<TeleportTask> {
         let world = app.world.as_ref().context("not joined to a simulation yet")?;
         let cameras = app.cameras.as_ref().context("the cameras are not ready")?;
         // Read before the switch: in orbit mode the camera is around the body it orbits, not the nearest one.
@@ -14,7 +39,29 @@ impl ImmediateCommandHandler for CameraTeleportCommand {
         app.set_camera_mode(CameraMode::Debug);
         let world = app.world.as_ref().context("not joined to a simulation yet")?;
         let cameras = app.cameras.as_mut().context("the cameras are not ready")?;
+        let (target, reply) = cameras.teleport(command, around, world)?;
 
-        cameras.teleport(&self, around, world)
+        Ok(TeleportTask {
+            target,
+            reply,
+            frames: 0,
+        })
+    }
+}
+
+impl CommandTask for TeleportTask {
+    fn poll(&mut self, app: &mut App) -> TaskStatus {
+        let (Some(world), Some(cameras)) = (app.world.as_ref(), app.cameras.as_mut()) else {
+            return TaskStatus::Done(Err(anyhow::anyhow!("left the simulation while teleporting")));
+        };
+        cameras.stand(self.target, world);
+        self.frames += 1;
+
+        if self.frames > FRAMES_BEFORE_REQUESTS_SHOW && world.is_ground_settled(self.target.body, self.target.direction)
+        {
+            return TaskStatus::Done(Ok(std::mem::take(&mut self.reply)));
+        }
+
+        TaskStatus::Pending
     }
 }
