@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.3439 0.3258 0.3202
-color-texture "bodies/mercury/color"
-normal-texture "bodies/mercury/normal"
-medium-texture "bodies/mercury/hapke-medium"
-opposition-texture "bodies/mercury/hapke-opposition"
+color-terrain "bodies/mercury/color"
+normal-terrain "bodies/mercury/normal"
+medium-terrain "bodies/mercury/hapke-medium"
+opposition-terrain "bodies/mercury/hapke-opposition"

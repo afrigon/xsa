@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.2154 0.1603 0.1227
-color-texture "bodies/venus/color"
-normal-texture "bodies/venus/normal"
-medium-texture "bodies/venus/hapke-medium"
-opposition-texture "bodies/venus/hapke-opposition"
+color-terrain "bodies/venus/color"
+normal-terrain "bodies/venus/normal"
+medium-terrain "bodies/venus/hapke-medium"
+opposition-terrain "bodies/venus/hapke-opposition"

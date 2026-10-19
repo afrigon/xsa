@@ -20,16 +20,17 @@ pub enum MaterialDefinition {
         color: Vec3,
         luminance: Option<f32>,
     },
-    // Hapke 2012's parameters other than the albedo, which comes from the color map: the particulate medium texture
-    // (b, c, θ̄ in degrees, porosity K) and the opposition texture (B_S0, h_S, B_C0, h_C).
+    // A body's terrain shaded with Hapke 2012; `color`, `normal`, `medium` and `opposition` are terrain layers. The
+    // albedo comes from the color layer; the particulate medium layer holds b, c, θ̄ in degrees and porosity K, the
+    // opposition layer B_S0, h_S, B_C0 and h_C. Without both of those two, it is shaded with Lambert.
     Hapke {
         base_color: Vec3,
         color: Option<PathBuf>,
         normal: Option<PathBuf>,
         emissive: Option<PathBuf>,
         emissive_luminance: f32,
-        medium: PathBuf,
-        opposition: PathBuf,
+        medium: Option<PathBuf>,
+        opposition: Option<PathBuf>,
     },
 }
 
@@ -69,6 +70,23 @@ impl MaterialDefinition {
             }
         };
 
+        let layer = |name: &str| -> anyhow::Result<Option<PathBuf>> {
+            match document.optional_node(name) {
+                Some(node) => context.available_terrain_layer(node.string_argument()?),
+                None => Ok(None),
+            }
+        };
+        let emission = || -> anyhow::Result<(Option<PathBuf>, f32)> {
+            let emissive = texture("emissive-texture")?;
+            let emissive_luminance = number("emissive-luminance")?;
+            ensure!(
+                emissive.is_none() || emissive_luminance.is_some(),
+                "an `emissive-texture` needs an `emissive-luminance` in cd/m²"
+            );
+
+            Ok((emissive, emissive_luminance.unwrap_or(0.0)))
+        };
+
         let shader_name = shader.to_string();
 
         match shader_name.as_str() {
@@ -79,45 +97,35 @@ impl MaterialDefinition {
                 },
                 luminance: number("luminance")?,
             }),
-            "base:lambert" | "base:hapke" => {
-                let base_color = color("base-color")?;
-                let color = texture("color-texture")?;
-                let normal = texture("normal-texture")?;
-                let emissive = texture("emissive-texture")?;
-                let emissive_luminance = number("emissive-luminance")?;
-                ensure!(
-                    emissive.is_none() || emissive_luminance.is_some(),
-                    "an `emissive-texture` needs an `emissive-luminance` in cd/m²"
-                );
-                let emissive_luminance = emissive_luminance.unwrap_or(0.0);
-                let required_texture = |name: &str| context.available_texture(document.node(name)?.string_argument()?);
-                let (medium, opposition) = match shader_name.as_str() {
-                    "base:hapke" => (
-                        required_texture("medium-texture")?,
-                        required_texture("opposition-texture")?,
-                    ),
-                    _ => (None, None),
-                };
+            "base:lambert" => {
+                let (emissive, emissive_luminance) = emission()?;
 
-                // A Hapke material missing one of its maps is shaded with Lambert.
-                match (medium, opposition) {
-                    (Some(medium), Some(opposition)) => Ok(MaterialDefinition::Hapke {
-                        base_color,
-                        color,
-                        normal,
-                        emissive,
-                        emissive_luminance,
-                        medium,
-                        opposition,
-                    }),
-                    _ => Ok(MaterialDefinition::Lambert {
-                        base_color,
-                        color,
-                        normal,
-                        emissive,
-                        emissive_luminance,
-                    }),
+                Ok(MaterialDefinition::Lambert {
+                    base_color: color("base-color")?,
+                    color: texture("color-texture")?,
+                    normal: texture("normal-texture")?,
+                    emissive,
+                    emissive_luminance,
+                })
+            }
+            "base:hapke" => {
+                let (emissive, emissive_luminance) = emission()?;
+                let medium = layer("medium-terrain")?;
+                let opposition = layer("opposition-terrain")?;
+
+                if medium.is_none() || opposition.is_none() {
+                    tracing::warn!("{}: without both Hapke layers, the terrain is shaded with Lambert", context.id);
                 }
+
+                Ok(MaterialDefinition::Hapke {
+                    base_color: color("base-color")?,
+                    color: layer("color-terrain")?,
+                    normal: layer("normal-terrain")?,
+                    emissive,
+                    emissive_luminance,
+                    medium,
+                    opposition,
+                })
             }
             _ => bail!("shader {shader} is not supported by materials yet"),
         }

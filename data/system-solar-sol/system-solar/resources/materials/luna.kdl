@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.3128 0.3007 0.2802
-color-texture "bodies/luna/color"
-normal-texture "bodies/luna/normal"
-medium-texture "bodies/luna/hapke-medium"
-opposition-texture "bodies/luna/hapke-opposition"
+color-terrain "bodies/luna/color"
+normal-terrain "bodies/luna/normal"
+medium-terrain "bodies/luna/hapke-medium"
+opposition-terrain "bodies/luna/hapke-opposition"

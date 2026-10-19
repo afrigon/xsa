@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.3202 0.1764 0.1036
-color-texture "bodies/mars/color"
-normal-texture "bodies/mars/normal"
-medium-texture "bodies/mars/hapke-medium"
-opposition-texture "bodies/mars/hapke-opposition"
+color-terrain "bodies/mars/color"
+normal-terrain "bodies/mars/normal"
+medium-terrain "bodies/mars/hapke-medium"
+opposition-terrain "bodies/mars/hapke-opposition"

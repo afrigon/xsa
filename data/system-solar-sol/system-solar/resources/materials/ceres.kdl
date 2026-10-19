@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.4994 0.4723 0.4144
-color-texture "bodies/ceres/color"
-normal-texture "bodies/ceres/normal"
-medium-texture "bodies/ceres/hapke-medium"
-opposition-texture "bodies/ceres/hapke-opposition"
+color-terrain "bodies/ceres/color"
+normal-terrain "bodies/ceres/normal"
+medium-terrain "bodies/ceres/hapke-medium"
+opposition-terrain "bodies/ceres/hapke-opposition"

@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.3148 0.3042 0.2942
-color-texture "bodies/oberon/color"
-normal-texture "bodies/oberon/normal"
-medium-texture "bodies/oberon/hapke-medium"
-opposition-texture "bodies/oberon/hapke-opposition"
+color-terrain "bodies/oberon/color"
+normal-terrain "bodies/oberon/normal"
+medium-terrain "bodies/oberon/hapke-medium"
+opposition-terrain "bodies/oberon/hapke-opposition"

@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.2849 0.2556 0.2279
-color-texture "bodies/ganymede/color"
-normal-texture "bodies/ganymede/normal"
-medium-texture "bodies/ganymede/hapke-medium"
-opposition-texture "bodies/ganymede/hapke-opposition"
+color-terrain "bodies/ganymede/color"
+normal-terrain "bodies/ganymede/normal"
+medium-terrain "bodies/ganymede/hapke-medium"
+opposition-terrain "bodies/ganymede/hapke-opposition"

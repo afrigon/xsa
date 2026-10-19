@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.2381 0.2395 0.2397
-color-texture "bodies/nereid/color"
-normal-texture "bodies/nereid/normal"
-medium-texture "bodies/nereid/hapke-medium"
-opposition-texture "bodies/nereid/hapke-opposition"
+color-terrain "bodies/nereid/color"
+normal-terrain "bodies/nereid/normal"
+medium-terrain "bodies/nereid/hapke-medium"
+opposition-terrain "bodies/nereid/hapke-opposition"

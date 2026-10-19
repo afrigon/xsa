@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.3455 0.4823 0.5911
-color-texture "bodies/neptune/color"
-normal-texture "bodies/neptune/normal"
-medium-texture "bodies/neptune/hapke-medium"
-opposition-texture "bodies/neptune/hapke-opposition"
+color-terrain "bodies/neptune/color"
+normal-terrain "bodies/neptune/normal"
+medium-terrain "bodies/neptune/hapke-medium"
+opposition-terrain "bodies/neptune/hapke-opposition"
