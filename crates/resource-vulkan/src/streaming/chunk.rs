@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use ash::vk;
@@ -9,16 +8,24 @@ use memory_vulkan::{
 use crate::LoadEnvironment;
 use crate::streaming::{ChunkId, PageFormat};
 
-// One texture array of a pool, a page per layer, read by shaders through its bindless slot. It stays in `GENERAL`
-// layout, where layers are written while frames sample the others. Its memory is its own, so adding or releasing it
-// moves video memory usage by its size.
+// One 2D texture of a pool holding pages side by side in a grid of cells, read by shaders through its bindless slot.
+// It stays in `GENERAL` layout, where cells are written while frames sample the others. Its memory is its own, so
+// adding or releasing it moves video memory usage by its size.
 pub(crate) struct Chunk {
     pub id: ChunkId,
-    pub layers: u32,
+    pub grid: ChunkGrid,
     // Bytes of video memory the driver allocated for it.
     pub size: u64,
     pub created_in: u64,
     state: ChunkState,
+}
+
+// The cells of a chunk, numbered row by row.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChunkGrid {
+    pub columns: u32,
+    pub rows: u32,
+    pub page_extent: vk::Extent2D,
 }
 
 // Declaration order is destruction order: the slot returns once frames reading the image finish.
@@ -34,11 +41,32 @@ enum ChunkState {
     Failed,
 }
 
+impl ChunkGrid {
+    pub fn cells(&self) -> u32 {
+        self.columns * self.rows
+    }
+
+    pub fn extent(&self) -> vk::Extent2D {
+        vk::Extent2D {
+            width: self.columns * self.page_extent.width,
+            height: self.rows * self.page_extent.height,
+        }
+    }
+
+    // The texel offset of `cell`'s page in the chunk.
+    pub fn offset(&self, cell: u32) -> vk::Offset2D {
+        vk::Offset2D {
+            x: ((cell % self.columns) * self.page_extent.width) as i32,
+            y: ((cell / self.columns) * self.page_extent.height) as i32,
+        }
+    }
+}
+
 impl Chunk {
     pub fn new(
         environment: &LoadEnvironment,
         format: &PageFormat,
-        layers: NonZeroU32,
+        grid: ChunkGrid,
         id: ChunkId,
         now: u64,
     ) -> anyhow::Result<Chunk> {
@@ -46,20 +74,20 @@ impl Chunk {
             &environment.memory,
             &ImageDescription {
                 name: "streamed pages",
-                extent: format.extent,
+                extent: grid.extent(),
                 format: format.format,
                 usage: vk::ImageUsageFlags::SAMPLED
                     | vk::ImageUsageFlags::TRANSFER_DST
                     | vk::ImageUsageFlags::TRANSFER_SRC,
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: 1,
-                layers: ImageLayers::Array { count: layers },
+                layers: ImageLayers::Single,
                 memory: ImageMemory::Dedicated,
                 sharing: environment.transfer.sharing(),
             },
         )?;
         let size = image.size();
-        let slot = environment.bindless.allocate(BindlessBinding::TextureArray)?;
+        let slot = environment.bindless.allocate(BindlessBinding::Texture)?;
         let upload = environment
             .transfer
             .prepare_image(image, vk::ImageLayout::GENERAL, memory_vulkan::TransferPriority::High)
@@ -67,7 +95,7 @@ impl Chunk {
 
         Ok(Chunk {
             id,
-            layers: layers.get(),
+            grid,
             size,
             created_in: now,
             state: ChunkState::Preparing { slot, upload },

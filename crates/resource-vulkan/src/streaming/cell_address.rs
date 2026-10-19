@@ -1,8 +1,8 @@
 use crate::streaming::ChunkId;
 
-// One layer of one chunk, ordered by chunk then layer.
+// One cell of one chunk, ordered by chunk then cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct LayerAddress {
+pub(crate) struct CellAddress {
     pub chunk: ChunkId,
-    pub layer: u32,
+    pub cell: u32,
 }

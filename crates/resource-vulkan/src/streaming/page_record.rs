@@ -6,7 +6,7 @@ use crate::streaming::PageState;
 pub(crate) struct PageRecord<K> {
     pub key: K,
     pub state: PageState,
-    // The decoded page, kept in RAM while the budget allows, whether or not a layer holds it.
+    // The decoded page, kept in RAM while the budget allows, whether or not a cell holds it.
     pub bytes: Option<Arc<[u8]>>,
     // The update it was last wanted or pinned in.
     pub last_use: u64,

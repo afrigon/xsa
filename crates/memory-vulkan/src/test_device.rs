@@ -174,13 +174,14 @@ impl TestDevice {
         self.memory.collect()
     }
 
-    /// Copies layer `layer` of level 0 of `image`, in `layout`, back to the CPU: `size` bytes of tightly packed rows.
-    pub fn read_layer(
+    /// Copies the region of level 0 of `image`, in `layout`, at `offset` and of `extent` back to the CPU: `size` bytes
+    /// of tightly packed rows.
+    pub fn read_region(
         &self,
         image: &Image,
         layout: vk::ImageLayout,
+        offset: vk::Offset2D,
         extent: vk::Extent2D,
-        layer: u32,
         size: usize,
     ) -> Result<Vec<u8>, MemoryError> {
         let buffer = Buffer::new(
@@ -197,9 +198,13 @@ impl TestDevice {
             .image_subresource(
                 vk::ImageSubresourceLayers::default()
                     .aspect_mask(vk::ImageAspectFlags::COLOR)
-                    .base_array_layer(layer)
                     .layer_count(1),
             )
+            .image_offset(vk::Offset3D {
+                x: offset.x,
+                y: offset.y,
+                z: 0,
+            })
             .image_extent(extent.into());
         unsafe {
             self.memory.device().cmd_copy_image_to_buffer(

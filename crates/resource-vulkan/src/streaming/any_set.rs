@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::Job;
 use crate::streaming::{
-    ByteUse, CancelledUpload, ChunkId, LayerAddress, LayerUse, MissingPage, PageFormat, PageId, ReadOutcome, ReadPage,
+    ByteUse, CancelledUpload, CellAddress, CellUse, ChunkId, MissingPage, PageFormat, PageId, ReadOutcome, ReadPage,
     ReadResult, Residency, SetId, SetStatistics,
 };
 
@@ -27,20 +27,20 @@ pub(crate) trait AnySet: Send + Sync {
 
     fn finish_read(&self, page: PageId, result: ReadResult) -> ReadOutcome;
 
-    fn start_upload(&self, page: PageId, layer: LayerAddress) -> Option<Arc<[u8]>>;
+    fn start_upload(&self, page: PageId, cell: CellAddress) -> Option<Arc<[u8]>>;
 
-    fn finish_upload(&self, page: PageId, layer: LayerAddress, slot: u32);
+    fn finish_upload(&self, page: PageId, cell: CellAddress, slot: u32, offset: ash::vk::Offset2D);
 
-    fn evict_layer(&self, page: PageId) -> Option<LayerAddress>;
+    fn evict_cell(&self, page: PageId) -> Option<CellAddress>;
 
     fn evict_chunk(&self, chunk: ChunkId) -> Vec<CancelledUpload>;
 
     fn evict_bytes(&self, page: PageId);
 
-    // Empties the set; returns the layers its pages held.
-    fn release(&self) -> Vec<LayerAddress>;
+    // Empties the set; returns the cells its pages held.
+    fn release(&self) -> Vec<CellAddress>;
 
-    fn layer_uses(&self) -> Vec<LayerUse>;
+    fn cell_uses(&self) -> Vec<CellUse>;
 
     fn byte_uses(&self) -> Vec<ByteUse>;
 

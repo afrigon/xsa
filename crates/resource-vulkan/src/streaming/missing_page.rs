@@ -1,6 +1,6 @@
 use crate::streaming::{PageId, PageNeed, PageRetention};
 
-// A wanted page without a layer.
+// A wanted page without a cell.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MissingPage {
     pub page: PageId,

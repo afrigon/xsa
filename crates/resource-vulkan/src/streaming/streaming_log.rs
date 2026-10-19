@@ -37,7 +37,7 @@ impl StreamingLog {
             let pool = pools.get(&set.format());
             tracing::debug!(
                 target: "streaming",
-                "{}: {} resident of {} layers in {} chunks ({} bytes of video memory), {} bytes in RAM, {} pending, \
+                "{}: {} resident of {} cells in {} chunks ({} bytes of video memory), {} bytes in RAM, {} pending, \
                  {:.0} loads/s, {:.0} evictions/s",
                 set.name(),
                 statistics.resident,

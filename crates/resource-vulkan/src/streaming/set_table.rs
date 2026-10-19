@@ -3,9 +3,11 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use ash::vk;
+
 use crate::streaming::{
-    ByteUse, CancelledUpload, ChunkId, LayerAddress, LayerUse, MissingPage, PageId, PageNeed, PagePlacement,
-    PageRecord, PageRequest, PageRetention, PageState, ReadOutcome, ReadResult, Residency, SetStatistics,
+    ByteUse, CancelledUpload, CellAddress, CellUse, ChunkId, MissingPage, PageId, PageNeed, PagePlacement, PageRecord,
+    PageRequest, PageRetention, PageState, ReadOutcome, ReadResult, Residency, SetStatistics,
 };
 
 // One streamed set's pages: which are wanted, what each holds, and the latest requests and pins. Pages nobody wants
@@ -53,7 +55,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
     }
 
     // Makes the latest requests and the pins the wanted pages, used in update `now`. Pages no longer wanted stop
-    // reading and lose their uploads, whose layers the pool takes back.
+    // reading and lose their uploads, whose cells the pool takes back.
     pub fn apply(&mut self, now: u64) -> Vec<CancelledUpload> {
         let previous = std::mem::take(&mut self.wanted);
 
@@ -105,9 +107,9 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
 
             match record.state {
                 PageState::Reading { ref cancel } => cancel.store(true, Ordering::Release),
-                PageState::Uploading { layer } => {
+                PageState::Uploading { cell } => {
                     record.state = PageState::Cached;
-                    cancelled.push(CancelledUpload { page, layer });
+                    cancelled.push(CancelledUpload { page, cell });
                 }
                 _ => {}
             }
@@ -118,7 +120,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         cancelled
     }
 
-    // The wanted pages without a layer, and what each needs next.
+    // The wanted pages without a cell, and what each needs next.
     pub fn missing(&self) -> Vec<MissingPage> {
         self.wanted
             .iter()
@@ -126,7 +128,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
                 let record = &self.records[&page];
                 let need = match record.state {
                     PageState::Unloaded => PageNeed::Read,
-                    PageState::Cached => PageNeed::Layer,
+                    PageState::Cached => PageNeed::Cell,
                     _ => return None,
                 };
 
@@ -190,30 +192,30 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         }
     }
 
-    // Starts copying a cached page into `layer`; returns its bytes.
-    pub fn start_upload(&mut self, page: PageId, layer: LayerAddress) -> Option<Arc<[u8]>> {
+    // Starts copying a cached page into `cell`; returns its bytes.
+    pub fn start_upload(&mut self, page: PageId, cell: CellAddress) -> Option<Arc<[u8]>> {
         let record = self.records.get_mut(&page)?;
 
         if !matches!(record.state, PageState::Cached) {
             return None;
         }
 
-        record.state = PageState::Uploading { layer };
+        record.state = PageState::Uploading { cell };
         record.bytes.clone()
     }
 
-    pub fn finish_upload(&mut self, page: PageId, layer: LayerAddress, slot: u32) {
+    pub fn finish_upload(&mut self, page: PageId, cell: CellAddress, slot: u32, offset: vk::Offset2D) {
         if let Some(record) = self.records.get_mut(&page)
-            && record.state.layer() == Some(layer)
+            && record.state.cell() == Some(cell)
         {
-            record.state = PageState::Resident { layer, slot };
+            record.state = PageState::Resident { cell, slot, offset };
         }
     }
 
-    // Takes `page` out of its layer; it stays cached while its bytes are in RAM. Returns the layer it held.
-    pub fn evict_layer(&mut self, page: PageId) -> Option<LayerAddress> {
+    // Takes `page` out of its cell; it stays cached while its bytes are in RAM. Returns the cell it held.
+    pub fn evict_cell(&mut self, page: PageId) -> Option<CellAddress> {
         let record = self.records.get_mut(&page)?;
-        let layer = record.state.layer()?;
+        let cell = record.state.cell()?;
         record.state = match record.bytes {
             Some(_) => PageState::Cached,
             None => PageState::Unloaded,
@@ -221,7 +223,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         self.evictions += 1;
         self.forget_if_empty(page);
 
-        Some(layer)
+        Some(cell)
     }
 
     // Takes every page out of `chunk`, which is being released.
@@ -229,7 +231,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         let pages: Vec<_> = self
             .records
             .iter()
-            .filter(|(_, record)| record.state.layer().is_some_and(|layer| layer.chunk == chunk))
+            .filter(|(_, record)| record.state.cell().is_some_and(|cell| cell.chunk == chunk))
             .map(|(&page, _)| page)
             .collect();
 
@@ -238,13 +240,13 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
             .filter_map(|page| {
                 Some(CancelledUpload {
                     page,
-                    layer: self.evict_layer(page)?,
+                    cell: self.evict_cell(page)?,
                 })
             })
             .collect()
     }
 
-    // Drops `page`'s bytes from RAM; a page in a layer keeps it.
+    // Drops `page`'s bytes from RAM; a page in a cell keeps it.
     pub fn evict_bytes(&mut self, page: PageId) {
         let Some(record) = self.records.get_mut(&page) else {
             return;
@@ -261,9 +263,9 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         self.forget_if_empty(page);
     }
 
-    // Cancels every read and empties the table; returns the layers its pages held.
-    pub fn release(&mut self) -> Vec<LayerAddress> {
-        let layers = self
+    // Cancels every read and empties the table; returns the cells its pages held.
+    pub fn release(&mut self) -> Vec<CellAddress> {
+        let cells = self
             .records
             .values()
             .filter_map(|record| {
@@ -271,12 +273,12 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
                     cancel.store(true, Ordering::Release);
                 }
 
-                record.state.layer()
+                record.state.cell()
             })
             .collect();
         *self = SetTable::new();
 
-        layers
+        cells
     }
 
     // Where shaders read `key` from: the page itself or its nearest resident coarser page.
@@ -285,12 +287,12 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
 
         while let Some(key) = current {
             if let Some(record) = self.ids.get(&key).and_then(|page| self.records.get(page))
-                && let PageState::Resident { layer, slot } = record.state
+                && let PageState::Resident { slot, offset, .. } = record.state
             {
                 return Some(PagePlacement {
                     page: key,
                     slot,
-                    layer: layer.layer,
+                    offset,
                 });
             }
 
@@ -300,11 +302,11 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         None
     }
 
-    pub fn layer_uses(&self) -> impl Iterator<Item = LayerUse> + '_ {
+    pub fn cell_uses(&self) -> impl Iterator<Item = CellUse> + '_ {
         self.records.iter().filter_map(|(&page, record)| {
-            Some(LayerUse {
+            Some(CellUse {
                 page,
-                layer: record.state.layer()?,
+                cell: record.state.cell()?,
                 last_use: record.last_use,
                 score: record.score,
                 retention: self.retention(record.key),
@@ -410,10 +412,10 @@ mod tests {
         ReadResult::Bytes(Arc::from(vec![0u8; 16]))
     }
 
-    fn layer(layer: u32) -> LayerAddress {
-        LayerAddress {
+    fn cell(cell: u32) -> CellAddress {
+        CellAddress {
             chunk: ChunkId { value: 1 },
-            layer,
+            cell,
         }
     }
 
@@ -421,13 +423,13 @@ mod tests {
         table.ids[&key]
     }
 
-    // Reads and uploads `key` into `layer`, as the streamer would.
-    fn make_resident(table: &mut SetTable<Key>, key: Key, into: LayerAddress) {
+    // Reads and uploads `key` into `cell`, as the streamer would.
+    fn make_resident(table: &mut SetTable<Key>, key: Key, into: CellAddress) {
         let page = page_of(table, key);
         table.start_read(page).unwrap();
         table.finish_read(page, bytes());
         table.start_upload(page, into).unwrap();
-        table.finish_upload(page, into, 7);
+        table.finish_upload(page, into, 7, vk::Offset2D { x: 136, y: 0 });
     }
 
     #[test]
@@ -445,7 +447,7 @@ mod tests {
 
         table.finish_read(page, bytes());
 
-        assert_eq!(table.missing()[0].need, PageNeed::Layer);
+        assert_eq!(table.missing()[0].need, PageNeed::Cell);
     }
 
     #[test]
@@ -453,14 +455,14 @@ mod tests {
         let mut table = SetTable::new();
         table.request([wanted(key(0, 0), 1.0), wanted(key(2, 9), 4.0)]);
         table.apply(1);
-        make_resident(&mut table, key(0, 0), layer(3));
+        make_resident(&mut table, key(0, 0), cell(3));
 
         assert_eq!(
             table.placement(key(2, 9), coarser),
             Some(PagePlacement {
                 page: key(0, 0),
                 slot: 7,
-                layer: 3
+                offset: vk::Offset2D { x: 136, y: 0 }
             })
         );
     }
@@ -473,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unwanted_read_is_cancelled_and_an_unwanted_upload_gives_its_layer_back() {
+    fn an_unwanted_read_is_cancelled_and_an_unwanted_upload_gives_its_cell_back() {
         let mut table = SetTable::new();
         table.request([wanted(key(1, 0), 1.0), wanted(key(1, 1), 1.0)]);
         table.apply(1);
@@ -481,13 +483,13 @@ mod tests {
         let uploading = page_of(&table, key(1, 1));
         table.start_read(uploading).unwrap();
         table.finish_read(uploading, bytes());
-        table.start_upload(uploading, layer(5)).unwrap();
+        table.start_upload(uploading, cell(5)).unwrap();
         table.request([]);
         let cancelled = table.apply(2);
 
         assert!(cancel.load(Ordering::Acquire));
         assert_eq!(cancelled.len(), 1);
-        assert_eq!(cancelled[0].layer, layer(5));
+        assert_eq!(cancelled[0].cell, cell(5));
     }
 
     #[test]
@@ -537,11 +539,11 @@ mod tests {
         let mut table = SetTable::new();
         table.request([wanted(key(0, 0), 1.0)]);
         table.apply(1);
-        make_resident(&mut table, key(0, 0), layer(0));
+        make_resident(&mut table, key(0, 0), cell(0));
         let page = page_of(&table, key(0, 0));
 
-        assert_eq!(table.evict_layer(page), Some(layer(0)));
-        assert_eq!(table.missing()[0].need, PageNeed::Layer);
+        assert_eq!(table.evict_cell(page), Some(cell(0)));
+        assert_eq!(table.missing()[0].need, PageNeed::Cell);
     }
 
     #[test]
@@ -605,11 +607,11 @@ mod tests {
         let mut table = SetTable::new();
         table.request([wanted(key(1, 0), 1.0), wanted(key(1, 1), 1.0)]);
         table.apply(1);
-        let other = LayerAddress {
+        let other = CellAddress {
             chunk: ChunkId { value: 2 },
-            layer: 0,
+            cell: 0,
         };
-        make_resident(&mut table, key(1, 0), layer(0));
+        make_resident(&mut table, key(1, 0), cell(0));
         make_resident(&mut table, key(1, 1), other);
 
         assert_eq!(table.evict_chunk(ChunkId { value: 1 }).len(), 1);

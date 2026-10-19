@@ -372,11 +372,11 @@ mod tests {
     use memory_vulkan::{TestDevice, TexelBlock};
 
     use super::*;
+    use crate::streaming::PagePool;
     use crate::{PageRequest, Residency};
 
     const PAGE_EXTENT: u32 = 64;
     const TEXEL_SIZE: u32 = 4;
-    const LAYERS_PER_CHUNK: usize = 2048;
     const MAX_FRAMES: usize = 2000;
     // An update that takes longer waited on something.
     const STALL: Duration = Duration::from_millis(250);
@@ -475,8 +475,12 @@ mod tests {
             }
         }
 
+        fn cells_per_chunk() -> usize {
+            PagePool::new(Harness::format()).grid().cells() as usize
+        }
+
         fn chunk_size() -> u64 {
-            (LAYERS_PER_CHUNK * Harness::format().page_size()) as u64
+            (Harness::cells_per_chunk() * Harness::format().page_size()) as u64
         }
 
         fn frame(&mut self) {
@@ -574,11 +578,11 @@ mod tests {
             let image = harness.resources.shared.streamer().chunk_image(placement.slot).unwrap();
             let bytes = harness
                 .device
-                .read_layer(
+                .read_region(
                     &image,
                     vk::ImageLayout::GENERAL,
+                    placement.offset,
                     Harness::format().extent,
-                    placement.layer,
                     Harness::format().page_size(),
                 )
                 .unwrap();
@@ -613,14 +617,14 @@ mod tests {
         let mut harness = Harness::new(ResourceLimits::default(), 8);
         let pages = level(6, |index| 4096.0 - index as f32);
         let budget = harness.limit_after_warming_up(&pages, 1.5);
-        let most_important = &pages[..LAYERS_PER_CHUNK];
+        let most_important = &pages[..Harness::cells_per_chunk()];
         harness.run_until(&pages, |harness| harness.all_resident(most_important));
         let reads = harness.reads.load(Ordering::Acquire);
         harness.run_frames(&pages, 60);
 
         assert_eq!(harness.chunk_count(), 1);
         assert!(harness.all_resident(most_important));
-        assert!(!harness.is_resident(pages[LAYERS_PER_CHUNK].key));
+        assert!(!harness.is_resident(pages[Harness::cells_per_chunk()].key));
         assert_eq!(
             harness.reads.load(Ordering::Acquire),
             reads,
@@ -640,7 +644,7 @@ mod tests {
         harness.run_until(&pages, |harness| harness.all_resident(&pages));
         let grown = harness.chunk_count();
 
-        assert_eq!(grown, pages.len().div_ceil(LAYERS_PER_CHUNK));
+        assert_eq!(grown, pages.len().div_ceil(Harness::cells_per_chunk()));
 
         let budget = harness.video_usage() - 2 * Harness::chunk_size();
         harness.resources.set_limits(ResourceLimits {

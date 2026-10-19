@@ -1,5 +1,3 @@
-use std::num::NonZeroU32;
-
 use ash::vk;
 
 const CUBE_FACES: u32 = 6;
@@ -10,10 +8,6 @@ pub enum ImageLayers {
     Single,
     /// Six layers, viewed as a cube.
     Cube,
-    /// Layers viewed as a 2D array.
-    Array {
-        count: NonZeroU32,
-    },
 }
 
 impl ImageLayers {
@@ -21,14 +15,13 @@ impl ImageLayers {
         match self {
             ImageLayers::Single => 1,
             ImageLayers::Cube => CUBE_FACES,
-            ImageLayers::Array { count } => count.get(),
         }
     }
 
     pub(crate) fn create_flags(self) -> vk::ImageCreateFlags {
         match self {
+            ImageLayers::Single => vk::ImageCreateFlags::empty(),
             ImageLayers::Cube => vk::ImageCreateFlags::CUBE_COMPATIBLE,
-            ImageLayers::Single | ImageLayers::Array { .. } => vk::ImageCreateFlags::empty(),
         }
     }
 
@@ -36,7 +29,6 @@ impl ImageLayers {
         match self {
             ImageLayers::Single => vk::ImageViewType::TYPE_2D,
             ImageLayers::Cube => vk::ImageViewType::CUBE,
-            ImageLayers::Array { .. } => vk::ImageViewType::TYPE_2D_ARRAY,
         }
     }
 }

@@ -1,6 +1,6 @@
-// What a wanted page without a layer needs next.
+// What a wanted page without a cell needs next.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PageNeed {
     Read,
-    Layer,
+    Cell,
 }

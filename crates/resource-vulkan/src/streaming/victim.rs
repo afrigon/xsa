@@ -1,6 +1,6 @@
 use crate::streaming::PageOwner;
 
-// A page whose layer a more important page may take.
+// A page whose cell a more important page may take.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Victim {
     pub owner: PageOwner,

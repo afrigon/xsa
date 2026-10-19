@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use anyhow::ensure;
 
 use crate::streaming::{
-    AnySet, ByteUse, CancelledUpload, ChunkId, LayerAddress, LayerUse, MissingPage, PageFormat, PageId, PageOwner,
+    AnySet, ByteUse, CancelledUpload, CellAddress, CellUse, ChunkId, MissingPage, PageFormat, PageId, PageOwner,
     PageSource, ReadOutcome, ReadPage, ReadResult, Residency, SetId, SetStatistics, SetTable,
 };
 use crate::{Job, JobOwner};
@@ -109,16 +109,16 @@ impl<S: PageSource> AnySet for SetState<S> {
         self.table().finish_read(page, result)
     }
 
-    fn start_upload(&self, page: PageId, layer: LayerAddress) -> Option<Arc<[u8]>> {
-        self.table().start_upload(page, layer)
+    fn start_upload(&self, page: PageId, cell: CellAddress) -> Option<Arc<[u8]>> {
+        self.table().start_upload(page, cell)
     }
 
-    fn finish_upload(&self, page: PageId, layer: LayerAddress, slot: u32) {
-        self.table().finish_upload(page, layer, slot);
+    fn finish_upload(&self, page: PageId, cell: CellAddress, slot: u32, offset: ash::vk::Offset2D) {
+        self.table().finish_upload(page, cell, slot, offset);
     }
 
-    fn evict_layer(&self, page: PageId) -> Option<LayerAddress> {
-        self.table().evict_layer(page)
+    fn evict_cell(&self, page: PageId) -> Option<CellAddress> {
+        self.table().evict_cell(page)
     }
 
     fn evict_chunk(&self, chunk: ChunkId) -> Vec<CancelledUpload> {
@@ -129,12 +129,12 @@ impl<S: PageSource> AnySet for SetState<S> {
         self.table().evict_bytes(page);
     }
 
-    fn release(&self) -> Vec<LayerAddress> {
+    fn release(&self) -> Vec<CellAddress> {
         self.table().release()
     }
 
-    fn layer_uses(&self) -> Vec<LayerUse> {
-        self.table().layer_uses().collect()
+    fn cell_uses(&self) -> Vec<CellUse> {
+        self.table().cell_uses().collect()
     }
 
     fn byte_uses(&self) -> Vec<ByteUse> {

@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::streaming::Victim;
 
-// The layers of one pool a page may take: unwanted pages least recently used first, then wanted pages least
+// The cells of one pool a page may take: unwanted pages least recently used first, then wanted pages least
 // important first. A wanted page only gives way to a more important one, so loading in score order converges instead
 // of thrashing. Pinned pages and frozen sets are never in it.
 pub(crate) struct VictimQueue {

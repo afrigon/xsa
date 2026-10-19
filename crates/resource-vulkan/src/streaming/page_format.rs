@@ -1,7 +1,8 @@
 use ash::vk;
 use memory_vulkan::TexelBlock;
 
-/// The size and texel format of a set's pages, one mip level each. Sets with the same format share a pool.
+/// The size and texel format of a set's pages, one mip level each, a whole number of texel blocks across and down.
+/// Sets with the same format share a pool.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PageFormat {
     pub format: vk::Format,

@@ -2,19 +2,18 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use ash::vk;
 use memory_vulkan::{ImageCopy, ImageUpload, MemoryContext};
 
 use crate::streaming::{
-    AnySet, CancelledUpload, Chunk, ChunkId, LayerAddress, MissingPage, PageFormat, PageNeed, PageOwner, PagePool,
+    AnySet, CancelledUpload, CellAddress, Chunk, ChunkId, MissingPage, PageFormat, PageNeed, PageOwner, PagePool,
     PageRetention, PageSource, PageUpload, ReadOutcome, ReadPage, Residency, SetId, SetState, StreamedSet,
     StreamingLog, Victim, VictimQueue,
 };
 use crate::{LoadEnvironment, LoadPriority, MemoryUsage, SoftOwner, SoftUsage, WorkerPool};
 
 // Keeps every streamed set's wanted pages resident as far as the budget allows: reads them on the worker pool, keeps
-// them decoded in RAM, copies them into the layers of its pools' chunks, and evicts what matters least. Pools grow by
-// a chunk when wanted pages find no layer and the budget has room, and shrink when the budget evicts a chunk.
+// them decoded in RAM, copies them into the cells of its pools' chunks, and evicts what matters least. Pools grow by
+// a chunk when wanted pages find no cell and the budget has room, and shrink when the budget evicts a chunk.
 pub(crate) struct Streamer {
     sets: Vec<Arc<dyn AnySet>>,
     pools: HashMap<PageFormat, PagePool>,
@@ -22,7 +21,7 @@ pub(crate) struct Streamer {
     finished: Arc<Mutex<Vec<ReadPage>>>,
     reading: Arc<AtomicUsize>,
     closed: Arc<Mutex<Vec<SetId>>>,
-    // Pools with wanted pages no layer can hold.
+    // Pools with wanted pages no cell can hold.
     starved: HashSet<PageFormat>,
     next_set: u64,
     next_chunk: u64,
@@ -45,7 +44,18 @@ impl Streamer {
         }
     }
 
+    // # Panics
+    //
+    // If `format`'s pages are not a whole number of texel blocks: cells must stay aligned to blocks.
     pub fn register<S: PageSource>(&mut self, source: S, format: PageFormat, name: String) -> StreamedSet<S> {
+        let block = format.texel_block.extent;
+        assert!(
+            format.extent.width.is_multiple_of(block.width) && format.extent.height.is_multiple_of(block.height),
+            "{name}: pages of {:?} are not a whole number of {:?} texel blocks",
+            format.extent,
+            block
+        );
+
         self.next_set += 1;
         let state = Arc::new(SetState::new(SetId { value: self.next_set }, name, format, source));
         self.sets.push(Arc::clone(&state) as Arc<dyn AnySet>);
@@ -129,14 +139,14 @@ impl Streamer {
         for set in &self.sets {
             let frozen = set.residency() == Residency::Frozen;
 
-            for layer_use in set.layer_uses() {
-                if frozen || layer_use.retention == PageRetention::Pinned {
-                    protected.insert(layer_use.layer.chunk);
+            for cell_use in set.cell_uses() {
+                if frozen || cell_use.retention == PageRetention::Pinned {
+                    protected.insert(cell_use.cell.chunk);
                 }
 
-                if let Some(chunk) = usage.get_mut(&layer_use.layer.chunk) {
-                    chunk.last_use = chunk.last_use.max(layer_use.last_use);
-                    chunk.score += layer_use.score.unwrap_or(0.0);
+                if let Some(chunk) = usage.get_mut(&cell_use.cell.chunk) {
+                    chunk.last_use = chunk.last_use.max(cell_use.last_use);
+                    chunk.score += cell_use.score.unwrap_or(0.0);
                 }
             }
         }
@@ -177,7 +187,7 @@ impl Streamer {
     }
 
     // Releases a chunk with every page in it, without copying: its wanted pages fall back to coarser pages until
-    // they find another layer.
+    // they find another cell.
     pub fn release_chunk(&mut self, chunk: ChunkId) -> Option<Chunk> {
         let pool = self.pools.values_mut().find(|pool| pool.chunk(chunk).is_some())?;
         let format = pool.format;
@@ -215,8 +225,8 @@ impl Streamer {
             let set = self.sets.remove(index);
             let pool = &self.pools[&set.format()];
 
-            for layer in set.release() {
-                Streamer::give_back(pool, layer, memory);
+            for cell in set.release() {
+                Streamer::give_back(pool, cell, memory);
             }
 
             self.uploads.retain(|upload| upload.owner.set != id);
@@ -249,18 +259,23 @@ impl Streamer {
             match upload.upload.poll() {
                 Ok(None) => true,
                 Ok(Some(_)) => {
-                    let (_, slot) = pool
-                        .chunk(upload.layer.chunk)
-                        .and_then(Chunk::ready)
-                        .expect("an upload's chunk is ready until the upload completes or is cancelled");
-                    set.finish_upload(upload.owner.page, upload.layer, slot);
+                    let chunk = pool
+                        .chunk(upload.cell.chunk)
+                        .expect("an upload's chunk exists until the upload completes or is cancelled");
+                    let (_, slot) = chunk.ready().expect("a chunk being written is ready");
+                    set.finish_upload(
+                        upload.owner.page,
+                        upload.cell,
+                        slot,
+                        chunk.grid.offset(upload.cell.cell),
+                    );
                     false
                 }
                 Err(err) => {
                     tracing::warn!("{}: uploading a page failed: {err}", set.name());
 
-                    if let Some(layer) = set.evict_layer(upload.owner.page) {
-                        Streamer::give_back(pool, layer, memory);
+                    if let Some(cell) = set.evict_cell(upload.owner.page) {
+                        Streamer::give_back(pool, cell, memory);
                     }
 
                     false
@@ -282,9 +297,9 @@ impl Streamer {
             if let Some(pool) = self
                 .pools
                 .values()
-                .find(|pool| pool.chunk(cancelled.layer.chunk).is_some())
+                .find(|pool| pool.chunk(cancelled.cell.chunk).is_some())
             {
-                Streamer::give_back(pool, cancelled.layer, memory);
+                Streamer::give_back(pool, cancelled.cell, memory);
             }
         }
     }
@@ -312,12 +327,12 @@ impl Streamer {
                         workers.push(Streamer::priority(page.retention), job);
                     }
                 }
-                PageNeed::Layer => self.place(&set, page, environment, &mut victims, &mut returning),
+                PageNeed::Cell => self.place(&set, page, environment, &mut victims, &mut returning),
             }
         }
     }
 
-    // Finds `page` a free layer, or makes one return by evicting a page that matters less.
+    // Finds `page` a free cell, or makes one return by evicting a page that matters less.
     fn place(
         &mut self,
         set: &Arc<dyn AnySet>,
@@ -329,8 +344,8 @@ impl Streamer {
         let format = set.format();
         let pool = self.pools.get_mut(&format).expect("a set's pool exists");
 
-        if let Some(layer) = pool.take_layer(page.retention) {
-            self.upload(set, page, layer, environment);
+        if let Some(cell) = pool.take_cell(page.retention) {
+            self.upload(set, page, cell, environment);
             return;
         }
 
@@ -351,23 +366,21 @@ impl Streamer {
         };
 
         if let Some(victim_set) = self.set(victim.owner.set)
-            && let Some(layer) = victim_set.evict_layer(victim.owner.page)
+            && let Some(cell) = victim_set.evict_cell(victim.owner.page)
         {
             self.uploads.retain(|upload| upload.owner != victim.owner);
-            Streamer::give_back(&self.pools[&format], layer, &environment.memory);
+            Streamer::give_back(&self.pools[&format], cell, &environment.memory);
         }
     }
 
-    fn upload(&mut self, set: &Arc<dyn AnySet>, page: MissingPage, layer: LayerAddress, environment: &LoadEnvironment) {
+    fn upload(&mut self, set: &Arc<dyn AnySet>, page: MissingPage, cell: CellAddress, environment: &LoadEnvironment) {
         let pool = &self.pools[&set.format()];
-        let Some(bytes) = set.start_upload(page.page, layer) else {
-            pool.allocator.give_back(layer)();
+        let Some(bytes) = set.start_upload(page.page, cell) else {
+            pool.allocator.give_back(cell)();
             return;
         };
-        let (image, _) = pool
-            .chunk(layer.chunk)
-            .and_then(Chunk::ready)
-            .expect("a free layer is in a ready chunk");
+        let chunk = pool.chunk(cell.chunk).expect("a free cell is in a chunk of its pool");
+        let (image, _) = chunk.ready().expect("a free cell is in a ready chunk");
         let format = pool.format;
         let upload = ImageUpload {
             data: vec![Box::new(bytes)],
@@ -375,8 +388,8 @@ impl Streamer {
                 data: 0,
                 offset: 0,
                 mip_level: 0,
-                array_layer: layer.layer,
-                image_offset: vk::Offset2D::default(),
+                array_layer: 0,
+                image_offset: chunk.grid.offset(cell.cell),
                 extent: format.extent,
             }],
             texel_block: format.texel_block,
@@ -391,7 +404,7 @@ impl Streamer {
                 set: set.id(),
                 page: page.page,
             },
-            layer,
+            cell,
             upload: ticket.into(),
         });
     }
@@ -403,16 +416,16 @@ impl Streamer {
             .flat_map(|set| {
                 let id = set.id();
 
-                set.layer_uses()
+                set.cell_uses()
                     .into_iter()
-                    .filter(|layer_use| layer_use.retention == PageRetention::Evictable)
-                    .map(move |layer_use| Victim {
+                    .filter(|cell_use| cell_use.retention == PageRetention::Evictable)
+                    .map(move |cell_use| Victim {
                         owner: PageOwner {
                             set: id,
-                            page: layer_use.page,
+                            page: cell_use.page,
                         },
-                        last_use: layer_use.last_use,
-                        score: layer_use.score,
+                        last_use: cell_use.last_use,
+                        score: cell_use.score,
                     })
             })
             .collect()
@@ -430,9 +443,9 @@ impl Streamer {
         self.sets.iter().find(|set| set.id() == id)
     }
 
-    // Returns `layer` to `pool` once the GPU finished every frame that may sample it and every copy that may write it.
-    fn give_back(pool: &PagePool, layer: LayerAddress, memory: &MemoryContext) {
-        let give_back = pool.allocator.give_back(layer);
+    // Returns `cell` to `pool` once the GPU finished every frame that may sample it and every copy that may write it.
+    fn give_back(pool: &PagePool, cell: CellAddress, memory: &MemoryContext) {
+        let give_back = pool.allocator.give_back(cell);
         memory.defer_action(move |_| give_back());
     }
 
