@@ -64,14 +64,16 @@ LayerRead readLayerAt(LayerCoordinates coordinates, int layer, int finer) {
     }
 
     read.level = pageLevel(page);
-    read.texel = pageTexel(coordinates.tile, read.level, pageKey(coordinates.tile, read.level, finer, part),
-                           coordinates.offset);
+    read.texel =
+        pageTexel(coordinates.tile, read.level, pageKey(coordinates.tile, read.level, finer, part), coordinates.offset);
     Texture2D atlas = textures[NonUniformResourceIndex(pageSlot(page))];
     float2 size;
     atlas.GetDimensions(size.x, size.y);
     float texelsPerOffset = pageInterior / 2.0 * exp2(float(read.level));
     float2 uv = (float2(pageOffset(page)) + read.texel + 0.5) / size;
-    read.value = atlas.SampleGrad(wrappingSampler, uv, coordinates.offsetPerPixelX * texelsPerOffset / size,
+    read.value = atlas.SampleGrad(wrappingSampler,
+                                  uv,
+                                  coordinates.offsetPerPixelX * texelsPerOffset / size,
                                   coordinates.offsetPerPixelY * texelsPerOffset / size);
     return read;
 }

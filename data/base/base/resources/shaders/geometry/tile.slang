@@ -127,7 +127,8 @@ float3 sphereOffset(TileData tile, int2 cell) {
 // page's first stored texel. The tile's center comes from its whole column and row, exact at every level.
 float2 pageTexel(TileData tile, uint level, uint2 pageKey, float2 offset) {
     float scale = exp2(float(int(level) - int(tile.depth)));
-    float2 center = (float2(tile.x, tile.y) * 2.0 + 1.0) * (pageInterior / 2.0) * scale - float2(pageKey) * pageInterior;
+    float2 center =
+        (float2(tile.x, tile.y) * 2.0 + 1.0) * (pageInterior / 2.0) * scale - float2(pageKey) * pageInterior;
     return center + offset * (pageInterior / 2.0) * exp2(float(level)) + pageBorder - 0.5;
 }
 

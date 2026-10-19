@@ -29,11 +29,13 @@ data/<pack>/
       bodies/                               intrinsic properties of each body
       systems/                              how bodies relate: hierarchy and orbits
       simulations/                          which systems make up a playable simulation
+      terrains/                             each body's heights
       parts/                                rocket parts (reserved)
     resources/                              presentation — read by the client
       objects/                              mirrors data/ one-to-one
         bodies/  systems/  simulations/  parts/
       materials/                            shader and its parameters
+      terrains/                             terrain layers materials shade with
       shaders/                              SPIR-V shaders (base only, see below)
       textures/  models/  sounds/  fonts/   shared assets, organized freely
       theme/                                design system: colors, roles, typefaces, text styles
@@ -223,37 +225,37 @@ of them is binary.
 
 ### Terrains — `<namespace>/data/terrains/`
 
-A body's shape: a height map and the range its heights span. A body names its
-terrain with `terrain "<id>"`.
+A body's shape: its heights. A body names its terrain with `terrain "<id>"`.
 
 ```kdl
 height-map "luna"
-minimum -9041
-maximum 10752
 ```
 
-- **`height-map`:** the height map, relative to `data/terrains/` like every
+- **`height-map`:** the heights, relative to `data/terrains/` like every
   reference is relative to its kind's folder: `luna` is
-  `data/terrains/luna.ktx2`.
-- **`minimum`, `maximum`** (m): the lowest and highest heights in the map,
-  relative to the body's `radius`, signed.
+  `data/terrains/luna.terrain`, a terrain layer (below) of heights in meters
+  relative to the body's `radius`. Each page stores 16-bit values over its own
+  range; the body's overall range is the combined range of its six level 0
+  pages.
 
-The height map is a KTX2 cube map, `R32_SFLOAT` and uncompressed: six square
-faces in Vulkan's face order and orientation, +X, −X, +Y, −Y, +Z, −Z of the
-body's frame (+X at longitude 0, +Z the north pole). It is sampled by
-direction, so neighbouring faces blend across their edges and no face
-stretches toward the poles. Each texel is a height in meters relative to the
-body's `radius`. It carries its full mip chain,
-each level the average of the one above, so the game only reads and uploads
-it. The server and every client read the same file, so the terrain has one
-resolution whatever texture tier a player installs.
+The heights are data, so the server and every client share one terrain
+whatever texture tier a player installs. The game streams pages: only those
+the tiles it draws need, at the level they need, are loaded.
 
 #### Terrain layers
 
-Every terrain layer (the height map, and in time its colour, normals and Hapke
-maps) is a KTX2 cube map in the same shape, which the game streams in pages:
+Every terrain layer (the heights, colour, normals and Hapke maps) is a
+`.terrain` file: each cube face cut into pages at every level of detail (see
+the `resource-loader` crate's `terrain` module). The heights live in
+`data/terrains/`; the other layers are resources in `resources/terrains/`,
+named by the body's material. A creator provides each layer as a KTX2 cube
+map:
 
-- six square faces in Vulkan's face order and orientation, as above;
+- six square faces in Vulkan's face order and orientation, +X, −X, +Y, −Y,
+  +Z, −Z of the body's frame (+X at longitude 0, +Z the north pole);
+- equal-angle faces: a face coordinate s from −1 to 1 lies at the angle
+  π/4 · s from the face's center, so texels are evenly spaced by angle and
+  their ground size varies far less than on a plain (gnomonic) cube;
 - a face size that is a power of two, at least 128;
 - its full mip chain, each level the average of the one above;
 - uncompressed texels, in the layer's format:
@@ -262,13 +264,13 @@ maps) is a KTX2 cube map in the same shape, which the game streams in pages:
 | --- | --- |
 | Heights | `R32_SFLOAT`, meters relative to the body's `radius` |
 | Colour | `R8G8B8A8_SRGB` |
-| Normals | `R8G8_UNORM` |
+| Normals | `R8G8_UNORM`, tangent space in each face's frame (see Materials) |
 | Hapke maps | `R16G16B16A16_SFLOAT` |
 
 Packaging converts each layer into the paged file the game reads, compressing
-it there; a creator only provides the cube maps. `launchpad terrain create
-[--height] <cube map>` runs that conversion on its own to check a layer
-before packaging, and its `--help` lists each face's orientation.
+it there. `launchpad terrain create [--height] <cube map>` runs that
+conversion on its own to check a layer before packaging, and its `--help`
+lists each face's orientation.
 
 ## Resources
 
@@ -308,26 +310,32 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
   an emissive texture needs **`emissive-luminance`** (cd/m² for a texture
   value of 1). Without a color texture the surface takes the base color. A
   texture no loaded pack provides is skipped with a warning.
-- **`shader "base:hapke"`** with the same nodes as `base:lambert`, shaded with
-  Hapke's model of particulate surfaces (Hapke 2012, eq. 12.55). The color
-  map's linear values are the diffusive reflectance r0, from which the shader
-  derives the single-scattering albedo w; two more textures hold the other
-  standard parameters, as published: **`medium-texture`** (the particulate
-  medium: phase-function lobe width b, lobe balance c, macroscopic roughness
-  θ̄ in degrees, porosity coefficient K) and **`opposition-texture`** (the
+- **`shader "base:hapke"`** for a body's terrain, shaded with Hapke's model
+  of particulate surfaces (Hapke 2012, eq. 12.55), with **`base-color`**,
+  optional **`emissive-texture`** and **`emissive-luminance`** as for
+  `base:lambert`, and its maps as terrain layers (`resources/terrains/`, see
+  Terrain layers), each a layer id: **`color-terrain`** (sRGB albedo),
+  **`normal-terrain`**, and two layers holding Hapke's other standard
+  parameters, as published: **`medium-terrain`** (the particulate medium:
+  phase-function lobe width b, lobe balance c, macroscopic roughness θ̄ in
+  degrees, porosity coefficient K) and **`opposition-terrain`** (the
   opposition effects: shadow-hiding amplitude B_S0 and width h_S,
   coherent-backscatter amplitude B_C0 and width h_C), both half-float,
-  channels in that order. A body with one published value per parameter ships
-  them as 1×1 textures. When no loaded pack provides either of them, the
-  material is shaded with Lambert, with a warning.
+  channels in that order. The color layer's linear values are the diffusive
+  reflectance r0, from which the shader derives the single-scattering albedo
+  w. A layer no loaded pack provides is skipped with a warning: without color
+  the surface takes the base color, and without both Hapke layers it is
+  shaded with Lambert. Normal layers are tangent space in the frame of the
+  face they lie on: red along the face's columns and green across them, both
+  on the sphere's tangent plane; z is reconstructed.
 - **`shader "base:emissive"`** with optional **`color`** (a tint, white by
   default) and **`luminance`** (cd/m²). A star takes its luminance and color
   from its data and needs neither.
 
-Maps are equirectangular with the first row at the south pole, longitude 0 at
-u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
-Parallax, which Sol's textures follow). Normal maps are tangent-space with red
-toward west and green toward north; z is reconstructed.
+Textures are equirectangular with the first row at the south pole, longitude 0
+at u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
+Parallax, which Sol's textures follow). Normal textures are tangent-space with
+red toward west and green toward north; z is reconstructed.
 
 ### Lenses — `<namespace>/resources/lenses/`
 
