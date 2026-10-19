@@ -2,11 +2,6 @@ import common.scene;
 
 static const float fullBrightnessPixels = 16.0;
 
-[shader("vertex")]
-VertexOutput vertexMain(VertexInput input) {
-    return transformVertex(input);
-}
-
 // Red and green are the horizontal and vertical speeds across the screen; black is still.
 [shader("fragment")]
 SurfaceOutput fragmentMain(VertexOutput input) {

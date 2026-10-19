@@ -1,10 +1,5 @@
 import common.scene;
 
-[shader("vertex")]
-VertexOutput vertexMain(VertexInput input) {
-    return transformVertex(input);
-}
-
 [shader("fragment")]
 SurfaceOutput fragmentMain(VertexOutput input) {
     float3 normal = normalize(input.normal);

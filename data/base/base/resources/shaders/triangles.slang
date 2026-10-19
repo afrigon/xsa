@@ -1,10 +1,5 @@
 import common.scene;
 
-[shader("vertex")]
-VertexOutput vertexMain(VertexInput input) {
-    return transformVertex(input);
-}
-
 // PCG integer hash: unlike a plain multiply, it sends 0 to a well-mixed value rather than to black.
 uint pcgHash(uint value) {
     uint state = value * 747796405u + 2891336453u;

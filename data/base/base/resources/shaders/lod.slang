@@ -1,4 +1,4 @@
-import common.scene;
+import common.tile;
 
 // Neighboring detail levels get clearly different hues; the cycle repeats every few levels.
 static const float huePerLevel = 0.17;
@@ -7,24 +7,6 @@ static const float cellLineShade = 0.55;
 static const float tileEdgeShade = 0.1;
 static const float lineWidthPixels = 1.0;
 static const float tileEdgeWidthPixels = 2.0;
-
-struct LodVertexOutput {
-    VertexOutput surface;
-    float2 cell;
-    nointerpolation int detail;
-    nointerpolation uint gridCells;
-};
-
-[shader("vertex")]
-LodVertexOutput vertexMain(VertexInput input) {
-    TileData tile = currentTile(input.instance);
-    LodVertexOutput output;
-    output.surface = transformVertex(input);
-    output.cell = float2(input.cell);
-    output.detail = tile.detail;
-    output.gridCells = tile.gridCells;
-    return output;
-}
 
 float3 hueColor(float hue) {
     float3 channels = abs(frac(hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0;
@@ -38,7 +20,7 @@ float lineCoverage(float2 coordinates, float widthPixels) {
 }
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(LodVertexOutput input) {
+SurfaceOutput fragmentMain(TileVertexOutput input) {
     float3 toCamera = normalize(-input.surface.worldPosition);
     float facing = saturate(dot(normalize(input.surface.normal), toCamera));
     float3 color = hueColor(float(input.detail) * huePerLevel) * lerp(ambientShade, 1.0, facing);

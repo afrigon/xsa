@@ -5,11 +5,6 @@ struct LitData {
     uint padding;
 };
 
-[shader("vertex")]
-VertexOutput vertexMain(VertexInput input) {
-    return transformVertex(input);
-}
-
 [shader("fragment")]
 SurfaceOutput fragmentMain(VertexOutput input) {
     float3 albedo = currentMaterial<LitData>().baseColor;

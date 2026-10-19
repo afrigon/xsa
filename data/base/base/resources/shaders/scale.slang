@@ -1,4 +1,4 @@
-import common.scene;
+import common.tile;
 
 // Each power of ten of meters, from 1 m to 10 km, draws in its own color: range rings bright, height contours darker.
 static const uint decades = 5;
@@ -18,21 +18,6 @@ static const float flatShade = 0.8;
 static const float steepShade = 0.25;
 static const float baseShade = 0.5;
 
-struct ScaleVertexOutput {
-    VertexOutput surface;
-    float heightMeters;
-};
-
-[shader("vertex")]
-ScaleVertexOutput vertexMain(VertexInput input) {
-    ObjectData object = currentObject();
-    TileData tile = currentTile(input.instance);
-    ScaleVertexOutput output;
-    output.surface = transformVertex(input);
-    output.heightMeters = surfaceHeight(tile, object, int2(input.cell)) * length(object.worldFromModel[0].xyz);
-    return output;
-}
-
 // How much of a line through each multiple of `spacing` covers this pixel, faded out where the lines crowd together.
 float lineStrength(float meters, float spacing) {
     float coordinate = meters / spacing;
@@ -44,7 +29,7 @@ float lineStrength(float meters, float spacing) {
 }
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(ScaleVertexOutput input) {
+SurfaceOutput fragmentMain(TileVertexOutput input) {
     ObjectData object = currentObject();
     float3 bodyCenter = float3(object.worldFromModel[0][3], object.worldFromModel[1][3], object.worldFromModel[2][3]);
     float3 up = normalize(-bodyCenter);

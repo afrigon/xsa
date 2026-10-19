@@ -19,11 +19,6 @@ struct PlanetData {
 // Must match ShadingModel::shader_id in client/src/renderer/material.rs.
 static const uint shadingHapke = 0;
 
-[shader("vertex")]
-VertexOutput vertexMain(VertexInput input) {
-    return transformVertex(input);
-}
-
 struct SurfaceCoordinates {
     float2 uv;
     float2 uvPerPixelX;
