@@ -1,16 +1,14 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, ensure};
+use anyhow::Context;
 use xsa_core::simulation::BodyDescription;
 
 use crate::{Document, Id, NodeExtension, PackData, PackStack, ParseContext};
 
-const HEIGHT_MAP_EXTENSION: &str = "ktx2";
+const HEIGHT_MAP_EXTENSION: &str = "terrain";
 
 pub struct TerrainDefinition {
     pub height_map: Option<PathBuf>,
-    pub minimum_height: f64,
-    pub maximum_height: f64,
 }
 
 impl TerrainDefinition {
@@ -37,12 +35,6 @@ impl PackData for TerrainDefinition {
 
     fn parse(document: &Document, context: &ParseContext) -> anyhow::Result<TerrainDefinition> {
         let height_map = context.parse_id(document.node("height-map")?.string_argument()?)?;
-        let minimum_height = document.node("minimum")?.number_argument()?;
-        let maximum_height = document.node("maximum")?.number_argument()?;
-        ensure!(
-            minimum_height <= maximum_height,
-            "`minimum` ({minimum_height}) is above `maximum` ({maximum_height})"
-        );
 
         // A missing height map leaves a smooth body, so content loads before its generated files exist.
         let height_map = match context
@@ -56,10 +48,6 @@ impl PackData for TerrainDefinition {
             }
         };
 
-        Ok(TerrainDefinition {
-            height_map,
-            minimum_height,
-            maximum_height,
-        })
+        Ok(TerrainDefinition { height_map })
     }
 }
