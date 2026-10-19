@@ -124,6 +124,17 @@ kinds (height maps, lens textures) through its `ResourceKind` trait.
   `-vvv` / `-q` to change it, `RUST_LOG` to filter per crate
   (`RUST_LOG=xsa_client=debug`).
 
+## Terms
+
+Names in code, data and documents use these words in these meanings only:
+
+- **Terrain:** a body's shape and appearance seen from a distance, modeled after real data (heights, colour,
+  normals, Hapke maps).
+- **Terrain detail:** procedural detail added up close.
+- **Surface:** the materials (textures) of the ground up close.
+- **Biome:** a region's kind of ground.
+- **Scatter:** props placed on the ground: rocks, trees, bushes.
+
 ## Coordinates, units and precision
 
 - **SI units** everywhere: meters, seconds, radians internally.
