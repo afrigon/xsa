@@ -51,6 +51,7 @@ impl ResourcesDocument {
             max_video_memory_usage: self
                 .max_video_memory_usage
                 .map_or(defaults.max_video_memory_usage, bytes),
+            read_delay: defaults.read_delay,
         }
     }
 

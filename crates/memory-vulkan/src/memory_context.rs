@@ -192,13 +192,14 @@ impl MemoryContext {
         requirements: vk::MemoryRequirements,
         location: MemoryLocation,
         linear: bool,
+        allocation_scheme: AllocationScheme,
     ) -> Result<DeviceObject<Allocation>, MemoryError> {
         let allocation = self.allocator().allocate(&AllocationCreateDesc {
             name,
             requirements,
             location,
             linear,
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            allocation_scheme,
         })?;
 
         Ok(DeviceObject::new(self, allocation))

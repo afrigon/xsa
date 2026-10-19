@@ -2,13 +2,16 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use ash::vk;
-use memory_vulkan::{BindlessBinding, BindlessSlot, BindlessTable, GpuUpload, Image, ImageDescription, ImageLayers};
+use memory_vulkan::{
+    BindlessBinding, BindlessSlot, BindlessTable, GpuUpload, Image, ImageDescription, ImageLayers, ImageMemory,
+};
 
 use crate::LoadEnvironment;
 use crate::streaming::{ChunkId, PageFormat};
 
 // One texture array of a pool, a page per layer, read by shaders through its bindless slot. It stays in `GENERAL`
-// layout, where layers are written while frames sample the others.
+// layout, where layers are written while frames sample the others. Its memory is its own, so adding or releasing it
+// moves video memory usage by its size.
 pub(crate) struct Chunk {
     pub id: ChunkId,
     pub layers: u32,
@@ -45,10 +48,13 @@ impl Chunk {
                 name: "streamed pages",
                 extent: format.extent,
                 format: format.format,
-                usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+                usage: vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::TRANSFER_SRC,
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: 1,
                 layers: ImageLayers::Array { count: layers },
+                memory: ImageMemory::Dedicated,
                 sharing: environment.transfer.sharing(),
             },
         )?;

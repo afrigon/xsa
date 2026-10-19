@@ -1,6 +1,6 @@
 use ash::vk;
 
-use crate::{ImageLayers, QueueSharing};
+use crate::{ImageLayers, ImageMemory, QueueSharing};
 
 pub struct ImageDescription<'a> {
     pub name: &'a str,
@@ -11,5 +11,6 @@ pub struct ImageDescription<'a> {
     pub aspect: vk::ImageAspectFlags,
     pub mip_levels: u32,
     pub layers: ImageLayers,
+    pub memory: ImageMemory,
     pub sharing: QueueSharing,
 }

@@ -442,4 +442,25 @@ impl Streamer {
             PageRetention::Pinned => LoadPriority::High,
         }
     }
+
+    // The image of the chunk shaders read at `slot`.
+    #[cfg(test)]
+    pub fn chunk_image(&self, slot: u32) -> Option<Arc<memory_vulkan::Image>> {
+        self.pools
+            .values()
+            .flat_map(PagePool::chunks)
+            .filter_map(Chunk::ready)
+            .find(|(_, chunk_slot)| *chunk_slot == slot)
+            .map(|(image, _)| Arc::clone(image))
+    }
+
+    #[cfg(test)]
+    pub fn video_bytes(&self) -> u64 {
+        self.pools.values().map(PagePool::video_bytes).sum()
+    }
+
+    #[cfg(test)]
+    pub fn chunk_count(&self) -> usize {
+        self.pools.values().map(|pool| pool.chunks().len()).sum()
+    }
 }

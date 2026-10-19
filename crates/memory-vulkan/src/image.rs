@@ -1,8 +1,8 @@
 use ash::vk;
 use gpu_allocator::MemoryLocation;
-use gpu_allocator::vulkan::Allocation;
+use gpu_allocator::vulkan::{Allocation, AllocationScheme};
 
-use crate::{DeviceObject, ImageDescription, ImageLayers, MemoryContext, MemoryError};
+use crate::{DeviceObject, ImageDescription, ImageLayers, ImageMemory, MemoryContext, MemoryError};
 
 /// An image in GPU memory and a view of all its levels and layers.
 pub struct Image {
@@ -34,7 +34,17 @@ impl Image {
             .initial_layout(vk::ImageLayout::UNDEFINED);
         let image = DeviceObject::new(memory, unsafe { device.create_image(&create_info, None) }?);
         let requirements = unsafe { device.get_image_memory_requirements(image.handle()) };
-        let allocation = memory.allocate(description.name, requirements, MemoryLocation::GpuOnly, false)?;
+        let allocation_scheme = match description.memory {
+            ImageMemory::Shared => AllocationScheme::GpuAllocatorManaged,
+            ImageMemory::Dedicated => AllocationScheme::DedicatedImage(image.handle()),
+        };
+        let allocation = memory.allocate(
+            description.name,
+            requirements,
+            MemoryLocation::GpuOnly,
+            false,
+            allocation_scheme,
+        )?;
         unsafe { device.bind_image_memory(image.handle(), allocation.get().memory(), allocation.get().offset()) }?;
         let view = Image::create_view_of(
             memory,

@@ -1,5 +1,5 @@
 use ash::vk;
-use memory_vulkan::{Buffer, Image, ImageDescription, ImageLayers, MemoryContext, QueueSharing};
+use memory_vulkan::{Buffer, Image, ImageDescription, ImageLayers, ImageMemory, MemoryContext, QueueSharing};
 use xui::ATLAS_SIZE;
 
 const FORMAT: vk::Format = vk::Format::R8_UNORM;
@@ -24,6 +24,7 @@ impl AtlasImage {
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: 1,
                 layers: ImageLayers::Single,
+                memory: ImageMemory::Shared,
                 sharing: QueueSharing::Exclusive,
             },
         )?;

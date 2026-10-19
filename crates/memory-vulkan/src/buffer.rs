@@ -1,6 +1,6 @@
 use ash::vk;
 use gpu_allocator::MemoryLocation;
-use gpu_allocator::vulkan::Allocation;
+use gpu_allocator::vulkan::{Allocation, AllocationScheme};
 
 use crate::{DeviceObject, MemoryContext, MemoryError, QueueSharing};
 
@@ -31,7 +31,13 @@ impl Buffer {
             .queue_family_indices(sharing.families());
         let buffer = DeviceObject::new(memory, unsafe { device.create_buffer(&create_info, None) }?);
         let requirements = unsafe { device.get_buffer_memory_requirements(buffer.handle()) };
-        let allocation = memory.allocate(name, requirements, location, true)?;
+        let allocation = memory.allocate(
+            name,
+            requirements,
+            location,
+            true,
+            AllocationScheme::GpuAllocatorManaged,
+        )?;
         unsafe { device.bind_buffer_memory(buffer.handle(), allocation.get().memory(), allocation.get().offset()) }?;
         let device_address = usage
             .contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)

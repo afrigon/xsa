@@ -1,6 +1,8 @@
 use anyhow::ensure;
 use ash::vk;
-use memory_vulkan::{BindlessBinding, Image, ImageCopy, ImageDescription, ImageLayers, ImageUpload, TexelBlock};
+use memory_vulkan::{
+    BindlessBinding, Image, ImageCopy, ImageDescription, ImageLayers, ImageMemory, ImageUpload, TexelBlock,
+};
 use resource_loader::texture::TextureImage;
 
 use crate::LoadContext;
@@ -60,6 +62,7 @@ impl TextureUpload {
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: self.image.mip_levels(),
                 layers,
+                memory: ImageMemory::Shared,
                 sharing: context.transfer.sharing(),
             },
         )?;
