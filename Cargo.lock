@@ -3314,6 +3314,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "glam",
+ "resource-loader",
  "xsa-units",
 ]
 
