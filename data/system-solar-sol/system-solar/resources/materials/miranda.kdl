@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.3243 0.3283 0.3339
 color-texture "bodies/miranda/color"
 normal-texture "bodies/miranda/normal"
-hapke medium-texture="bodies/miranda/hapke-medium" opposition-texture="bodies/miranda/hapke-opposition"
+medium-texture "bodies/miranda/hapke-medium"
+opposition-texture "bodies/miranda/hapke-opposition"

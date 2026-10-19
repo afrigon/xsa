@@ -3,10 +3,10 @@ use render_graph_vulkan::{Attachment, PassContext, PassDeclaration, PassError, R
 
 use super::ForwardResources;
 use super::forward_pass::{DEPTH_FORMAT, HDR_FORMAT, MOTION_FORMAT};
+use crate::renderer::ShaderBinaries;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
-use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
 const NO_OBJECT: usize = 0;
@@ -22,7 +22,7 @@ impl SkyboxPass {
             &gpu.memory,
             &gpu.device,
             &GraphicsPipelineDescription {
-                spirv: &binaries.shaders[Shader::Skybox.index()],
+                spirv: &binaries.skybox,
                 color_formats: &[HDR_FORMAT, MOTION_FORMAT],
                 depth_format: Some(DEPTH_FORMAT),
                 depth_compare_op: vk::CompareOp::GREATER_OR_EQUAL,

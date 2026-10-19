@@ -295,40 +295,39 @@ skybox texture="skyboxes/deep-star-maps" frame="equatorial" luminance=0.05
 ### Materials — `<namespace>/resources/materials/`
 
 ```kdl
-shader "base:lit"
+shader "base:lambert"
 base-color 0.1 0.25 0.6
 ```
 
 Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 (cd/m²), and emissive values are luminances in cd/m².
 
-- **`shader "base:lit"`** with **`base-color`**: the albedo (linear red green
-  blue).
-- **`shader "base:emissive"`** with optional **`color`** (a tint, white by
-  default) and **`luminance`** (cd/m²). A star takes its luminance and color
-  from its data and needs neither.
-- **`shader "base:planet"`** with **`base-color`** (the body's average albedo,
+- **`shader "base:lambert"`** with **`base-color`** (the average albedo,
   linear red green blue) and optional **`color-texture`** (sRGB albedo),
   **`normal-texture`** and **`emissive-texture`** (sRGB), each a texture id;
   an emissive texture needs **`emissive-luminance`** (cd/m² for a texture
   value of 1). Without a color texture the surface takes the base color. A
-  texture no loaded pack provides is skipped with a warning, as is a `hapke`
-  node missing either of its textures.
-  An optional **`hapke`** node shades the surface with Hapke's model of
-  particulate surfaces (Hapke 2012, eq. 12.55) instead of Lambert. The color
+  texture no loaded pack provides is skipped with a warning.
+- **`shader "base:hapke"`** with the same nodes as `base:lambert`, shaded with
+  Hapke's model of particulate surfaces (Hapke 2012, eq. 12.55). The color
   map's linear values are the diffusive reflectance r0, from which the shader
-  derives the single-scattering albedo w; the node names the textures holding
-  the other standard parameters, as published: `medium-texture` (the
-  particulate medium: phase-function lobe width b, lobe balance c, macroscopic
-  roughness θ̄ in degrees, porosity coefficient K) and `opposition-texture`
-  (the opposition effects: shadow-hiding amplitude B_S0 and width h_S,
+  derives the single-scattering albedo w; two more textures hold the other
+  standard parameters, as published: **`medium-texture`** (the particulate
+  medium: phase-function lobe width b, lobe balance c, macroscopic roughness
+  θ̄ in degrees, porosity coefficient K) and **`opposition-texture`** (the
+  opposition effects: shadow-hiding amplitude B_S0 and width h_S,
   coherent-backscatter amplitude B_C0 and width h_C), both half-float,
   channels in that order. A body with one published value per parameter ships
-  them as 1×1 textures.
-  Maps are equirectangular with the first row at the south pole, longitude 0
-  at u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
-  Parallax, which Sol's textures follow). Normal maps are tangent-space with
-  red toward west and green toward north; z is reconstructed.
+  them as 1×1 textures. When no loaded pack provides either of them, the
+  material is shaded with Lambert, with a warning.
+- **`shader "base:emissive"`** with optional **`color`** (a tint, white by
+  default) and **`luminance`** (cd/m²). A star takes its luminance and color
+  from its data and needs neither.
+
+Maps are equirectangular with the first row at the south pole, longitude 0 at
+u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
+Parallax, which Sol's textures follow). Normal maps are tangent-space with red
+toward west and green toward north; z is reconstructed.
 
 ### Lenses — `<namespace>/resources/lenses/`
 
@@ -408,7 +407,7 @@ go to `target/lens-bake/`.
 ### Shaders — `base/resources/shaders/`
 
 The built-in shaders live in the base pack as Slang sources compiled to SPIR-V
-by `mise run shaders`; the game loads them by id (`base:lit`). Shaders from
+by `mise run shaders`; materials name them by id (`base:lambert`). Shaders from
 other packs, with their own material properties, are planned.
 
 ### Textures — `<namespace>/resources/textures/`

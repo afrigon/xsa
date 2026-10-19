@@ -130,7 +130,7 @@ class Luna(Recipe):
         )
 
         hapke = self._hapke(context)
-        context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
+        context.materials.write_textured("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
 
     # Hapke 2012's parameters of one band, as they are, in the medium and opposition textures.
     def _hapke(self, context: BuildContext) -> HapkeMaterial:

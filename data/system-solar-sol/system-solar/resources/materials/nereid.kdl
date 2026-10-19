@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.2381 0.2395 0.2397
 color-texture "bodies/nereid/color"
 normal-texture "bodies/nereid/normal"
-hapke medium-texture="bodies/nereid/hapke-medium" opposition-texture="bodies/nereid/hapke-opposition"
+medium-texture "bodies/nereid/hapke-medium"
+opposition-texture "bodies/nereid/hapke-opposition"

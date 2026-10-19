@@ -12,10 +12,10 @@ class MaterialWriter:
 
     def write_base_color(self, body: str, base_color: Sequence[float]) -> Path:
         path = self.materials / f"{body}.kdl"
-        path.write_text(self.planet(base_color))
+        path.write_text(self.header("lambert", base_color))
         return path
 
-    def write_planet(
+    def write_textured(
         self,
         body: str,
         base_color: np.ndarray,
@@ -24,15 +24,17 @@ class MaterialWriter:
         hapke: HapkeMaterial | None = None,
     ) -> Path:
         path = self.materials / f"{body}.kdl"
-        text = self.planet(base_color) + f'color-texture "{color_texture}"\nnormal-texture "{normal_texture}"\n'
+        shader = "lambert" if hapke is None else "hapke"
+        text = self.header(shader, base_color)
+        text += f'color-texture "{color_texture}"\nnormal-texture "{normal_texture}"\n'
 
         if hapke is not None:
-            text += f'hapke medium-texture="{hapke.medium_texture}" opposition-texture="{hapke.opposition_texture}"\n'
+            text += f'medium-texture "{hapke.medium_texture}"\nopposition-texture "{hapke.opposition_texture}"\n'
 
         path.write_text(text)
         return path
 
     @staticmethod
-    def planet(base_color: Sequence[float]) -> str:
+    def header(shader: str, base_color: Sequence[float]) -> str:
         color = " ".join(f"{component:.4f}" for component in base_color)
-        return f'shader "base:planet"\nbase-color {color}\n'
+        return f'shader "base:{shader}"\nbase-color {color}\n'

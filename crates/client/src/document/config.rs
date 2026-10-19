@@ -17,7 +17,6 @@ mod number_range;
 mod render_document;
 mod resources_document;
 mod shader_choice;
-mod shading_model_choice;
 mod terrain_lod_document;
 mod tonemapper_choice;
 mod white_balance_document;

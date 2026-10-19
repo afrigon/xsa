@@ -1,5 +1,7 @@
 use glam::Mat4;
 
+use super::Shader;
+use super::shader_data::ShaderData;
 use crate::renderer::gpu_data::GpuData;
 
 #[repr(C)]
@@ -14,3 +16,7 @@ pub struct SkyboxData {
 const _: () = assert!(size_of::<SkyboxData>() == 80);
 
 unsafe impl GpuData for SkyboxData {}
+
+impl ShaderData for SkyboxData {
+    const SHADER: Shader = Shader::Skybox;
+}

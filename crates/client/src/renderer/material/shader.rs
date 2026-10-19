@@ -8,10 +8,6 @@ macro_rules! shaders {
         impl Shader {
             pub const ALL: &[Shader] = &[$(Shader::$variant),+];
 
-            pub fn index(self) -> usize {
-                self as usize
-            }
-
             pub fn path(self) -> &'static str {
                 match self {
                     $(Shader::$variant => $file),+
@@ -22,15 +18,15 @@ macro_rules! shaders {
 }
 
 shaders! {
-    Lit => "lit",
-    Planet => "planet",
-    Emissive => "emissive",
-    Normals => "normals",
-    Depth => "depth",
-    Triangles => "triangles",
-    Lighting => "lighting",
-    Motion => "motion",
-    Lod => "lod",
-    Scale => "scale",
+    Lambert => "material/lambert",
+    Hapke => "material/hapke",
+    Emissive => "material/emissive",
+    Normals => "material/debug/normals",
+    Depth => "material/debug/depth",
+    Triangles => "material/debug/triangles",
+    Lighting => "material/debug/lighting",
+    Motion => "material/debug/motion",
+    Lod => "material/debug/lod",
+    Scale => "material/debug/scale",
     Skybox => "skybox",
 }

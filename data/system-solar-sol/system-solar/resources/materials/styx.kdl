@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.6497 0.6424 0.6247
 color-texture "bodies/styx/color"
 normal-texture "bodies/styx/normal"
-hapke medium-texture="bodies/styx/hapke-medium" opposition-texture="bodies/styx/hapke-opposition"
+medium-texture "bodies/styx/hapke-medium"
+opposition-texture "bodies/styx/hapke-opposition"

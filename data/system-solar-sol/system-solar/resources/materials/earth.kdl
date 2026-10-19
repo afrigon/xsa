@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.0869 0.0815 0.0742
 color-texture "bodies/earth/color"
 normal-texture "bodies/earth/normal"
-hapke medium-texture="bodies/earth/hapke-medium" opposition-texture="bodies/earth/hapke-opposition"
+medium-texture "bodies/earth/hapke-medium"
+opposition-texture "bodies/earth/hapke-opposition"

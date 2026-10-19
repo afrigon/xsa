@@ -12,12 +12,13 @@ use render_graph_vulkan::{
 };
 
 use crate::mesh::{GridMesh, GridVertex};
+use crate::renderer::ShaderBinaries;
+use crate::renderer::forward_program::ForwardProgram;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
 use crate::renderer::static_buffer::StaticBuffer;
-use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
 const TRIANGLES_PER_CELL: u64 = 2;
@@ -28,7 +29,7 @@ const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
-    pipelines: HashMap<Shader, GraphicsPipeline>,
+    pipelines: HashMap<ForwardProgram, GraphicsPipeline>,
     grids: GridMesh,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -36,11 +37,10 @@ pub(in crate::renderer) struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
-        let pipelines = ForwardPass::object_shaders()
-            .map(|shader| {
-                let pipeline = ForwardPass::create_pipeline(gpu, &binaries.shaders[shader.index()])?;
-                Ok((shader, pipeline))
-            })
+        let pipelines = binaries
+            .forward
+            .iter()
+            .map(|(program, spirv)| Ok((*program, ForwardPass::create_pipeline(gpu, spirv)?)))
             .collect::<anyhow::Result<_>>()?;
         let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
         // Every frame draws the grid, so it is in GPU memory before the first one.
@@ -76,37 +76,27 @@ impl ForwardPass {
         }
     }
 
-    // The skybox is drawn by its own pass.
-    fn object_shaders() -> impl Iterator<Item = Shader> {
-        Shader::ALL.iter().copied().filter(|shader| *shader != Shader::Skybox)
-    }
-
-    fn pipeline(&self, shader: Shader) -> &GraphicsPipeline {
-        &self.pipelines[&shader]
-    }
-
     fn record_objects(&self, frame: &FrameContext) {
         let recorder = &frame.recorder;
         recorder.set_wireframe(frame.render.wireframe);
         recorder.bind_mesh(&self.vertex_buffer, &self.index_buffer);
 
-        for shader in ForwardPass::object_shaders() {
-            let pipeline = self.pipeline(shader);
+        for (program, pipeline) in &self.pipelines {
             let mut bound = false;
 
             for draw in frame.terrain_draws {
                 let terrain = frame.scene.terrain(draw.terrain);
 
-                if !frame.is_drawable(terrain.material) {
+                if draw.surface.geometry() != program.geometry {
                     continue;
                 }
 
-                let terrain_shader = frame
-                    .render
-                    .shader_override
-                    .unwrap_or(frame.material(terrain.material).shader());
+                let Some(material_shader) = frame.material(terrain.material).shader() else {
+                    continue;
+                };
+                let terrain_shader = frame.render.shader_override.unwrap_or(material_shader);
 
-                if terrain_shader != shader {
+                if terrain_shader != program.shader {
                     continue;
                 }
 
@@ -120,7 +110,7 @@ impl ForwardPass {
                     terrain.object.index,
                     terrain.material,
                     draw.first_tile,
-                    Some(draw.terrain),
+                    draw.surface.terrain_data(),
                 );
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);

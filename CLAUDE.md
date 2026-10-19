@@ -182,10 +182,24 @@ kinds (height maps, lens textures) through its `ResourceKind` trait.
   exception is `xui-vulkan`, a library: its shader lives in
   `crates/xui-vulkan/shaders/`, is compiled by the same task and is embedded
   in the crate.
-- One top-level file per shader, entry points `vertexMain` and
-  `fragmentMain`. Shared code lives in `shaders/common/` and is only imported.
-- A material shader is registered in the renderer's `shaders!` list, which
-  generates the `Shader` enum.
+- Files are grouped by feature: `geometry/`, `material/` (its reflectance
+  functions in `light/`, the `render.shader.override` views in `debug/`) and
+  `post/` (post-processing); `frame.slang` and `draw.slang` at the root are
+  read by every program. Imports name the full path from the shader root
+  (`import material.light.hapke`), never one relative to the importing file.
+- A program is a file with `[shader(...)]` entry points, `vertexMain` and
+  `fragmentMain`, compiled to a `.spv` next to it; every other file is a
+  module, only imported.
+- A material shader's `vertexMain<G : Geometry>` passes on only the varyings
+  its `fragmentMain` reads. A geometry (how a draw's vertices are placed) is a
+  `struct <Name> : Geometry` in `geometry/`. The task specializes every
+  material with every geometry into `<material>-<geometry>.spv`, one pipeline
+  each.
+- A material shader is named after the model it computes (`lambert`,
+  `hapke`, `emissive`) and registered in the renderer's `shaders!` list, which
+  generates the `Shader` enum; the struct of its parameters implements
+  `ShaderData`, naming that shader. A geometry is registered in the `Geometry`
+  enum.
 - **Struct layouts must match between Slang and Rust.** Rust size assertions
   can't see Slang's layout: after changing a shared struct, check `Offset` and
   `ArrayStride` in `spirv-dis` output. glam's `Mat4` forces 16-byte alignment,
