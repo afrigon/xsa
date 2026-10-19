@@ -2,7 +2,7 @@ use glam::{Mat3, Mat4};
 use resource_vulkan::{CubeMap, ResourceHandle};
 
 use super::skybox_data::SkyboxData;
-use super::{Material, Shader};
+use super::{Material, MaterialData};
 
 pub struct SkyboxMaterial {
     pub cube_map: ResourceHandle<CubeMap>,
@@ -11,16 +11,13 @@ pub struct SkyboxMaterial {
 }
 
 impl Material for SkyboxMaterial {
-    type Data = SkyboxData;
-    const SHADER: Shader = Shader::Skybox;
-
     // None until its cube map is loaded.
-    fn gpu_data(&self) -> Option<SkyboxData> {
-        Some(SkyboxData {
+    fn gpu_data(&self) -> Option<MaterialData> {
+        Some(MaterialData::new(SkyboxData {
             orientation: Mat4::from_mat3(self.orientation),
             cube_map: self.cube_map.get()?.index(),
             luminance: self.luminance,
             padding: [0; 2],
-        })
+        }))
     }
 }

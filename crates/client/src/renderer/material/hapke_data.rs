@@ -1,30 +1,26 @@
-use super::{HapkeParameters, NO_TEXTURE};
+use glam::Vec3;
+
+use super::Shader;
+use super::shader_data::ShaderData;
+use crate::renderer::gpu_data::GpuData;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(super) struct HapkeData {
-    pub medium_texture: u32,
-    pub opposition_texture: u32,
+pub struct HapkeData {
+    pub(super) base_color: Vec3,
+    pub(super) color_texture: u32,
+    pub(super) normal_texture: u32,
+    pub(super) emissive_texture: u32,
+    pub(super) emissive_luminance: f32,
+    pub(super) medium_texture: u32,
+    pub(super) opposition_texture: u32,
+    pub(super) padding: [u32; 3],
 }
 
-impl HapkeData {
-    pub const NONE: HapkeData = HapkeData {
-        medium_texture: NO_TEXTURE,
-        opposition_texture: NO_TEXTURE,
-    };
-}
+const _: () = assert!(size_of::<HapkeData>() == 48);
 
-impl HapkeData {
-    // The shader reads both maps once it has the medium, so none until both are ready.
-    pub fn of(hapke: Option<&HapkeParameters>) -> HapkeData {
-        let indices = hapke.and_then(|hapke| Some((hapke.medium.get()?.index(), hapke.opposition.get()?.index())));
+unsafe impl GpuData for HapkeData {}
 
-        match indices {
-            Some((medium_texture, opposition_texture)) => HapkeData {
-                medium_texture,
-                opposition_texture,
-            },
-            None => HapkeData::NONE,
-        }
-    }
+impl ShaderData for HapkeData {
+    const SHADER: Shader = Shader::Hapke;
 }

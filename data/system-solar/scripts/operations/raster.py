@@ -171,7 +171,7 @@ class Raster:
         rows = self.pixels.astype(np.float64).mean(axis=1)
         return (rows * weights[:, None]).sum(axis=0) / weights.sum()
 
-    # From a height map in meters: the planet shader's tangent-space normal, whose x is the normal's westward
+    # From a height map in meters: the material shaders' tangent-space normal, whose x is the normal's westward
     # component and y its northward one.
     def normals(self, radius: float) -> "Raster":
         heights = self.pixels[..., 0].astype(np.float64)

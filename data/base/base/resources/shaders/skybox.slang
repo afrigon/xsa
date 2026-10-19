@@ -1,4 +1,4 @@
-import common.scene;
+import material.material;
 
 [[vk::binding(0, 0)]]
 SamplerState linearSampler;

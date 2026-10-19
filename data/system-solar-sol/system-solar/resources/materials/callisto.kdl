@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.1894 0.1521 0.1163
 color-texture "bodies/callisto/color"
 normal-texture "bodies/callisto/normal"
-hapke medium-texture="bodies/callisto/hapke-medium" opposition-texture="bodies/callisto/hapke-opposition"
+medium-texture "bodies/callisto/hapke-medium"
+opposition-texture "bodies/callisto/hapke-opposition"

@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.2770 0.2444 0.1946
 color-texture "bodies/eros/color"
 normal-texture "bodies/eros/normal"
-hapke medium-texture="bodies/eros/hapke-medium" opposition-texture="bodies/eros/hapke-opposition"
+medium-texture "bodies/eros/hapke-medium"
+opposition-texture "bodies/eros/hapke-opposition"

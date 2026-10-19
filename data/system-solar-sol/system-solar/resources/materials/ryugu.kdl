@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.0926 0.0926 0.0926
 color-texture "bodies/ryugu/color"
 normal-texture "bodies/ryugu/normal"
-hapke medium-texture="bodies/ryugu/hapke-medium" opposition-texture="bodies/ryugu/hapke-opposition"
+medium-texture "bodies/ryugu/hapke-medium"
+opposition-texture "bodies/ryugu/hapke-opposition"

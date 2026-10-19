@@ -2,6 +2,7 @@ mod auto_exposure;
 mod captured_image;
 mod command_recorder;
 mod culler;
+mod forward_program;
 mod frame;
 mod frame_context;
 mod frame_inputs;
@@ -40,9 +41,7 @@ pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
 pub use frame_statistics::FrameStatistics;
 pub use lens_lights::LensLights;
-pub use material::{
-    EmissiveMaterial, HapkeParameters, LitMaterial, Material, PlanetMaterial, Shader, ShadingModel, SkyboxMaterial,
-};
+pub use material::{EmissiveMaterial, HapkeMaterial, LambertMaterial, Material, Shader, SkyboxMaterial};
 pub use pending_capture::PendingCapture;
 pub use resource_loader::texture::ColorSpace;
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
@@ -540,9 +539,8 @@ impl Renderer {
             exposure: self.exposure.exposure(),
             tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
-            shading_model: self.render.shading_model.shader_id(),
             vertex_spacing_angle: self.render.terrain_lod.vertex_spacing_pixels / self.focal_length_pixels,
-            padding: [0; 3],
+            padding: [0; 4],
             white_balance: self.white_balance.rows(self.render.white_balance.enabled),
         };
 

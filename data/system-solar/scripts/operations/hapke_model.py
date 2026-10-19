@@ -14,8 +14,8 @@ class Geometry:
     phase: float
 
 
-# Hapke's bidirectional reflectance (Hapke 2012, eq. 12.55), the same model as hapkeTextbook in the planet shader's
-# common/hapke.slang, so a value solved here renders back to the measurement it came from. Angles in radians.
+# Hapke's bidirectional reflectance (Hapke 2012, eq. 12.55), the same model as hapkeReflectance in the base pack's
+# material/light/hapke.slang, so a value solved here renders back to the measurement it came from. Angles in radians.
 @dataclass(frozen=True)
 class HapkeModel:
     lobe_width: np.ndarray

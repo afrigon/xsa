@@ -1,5 +1,5 @@
 use super::{AntialiasingConfig, BloomConfig, LensConfig, TerrainLodConfig, WhiteBalanceConfig};
-use crate::renderer::{Shader, ShadingModel, Tonemapper};
+use crate::renderer::{Shader, Tonemapper};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderConfig {
@@ -11,6 +11,5 @@ pub struct RenderConfig {
     pub antialiasing: AntialiasingConfig,
     pub wireframe: bool,
     pub shader_override: Option<Shader>,
-    pub shading_model: ShadingModel,
     pub terrain_lod: TerrainLodConfig,
 }

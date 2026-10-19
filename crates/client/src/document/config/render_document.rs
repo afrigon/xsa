@@ -3,7 +3,7 @@ use super::{
     LensDocument, TerrainLodDocument, WhiteBalanceDocument,
 };
 use crate::config::RenderConfig;
-use crate::renderer::{Shader, ShadingModel, Tonemapper};
+use crate::renderer::{Shader, Tonemapper};
 
 pub struct RenderDocument {
     tonemapper: Option<Option<Tonemapper>>,
@@ -14,7 +14,6 @@ pub struct RenderDocument {
     antialiasing: AntialiasingDocument,
     wireframe: Option<bool>,
     shader_override: Option<Option<Shader>>,
-    shading_model: Option<ShadingModel>,
     terrain_lod: TerrainLodDocument,
 }
 
@@ -33,12 +32,6 @@ impl RenderDocument {
             names: <Option<Shader> as ConfigChoice>::names,
         },
     );
-    pub const SHADING_MODEL: ConfigKey = ConfigKey::session(
-        "debug.shading",
-        ConfigValueKind::Choice {
-            names: <ShadingModel as ConfigChoice>::names,
-        },
-    );
 
     pub fn read(values: &ConfigValues) -> RenderDocument {
         RenderDocument {
@@ -50,7 +43,6 @@ impl RenderDocument {
             antialiasing: AntialiasingDocument::read(values),
             wireframe: values.bool(RenderDocument::WIREFRAME),
             shader_override: values.choice(RenderDocument::SHADER_OVERRIDE),
-            shading_model: values.choice(RenderDocument::SHADING_MODEL),
             terrain_lod: TerrainLodDocument::read(values),
         }
     }
@@ -65,7 +57,6 @@ impl RenderDocument {
             antialiasing: self.antialiasing.into_config(&defaults.antialiasing),
             wireframe: self.wireframe.unwrap_or(defaults.wireframe),
             shader_override: self.shader_override.unwrap_or(defaults.shader_override),
-            shading_model: self.shading_model.unwrap_or(defaults.shading_model),
             terrain_lod: self.terrain_lod.into_config(&defaults.terrain_lod),
         }
     }
@@ -81,10 +72,6 @@ impl RenderDocument {
         layer.set(
             RenderDocument::SHADER_OVERRIDE.path,
             config.shader_override.config_name().into(),
-        );
-        layer.set(
-            RenderDocument::SHADING_MODEL.path,
-            config.shading_model.config_name().into(),
         );
         TerrainLodDocument::write(&config.terrain_lod, layer);
     }

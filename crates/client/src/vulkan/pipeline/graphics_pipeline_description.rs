@@ -1,8 +1,7 @@
 use ash::vk;
 
 pub struct GraphicsPipelineDescription<'a> {
-    pub vertex_spirv: &'a [u8],
-    pub fragment_spirv: &'a [u8],
+    pub spirv: &'a [u8],
     pub color_formats: &'a [vk::Format],
     pub depth_format: Option<vk::Format>,
     pub depth_compare_op: vk::CompareOp,

@@ -16,8 +16,8 @@ use xsa_units::SimulationTime;
 use super::body_step::BodyStep;
 use crate::camera::Attitude;
 use crate::renderer::{
-    ColorSpace, EmissiveMaterial, HapkeParameters, LightSource, LitMaterial, MaterialHandle, ObjectHandle,
-    PlanetMaterial, Renderer, SceneObject, SkyboxMaterial, Star, Terrain,
+    ColorSpace, EmissiveMaterial, HapkeMaterial, LambertMaterial, LightSource, MaterialHandle, ObjectHandle, Renderer,
+    SceneObject, SkyboxMaterial, Star, Terrain,
 };
 use crate::resource_kinds::{HeightMapRange, TerrainHeightMap};
 use crate::ui::SurfaceReading;
@@ -389,8 +389,49 @@ impl ClientWorld {
     ) -> anyhow::Result<MaterialHandle> {
         let name = format!("{body} material");
 
+        let mut load = |kind: &str, path: &PathBuf, color_space| {
+            let texture = resources.load(LoadRequest::new(path, format!("{body} {kind}")), color_space);
+            group.add(&texture);
+            texture
+        };
+
         match definition {
-            MaterialDefinition::Lit { base_color } => renderer.add_material(&name, LitMaterial { base_color }),
+            MaterialDefinition::Lambert {
+                base_color,
+                color,
+                normal,
+                emissive,
+                emissive_luminance,
+            } => {
+                let material = LambertMaterial {
+                    base_color,
+                    color: color.map(|path| load("color", &path, ColorSpace::Srgb)),
+                    normal: normal.map(|path| load("normal", &path, ColorSpace::Linear)),
+                    emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
+                    emissive_luminance,
+                };
+                renderer.add_material(&name, material)
+            }
+            MaterialDefinition::Hapke {
+                base_color,
+                color,
+                normal,
+                emissive,
+                emissive_luminance,
+                medium,
+                opposition,
+            } => {
+                let material = HapkeMaterial {
+                    base_color,
+                    color: color.map(|path| load("color", &path, ColorSpace::Srgb)),
+                    normal: normal.map(|path| load("normal", &path, ColorSpace::Linear)),
+                    emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
+                    emissive_luminance,
+                    medium: load("hapke medium", &medium, ColorSpace::Linear),
+                    opposition: load("hapke opposition", &opposition, ColorSpace::Linear),
+                };
+                renderer.add_material(&name, material)
+            }
             MaterialDefinition::Emissive { color, luminance } => {
                 let luminance = match star_light {
                     Some(star_light) => star_light.color * star_light.surface_luminance as f32,
@@ -403,33 +444,6 @@ impl ClientWorld {
                         luminance: color * luminance,
                     },
                 )
-            }
-            MaterialDefinition::Planet {
-                base_color,
-                color,
-                normal,
-                emissive,
-                emissive_luminance,
-                hapke,
-            } => {
-                let mut load = |kind: &str, path: &PathBuf, color_space| {
-                    let texture = resources.load(LoadRequest::new(path, format!("{body} {kind}")), color_space);
-                    group.add(&texture);
-                    texture
-                };
-
-                let material = PlanetMaterial {
-                    base_color,
-                    color: color.map(|path| load("color", &path, ColorSpace::Srgb)),
-                    normal: normal.map(|path| load("normal", &path, ColorSpace::Linear)),
-                    emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
-                    emissive_luminance,
-                    hapke: hapke.map(|hapke| HapkeParameters {
-                        medium: load("hapke medium", &hapke.medium, ColorSpace::Linear),
-                        opposition: load("hapke opposition", &hapke.opposition, ColorSpace::Linear),
-                    }),
-                };
-                renderer.add_material(&name, material)
             }
         }
     }

@@ -56,16 +56,32 @@ done
 ]
 
 [tasks.shaders]
-description = "Compile the base pack's and xui-vulkan's Slang shaders to SPIR-V next to their sources and validate the output"
+description = "Compile the base pack's and xui-vulkan's Slang shaders to SPIR-V next to their sources, each material once per geometry, and validate the output"
 sources = ["data/base/base/resources/shaders/**/*.slang", "crates/xui-vulkan/shaders/*.slang"]
-outputs = ["data/base/base/resources/shaders/*.spv", "crates/xui-vulkan/shaders/*.spv"]
+outputs = ["data/base/base/resources/shaders/**/*.spv", "crates/xui-vulkan/shaders/*.spv"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-for directory in data/base/base/resources/shaders crates/xui-vulkan/shaders; do
-    for source in "$directory"/*.slang; do
-        slangc "$source" -I "$directory" -target spirv -matrix-layout-column-major -fvk-use-entrypoint-name -o "${source%.slang}.spv"
-        spirv-val --target-env vulkan1.3 "${source%.slang}.spv"
+options=(-target spirv -matrix-layout-column-major -fvk-use-entrypoint-name)
+compile() {
+    slangc "$@"
+    spirv-val --target-env vulkan1.3 "${@: -1}"
+}
+# A program is a file with entry points. A material's vertex stage is generic over the geometry, so it compiles once
+# per file declaring a `struct <Name> : Geometry`.
+for root in data/base/base/resources/shaders crates/xui-vulkan/shaders; do
+    geometries=$(grep -rlE --include='*.slang' '^struct \\w+ : Geometry' "$root" || true)
+    for source in $(grep -rl --include='*.slang' '\\[shader(' "$root"); do
+        if grep -q 'vertexMain<' "$source"; then
+            for geometry in $geometries; do
+                type=$(sed -nE 's/^struct (\\w+) : Geometry.*/\\1/p' "$geometry")
+                compile "$source" "$geometry" -I "$root" "${options[@]}" -entry vertexMain -stage vertex \\
+                    -specialize "$type" -entry fragmentMain -stage fragment \\
+                    -o "${source%.slang}-$(basename "${geometry%.slang}").spv"
+            done
+        else
+            compile "$source" -I "$root" "${options[@]}" -o "${source%.slang}.spv"
+        fi
     done
 done
 """

@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.2742 0.2572 0.2401
 color-texture "bodies/phobos/color"
 normal-texture "bodies/phobos/normal"
-hapke medium-texture="bodies/phobos/hapke-medium" opposition-texture="bodies/phobos/hapke-opposition"
+medium-texture "bodies/phobos/hapke-medium"
+opposition-texture "bodies/phobos/hapke-opposition"

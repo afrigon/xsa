@@ -3,26 +3,33 @@ use std::path::PathBuf;
 use anyhow::{Context, bail, ensure};
 use glam::Vec3;
 
-use crate::{DOCUMENT_EXTENSION, Document, HapkeDefinition, Id, NodeExtension, PackStack, ParseContext};
+use crate::{DOCUMENT_EXTENSION, Document, Id, NodeExtension, PackStack, ParseContext};
 
 const MATERIALS: &str = "materials";
 const BODY_OBJECTS: &str = "objects/bodies";
 
 pub enum MaterialDefinition {
-    Lit {
-        base_color: Vec3,
-    },
-    Emissive {
-        color: Vec3,
-        luminance: Option<f32>,
-    },
-    Planet {
+    Lambert {
         base_color: Vec3,
         color: Option<PathBuf>,
         normal: Option<PathBuf>,
         emissive: Option<PathBuf>,
         emissive_luminance: f32,
-        hapke: Option<HapkeDefinition>,
+    },
+    Emissive {
+        color: Vec3,
+        luminance: Option<f32>,
+    },
+    // Hapke 2012's parameters other than the albedo, which comes from the color map: the particulate medium texture
+    // (b, c, θ̄ in degrees, porosity K) and the opposition texture (B_S0, h_S, B_C0, h_C).
+    Hapke {
+        base_color: Vec3,
+        color: Option<PathBuf>,
+        normal: Option<PathBuf>,
+        emissive: Option<PathBuf>,
+        emissive_luminance: f32,
+        medium: PathBuf,
+        opposition: PathBuf,
     },
 }
 
@@ -62,10 +69,9 @@ impl MaterialDefinition {
             }
         };
 
-        match shader.to_string().as_str() {
-            "base:lit" => Ok(MaterialDefinition::Lit {
-                base_color: color("base-color")?,
-            }),
+        let shader_name = shader.to_string();
+
+        match shader_name.as_str() {
             "base:emissive" => Ok(MaterialDefinition::Emissive {
                 color: match document.optional_node("color") {
                     Some(_) => color("color")?,
@@ -73,25 +79,45 @@ impl MaterialDefinition {
                 },
                 luminance: number("luminance")?,
             }),
-            "base:planet" => {
+            "base:lambert" | "base:hapke" => {
+                let base_color = color("base-color")?;
+                let color = texture("color-texture")?;
+                let normal = texture("normal-texture")?;
                 let emissive = texture("emissive-texture")?;
                 let emissive_luminance = number("emissive-luminance")?;
                 ensure!(
                     emissive.is_none() || emissive_luminance.is_some(),
                     "an `emissive-texture` needs an `emissive-luminance` in cd/m²"
                 );
+                let emissive_luminance = emissive_luminance.unwrap_or(0.0);
+                let required_texture = |name: &str| context.available_texture(document.node(name)?.string_argument()?);
+                let (medium, opposition) = match shader_name.as_str() {
+                    "base:hapke" => (
+                        required_texture("medium-texture")?,
+                        required_texture("opposition-texture")?,
+                    ),
+                    _ => (None, None),
+                };
 
-                Ok(MaterialDefinition::Planet {
-                    base_color: color("base-color")?,
-                    color: texture("color-texture")?,
-                    normal: texture("normal-texture")?,
-                    emissive,
-                    emissive_luminance: emissive_luminance.unwrap_or(0.0),
-                    hapke: match document.optional_node("hapke") {
-                        Some(node) => HapkeDefinition::parse(node, context)?,
-                        None => None,
-                    },
-                })
+                // A Hapke material missing one of its maps is shaded with Lambert.
+                match (medium, opposition) {
+                    (Some(medium), Some(opposition)) => Ok(MaterialDefinition::Hapke {
+                        base_color,
+                        color,
+                        normal,
+                        emissive,
+                        emissive_luminance,
+                        medium,
+                        opposition,
+                    }),
+                    _ => Ok(MaterialDefinition::Lambert {
+                        base_color,
+                        color,
+                        normal,
+                        emissive,
+                        emissive_luminance,
+                    }),
+                }
             }
             _ => bail!("shader {shader} is not supported by materials yet"),
         }

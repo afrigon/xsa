@@ -6,11 +6,12 @@ use xsa_packs::{Id, MaterialDefinition, PackStack};
 
 const MANIFEST: &str = "version \"0.1.0\"\nformat 1\n";
 const OBJECT: &str = "material \"rock\"\n";
-const MATERIAL: &str = r#"shader "base:planet"
+const MATERIAL: &str = r#"shader "base:hapke"
 base-color 0.25 0.5 0.75
 color-texture "rock/color"
 normal-texture "rock/normal"
-hapke medium-texture="rock/hapke-medium" opposition-texture="rock/hapke-opposition"
+medium-texture "rock/hapke-medium"
+opposition-texture "rock/hapke-opposition"
 "#;
 
 fn test_pack(name: &str, textures: &[&str]) -> PathBuf {
@@ -40,44 +41,39 @@ fn load(name: &str, textures: &[&str]) -> MaterialDefinition {
 }
 
 #[test]
-fn a_planet_material_loads_without_its_textures() {
-    let MaterialDefinition::Planet {
+fn a_hapke_material_without_its_textures_loads_as_lambert() {
+    let MaterialDefinition::Lambert {
         base_color,
         color,
         normal,
-        hapke,
         ..
     } = load("missing", &[])
     else {
-        panic!("not a planet material");
+        panic!("not a lambert material");
     };
 
     assert_eq!(base_color.to_array(), [0.25, 0.5, 0.75]);
     assert!(color.is_none());
     assert!(normal.is_none());
-    assert!(hapke.is_none());
 }
 
 #[test]
 fn hapke_needs_both_of_its_textures() {
-    let MaterialDefinition::Planet { color, hapke, .. } = load("partial", &["color", "hapke-medium"]) else {
-        panic!("not a planet material");
+    let MaterialDefinition::Lambert { color, .. } = load("partial", &["color", "hapke-medium"]) else {
+        panic!("not a lambert material");
     };
 
     assert!(color.is_some());
-    assert!(hapke.is_none());
 }
 
 #[test]
-fn a_planet_material_finds_the_textures_it_names() {
-    let MaterialDefinition::Planet {
-        color, normal, hapke, ..
-    } = load("complete", &["color", "normal", "hapke-medium", "hapke-opposition"])
+fn a_hapke_material_finds_the_textures_it_names() {
+    let MaterialDefinition::Hapke { color, normal, .. } =
+        load("complete", &["color", "normal", "hapke-medium", "hapke-opposition"])
     else {
-        panic!("not a planet material");
+        panic!("not a hapke material");
     };
 
     assert!(color.is_some());
     assert!(normal.is_some());
-    assert!(hapke.is_some());
 }

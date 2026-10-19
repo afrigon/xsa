@@ -12,13 +12,13 @@ use render_graph_vulkan::{
 };
 
 use crate::mesh::{GridMesh, GridVertex};
+use crate::renderer::ShaderBinaries;
+use crate::renderer::forward_program::ForwardProgram;
 use crate::renderer::frame_context::FrameContext;
-use crate::renderer::geometry::Geometry;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
 use crate::renderer::static_buffer::StaticBuffer;
-use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
 const TRIANGLES_PER_CELL: u64 = 2;
@@ -29,7 +29,7 @@ const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
-    pipelines: HashMap<(Geometry, Shader), GraphicsPipeline>,
+    pipelines: HashMap<ForwardProgram, GraphicsPipeline>,
     grids: GridMesh,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -37,17 +37,10 @@ pub(in crate::renderer) struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
-        let pipelines = Geometry::ALL
+        let pipelines = binaries
+            .forward
             .iter()
-            .flat_map(|geometry| ForwardPass::object_shaders().map(move |shader| (*geometry, shader)))
-            .map(|(geometry, shader)| {
-                let pipeline = ForwardPass::create_pipeline(
-                    gpu,
-                    &binaries.geometries[geometry.index()],
-                    &binaries.shaders[shader.index()],
-                )?;
-                Ok(((geometry, shader), pipeline))
-            })
+            .map(|(program, spirv)| Ok((*program, ForwardPass::create_pipeline(gpu, spirv)?)))
             .collect::<anyhow::Result<_>>()?;
         let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
         // Every frame draws the grid, so it is in GPU memory before the first one.
@@ -83,37 +76,27 @@ impl ForwardPass {
         }
     }
 
-    // The skybox is drawn by its own pass.
-    fn object_shaders() -> impl Iterator<Item = Shader> {
-        Shader::ALL.iter().copied().filter(|shader| *shader != Shader::Skybox)
-    }
-
-    fn pipeline(&self, geometry: Geometry, shader: Shader) -> &GraphicsPipeline {
-        &self.pipelines[&(geometry, shader)]
-    }
-
     fn record_objects(&self, frame: &FrameContext) {
         let recorder = &frame.recorder;
         recorder.set_wireframe(frame.render.wireframe);
         recorder.bind_mesh(&self.vertex_buffer, &self.index_buffer);
 
-        for (geometry, shader) in self.pipelines.keys().copied() {
-            let pipeline = self.pipeline(geometry, shader);
+        for (program, pipeline) in &self.pipelines {
             let mut bound = false;
 
             for draw in frame.terrain_draws {
                 let terrain = frame.scene.terrain(draw.terrain);
 
-                if draw.surface.geometry() != geometry || !frame.is_drawable(terrain.material) {
+                if draw.surface.geometry() != program.geometry {
                     continue;
                 }
 
-                let terrain_shader = frame
-                    .render
-                    .shader_override
-                    .unwrap_or(frame.material(terrain.material).shader());
+                let Some(material_shader) = frame.material(terrain.material).shader() else {
+                    continue;
+                };
+                let terrain_shader = frame.render.shader_override.unwrap_or(material_shader);
 
-                if terrain_shader != shader {
+                if terrain_shader != program.shader {
                     continue;
                 }
 
@@ -140,11 +123,7 @@ impl ForwardPass {
         recorder.set_wireframe(false);
     }
 
-    fn create_pipeline(
-        gpu: &GpuContext,
-        vertex_spirv: &[u8],
-        fragment_spirv: &[u8],
-    ) -> anyhow::Result<GraphicsPipeline> {
+    fn create_pipeline(gpu: &GpuContext, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(size_of::<GridVertex>() as u32)
@@ -155,8 +134,7 @@ impl ForwardPass {
             .format(vk::Format::R32G32_UINT)
             .offset(offset_of!(GridVertex, cell) as u32)];
         let description = GraphicsPipelineDescription {
-            vertex_spirv,
-            fragment_spirv,
+            spirv,
             color_formats: &[HDR_FORMAT, MOTION_FORMAT],
             depth_format: Some(DEPTH_FORMAT),
             depth_compare_op: vk::CompareOp::GREATER,

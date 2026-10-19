@@ -1,7 +1,8 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.4501 0.3460 0.2139
 color-texture "bodies/io/color"
 normal-texture "bodies/io/normal"
 emissive-texture "bodies/io/emissive"
 emissive-luminance 20
-hapke medium-texture="bodies/io/hapke-medium" opposition-texture="bodies/io/hapke-opposition"
+medium-texture "bodies/io/hapke-medium"
+opposition-texture "bodies/io/hapke-opposition"

@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.2782 0.2100 0.1521
 color-texture "bodies/arrokoth/color"
 normal-texture "bodies/arrokoth/normal"
-hapke medium-texture="bodies/arrokoth/hapke-medium" opposition-texture="bodies/arrokoth/hapke-opposition"
+medium-texture "bodies/arrokoth/hapke-medium"
+opposition-texture "bodies/arrokoth/hapke-opposition"

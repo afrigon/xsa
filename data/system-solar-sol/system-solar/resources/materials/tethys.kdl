@@ -1,5 +1,6 @@
-shader "base:planet"
+shader "base:hapke"
 base-color 0.4465 0.4465 0.4440
 color-texture "bodies/tethys/color"
 normal-texture "bodies/tethys/normal"
-hapke medium-texture="bodies/tethys/hapke-medium" opposition-texture="bodies/tethys/hapke-opposition"
+medium-texture "bodies/tethys/hapke-medium"
+opposition-texture "bodies/tethys/hapke-opposition"
