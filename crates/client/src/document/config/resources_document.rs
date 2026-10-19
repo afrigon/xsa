@@ -1,15 +1,17 @@
 use std::num::NonZeroUsize;
+use std::time::Duration;
 
 use kdl::KdlValue;
 use resource_vulkan::ResourceLimits;
 
-use super::{ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues};
+use super::{ConfigKey, ConfigLayer, ConfigValueKind, ConfigValues, DurationName};
 use crate::config::ByteSize;
 
 pub struct ResourcesDocument {
     max_cpu_cores: Option<Option<u32>>,
     max_memory_usage: Option<Option<ByteSize>>,
     max_video_memory_usage: Option<Option<ByteSize>>,
+    storage_debug_delay: Option<Option<Duration>>,
 }
 
 impl ResourcesDocument {
@@ -31,12 +33,19 @@ impl ResourcesDocument {
             value: &ConfigValueKind::ByteSize,
         },
     );
+    pub const STORAGE_DEBUG_DELAY: ConfigKey = ConfigKey::session(
+        "resources.storage.debug-delay",
+        ConfigValueKind::Optional {
+            value: &ConfigValueKind::Duration,
+        },
+    );
 
     pub fn read(values: &ConfigValues) -> ResourcesDocument {
         ResourcesDocument {
             max_cpu_cores: values.optional_count(ResourcesDocument::MAX_CPU_CORES),
             max_memory_usage: values.optional_byte_size(ResourcesDocument::MAX_MEMORY_USAGE),
             max_video_memory_usage: values.optional_byte_size(ResourcesDocument::MAX_VIDEO_MEMORY_USAGE),
+            storage_debug_delay: values.optional_duration(ResourcesDocument::STORAGE_DEBUG_DELAY),
         }
     }
 
@@ -51,6 +60,7 @@ impl ResourcesDocument {
             max_video_memory_usage: self
                 .max_video_memory_usage
                 .map_or(defaults.max_video_memory_usage, bytes),
+            read_delay: self.storage_debug_delay.unwrap_or(defaults.read_delay),
         }
     }
 
@@ -70,6 +80,12 @@ impl ResourcesDocument {
         layer.set(
             ResourcesDocument::MAX_VIDEO_MEMORY_USAGE.path,
             size(config.max_video_memory_usage),
+        );
+        layer.set(
+            ResourcesDocument::STORAGE_DEBUG_DELAY.path,
+            config
+                .read_delay
+                .map_or(KdlValue::Null, |delay| KdlValue::String(DurationName::write(delay))),
         );
     }
 }

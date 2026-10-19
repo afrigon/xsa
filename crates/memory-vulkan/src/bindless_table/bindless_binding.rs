@@ -29,7 +29,7 @@ impl BindlessBinding {
 
     pub(crate) fn capacity(self) -> u32 {
         match self {
-            BindlessBinding::Texture => 1024,
+            BindlessBinding::Texture => 2048,
             BindlessBinding::CubeMap => 64,
             BindlessBinding::StorageImage => 64,
         }

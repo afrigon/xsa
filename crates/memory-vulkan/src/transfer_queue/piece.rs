@@ -32,7 +32,7 @@ impl Piece {
                 .get(copy.data)
                 .ok_or_else(|| Piece::invalid("a copy names a byte array the upload does not have"))?;
 
-            if copy.offset + rows as usize * row_size > data.len() {
+            if copy.offset + rows as usize * row_size > (**data).as_ref().len() {
                 return Err(Piece::invalid("a copy reads past the end of its bytes"));
             }
 
@@ -135,11 +135,17 @@ mod tests {
         size: 16,
     };
 
-    fn upload(width: u32, height: u32) -> ImageUpload {
-        let size = BC7.rows(height) as usize * BC7.row_size(width);
+    fn level_size(width: u32, height: u32) -> usize {
+        BC7.rows(height) as usize * BC7.row_size(width)
+    }
 
+    fn upload(width: u32, height: u32) -> ImageUpload {
+        upload_of(width, height, level_size(width, height))
+    }
+
+    fn upload_of(width: u32, height: u32, size: usize) -> ImageUpload {
         ImageUpload {
-            data: vec![vec![0; size]],
+            data: vec![Box::new(vec![0; size])],
             copies: vec![ImageCopy {
                 data: 0,
                 offset: 0,
@@ -176,8 +182,7 @@ mod tests {
 
     #[test]
     fn small_levels_share_a_piece_and_keep_their_texel_extent() {
-        let mut upload = upload(2, 2);
-        upload.data[0].resize(32, 0);
+        let mut upload = upload_of(2, 2, 32);
         upload.copies.push(ImageCopy {
             offset: 16,
             mip_level: 1,
@@ -192,8 +197,7 @@ mod tests {
 
     #[test]
     fn a_copy_past_its_bytes_is_refused() {
-        let mut upload = upload(16, 16);
-        upload.data[0].pop();
+        let upload = upload_of(16, 16, level_size(16, 16) - 1);
 
         assert!(Piece::split_image(&upload).is_err());
     }

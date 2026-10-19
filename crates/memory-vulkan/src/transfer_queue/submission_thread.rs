@@ -249,7 +249,7 @@ impl SubmissionThread {
                 TransferWork::Upload { data, destination } => {
                     for copy in &piece.copies {
                         let slice = uploads.allocate(copy.size, copy.alignment)?;
-                        let bytes = &data[copy.data][copy.data_offset..][..copy.size];
+                        let bytes = &(*data[copy.data]).as_ref()[copy.data_offset..][..copy.size];
                         let staging = uploads.buffer_mut(slice.block);
                         staging.write_at(slice.offset, bytes)?;
                         let command =
@@ -301,11 +301,14 @@ impl SubmissionThread {
         destination: &UploadDestination,
         copy: &PieceCopy,
     ) -> TransferCommand {
-        let UploadDestination::Owned(target) = destination;
+        let (target, copy_layout) = match destination {
+            UploadDestination::Owned(target) => (target, vk::ImageLayout::TRANSFER_DST_OPTIMAL),
+            UploadDestination::Region(target) => (target, vk::ImageLayout::GENERAL),
+        };
 
         match (*target, copy.region) {
             (
-                UploadTarget::Image { image, range },
+                UploadTarget::Image { image, range, .. },
                 CopyRegion::Image {
                     mip_level,
                     array_layer,
@@ -315,6 +318,7 @@ impl SubmissionThread {
             ) => TransferCommand::BufferToImage {
                 source: staging,
                 image,
+                layout: copy_layout,
                 region: vk::BufferImageCopy::default()
                     .buffer_offset(staging_offset as u64)
                     .image_subresource(

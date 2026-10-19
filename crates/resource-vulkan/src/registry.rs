@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use crate::{AnyEntry, Entry, EntryId, ResourceKey, ResourceKind, UnreferencedEntry};
+use crate::{AnyEntry, Entry, EntryId, ResourceKey, ResourceKind, SoftOwner, SoftUsage, UnreferencedEntry};
 
 type KindEntries<K> = HashMap<ResourceKey<K>, Arc<Entry<K>>>;
 
@@ -36,20 +36,28 @@ impl Registry {
         self.kind::<K>().insert(entry.key(), entry);
     }
 
-    pub fn keep_unreferenced(&mut self, entry: &dyn AnyEntry) {
+    pub fn keep_unreferenced(&mut self, entry: &dyn AnyEntry, now: u64) {
         self.next_release += 1;
         entry.set_released_at(self.next_release);
         self.unreferenced.push_back(UnreferencedEntry {
             sequence: self.next_release,
             entry: entry.id(),
+            released_in: now,
         });
     }
 
-    // The unreferenced entries, least recently released first.
-    pub fn least_recently_used(&self) -> impl Iterator<Item = &Arc<dyn AnyEntry>> {
-        self.unreferenced
-            .iter()
-            .filter_map(|unreferenced| self.current(unreferenced))
+    // The unreferenced entries' memory, least recently released first.
+    pub fn unreferenced_usage(&self) -> impl Iterator<Item = SoftUsage> + '_ {
+        self.unreferenced.iter().filter_map(|unreferenced| {
+            let entry = self.current(unreferenced)?;
+
+            Some(SoftUsage {
+                owner: SoftOwner::Entry(entry.id()),
+                memory: entry.memory(),
+                last_use: unreferenced.released_in,
+                score: 0.0,
+            })
+        })
     }
 
     pub fn forget(&mut self, entry: &dyn AnyEntry) {

@@ -6,4 +6,6 @@ use crate::EntryId;
 pub(crate) struct UnreferencedEntry {
     pub sequence: u64,
     pub entry: EntryId,
+    // The update it was released in, its last use.
+    pub released_in: u64,
 }

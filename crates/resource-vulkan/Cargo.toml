@@ -9,3 +9,6 @@ ash.workspace = true
 memory-vulkan.workspace = true
 resource-loader = { workspace = true, features = ["texture"] }
 tracing.workspace = true
+
+[dev-dependencies]
+memory-vulkan = { workspace = true, features = ["test-device"] }

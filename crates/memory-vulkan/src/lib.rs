@@ -15,9 +15,13 @@ mod device_object;
 mod heap_usage;
 mod image;
 mod image_description;
+mod image_layers;
+mod image_memory;
 mod memory_context;
 mod memory_error;
 mod queue_sharing;
+#[cfg(feature = "test-device")]
+mod test_device;
 mod timeline;
 mod transfer_queue;
 
@@ -33,9 +37,13 @@ pub use gpu_allocator::MemoryLocation;
 pub use heap_usage::HeapUsage;
 pub use image::Image;
 pub use image_description::ImageDescription;
+pub use image_layers::ImageLayers;
+pub use image_memory::ImageMemory;
 pub use memory_context::MemoryContext;
 pub use memory_error::MemoryError;
 pub use queue_sharing::QueueSharing;
+#[cfg(feature = "test-device")]
+pub use test_device::TestDevice;
 pub use timeline::{Recording, Timeline, TimelineValue};
 pub use transfer_queue::{
     GpuUpload, ImageCopy, ImageUpload, ReadbackTicket, TexelBlock, TransferPriority, TransferQueue, TransferStatus,

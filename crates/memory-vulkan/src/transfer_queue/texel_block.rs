@@ -1,7 +1,7 @@
 use ash::vk;
 
 /// The smallest unit of an image format: one texel, or one compressed block of texels.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TexelBlock {
     pub extent: vk::Extent2D,
     /// In bytes.
