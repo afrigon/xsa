@@ -1,4 +1,3 @@
-mod cube_face;
 mod detail_ranges;
 mod height_bounds;
 mod height_range;
@@ -6,7 +5,6 @@ mod horizon_culler;
 mod quad_sphere_tile;
 mod selected_tile;
 
-pub(in crate::renderer) use cube_face::CubeFace;
 pub(in crate::renderer) use detail_ranges::{COARSEST_DETAIL, DetailRanges};
 pub(in crate::renderer) use height_bounds::HeightBounds;
 pub(in crate::renderer) use height_range::HeightRange;

@@ -10,7 +10,8 @@ struct Grid {
 }
 
 // Square grids of several sizes sharing one vertex and index buffer. Every cell is split along the diagonal from
-// its lowest corner to its highest, which vertex morphing relies on.
+// its lowest corner to its highest, which vertex morphing relies on. Triangles wind clockwise in columns and rows:
+// a cube face's columns and rows are seen from inside the cube, so they face outward.
 pub struct GridMesh {
     pub vertices: Vec<GridVertex>,
     pub indices: Vec<u32>,
@@ -54,11 +55,11 @@ impl GridMesh {
         for row in 0..cells {
             for column in 0..cells {
                 let corner = first_vertex + row * points_per_side + column;
-                let right = corner + 1;
-                let above = corner + points_per_side;
-                let above_right = above + 1;
+                let next_column = corner + 1;
+                let next_row = corner + points_per_side;
+                let opposite = next_row + 1;
                 self.indices
-                    .extend_from_slice(&[corner, right, above_right, corner, above_right, above]);
+                    .extend_from_slice(&[corner, opposite, next_column, corner, next_row, opposite]);
             }
         }
 
