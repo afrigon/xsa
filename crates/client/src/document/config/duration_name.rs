@@ -39,7 +39,7 @@ impl DurationName {
         let exact = Duration::from_millis(milliseconds as u64) == duration;
         let unit = UNITS
             .iter()
-            .find(|unit| exact && milliseconds >= unit.milliseconds && milliseconds % unit.milliseconds == 0);
+            .find(|unit| exact && milliseconds >= unit.milliseconds && milliseconds.is_multiple_of(unit.milliseconds));
 
         match unit {
             Some(unit) => format!("{}{}", milliseconds / unit.milliseconds, unit.name),

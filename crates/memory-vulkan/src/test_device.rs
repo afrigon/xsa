@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::ffi::{CStr, c_void};
 use std::mem::ManuallyDrop;
 use std::sync::Mutex;
@@ -29,13 +30,10 @@ pub struct TestDevice {
 }
 
 impl TestDevice {
-    /// # Panics
-    ///
-    /// If no GPU supports what the crate requires.
-    pub fn new() -> TestDevice {
-        let entry = unsafe { ash::Entry::load() }.expect("the Vulkan loader is installed");
-        let validation = unsafe { entry.enumerate_instance_layer_properties() }
-            .expect("instance layers can be listed")
+    /// Fails when Vulkan is not installed or no GPU supports what the crate requires.
+    pub fn new() -> Result<TestDevice, Box<dyn Error>> {
+        let entry = unsafe { ash::Entry::load() }?;
+        let validation = unsafe { entry.enumerate_instance_layer_properties() }?
             .iter()
             .any(|layer| layer.layer_name_as_c_str() == Ok(VALIDATION_LAYER));
         let layers = if validation {
@@ -53,7 +51,7 @@ impl TestDevice {
             .application_info(&application)
             .enabled_layer_names(&layers)
             .enabled_extension_names(&extensions);
-        let instance = unsafe { entry.create_instance(&instance_info, None) }.expect("an instance can be created");
+        let instance = unsafe { entry.create_instance(&instance_info, None) }?;
         let messages = Box::new(Mutex::new(Vec::new()));
         let (debug_utils, messenger) = if validation {
             let debug_utils = ext::debug_utils::Instance::new(&entry, &instance);
@@ -68,8 +66,7 @@ impl TestDevice {
                 )
                 .pfn_user_callback(Some(TestDevice::collect_message))
                 .user_data(&*messages as *const Mutex<Vec<String>> as *mut c_void);
-            let messenger = unsafe { debug_utils.create_debug_utils_messenger(&messenger_info, None) }
-                .expect("a debug messenger can be created");
+            let messenger = unsafe { debug_utils.create_debug_utils_messenger(&messenger_info, None) }?;
             (Some(debug_utils), messenger)
         } else {
             (None, vk::DebugUtilsMessengerEXT::null())
@@ -79,7 +76,7 @@ impl TestDevice {
             physical_device,
             queue_family,
             transfer_family,
-        } = TestDevice::pick_device(&instance);
+        } = TestDevice::pick_device(&instance)?;
         let priorities = [1.0];
         let mut queue_infos = vec![
             vk::DeviceQueueCreateInfo::default()
@@ -112,31 +109,24 @@ impl TestDevice {
             .enabled_features(&features)
             .push_next(&mut vulkan_12_features)
             .push_next(&mut vulkan_13_features);
-        let memory =
-            MemoryContext::new(&instance, physical_device, &device_info).expect("a test device can be created");
+        let memory = MemoryContext::new(&instance, physical_device, &device_info)?;
         let device = memory.device();
         let queue = unsafe { device.get_device_queue(queue_family, 0) };
-        let graphics = memory.create_timeline(queue).expect("a timeline can be created");
+        let graphics = memory.create_timeline(queue)?;
         let transfer_timeline = if transfer_family == queue_family {
             graphics.clone()
         } else {
             let transfer_queue = unsafe { device.get_device_queue(transfer_family, 0) };
-            memory
-                .create_timeline(transfer_queue)
-                .expect("a timeline can be created")
+            memory.create_timeline(transfer_queue)?
         };
-        let transfer = TransferQueue::new(&memory, transfer_timeline, transfer_family, queue_family)
-            .expect("a transfer queue can be created");
-        let bindless = BindlessTable::new(&memory, 1.0).expect("a bindless table can be created");
+        let transfer = TransferQueue::new(&memory, transfer_timeline, transfer_family, queue_family)?;
+        let bindless = BindlessTable::new(&memory, 1.0)?;
         let pool_info = vk::CommandPoolCreateInfo::default()
             .flags(vk::CommandPoolCreateFlags::TRANSIENT)
             .queue_family_index(queue_family);
-        let command_pool = DeviceObject::new(
-            &memory,
-            unsafe { device.create_command_pool(&pool_info, None) }.expect("a command pool can be created"),
-        );
+        let command_pool = DeviceObject::new(&memory, unsafe { device.create_command_pool(&pool_info, None) }?);
 
-        TestDevice {
+        Ok(TestDevice {
             bindless: ManuallyDrop::new(bindless),
             transfer: ManuallyDrop::new(transfer),
             command_pool: ManuallyDrop::new(command_pool),
@@ -147,7 +137,7 @@ impl TestDevice {
             messages,
             instance,
             _entry: entry,
-        }
+        })
     }
 
     pub fn memory(&self) -> &MemoryContext {
@@ -251,8 +241,8 @@ impl TestDevice {
     }
 
     // The first GPU with a graphics queue, and its queue family dedicated to transfers if it has one.
-    fn pick_device(instance: &ash::Instance) -> DeviceChoice {
-        let devices = unsafe { instance.enumerate_physical_devices() }.expect("GPUs can be listed");
+    fn pick_device(instance: &ash::Instance) -> Result<DeviceChoice, Box<dyn Error>> {
+        let devices = unsafe { instance.enumerate_physical_devices() }?;
 
         devices
             .into_iter()
@@ -277,7 +267,7 @@ impl TestDevice {
                     transfer_family: transfer as u32,
                 })
             })
-            .expect("a GPU has a graphics queue")
+            .ok_or_else(|| "no GPU has a graphics queue".into())
     }
 
     unsafe extern "system" fn collect_message(

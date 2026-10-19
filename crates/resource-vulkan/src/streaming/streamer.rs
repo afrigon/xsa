@@ -356,11 +356,11 @@ impl Streamer {
             return;
         }
 
-        if !victims.contains_key(&format) {
-            victims.insert(format, VictimQueue::new(self.victims(format)));
-        }
+        let queue = victims
+            .entry(format)
+            .or_insert_with(|| VictimQueue::new(self.victims(format)));
 
-        let Some(victim) = victims.get_mut(&format).and_then(|queue| queue.take_for(page.score)) else {
+        let Some(victim) = queue.take_for(page.score) else {
             self.starved.insert(format);
             return;
         };

@@ -441,7 +441,7 @@ mod tests {
     impl Harness {
         fn new(limits: ResourceLimits, finest_level: u8) -> Harness {
             let gpu = GPU.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let device = TestDevice::new();
+            let device = TestDevice::new().unwrap();
             let resources = Resources::new(device.memory(), device.transfer(), device.bindless());
             resources.set_limits(limits);
             let reads = Arc::new(AtomicUsize::new(0));
