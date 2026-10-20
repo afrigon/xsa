@@ -39,7 +39,7 @@ mod tests {
     fn job(value: u64) -> Job {
         Job {
             owner: JobOwner::Entry(EntryId { value }),
-            run: Box::new(|| {}),
+            run: Box::new(|_| {}),
         }
     }
 

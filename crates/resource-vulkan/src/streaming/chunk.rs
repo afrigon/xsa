@@ -16,7 +16,6 @@ pub(crate) struct Chunk {
     pub grid: ChunkGrid,
     // Bytes of video memory the driver allocated for it.
     pub size: u64,
-    pub created_in: u64,
     state: ChunkState,
 }
 
@@ -68,7 +67,6 @@ impl Chunk {
         format: &PageFormat,
         grid: ChunkGrid,
         id: ChunkId,
-        now: u64,
     ) -> anyhow::Result<Chunk> {
         let image = Image::new(
             &environment.memory,
@@ -97,7 +95,6 @@ impl Chunk {
             id,
             grid,
             size,
-            created_in: now,
             state: ChunkState::Preparing { slot, upload },
         })
     }

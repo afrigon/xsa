@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use anyhow::ensure;
 
 use crate::streaming::{
-    AnySet, ByteUse, CancelledUpload, CellAddress, CellUse, ChunkId, MissingPage, PageFormat, PageId, PageOwner,
-    PageSource, ReadOutcome, ReadPage, ReadResult, Residency, SetId, SetStatistics, SetTable,
+    AnySet, ByteUse, CancelledUpload, CellAddress, CellUse, MissingPage, PageFormat, PageId, PageOwner, PageSource,
+    ReadOutcome, ReadPage, ReadResult, Residency, SetId, SetStatistics, SetTable,
 };
 use crate::{Job, JobOwner};
 
@@ -74,7 +74,7 @@ impl<S: PageSource> AnySet for SetState<S> {
 
         Some(Job {
             owner: JobOwner::Page,
-            run: Box::new(move || {
+            run: Box::new(move |taken| {
                 let result = if cancel.load(Ordering::Acquire) {
                     ReadResult::Cancelled
                 } else {
@@ -91,7 +91,10 @@ impl<S: PageSource> AnySet for SetState<S> {
                     });
 
                     match checked {
-                        Ok(Some(bytes)) => ReadResult::Bytes(Arc::from(bytes)),
+                        Ok(Some(bytes)) => ReadResult::Bytes {
+                            bytes: Arc::from(bytes),
+                            read_time: taken.elapsed(),
+                        },
                         Ok(None) => ReadResult::Absent,
                         Err(err) => ReadResult::Failed(err),
                     }
@@ -117,12 +120,16 @@ impl<S: PageSource> AnySet for SetState<S> {
         self.table().finish_upload(page, cell, slot, offset);
     }
 
-    fn evict_cell(&self, page: PageId) -> Option<CellAddress> {
+    fn evict_cell(&self, page: PageId) -> Vec<CellAddress> {
         self.table().evict_cell(page)
     }
 
-    fn evict_chunk(&self, chunk: ChunkId) -> Vec<CancelledUpload> {
-        self.table().evict_chunk(chunk)
+    fn start_move(&self, page: PageId, destination: CellAddress) -> Option<CellAddress> {
+        self.table().start_move(page, destination)
+    }
+
+    fn finish_move(&self, page: PageId, destination: CellAddress, slot: u32, offset: ash::vk::Offset2D) {
+        self.table().finish_move(page, destination, slot, offset);
     }
 
     fn evict_bytes(&self, page: PageId) {
@@ -135,6 +142,10 @@ impl<S: PageSource> AnySet for SetState<S> {
 
     fn cell_uses(&self) -> Vec<CellUse> {
         self.table().cell_uses().collect()
+    }
+
+    fn cell_use(&self, page: PageId) -> Option<CellUse> {
+        self.table().cell_use(page)
     }
 
     fn byte_uses(&self) -> Vec<ByteUse> {

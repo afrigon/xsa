@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 
 use ash::vk;
 
-use crate::streaming::CellAddress;
+use crate::streaming::{CellAddress, CellContent};
 
 // What a set holds of one page.
 pub(crate) enum PageState {
@@ -26,6 +26,14 @@ pub(crate) enum PageState {
         slot: u32,
         offset: vk::Offset2D,
     },
+    // Resident, and copying into `destination` because `cell`'s chunk is being released. Shaders read `cell` until
+    // the copy completes.
+    Moving {
+        cell: CellAddress,
+        slot: u32,
+        offset: vk::Offset2D,
+        destination: CellAddress,
+    },
     // The source has no data for it.
     Absent,
     // Reading it failed; it is not read again.
@@ -33,10 +41,29 @@ pub(crate) enum PageState {
 }
 
 impl PageState {
-    // The cell it holds or is copying into.
+    // The cell shaders read it from, or it is copying into.
     pub fn cell(&self) -> Option<CellAddress> {
         match self {
-            PageState::Uploading { cell } | PageState::Resident { cell, .. } => Some(*cell),
+            PageState::Uploading { cell } | PageState::Resident { cell, .. } | PageState::Moving { cell, .. } => {
+                Some(*cell)
+            }
+            _ => None,
+        }
+    }
+
+    // Every cell it holds: a moving page holds two.
+    pub fn cells(&self) -> Vec<CellAddress> {
+        match self {
+            PageState::Moving { cell, destination, .. } => vec![*cell, *destination],
+            _ => self.cell().into_iter().collect(),
+        }
+    }
+
+    pub fn content(&self) -> Option<CellContent> {
+        match self {
+            PageState::Uploading { .. } => Some(CellContent::Uploading),
+            PageState::Resident { .. } => Some(CellContent::Resident),
+            PageState::Moving { .. } => Some(CellContent::Moving),
             _ => None,
         }
     }

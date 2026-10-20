@@ -9,9 +9,9 @@ use memory_vulkan::{BindlessTable, MemoryContext, TransferQueue};
 
 use crate::streaming::{PageFormat, PageSource, StreamedSet, Streamer};
 use crate::{
-    AnyEntry, AvailableMemory, BudgetReading, Entry, EntryId, Events, Job, JobOwner, LoadEnvironment, LoadPriority,
-    LoadRequest, MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKey, ResourceKind, ResourceLimits,
-    ResourceState, SoftOwner, SoftUsage, Unavailable, WorkerPool,
+    Admission, AnyEntry, AvailableMemory, BudgetReading, Entry, EntryId, Events, EvictionPlan, Job, JobOwner,
+    LoadEnvironment, LoadPriority, LoadRequest, MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKey,
+    ResourceKind, ResourceLimits, ResourceState, SoftUsage, Unavailable, WorkerPool,
 };
 
 // Page reads queued ahead per worker: enough to keep every worker busy, few enough that the order follows each frame's
@@ -133,12 +133,16 @@ impl Resources {
         }
 
         registry.compact();
+        let idle_entries = registry.unreferenced_usage(now, &shared.environment.transfer);
         drop(registry);
         self.finish_uploads();
+        let room = shared.budget().room(&self.budget_reading());
+        let mut admission = Admission::new(room, idle_entries);
         let max_reads = Resources::worker_count(shared.budget().limits) * READS_PER_WORKER;
-        shared
+        let released = shared
             .streamer()
-            .update(now, &shared.environment, &shared.pool, max_reads);
+            .update(now, &shared.environment, &shared.pool, max_reads, &mut admission);
+        self.finish_evicting(released);
         self.keep_within_budget(now);
 
         if !required_failures.is_empty() {
@@ -188,7 +192,7 @@ impl Resources {
                     priority,
                     Job {
                         owner: JobOwner::Entry(id),
-                        run: Box::new(move || entry.load(&environment, &uploading)),
+                        run: Box::new(move |taken| entry.load(taken, &environment, &uploading)),
                     },
                 );
             }
@@ -227,68 +231,44 @@ impl Resources {
         self.shared.uploading().extend(uploading);
     }
 
+    // Grows the pools admitted to, then evicts what is least worth keeping until usage is within budget.
     fn keep_within_budget(&self, now: u64) {
         let shared = &self.shared;
-        let mut reading = self.budget_reading();
-        let budget = shared.budget();
+        let environment = &shared.environment;
         let mut streamer = shared.streamer();
-
-        if streamer.is_starved() {
-            let registry = shared.registry();
-            let unreferenced_video: u64 = registry.unreferenced_usage().map(|usage| usage.memory.video).sum();
-            drop(registry);
-            let idle_chunks: u64 = streamer
-                .chunk_usage()
-                .iter()
-                .filter(|usage| usage.last_use < now)
-                .map(|usage| usage.memory.video)
-                .sum();
-            let room = budget.video_room(&reading, unreferenced_video + idle_chunks);
-
-            if streamer.grow(room, now, &shared.environment) {
-                reading.video = shared.environment.memory.video_memory();
-            }
-        }
-
-        let overage = budget.overage(&reading);
-        drop(budget);
+        streamer.grow(environment);
+        drop(streamer);
+        let overage = shared.budget().overage(&self.budget_reading());
 
         if overage.video == 0 && overage.ram == 0 {
             return;
         }
 
         let mut registry = shared.registry();
-        let mut soft: Vec<SoftUsage> = registry.unreferenced_usage().collect();
-
-        if overage.video > 0 {
-            soft.extend(streamer.chunk_usage());
-        }
-
-        if overage.ram > 0 {
-            soft.extend(streamer.page_bytes_usage());
-        }
-
+        let mut streamer = shared.streamer();
+        let mut soft = registry.unreferenced_usage(now, &environment.transfer);
+        soft.extend(streamer.soft_usage(now, &environment.transfer));
         soft.sort_by(SoftUsage::eviction_order);
-        let evictions = MemoryBudget::evictions(overage, soft.into_iter().map(|usage| (usage.owner, usage.memory)));
+        let plan = EvictionPlan::new(overage, &soft, &streamer.pool_capacities());
 
-        for owner in evictions {
-            match owner {
-                SoftOwner::Entry(id) => {
-                    let Some(entry) = registry.entries.get(&id).cloned() else {
-                        continue;
-                    };
-                    let video = entry.memory().video;
-                    registry.forget(entry.as_ref());
-                    drop(entry);
-                    self.count_evicting(video);
-                }
-                SoftOwner::Chunk(chunk) => {
-                    if let Some(chunk) = streamer.release_chunk(chunk) {
-                        self.count_evicting(chunk.size);
-                    }
-                }
-                SoftOwner::PageBytes(page) => streamer.evict_page_bytes(page),
-            }
+        for id in plan.entries {
+            let Some(entry) = registry.entries.get(&id).cloned() else {
+                continue;
+            };
+            let video = entry.memory().video;
+            registry.forget(entry.as_ref());
+            drop(entry);
+            self.start_evicting(video);
+            self.finish_evicting(video);
+        }
+
+        for page in plan.page_bytes {
+            streamer.evict_page_bytes(page);
+        }
+
+        for shrink in &plan.shrinks {
+            let releasing = streamer.shrink(shrink, &environment.memory);
+            self.start_evicting(releasing);
         }
     }
 
@@ -321,12 +301,20 @@ impl Resources {
         }
     }
 
-    // Counts `video` bytes as freed until the deletion queue frees them.
-    fn count_evicting(&self, video: u64) {
-        let shared = &self.shared;
-        shared.evicting_video.fetch_add(video, Ordering::AcqRel);
-        let evicting_video = Arc::clone(&shared.evicting_video);
-        shared.environment.memory.defer_action(move |_| {
+    // Counts `video` bytes as freed from now, until `finish_evicting` for them.
+    fn start_evicting(&self, video: u64) {
+        self.shared.evicting_video.fetch_add(video, Ordering::AcqRel);
+    }
+
+    // The objects holding `video` bytes evicting were dropped: they stop counting as freed once the deletion queue
+    // frees them, after everything queued before.
+    fn finish_evicting(&self, video: u64) {
+        if video == 0 {
+            return;
+        }
+
+        let evicting_video = Arc::clone(&self.shared.evicting_video);
+        self.shared.environment.memory.defer_action(move |_| {
             evicting_video.fetch_sub(video, Ordering::AcqRel);
         });
     }
@@ -521,8 +509,11 @@ mod tests {
             pages.iter().all(|request| self.is_resident(request.key))
         }
 
+        // Video memory objects occupy, as the budget counts it.
         fn video_usage(&self) -> u64 {
-            self.device.memory().video_memory().usage
+            let video = self.device.memory().video_memory();
+
+            video.usage - video.unallocated
         }
 
         fn chunk_count(&self) -> usize {

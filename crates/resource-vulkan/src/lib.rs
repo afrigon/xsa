@@ -7,18 +7,22 @@
 //! Paged data larger than memory streams through a `StreamedSet`: its client requests the pages it wants each frame,
 //! and the pages stay resident in texture array chunks as far as the shared memory budget allows.
 
+mod admission;
 mod any_entry;
 mod any_handle;
 mod available_memory;
 mod entry;
 mod entry_id;
 mod events;
+mod eviction_plan;
+mod eviction_rank;
 mod group_progress;
 mod load_context;
 mod load_environment;
 mod load_priority;
 mod load_request;
 mod memory_budget;
+mod memory_room;
 mod memory_usage;
 mod pending_resource;
 mod registry;
@@ -38,14 +42,18 @@ mod unavailable;
 mod unreferenced_entry;
 mod worker_pool;
 
+pub(crate) use admission::Admission;
 pub(crate) use any_entry::AnyEntry;
 pub(crate) use any_handle::AnyHandle;
 pub(crate) use available_memory::AvailableMemory;
 pub(crate) use entry::Entry;
 pub(crate) use entry_id::EntryId;
 pub(crate) use events::Events;
+pub(crate) use eviction_plan::EvictionPlan;
+pub(crate) use eviction_rank::EvictionRank;
 pub(crate) use load_environment::LoadEnvironment;
 pub(crate) use memory_budget::{BudgetReading, MemoryBudget};
+pub(crate) use memory_room::MemoryRoom;
 pub(crate) use registry::Registry;
 pub(crate) use resource_key::ResourceKey;
 pub(crate) use soft_owner::SoftOwner;

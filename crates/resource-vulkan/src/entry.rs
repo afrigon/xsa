@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant};
 
 use memory_vulkan::BindlessTable;
 
@@ -24,6 +25,8 @@ pub(crate) struct Entry<K: ResourceKind> {
     forgotten: AtomicBool,
     released_at: AtomicU64,
     value: OnceLock<K>,
+    // How long its read and decode took, set once it loaded.
+    read_time: OnceLock<Duration>,
     unavailable: OnceLock<Unavailable>,
     pending: Mutex<Option<Box<dyn PendingResource<K>>>>,
     events: Arc<Mutex<Events>>,
@@ -50,6 +53,7 @@ impl<K: ResourceKind> Entry<K> {
             forgotten: AtomicBool::new(false),
             released_at: AtomicU64::new(0),
             value: OnceLock::new(),
+            read_time: OnceLock::new(),
             unavailable: OnceLock::new(),
             pending: Mutex::new(None),
             events,
@@ -98,7 +102,12 @@ impl<K: ResourceKind> Entry<K> {
     }
 
     // On a worker: reads, decodes and queues the uploads, then leaves the pending resource for the main thread.
-    pub fn load(self: &Arc<Self>, environment: &LoadEnvironment, uploading: &Mutex<Vec<Arc<dyn AnyEntry>>>) {
+    pub fn load(
+        self: &Arc<Self>,
+        taken: Instant,
+        environment: &LoadEnvironment,
+        uploading: &Mutex<Vec<Arc<dyn AnyEntry>>>,
+    ) {
         if self.forgotten.load(Ordering::Acquire) {
             return;
         }
@@ -114,6 +123,7 @@ impl<K: ResourceKind> Entry<K> {
 
         match K::load(&context, &self.path, &self.options) {
             Ok(resource) => {
+                let _ = self.read_time.set(taken.elapsed());
                 let mut pending = self.pending();
                 let current = self.priority();
 
@@ -196,6 +206,10 @@ impl<K: ResourceKind> AnyEntry for Entry<K> {
 
     fn memory(&self) -> MemoryUsage {
         self.value.get().map_or(MemoryUsage::default(), K::memory)
+    }
+
+    fn read_time(&self) -> Duration {
+        self.read_time.get().copied().unwrap_or_default()
     }
 
     fn poll(&self, bindless: &BindlessTable) -> bool {

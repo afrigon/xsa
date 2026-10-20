@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use memory_vulkan::BindlessTable;
 
 use crate::{EntryId, LoadPriority, MemoryUsage, Registry, ResourceState};
@@ -27,6 +29,9 @@ pub(crate) trait AnyEntry: Send + Sync {
 
     // Zero until it is ready.
     fn memory(&self) -> MemoryUsage;
+
+    // How long reading and decoding it took; zero until it loaded.
+    fn read_time(&self) -> Duration;
 
     // Polls its pending uploads; true once it settled.
     fn poll(&self, bindless: &BindlessTable) -> bool;
