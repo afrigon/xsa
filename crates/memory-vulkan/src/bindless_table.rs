@@ -17,8 +17,8 @@ const SAMPLER_BINDING: u32 = 0;
 const WRAPPING_SAMPLER_BINDING: u32 = 2;
 const SAMPLER_COUNT: u32 = 2;
 
-/// The descriptor set every shader reads images through: two samplers, then arrays of textures, cube maps and storage
-/// images, each image at the index of the slot it was written into.
+/// The descriptor set every shader reads images through: two samplers, then arrays of textures, cube maps, storage
+/// images and texture arrays, each image at the index of the slot it was written into.
 ///
 /// Cloning it is cheap, and clones share the table across threads.
 #[derive(Clone)]
@@ -62,7 +62,9 @@ impl BindlessTable {
         let all_stages = vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE;
         let image_stages = |binding: BindlessBinding| match binding {
             BindlessBinding::Texture => all_stages,
-            BindlessBinding::CubeMap => vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
+            BindlessBinding::CubeMap | BindlessBinding::TextureArray => {
+                vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE
+            }
             BindlessBinding::StorageImage => vk::ShaderStageFlags::COMPUTE,
         };
         let mut bindings = vec![
@@ -104,7 +106,9 @@ impl BindlessTable {
             device.create_descriptor_set_layout(&layout_info, None)
         }?);
 
-        let sampled_count = BindlessBinding::Texture.capacity() + BindlessBinding::CubeMap.capacity();
+        let sampled_count = BindlessBinding::Texture.capacity()
+            + BindlessBinding::CubeMap.capacity()
+            + BindlessBinding::TextureArray.capacity();
         let pool_sizes = [
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::SAMPLER)

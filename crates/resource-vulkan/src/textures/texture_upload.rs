@@ -32,6 +32,19 @@ impl TextureUpload {
         self.upload(context, BindlessBinding::CubeMap, ImageLayers::Cube)
     }
 
+    pub fn array(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
+        ensure!(
+            self.image.shape() == TextureShape::Array,
+            "expected a texture array, found a {}",
+            self.image.shape()
+        );
+        let layers = ImageLayers::Array {
+            count: self.image.layers().len() as u32,
+        };
+
+        self.upload(context, BindlessBinding::TextureArray, layers)
+    }
+
     pub fn texture(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
         ensure!(
             self.image.shape() == TextureShape::Plane,

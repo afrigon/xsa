@@ -132,5 +132,5 @@ fn a_body_seed_is_given_or_derived_from_its_id() {
     };
 
     assert_eq!(body(&derived), Seed::from_id("test:rock"));
-    assert_eq!(body(&given), Seed(42));
+    assert_eq!(body(&given), Seed { value: 42 });
 }

@@ -8,6 +8,10 @@ pub enum ImageLayers {
     Single,
     /// Six layers, viewed as a cube.
     Cube,
+    /// This many layers, viewed as an array.
+    Array {
+        count: u32,
+    },
 }
 
 impl ImageLayers {
@@ -15,12 +19,13 @@ impl ImageLayers {
         match self {
             ImageLayers::Single => 1,
             ImageLayers::Cube => CUBE_FACES,
+            ImageLayers::Array { count } => count,
         }
     }
 
     pub(crate) fn create_flags(self) -> vk::ImageCreateFlags {
         match self {
-            ImageLayers::Single => vk::ImageCreateFlags::empty(),
+            ImageLayers::Single | ImageLayers::Array { .. } => vk::ImageCreateFlags::empty(),
             ImageLayers::Cube => vk::ImageCreateFlags::CUBE_COMPATIBLE,
         }
     }
@@ -29,6 +34,7 @@ impl ImageLayers {
         match self {
             ImageLayers::Single => vk::ImageViewType::TYPE_2D,
             ImageLayers::Cube => vk::ImageViewType::CUBE,
+            ImageLayers::Array { .. } => vk::ImageViewType::TYPE_2D_ARRAY,
         }
     }
 }

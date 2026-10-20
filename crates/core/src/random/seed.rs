@@ -8,15 +8,21 @@ const SPLIT_MIX_SECOND_MULTIPLIER: u64 = 0x94d0_49bb_1331_11eb;
 // construction and no two uses share a pattern. The hashes are fixed algorithms, never the standard library's, which
 // may change between Rust versions.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct Seed(pub u64);
+pub struct Seed {
+    pub value: u64,
+}
 
 impl Seed {
     pub fn from_id(id: &str) -> Seed {
-        Seed(Seed::split_mix(Seed::fnv(id)))
+        Seed {
+            value: Seed::split_mix(Seed::fnv(id)),
+        }
     }
 
     pub fn derive(self, place: &str) -> Seed {
-        Seed(Seed::split_mix(self.0 ^ Seed::fnv(place)))
+        Seed {
+            value: Seed::split_mix(self.value ^ Seed::fnv(place)),
+        }
     }
 
     fn fnv(text: &str) -> u64 {

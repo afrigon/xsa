@@ -5,6 +5,7 @@ mod png_loader;
 mod texture_format;
 mod texture_image;
 mod texture_loader;
+mod texture_metadata;
 mod texture_shape;
 mod vulkan_format;
 
@@ -15,5 +16,6 @@ pub use png_loader::PngLoader;
 pub use texture_format::TextureFormat;
 pub use texture_image::TextureImage;
 pub use texture_loader::{TEXTURE_EXTENSIONS, TextureLoader};
+pub use texture_metadata::TextureMetadata;
 pub use texture_shape::TextureShape;
 pub use vulkan_format::VulkanFormat;

@@ -16,7 +16,9 @@ impl PackData for BodyDescription {
         let star = parse_star(document)?;
         let id: BodyId = context.id.into();
         let seed = match document.optional_node("seed") {
-            Some(node) => Seed(node.integer_argument()?),
+            Some(node) => Seed {
+                value: node.integer_argument()?,
+            },
             None => Seed::from_id(&id.value),
         };
 

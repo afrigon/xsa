@@ -4,7 +4,7 @@ use std::io::Read;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{TextureFormat, TextureImage, TextureLoader, TextureShape, VulkanFormat};
+use super::{TextureFormat, TextureImage, TextureLoader, TextureMetadata, TextureShape, VulkanFormat};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const VK_FORMAT_OFFSET: usize = 12;
@@ -70,7 +70,11 @@ impl TextureLoader for Ktx2Loader {
             height: word(PIXEL_HEIGHT_OFFSET),
             mip_levels,
             layers: Vec::new(),
-            metadata: Ktx2Loader::metadata(bytes, word(KEY_VALUE_OFFSET_OFFSET), word(KEY_VALUE_LENGTH_OFFSET))?,
+            metadata: TextureMetadata::new(Ktx2Loader::metadata(
+                bytes,
+                word(KEY_VALUE_OFFSET_OFFSET),
+                word(KEY_VALUE_LENGTH_OFFSET),
+            )?),
         };
         let layer_size = image.layer_size()?;
         let mut layers = Vec::new();

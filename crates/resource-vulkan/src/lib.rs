@@ -68,7 +68,7 @@ pub use resource_state::ResourceState;
 pub use resources::Resources;
 pub use retention::Retention;
 pub use streaming::{PageFormat, PagePlacement, PageRequest, PageSource, Residency, SetStatistics, StreamedSet};
-pub use textures::{CubeMap, PendingTexture, Texture};
+pub use textures::{CubeMap, PendingTexture, Texture, TextureArray};
 
 #[cfg(test)]
 mod tests {

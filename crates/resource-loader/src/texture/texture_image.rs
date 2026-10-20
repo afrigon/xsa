@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader, TextureShape};
+use super::{
+    ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader, TextureMetadata, TextureShape,
+};
 use crate::utils::HalfFloat;
 
 const HALF_BYTES: usize = 2;
@@ -18,7 +19,7 @@ pub struct TextureImage {
     pub(super) height: u32,
     pub(super) mip_levels: u32,
     pub(super) layers: Vec<Vec<u8>>,
-    pub(super) metadata: BTreeMap<String, Vec<u8>>,
+    pub(super) metadata: TextureMetadata,
 }
 
 impl TextureImage {
@@ -39,7 +40,7 @@ impl TextureImage {
             height,
             mip_levels,
             layers,
-            metadata: BTreeMap::new(),
+            metadata: TextureMetadata::default(),
         };
         let layer_size = image.layer_size()?;
         image.check_layer_count()?;
@@ -119,24 +120,17 @@ impl TextureImage {
 
     /// The value stored under a key/value metadata key, as the file holds it.
     pub fn metadata(&self, key: &str) -> Option<&[u8]> {
-        self.metadata.get(key).map(Vec::as_slice)
+        self.metadata.value(key)
     }
 
     /// The numbers stored under a key/value metadata key, written as text separated by spaces and ending with a NUL.
     pub fn metadata_numbers(&self, key: &str) -> anyhow::Result<Vec<f32>> {
-        let value = self.metadata(key).with_context(|| format!("no {key} metadata"))?;
-        let text = value
-            .strip_suffix(b"\0")
-            .and_then(|text| std::str::from_utf8(text).ok())
-            .with_context(|| format!("{key} metadata is not text ending with a NUL"))?;
+        self.metadata.numbers(key)
+    }
 
-        text.split_ascii_whitespace()
-            .map(|number| {
-                number
-                    .parse()
-                    .with_context(|| format!("{key} metadata: {number} is not a number"))
-            })
-            .collect()
+    /// Every key/value metadata entry the file carries.
+    pub fn all_metadata(&self) -> &TextureMetadata {
+        &self.metadata
     }
 
     /// The top mip level of a half-float image, row by row, as red green blue.

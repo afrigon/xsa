@@ -1,8 +1,6 @@
-use std::collections::BTreeMap;
-
 use anyhow::{bail, ensure};
 
-use super::{TextureFormat, TextureImage, TextureLoader, TextureShape};
+use super::{TextureFormat, TextureImage, TextureLoader, TextureMetadata, TextureShape};
 
 const DDS_MAGIC: &[u8; 4] = b"DDS ";
 const DX10_FOURCC: &[u8; 4] = b"DX10";
@@ -67,7 +65,7 @@ impl TextureLoader for DdsLoader {
             height: word(HEIGHT_OFFSET),
             mip_levels: word(MIP_COUNT_OFFSET).max(1),
             layers: Vec::new(),
-            metadata: BTreeMap::new(),
+            metadata: TextureMetadata::default(),
         };
         let layer_size = image.layer_size()?;
         let data = &bytes[DDS_HEADER_SIZE..];
