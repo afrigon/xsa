@@ -78,7 +78,7 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, DrawVarying
 // The ground up close: the class and variant materials weighed at the pixel, the two strongest sampled and blended by
 // height, brightening or darkening the colour layer and adding their relief to the normal layer's, fading in as the
 // colour layer is magnified past its texels. `debugColor` is what the surface debug view shows.
-void addSurfaces(HapkeData material, LayerCoordinates coordinates, SurfacePoint point, HapkeVaryings shape, float3 up,
+void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint point, HapkeVaryings shape, float3 up,
                  inout float3 albedo, inout float3 normal, out float3 debugColor) {
     debugColor = float3(0.0);
 
@@ -107,7 +107,7 @@ void addSurfaces(HapkeData material, LayerCoordinates coordinates, SurfacePoint 
             continue;
         }
 
-        SurfaceData surface = material.surfaces[surfaceClass];
+        SurfaceData *surface = &material.surfaces[surfaceClass];
         VariantPair pair = variantPair(noiseAt(anchors.variantNoise[surfaceClass], point.offset), surface.variantCount);
         Material first = { surfaceClass, pair.first, classes[surfaceClass] * (1.0 - pair.secondWeight) };
         strongest.offer(first);
@@ -119,14 +119,14 @@ void addSurfaces(HapkeData material, LayerCoordinates coordinates, SurfacePoint 
     }
 
     float2 weights = strongest.weights();
-    SurfaceData firstSurface = material.surfaces[strongest.first.surfaceClass];
+    SurfaceData *firstSurface = &material.surfaces[strongest.first.surfaceClass];
     SurfaceSample first =
         sampleSurface(firstSurface, anchors, strongest.first.surfaceClass, strongest.first.variant, point, normal);
     float3 color = tintSpace(first.color, firstSurface.averageColor, *constants.frame);
     float3 relief = first.normal;
 
     if (weights.y > 0.0) {
-        SurfaceData secondSurface = material.surfaces[strongest.second.surfaceClass];
+        SurfaceData *secondSurface = &material.surfaces[strongest.second.surfaceClass];
         SurfaceSample second = sampleSurface(
             secondSurface, anchors, strongest.second.surfaceClass, strongest.second.variant, point, normal);
         float contrast = 0.5 * (firstSurface.heightContrast + secondSurface.heightContrast);
@@ -158,7 +158,7 @@ void addSurfaces(HapkeData material, LayerCoordinates coordinates, SurfacePoint 
 [shader("fragment")]
 FragmentOutput fragmentMain(HapkeVaryings varyings, uint primitive: SV_PrimitiveID) {
     TerrainVaryings input = varyings.terrain;
-    HapkeData material = currentMaterial<HapkeData>();
+    HapkeData *material = currentMaterialAddress<HapkeData>();
     float3 modelNormal = normalize(input.draw.modelNormal);
     LayerCoordinates coordinates = layerCoordinates(input.tile, input.faceOffset);
     LayerRead color = readLayer(coordinates, colorLayer);

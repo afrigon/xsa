@@ -58,3 +58,8 @@ ObjectData currentObject() {
 T currentMaterial<T>() {
     return *(T *)constants.material;
 }
+
+// For parameters too large to copy into registers whole: fields are read where they are used.
+T *currentMaterialAddress<T>() {
+    return (T *)constants.material;
+}

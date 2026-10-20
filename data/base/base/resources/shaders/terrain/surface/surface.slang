@@ -32,13 +32,18 @@ struct ScaleSample {
     float displacement;
 };
 
+// The body frame's axis `index`, built by comparison rather than read from a table.
+float3 bodyAxis(int index) {
+    return float3(index == 0 ? 1.0 : 0.0, index == 1 ? 1.0 : 0.0, index == 2 ? 1.0 : 0.0);
+}
+
 float2 planeCoordinates(float3 value, int plane) {
     return float2(value[(plane + 1) % 3], value[(plane + 2) % 3]);
 }
 
 // A variant of the surface on one projection plane at one scale, its normal reoriented onto `normal` in the plane's
 // frame.
-ScaleSample sampleScale(SurfaceData surface, float2 anchor, uint variant, int scale, SurfacePoint point, int plane,
+ScaleSample sampleScale(SurfaceData *surface, float2 anchor, uint variant, int scale, SurfacePoint point, int plane,
                         float3 normal) {
     float repeat = surface.size * exp2(float(scale));
     float2 rotation = surface.scaleRotations[scale];
@@ -67,9 +72,8 @@ ScaleSample sampleScale(SurfaceData surface, float2 anchor, uint variant, int sc
     float side = normal[plane] < 0.0 ? -1.0 : 1.0;
     float3 base = float3(planeCoordinates(normal, plane), abs(normal[plane]));
     float3 blended = reorientedNormal(base, detail);
-    float3 axes[3] = { float3(1.0, 0.0, 0.0), float3(0.0, 1.0, 0.0), float3(0.0, 0.0, 1.0) };
-    sample.normal =
-        blended.x * axes[(plane + 1) % 3] + blended.y * axes[(plane + 2) % 3] + blended.z * side * axes[plane];
+    sample.normal = blended.x * bodyAxis((plane + 1) % 3) + blended.y * bodyAxis((plane + 2) % 3) +
+                    blended.z * side * bodyAxis(plane);
     return sample;
 }
 
@@ -84,7 +88,22 @@ struct SurfaceSample {
 
 // Projected on the planes the normal leans toward, at the two scales of the ladder around the pixel's footprint on
 // the ground, blended so the surface keeps its contrast where they meet.
-SurfaceSample sampleSurface(SurfaceData surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant,
+// The colour, slope and displacement of one projection plane at one scale, added to their blends.
+void addScale(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant, int scale, float weight,
+              SurfacePoint point, int plane, float3 normal, inout ContrastBlend color, inout ContrastBlend slope,
+              inout ContrastBlend displacement) {
+    if (weight <= 0.0) {
+        return;
+    }
+
+    ScaleSample sample =
+        sampleScale(surface, anchors.planes[surfaceClass][scale][plane], variant, scale, point, plane, normal);
+    color.add(sample.color - surface.averageColor, weight);
+    slope.add(sample.normal - normal, weight);
+    displacement.add(sample.displacement.xxx, weight);
+}
+
+SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant,
                             SurfacePoint point, float3 normal) {
     SurfaceSample result;
     result.planeWeights = saturate(abs(normal) - triplanarBias);
@@ -94,8 +113,7 @@ SurfaceSample sampleSurface(SurfaceData surface, SurfaceAnchors *anchors, uint s
     result.level = clamp(log2(footprint * surface.texels / surface.size), 0.0, float(surface.scaleCount - 1));
     int finer = int(result.level);
     int coarser = min(finer + 1, int(surface.scaleCount) - 1);
-    float scaleWeights[2] = { 1.0 - (result.level - float(finer)), result.level - float(finer) };
-    int scales[2] = { finer, coarser };
+    float coarserWeight = result.level - float(finer);
 
     ContrastBlend color = contrastBlend();
     ContrastBlend slope = contrastBlend();
@@ -106,20 +124,31 @@ SurfaceSample sampleSurface(SurfaceData surface, SurfaceAnchors *anchors, uint s
             continue;
         }
 
-        for (int index = 0; index < 2; index++) {
-            float weight = result.planeWeights[plane] * scaleWeights[index];
-
-            if (weight <= 0.0) {
-                continue;
-            }
-
-            int scale = scales[index];
-            ScaleSample sample =
-                sampleScale(surface, anchors.planes[surfaceClass][scale][plane], variant, scale, point, plane, normal);
-            color.add(sample.color - surface.averageColor, weight);
-            slope.add(sample.normal - normal, weight);
-            displacement.add(sample.displacement.xxx, weight);
-        }
+        float weight = result.planeWeights[plane];
+        addScale(surface,
+                 anchors,
+                 surfaceClass,
+                 variant,
+                 finer,
+                 weight * (1.0 - coarserWeight),
+                 point,
+                 plane,
+                 normal,
+                 color,
+                 slope,
+                 displacement);
+        addScale(surface,
+                 anchors,
+                 surfaceClass,
+                 variant,
+                 coarser,
+                 weight * coarserWeight,
+                 point,
+                 plane,
+                 normal,
+                 color,
+                 slope,
+                 displacement);
     }
 
     result.color = max(surface.averageColor + color.deviation(), 0.0);

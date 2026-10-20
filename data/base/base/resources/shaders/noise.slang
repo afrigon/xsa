@@ -20,39 +20,27 @@ uint3 pcg3d(uint3 value) {
     return value;
 }
 
-// One of the twelve directions to a cube's edge midpoints, picked by the hash of a lattice point.
-float3 latticeGradient(int3 cell, uint seed) {
-    uint hash = pcg3d(uint3(cell) ^ uint3(seed, seed * 0x9E3779B9u, seed * 0x85EBCA6Bu)).x % 12u;
-    float3 gradients[12] = {
-        float3(1, 1, 0),
-        float3(-1, 1, 0),
-        float3(1, -1, 0),
-        float3(-1, -1, 0),
-        float3(1, 0, 1),
-        float3(-1, 0, 1),
-        float3(1, 0, -1),
-        float3(-1, 0, -1),
-        float3(0, 1, 1),
-        float3(0, -1, 1),
-        float3(0, 1, -1),
-        float3(0, -1, -1),
-    };
-    return gradients[hash];
+// The offset's dot product with one of the directions to a cube's edge midpoints, picked from the bits of a lattice
+// point's hash (Perlin, "Improving Noise", 2002) rather than from a table, which a GPU would keep in slow memory.
+float latticeDot(int3 cell, uint seed, float3 offset) {
+    uint hash = pcg3d(uint3(cell) ^ uint3(seed, seed * 0x9E3779B9u, seed * 0x85EBCA6Bu)).x & 15u;
+    float first = hash < 8u ? offset.x : offset.y;
+    float second = hash < 4u ? offset.y : (hash == 12u || hash == 14u ? offset.x : offset.z);
+    return ((hash & 1u) == 0u ? first : -first) + ((hash & 2u) == 0u ? second : -second);
 }
 
 // Gradient noise (Perlin, 2002) with quintic fades, from about -1 to 1, at `fraction` across lattice cell `cell`.
 float gradientNoise(int3 cell, float3 fraction, uint seed) {
     float3 fade = fraction * fraction * fraction * (fraction * (fraction * 6.0 - 15.0) + 10.0);
-    float corners[8];
-
-    for (int corner = 0; corner < 8; corner++) {
-        int3 step = int3(corner & 1, (corner >> 1) & 1, corner >> 2);
-        corners[corner] = dot(latticeGradient(cell + step, seed), fraction - float3(step));
-    }
-
-    float4 alongX = lerp(float4(corners[0], corners[2], corners[4], corners[6]),
-                         float4(corners[1], corners[3], corners[5], corners[7]),
-                         fade.x);
+    float4 near = float4(latticeDot(cell, seed, fraction),
+                         latticeDot(cell + int3(0, 1, 0), seed, fraction - float3(0, 1, 0)),
+                         latticeDot(cell + int3(0, 0, 1), seed, fraction - float3(0, 0, 1)),
+                         latticeDot(cell + int3(0, 1, 1), seed, fraction - float3(0, 1, 1)));
+    float4 far = float4(latticeDot(cell + int3(1, 0, 0), seed, fraction - float3(1, 0, 0)),
+                        latticeDot(cell + int3(1, 1, 0), seed, fraction - float3(1, 1, 0)),
+                        latticeDot(cell + int3(1, 0, 1), seed, fraction - float3(1, 0, 1)),
+                        latticeDot(cell + int3(1, 1, 1), seed, fraction - float3(1, 1, 1)));
+    float4 alongX = lerp(near, far, fade.x);
     float2 alongY = lerp(alongX.xz, alongX.yw, fade.y);
     return lerp(alongY.x, alongY.y, fade.z);
 }
