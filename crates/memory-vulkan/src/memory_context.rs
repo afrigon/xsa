@@ -1,4 +1,5 @@
 mod bookkeeping;
+mod counted_allocator;
 mod present_fences;
 
 use std::mem::ManuallyDrop;
@@ -9,6 +10,7 @@ use gpu_allocator::MemoryLocation;
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc};
 
 use bookkeeping::Bookkeeping;
+pub(crate) use counted_allocator::CountedAllocator;
 
 use crate::{
     Deletion, DeviceObject, Frontier, HeapUsage, MemoryError, RecordingId, Timeline, TimelineId, TimelineSemaphore,
@@ -32,7 +34,7 @@ struct SharedMemory {
     device: ash::Device,
     swapchain: khr::swapchain::Device,
     // Dropped by hand, after the queued deletions free their allocations and before the device is destroyed.
-    allocator: ManuallyDrop<Mutex<Allocator>>,
+    allocator: ManuallyDrop<Mutex<CountedAllocator>>,
     bookkeeping: Mutex<Bookkeeping>,
 }
 
@@ -68,7 +70,7 @@ impl MemoryContext {
                 physical_device,
                 device,
                 swapchain,
-                allocator: ManuallyDrop::new(Mutex::new(allocator)),
+                allocator: ManuallyDrop::new(Mutex::new(CountedAllocator::new(allocator))),
                 bookkeeping: Mutex::new(Bookkeeping::default()),
             }),
         })
@@ -82,7 +84,8 @@ impl MemoryContext {
         &self.shared.swapchain
     }
 
-    /// The device-local heaps' budget and this process's usage of them, as the driver reports them now.
+    /// The device-local heaps' budget and this process's usage of them, as the driver reports them now, with the part
+    /// of that usage no object occupies.
     pub fn video_memory(&self) -> HeapUsage {
         let shared = &self.shared;
         let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
@@ -95,14 +98,23 @@ impl MemoryContext {
         let memory_properties = properties.memory_properties;
         let heaps = &memory_properties.memory_heaps[..memory_properties.memory_heap_count as usize];
 
+        let unallocated = self.allocator().unallocated_device_local();
+
         heaps
             .iter()
             .enumerate()
             .filter(|(_, heap)| heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL))
-            .fold(HeapUsage::default(), |total, (index, _)| HeapUsage {
-                budget: total.budget + budget.heap_budget[index],
-                usage: total.usage + budget.heap_usage[index],
-            })
+            .fold(
+                HeapUsage {
+                    unallocated,
+                    ..HeapUsage::default()
+                },
+                |total, (index, _)| HeapUsage {
+                    budget: total.budget + budget.heap_budget[index],
+                    usage: total.usage + budget.heap_usage[index],
+                    unallocated: total.unallocated,
+                },
+            )
     }
 
     /// Creates the timeline every submission and present to `queue` must go through. A queue has one timeline.
@@ -268,7 +280,7 @@ impl MemoryContext {
             .expect("the bookkeeping lock is poisoned")
     }
 
-    fn allocator(&self) -> MutexGuard<'_, Allocator> {
+    fn allocator(&self) -> MutexGuard<'_, CountedAllocator> {
         self.shared.allocator.lock().expect("the allocator lock is poisoned")
     }
 
