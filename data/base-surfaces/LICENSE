@@ -1,0 +1,59 @@
+MIT License
+
+Copyright (c) 2026 Alexandre Frigon
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Third-party content
+-------------------
+
+The following content in this pack comes from third parties under their own
+terms.
+
+Moon 01 (base-surfaces/resources/textures/surfaces/regolith/)
+
+From Poly Haven (https://polyhaven.com/a/moon_01), by Greg Zaal (photography),
+Rico Cilliers (photography), Jenelle van Heerden (photography), Dario Barresi
+(processing). Licensed CC0 1.0 Universal, dedicated to the public domain
+(https://creativecommons.org/publicdomain/zero/1.0/). Resampled, with the
+colour, OpenGL normal and displacement maps compressed into texture arrays.
+
+Moon 02 (base-surfaces/resources/textures/surfaces/regolith/)
+
+From Poly Haven (https://polyhaven.com/a/moon_02), by Greg Zaal (photography),
+Rico Cilliers (photography), Jenelle van Heerden (photography), Dario Barresi
+(processing). Licensed CC0 1.0 Universal, dedicated to the public domain
+(https://creativecommons.org/publicdomain/zero/1.0/). Resampled, with the
+colour, OpenGL normal and displacement maps compressed into texture arrays.
+
+Moon Meteor 01 (base-surfaces/resources/textures/surfaces/regolith-cratered/)
+
+From Poly Haven (https://polyhaven.com/a/moon_meteor_01), by Greg Zaal
+(photography), Rico Cilliers (photography), Jenelle van Heerden (processing).
+Licensed CC0 1.0 Universal, dedicated to the public domain
+(https://creativecommons.org/publicdomain/zero/1.0/). Resampled, with the
+colour, OpenGL normal and displacement maps compressed into texture arrays.
+
+Moon Meteor 02 (base-surfaces/resources/textures/surfaces/regolith-rocky/)
+
+From Poly Haven (https://polyhaven.com/a/moon_meteor_02), by Greg Zaal
+(photography), Jenelle van Heerden (processing), Rico Cilliers (photography).
+Licensed CC0 1.0 Universal, dedicated to the public domain
+(https://creativecommons.org/publicdomain/zero/1.0/). Resampled, with the
+colour, OpenGL normal and displacement maps compressed into texture arrays.

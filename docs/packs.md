@@ -35,6 +35,7 @@ data/<pack>/
       objects/                              mirrors data/ one-to-one
         bodies/  systems/  simulations/  parts/
       materials/                            shader and its parameters
+      surfaces/                             close-up ground materials, shared by every body
       terrains/                             terrain layers materials shade with
       shaders/                              SPIR-V shaders (base only, see below)
       textures/  models/  sounds/  fonts/   shared assets, organized freely
@@ -420,7 +421,8 @@ other packs, with their own material properties, are planned.
 
 ### Textures — `<namespace>/resources/textures/`
 
-KTX2 files (uncompressed or with Zstandard supercompression), DDS files with
+KTX2 files (uncompressed or with Zstandard supercompression; 2D textures, cube
+maps or texture arrays, with key/value metadata), DDS files with
 a DX10 header, or PNG files, uploaded exactly as stored. KTX2 and DDS hold
 BC7, BC5, BC4, RGBA8, half-float RGBA for values beyond 1 (such as lens
 textures), or 16-bit R and RG for heights; a PNG becomes one RGBA8 level
@@ -430,6 +432,49 @@ replaces an earlier pack's whatever the formats, and a pack holding the same
 texture in several formats uses the first of KTX2, DDS and PNG, with a
 warning. Folders are organized by subject for people; a texture's purpose is
 declared by whatever references it.
+
+### Surfaces — `<namespace>/resources/surfaces/`
+
+The close-up materials of the ground, named by material (`regolith`), never by
+body: any body can use any surface. `base-surfaces` ships them.
+
+```kdl
+color-texture "surfaces/regolith/color"
+normal-texture "surfaces/regolith/normal"
+displacement-texture "surfaces/regolith/displacement"
+size 3.1015625
+displacement low=0.0 high=0.05
+largest-magnification 8.0
+```
+
+- **`color-texture`**, **`normal-texture`**, **`displacement-texture`:**
+  three texture arrays with the same size, mip chain and layer count. Each
+  layer is one variant: interchangeable tiles of the same material.
+  - Colour: `BC7` sRGB, the photograph's colour kept in full. Its KTX2
+    metadata `xsa.averageColor` holds the array's average linear red, green
+    and blue; one over its luminance scales the stored brightness back to an
+    average of 1.
+  - Normal: `BC5`, x and y of a tangent-space normal in the OpenGL convention
+    (green toward the image's top), z reconstructed. Its KTX2 metadata
+    `xsa.slopeSpread` holds, for every mip level, the root mean square slope
+    (height change per unit of distance) of the ground that level shows; each
+    level's slopes are the area average of the level above.
+  - Displacement: `BC4`, from 0 at the array's lowest point to 1 at its
+    highest, across every layer.
+- **`size`** (m): the side of the square one tile covers.
+- **`displacement`** (m): the heights a displacement of 0 (`low`) and 1
+  (`high`) stand for.
+- **`largest-magnification`:** how many times the surface can be scaled up
+  before it stops looking right: regolith is roughly self-similar, grass is
+  not.
+
+Metadata values are text, numbers separated by spaces, ending with a NUL.
+
+`base-surfaces`' scripts build the surfaces from Poly Haven sets at a texel
+density given in texels per meter: `mise run generate -- base-surfaces
+--density 1024`. Each set is resampled to the side nearest that density that
+is a multiple of 4 texels, with a Lanczos filter wrapping around its edges so
+it still tiles, and `size` is that side over the density.
 
 ### Fonts — `<namespace>/resources/fonts/`
 
@@ -529,6 +574,6 @@ into them without a format change.
 
 Pack text files (`.kdl`, `.slang`) are committed to the repository; binary
 files (`.dds`, `.spv`, …) are git-ignored, except the base pack's textures,
-which no task produces. In the repository, system-solar's binaries come from its
-scripts: `mise run generate`. Releases, the pack repository and installation are
+which no task produces. In the repository, the other packs' binaries come from
+their scripts: `mise run generate -- <pack>`. Releases, the pack repository and installation are
 described in `docs/launchpad.md`.

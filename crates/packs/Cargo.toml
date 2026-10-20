@@ -12,3 +12,6 @@ resource-loader = { workspace = true, features = ["terrain"] }
 tracing.workspace = true
 xsa-core.workspace = true
 xsa-units.workspace = true
+
+[dev-dependencies]
+resource-loader = { workspace = true, features = ["texture"] }

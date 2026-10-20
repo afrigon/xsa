@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, ensure};
 use resource_loader::terrain::PAGE_INTERIOR;
-use resource_loader::texture::{TextureFormat, TextureImage};
+use resource_loader::texture::{TextureFormat, TextureImage, TextureShape};
 use resource_loader::utils::CubeFace;
 
 /// A terrain layer's cube map, checked against what the conversion needs: six square power-of-two faces of at least
@@ -28,10 +28,9 @@ impl CubeMapInput {
             "{format} texels: the input must be uncompressed, this command compresses each page itself"
         );
         ensure!(
-            image.layers().len() == CubeFace::ALL.len(),
-            "{} faces: a cube map has {}",
-            image.layers().len(),
-            CubeFace::ALL.len()
+            image.shape() == TextureShape::CubeMap,
+            "a {}: the input must be a cube map",
+            image.shape()
         );
         ensure!(
             image.width() == image.height(),
