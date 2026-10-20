@@ -1,5 +1,5 @@
 use super::{AntialiasingConfig, BloomConfig, LensConfig, TerrainLodConfig, WhiteBalanceConfig};
-use crate::renderer::{DebugView, SurfaceDebugView, TerrainDebugView, Tonemapper};
+use crate::renderer::{DebugView, SurfaceDebugView, SurfaceTiling, TerrainDebugView, Tonemapper};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderConfig {
@@ -13,5 +13,6 @@ pub struct RenderConfig {
     pub shader_override: Option<DebugView>,
     pub terrain_shader_override: Option<TerrainDebugView>,
     pub surface_shader_override: Option<SurfaceDebugView>,
+    pub surface_tiling: SurfaceTiling,
     pub terrain_lod: TerrainLodConfig,
 }

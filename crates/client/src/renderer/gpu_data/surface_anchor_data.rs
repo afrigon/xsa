@@ -1,3 +1,5 @@
+use glam::Vec2;
+
 use super::{GpuData, HexAnchor, NoiseAnchor};
 use crate::renderer::surface::{PROJECTION_AXES, SURFACE_CLASSES, SURFACE_LEVELS};
 
@@ -8,12 +10,14 @@ use crate::renderer::surface::{PROJECTION_AXES, SURFACE_CLASSES, SURFACE_LEVELS}
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct SurfaceAnchorData {
     pub planes: [[[HexAnchor; SURFACE_LEVELS]; PROJECTION_AXES]; SURFACE_CLASSES],
+    // The camera's place within each plain repeat, in repeats, for offset tiling.
+    pub repeats: [[[Vec2; SURFACE_LEVELS]; PROJECTION_AXES]; SURFACE_CLASSES],
     pub handover_noise: NoiseAnchor,
     pub variant_noise: [NoiseAnchor; SURFACE_CLASSES],
     pub noise_volume: u32,
     pub padding: [u32; 3],
 }
 
-const _: () = assert!(size_of::<SurfaceAnchorData>() == 1216);
+const _: () = assert!(size_of::<SurfaceAnchorData>() == 1792);
 
 unsafe impl GpuData for SurfaceAnchorData {}

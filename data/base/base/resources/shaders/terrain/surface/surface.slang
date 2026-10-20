@@ -3,6 +3,7 @@ import draw;
 import terrain.surface.blend;
 import terrain.surface.hex_tiling;
 import terrain.surface.normal_blend;
+import terrain.surface.tiling;
 __exported import terrain.surface.surface_data;
 
 // A plane weighs the normal's component along its axis beyond 1/√3. A component above it is never the smallest, so the
@@ -56,6 +57,15 @@ float2 planeCoordinates(float3 value, int plane) {
 float surfaceLevel(float size, float footprint) {
     float level = log(footprint * surfaceRepeatPixels / size) / log(surfaceLevelDistanceRatio);
     return clamp(level, 0.0, float(surfaceLevels - 1));
+}
+
+// A surface's relief `detail`, in the frame of projection plane `plane`, reoriented onto `normal` in the body's frame.
+float3 planeNormal(float3 detail, float3 normal, int plane) {
+    float side = normal[plane] < 0.0 ? -1.0 : 1.0;
+    float3 base = float3(planeCoordinates(normal, plane), abs(normal[plane]));
+    float3 blended = reorientedNormal(base, normalize(detail));
+    return blended.x * bodyAxis((plane + 1) % 3) + blended.y * bodyAxis((plane + 2) % 3) +
+           blended.z * side * bodyAxis(plane);
 }
 
 // A variant of the surface projected on one plane at one level, from the hexagonal cells around the pixel, its normal
@@ -120,11 +130,35 @@ PlaneSample samplePlane(SurfaceData *surface, HexAnchor anchor, uint variant, Su
         sample.cells += hueColor(placements[corner].hue) * shown[corner];
     }
 
-    float side = normal[plane] < 0.0 ? -1.0 : 1.0;
-    float3 base = float3(planeCoordinates(normal, plane), abs(normal[plane]));
-    float3 blended = reorientedNormal(base, normalize(detail));
-    sample.normal = blended.x * bodyAxis((plane + 1) % 3) + blended.y * bodyAxis((plane + 2) % 3) +
-                    blended.z * side * bodyAxis(plane);
+    sample.normal = planeNormal(detail, normal, plane);
+    return sample;
+}
+
+// A variant of the surface projected on one plane at one level as a plain repeat, shifted by its seeded offset.
+PlaneSample sampleOffsetPlane(SurfaceData *surface, float2 repeatPlace, uint variant, SurfacePoint point, int plane,
+                              int level, float3 normal) {
+    float repeat = surface.size * pow(surfaceLevelGrowth, float(level));
+    HexCellPlacement placement = hexCellPlacement(int2(0), uint(level * projectionAxes + plane), surface.tilingSeed);
+    float3 location =
+        float3(repeatPlace + planeCoordinates(point.offset, plane) / repeat + placement.shift, float(variant));
+    float2 uvPerPixelX = planeCoordinates(point.offsetPerPixelX, plane) / repeat;
+    float2 uvPerPixelY = planeCoordinates(point.offsetPerPixelY, plane) / repeat;
+    PlaneSample sample;
+    sample.color = textureArrays[NonUniformResourceIndex(surface.colorTexture)]
+                       .SampleGrad(tilingSampler, location, uvPerPixelX, uvPerPixelY)
+                       .rgb;
+    sample.displacement = textureArrays[NonUniformResourceIndex(surface.displacementTexture)]
+                              .SampleGrad(tilingSampler, location, uvPerPixelX, uvPerPixelY)
+                              .r;
+    float2 slope = textureArrays[NonUniformResourceIndex(surface.normalTexture)]
+                           .SampleGrad(tilingSampler, location, uvPerPixelX, uvPerPixelY)
+                           .rg *
+                       2.0 -
+                   1.0;
+    // Green points to the image's top, against v.
+    float3 detail = float3(slope.x, -slope.y, sqrt(saturate(1.0 - dot(slope, slope))));
+    sample.normal = planeNormal(detail, normal, plane);
+    sample.cells = hueColor(placement.hue);
     return sample;
 }
 
@@ -145,8 +179,15 @@ void addPlane(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, 
         return;
     }
 
-    PlaneSample sample =
-        samplePlane(surface, anchors.planes[surfaceClass][plane][level], variant, point, plane, level, normal);
+    PlaneSample sample;
+
+    if (surfaceTiling == uint(SurfaceTiling.Offset)) {
+        sample = sampleOffsetPlane(
+            surface, anchors.repeats[surfaceClass][plane][level], variant, point, plane, level, normal);
+    } else {
+        sample = samplePlane(surface, anchors.planes[surfaceClass][plane][level], variant, point, plane, level, normal);
+    }
+
     color.add(sample.color - surface.averageColor, weight);
     slope.add(sample.normal - normal, weight);
     displacement.add(sample.displacement.xxx, weight);

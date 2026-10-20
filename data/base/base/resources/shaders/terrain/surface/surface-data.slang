@@ -52,6 +52,8 @@ struct HexAnchor {
 // level.
 struct SurfaceAnchors {
     HexAnchor planes[surfaceClasses][projectionAxes][surfaceLevels];
+    // The camera's place within each plain repeat, in repeats, for offset tiling.
+    float2 repeats[surfaceClasses][projectionAxes][surfaceLevels];
     NoiseAnchor handoverNoise;
     NoiseAnchor variantNoise[surfaceClasses];
     uint noiseVolume;

@@ -32,6 +32,7 @@ mod star_visibility;
 mod static_buffer;
 mod surface;
 mod surface_debug_view;
+mod surface_tiling;
 mod temporal_history;
 mod terrain;
 mod terrain_debug_view;
@@ -52,6 +53,7 @@ pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, S
 pub use shader_binaries::ShaderBinaries;
 pub use surface::{BiomeSurfaces, SurfaceClass, SurfaceTextures};
 pub use surface_debug_view::SurfaceDebugView;
+pub use surface_tiling::SurfaceTiling;
 pub use terrain::{TerrainLayer, TerrainPageStatistics, TerrainPages};
 pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;

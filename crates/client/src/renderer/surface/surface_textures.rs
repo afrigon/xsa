@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
 use anyhow::ensure;
-use glam::{DVec2, DVec3, Vec3};
+use glam::{DVec2, DVec3, Vec2, Vec3};
 use resource_vulkan::{ResourceHandle, TextureArray};
 use xsa_core::random::Seed;
 
@@ -101,7 +101,16 @@ impl SurfaceTextures {
 
     // Where `point` (m, on a projection plane) falls on the hexagonal cells of its repeat at `level`.
     pub(in crate::renderer) fn anchor(&self, point: DVec2, level: usize) -> HexAnchor {
-        let repeat = f64::from(self.size) * SURFACE_LEVEL_GROWTH.powi(level as i32);
-        HexAnchor::at(point / (repeat * HEX_CELL_SIZE))
+        HexAnchor::at(point / (self.repeat(level) * HEX_CELL_SIZE))
+    }
+
+    // Where `point` (m, on a projection plane) falls within its repeat at `level`, in repeats.
+    pub(in crate::renderer) fn repeat_place(&self, point: DVec2, level: usize) -> Vec2 {
+        let place = point / self.repeat(level);
+        (place - place.floor()).as_vec2()
+    }
+
+    fn repeat(&self, level: usize) -> f64 {
+        f64::from(self.size) * SURFACE_LEVEL_GROWTH.powi(level as i32)
     }
 }
