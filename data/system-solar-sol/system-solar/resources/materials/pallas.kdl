@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.1556 0.1554 0.1498
-color-texture "bodies/pallas/color"
-normal-texture "bodies/pallas/normal"
-medium-texture "bodies/pallas/hapke-medium"
-opposition-texture "bodies/pallas/hapke-opposition"
+color-terrain "bodies/pallas/color"
+normal-terrain "bodies/pallas/normal"
+medium-terrain "bodies/pallas/hapke-medium"
+opposition-terrain "bodies/pallas/hapke-opposition"

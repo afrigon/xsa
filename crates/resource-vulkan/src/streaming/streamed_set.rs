@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::streaming::{PagePlacement, PageRequest, PageSource, Residency, SetId, SetState};
+use crate::streaming::{PagePlacement, PageRequest, PageSource, Residency, SetId, SetState, SetStatistics};
 
 /// A client's paged data, kept resident by what it requests and what the memory budget allows. Dropping it frees
 /// every page it holds.
@@ -35,6 +35,18 @@ impl<S: PageSource> StreamedSet<S> {
         let source = self.state.source();
 
         self.state.table().placement(key, |key| source.coarser(key))
+    }
+
+    /// The decoded bytes of `key`, or of its nearest coarser page, with that page's key, while they are kept in RAM;
+    /// for clients that read pages on the CPU as well. `None` while no page covering it has bytes in RAM.
+    pub fn bytes(&self, key: S::Key) -> Option<(S::Key, Arc<[u8]>)> {
+        let source = self.state.source();
+
+        self.state.table().bytes(key, |key| source.coarser(key))
+    }
+
+    pub fn statistics(&self) -> SetStatistics {
+        self.state.table().statistics()
     }
 
     pub fn set_residency(&self, residency: Residency) {

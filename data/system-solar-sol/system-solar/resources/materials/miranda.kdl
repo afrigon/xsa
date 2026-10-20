@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.3243 0.3283 0.3339
-color-texture "bodies/miranda/color"
-normal-texture "bodies/miranda/normal"
-medium-texture "bodies/miranda/hapke-medium"
-opposition-texture "bodies/miranda/hapke-opposition"
+color-terrain "bodies/miranda/color"
+normal-terrain "bodies/miranda/normal"
+medium-terrain "bodies/miranda/hapke-medium"
+opposition-terrain "bodies/miranda/hapke-opposition"

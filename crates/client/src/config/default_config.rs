@@ -5,7 +5,7 @@ use winit::keyboard::KeyCode;
 
 use super::{
     AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, InputConfig,
-    KeyChord, LensConfig, RenderConfig, TerrainLodConfig, WhiteBalanceConfig,
+    KeyChord, LensConfig, RenderConfig, TerrainLodConfig, TerrainStreamingConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
@@ -95,6 +95,7 @@ impl Default for Config {
             },
             input: InputConfig { enabled: INPUT_ENABLED },
             resources: ResourceLimits::default(),
+            terrain_streaming: TerrainStreamingConfig { freeze: false },
         }
     }
 }

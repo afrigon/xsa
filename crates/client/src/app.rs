@@ -314,7 +314,11 @@ impl App {
             return;
         };
 
-        renderer.configure(&self.config.render, &self.config.animations);
+        renderer.configure(
+            &self.config.render,
+            &self.config.animations,
+            &self.config.terrain_streaming,
+        );
         let skybox = self.world.as_ref().and_then(ClientWorld::skybox);
         renderer.scene_mut().skybox = if self.config.render.stars { skybox } else { None };
     }

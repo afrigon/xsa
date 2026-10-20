@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.3116 0.2678 0.2094
-color-texture "bodies/deimos/color"
-normal-texture "bodies/deimos/normal"
-medium-texture "bodies/deimos/hapke-medium"
-opposition-texture "bodies/deimos/hapke-opposition"
+color-terrain "bodies/deimos/color"
+normal-terrain "bodies/deimos/normal"
+medium-terrain "bodies/deimos/hapke-medium"
+opposition-terrain "bodies/deimos/hapke-opposition"

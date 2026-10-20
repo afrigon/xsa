@@ -67,7 +67,7 @@ pub use resource_limits::ResourceLimits;
 pub use resource_state::ResourceState;
 pub use resources::Resources;
 pub use retention::Retention;
-pub use streaming::{PageFormat, PagePlacement, PageRequest, PageSource, Residency, StreamedSet};
+pub use streaming::{PageFormat, PagePlacement, PageRequest, PageSource, Residency, SetStatistics, StreamedSet};
 pub use textures::{CubeMap, PendingTexture, Texture};
 
 #[cfg(test)]

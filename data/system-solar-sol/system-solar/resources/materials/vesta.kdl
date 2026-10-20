@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.2637 0.2398 0.1902
-color-texture "bodies/vesta/color"
-normal-texture "bodies/vesta/normal"
-medium-texture "bodies/vesta/hapke-medium"
-opposition-texture "bodies/vesta/hapke-opposition"
+color-terrain "bodies/vesta/color"
+normal-terrain "bodies/vesta/normal"
+medium-terrain "bodies/vesta/hapke-medium"
+opposition-terrain "bodies/vesta/hapke-opposition"

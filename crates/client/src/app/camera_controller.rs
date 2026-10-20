@@ -33,6 +33,15 @@ pub(super) struct CameraController {
     animation_duration_scale: f64,
 }
 
+// Where `camera tp` stands the camera: feet `altitude` meters above the ground of `body` toward `direction`, a unit
+// vector in the body's frame.
+#[derive(Clone, Copy)]
+pub(super) struct TeleportTarget {
+    pub body: BodyIndex,
+    pub direction: DVec3,
+    pub altitude: f64,
+}
+
 #[derive(Clone, Copy)]
 struct Attachment {
     body: BodyIndex,
@@ -213,12 +222,13 @@ impl CameraController {
 
     // Stands the debug camera's feet `--altitude` above the ground; yaw is a compass heading, pitch above the horizon.
     // Every value left out keeps the camera's current one over the body, `around` by default.
+    // Stands the camera where `command` says, returning where with the reply.
     pub fn teleport(
         &mut self,
         command: &CameraTeleportCommand,
         around: Option<BodyIndex>,
         world: &ClientWorld,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<(TeleportTarget, String)> {
         let index = match &command.body {
             Some(body) => world.find_body(body)?,
             None => around.context("the camera is around no body; name one")?,
@@ -246,12 +256,12 @@ impl CameraController {
             latitude.cos() * longitude.sin(),
             latitude.sin(),
         );
-        self.camera.position = world.eye_position(index, direction, altitude);
-        self.attachment = Some(Attachment {
+        let target = TeleportTarget {
             body: index,
-            position: state.position,
-            orientation: state.orientation,
-        });
+            direction,
+            altitude,
+        };
+        self.stand(target, world);
 
         let up = state.orientation * direction;
         let north = world.local_north(index, latitude, longitude);
@@ -260,14 +270,27 @@ impl CameraController {
         self.debug
             .face(horizon * DQuat::from_rotation_z(-yaw) * DQuat::from_rotation_x(pitch));
 
-        Ok(format!(
+        let reply = format!(
             "standing on {} at {:.3}, {:.3}, feet {altitude:.1} m above the ground, yaw {:.3}, pitch {:.3}",
             world.body(index).id,
             latitude.to_degrees(),
             longitude.to_degrees(),
             ((yaw.to_degrees() * ANGLE_PRECISION).round() / ANGLE_PRECISION).rem_euclid(FULL_TURN_DEGREES) + 0.0,
             pitch.to_degrees()
-        ))
+        );
+
+        Ok((target, reply))
+    }
+
+    // Places the camera at `target` against the ground loaded there so far.
+    pub fn stand(&mut self, target: TeleportTarget, world: &ClientWorld) {
+        let state = world.body_state(target.body);
+        self.camera.position = world.eye_position(target.body, target.direction, target.altitude);
+        self.attachment = Some(Attachment {
+            body: target.body,
+            position: state.position,
+            orientation: state.orientation,
+        });
     }
 
     // Carries the camera along with the nearest body's motion and spin since the previous frame, so it hovers over

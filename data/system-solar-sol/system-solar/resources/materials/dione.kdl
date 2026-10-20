@@ -1,6 +1,6 @@
 shader "base:hapke"
 base-color 0.4312 0.4288 0.4257
-color-texture "bodies/dione/color"
-normal-texture "bodies/dione/normal"
-medium-texture "bodies/dione/hapke-medium"
-opposition-texture "bodies/dione/hapke-opposition"
+color-terrain "bodies/dione/color"
+normal-terrain "bodies/dione/normal"
+medium-terrain "bodies/dione/hapke-medium"
+opposition-terrain "bodies/dione/hapke-opposition"

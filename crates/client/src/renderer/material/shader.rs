@@ -28,5 +28,7 @@ shaders! {
     Motion => "material/debug/motion",
     Lod => "material/debug/lod",
     Scale => "material/debug/scale",
+    TerrainLevels => "material/debug/terrain-levels",
+    TerrainFallback => "material/debug/terrain-fallback",
     Skybox => "skybox",
 }

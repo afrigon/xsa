@@ -29,11 +29,9 @@ mod shader_binaries;
 mod star_visibility;
 mod static_buffer;
 mod temporal_history;
-mod terrain_buffer;
-mod terrain_displacement;
+mod terrain;
 mod terrain_draw;
-mod terrain_height;
-mod tile_surface;
+mod tile_shape;
 mod tonemapper;
 mod white_balance;
 
@@ -46,12 +44,13 @@ pub use pending_capture::PendingCapture;
 pub use resource_loader::texture::ColorSpace;
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
+pub use terrain::{TerrainLayer, TerrainPageStatistics, TerrainPages};
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
 
 use ash::vk;
-use glam::{DVec2, DVec3, Mat4, Vec2};
+use glam::{DVec3, Mat4, Vec2};
 use memory_vulkan::{Buffer, MemoryError, MemoryLocation, Recording, TimelineValue, TransferPriority};
 use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
 use winit::dpi::PhysicalSize;
@@ -59,11 +58,11 @@ use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
-use resource_vulkan::{ResourceHandle, Resources};
+use resource_vulkan::{Residency, ResourceHandle, Resources};
 use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
-use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
+use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig, TerrainStreamingConfig};
 use crate::resource_kinds::{LensGhost, LensStarburst};
 use crate::vulkan::Swapchain;
 use command_recorder::CommandRecorder;
@@ -72,7 +71,7 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
+use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData, TilePages};
 use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
@@ -81,14 +80,13 @@ use material::MaterialBuffer;
 use object_pose::ObjectPose;
 use passes::TaaPass;
 use pending_capture::BYTES_PER_PIXEL;
-use quad_sphere::{DetailRanges, QuadSphere, SelectedTile};
+use quad_sphere::{DetailRanges, QuadSphere, SelectedTile, TileHeightBounds};
 use render_passes::RenderPasses;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
-use terrain_displacement::TerrainDisplacement;
+use terrain::{PageDetail, TilePageWriter};
 use terrain_draw::TerrainDraw;
-use terrain_height::TerrainHeight;
-use tile_surface::TileSurface;
+use tile_shape::TileShape;
 use tonemapper::NO_TONEMAPPER;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
@@ -140,13 +138,15 @@ pub struct Renderer {
     selected_tiles: Vec<SelectedTile>,
     terrain_draws: Vec<TerrainDraw>,
     tile_data: Vec<TileData>,
+    tile_pages: Vec<TilePages>,
+    page_writer: TilePageWriter,
+    // Whether terrain pages follow what tiles request, or stay as they are.
+    terrain_residency: Residency,
     object_capacity: usize,
     tile_capacity: usize,
     star_capacity: usize,
     light_capacity: usize,
     materials: Vec<MaterialBuffer>,
-    // By terrain index; None until its height map is ready.
-    terrain_displacements: Vec<Option<TerrainDisplacement>>,
     lens: Option<Lens>,
     passes: RenderPasses,
     graph: RenderGraph,
@@ -207,12 +207,14 @@ impl Renderer {
             selected_tiles: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             terrain_draws: Vec::new(),
             tile_data: Vec::with_capacity(INITIAL_TILE_CAPACITY),
+            tile_pages: Vec::with_capacity(INITIAL_TILE_CAPACITY),
+            page_writer: TilePageWriter::new(),
+            terrain_residency: Residency::Live,
             object_capacity: INITIAL_OBJECT_CAPACITY,
             tile_capacity: INITIAL_TILE_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
             light_capacity: INITIAL_LIGHT_CAPACITY,
             materials: Vec::new(),
-            terrain_displacements: Vec::new(),
             lens: None,
             passes,
             graph,
@@ -248,8 +250,18 @@ impl Renderer {
         self.user_interface = draw_list;
     }
 
-    pub fn configure(&mut self, render: &RenderConfig, animations: &AnimationConfig) {
+    pub fn configure(
+        &mut self,
+        render: &RenderConfig,
+        animations: &AnimationConfig,
+        terrain_streaming: &TerrainStreamingConfig,
+    ) {
         self.render = render.clone();
+        self.terrain_residency = if terrain_streaming.freeze {
+            Residency::Frozen
+        } else {
+            Residency::Live
+        };
         self.exposure.configure(animations.duration_scale);
         self.white_balance.configure(animations.duration_scale);
         self.star_visibility.configure(animations.duration_scale);
@@ -309,20 +321,13 @@ impl Renderer {
             material.refresh(&self.gpu)?;
         }
 
-        let terrains = self.scene.terrains();
-        self.terrain_displacements.resize_with(terrains.len(), || None);
-
-        for (terrain, displacement) in terrains.iter().zip(&mut self.terrain_displacements) {
-            if displacement.is_none()
-                && let Some(height_map) = &terrain.height_map
-            {
-                let radius = self.scene.object(terrain.object).scale;
-                *displacement = TerrainDisplacement::of(&self.gpu, "terrain", height_map, radius)?;
-            }
-
-            if let Some(displacement) = displacement {
-                displacement.buffer.poll()?;
-            }
+        for pages in self
+            .scene
+            .terrains()
+            .iter()
+            .filter_map(|terrain| terrain.pages.as_ref())
+        {
+            pages.update(self.terrain_residency);
         }
 
         if let Some(lens) = &mut self.lens {
@@ -614,13 +619,14 @@ impl Renderer {
             self.select_tiles(camera);
         }
 
-        self.write_tile_data(camera);
+        self.write_tiles(camera);
         self.ensure_tile_capacity()?;
 
         let frame = &mut self.frames[self.frame_index];
         frame.frame_data.write(&[frame_data])?;
         frame.objects.write(&self.object_data)?;
         frame.tiles.write(&self.tile_data)?;
+        frame.tile_pages.write(&self.tile_pages)?;
         frame.stars.write(&self.star_data)?;
         Ok(frame.projected_lights.write(&self.projected_light_data)?)
     }
@@ -643,14 +649,17 @@ impl Renderer {
             let object = self.scene.object(terrain.object);
             let center = object.position - camera.position;
 
-            let displacement = TerrainDisplacement::uploaded(&self.terrain_displacements, TerrainHandle { index });
-            let height = displacement.map(|displacement| &displacement.height);
-            let surface = displacement
-                .and_then(|displacement| displacement.buffer.device_address())
-                .map_or(TileSurface::Smooth, |terrain_data| TileSurface::Displaced {
-                    terrain_data,
-                });
-            let bounding_radius = object.bounding_radius + height.map_or(0.0, TerrainHeight::maximum);
+            let heights = terrain.pages.as_ref().and_then(|pages| pages.heights());
+            let shape = if heights.is_some() {
+                TileShape::Displaced
+            } else {
+                TileShape::Smooth
+            };
+            let highest = heights
+                .as_ref()
+                .and_then(TileHeightBounds::overall_range)
+                .map_or(0.0, |range| range.maximum);
+            let bounding_radius = object.bounding_radius + highest;
 
             if !culler.is_visible(center, bounding_radius) {
                 continue;
@@ -658,7 +667,7 @@ impl Renderer {
 
             let sphere = QuadSphere {
                 radius: object.scale,
-                height,
+                height: heights.as_ref().map(|heights| heights as &dyn TileHeightBounds),
                 center,
                 orientation: object.orientation,
             };
@@ -673,7 +682,7 @@ impl Renderer {
             }) {
                 self.terrain_draws.push(TerrainDraw {
                     terrain: TerrainHandle { index },
-                    surface,
+                    shape,
                     grid_cells: DetailRanges::grid_cells(run[0].detail),
                     first_tile: run_start as u32,
                     tile_count: run.len() as u32,
@@ -683,18 +692,24 @@ impl Renderer {
         }
     }
 
-    // Tile centers are placed in f64, relative to each frame's camera, so only offsets within a tile reach f32.
-    fn write_tile_data(&mut self, camera: &Camera) {
+    // Tile centers are placed in f64, relative to each frame's camera, so only offsets within a tile reach f32. Each
+    // tile's pages are written beside it, and the pages tiles need are requested.
+    fn write_tiles(&mut self, camera: &Camera) {
         self.tile_data.clear();
+        self.tile_pages.clear();
+        self.page_writer.begin(self.scene.terrains().len());
         let previous_camera_position = self.temporal.previous_camera_position();
 
         for draw in &self.terrain_draws {
-            let object_handle = self.scene.terrain(draw.terrain).object;
-            let object = self.scene.object(object_handle);
-            let previous = self.temporal.previous_pose(object_handle.index);
+            let terrain = self.scene.terrain(draw.terrain);
+            let object = self.scene.object(terrain.object);
+            let previous = self.temporal.previous_pose(terrain.object.index);
             let ranges = self.detail_ranges(object.scale);
-            let grid = TerrainDisplacement::uploaded(&self.terrain_displacements, draw.terrain)
-                .map(|displacement| displacement.height.grid());
+            let detail = PageDetail {
+                radius: object.scale,
+                focal_length_pixels: f64::from(self.focal_length_pixels),
+                vertex_spacing_angle: ranges.vertex_spacing_angle(),
+            };
             let first_tile = draw.first_tile as usize;
 
             for selected in &self.selected_tiles[first_tile..first_tile + draw.tile_count as usize] {
@@ -703,8 +718,6 @@ impl Renderer {
                 let center = object.position - camera.position + object.orientation * (direction * object.scale);
                 let previous_center =
                     previous.position - previous_camera_position + previous.orientation * (direction * previous.scale);
-                let texel = grid.map_or(DVec2::ZERO, |grid| grid.texel_position(direction));
-                let center_texel = texel.floor();
                 self.tile_data.push(TileData {
                     center: center.as_vec3(),
                     detail: selected.detail,
@@ -712,15 +725,24 @@ impl Renderer {
                     grid_cells: draw.grid_cells,
                     cube_center: tile.cube_center().as_vec3(),
                     morph_start: ranges.morph_start(selected.detail) as f32,
-                    horizontal_axis: tile.horizontal_axis().as_vec3(),
+                    column_axis: tile.column_axis().as_vec3(),
                     morph_end: ranges.morph_end(selected.detail) as f32,
-                    vertical_axis: tile.vertical_axis().as_vec3(),
-                    padding: 0,
-                    center_texel: center_texel.as_ivec2(),
-                    center_texel_fraction: (texel - center_texel).as_vec2(),
+                    row_axis: tile.row_axis().as_vec3(),
+                    half_size: tile.half_size() as f32,
+                    x: tile.x,
+                    y: tile.y,
+                    depth: tile.depth,
+                    layer_finest_levels: terrain.pages.as_ref().map_or(0, |pages| pages.layer_finest_levels()),
                 });
+                self.tile_pages
+                    .push(terrain.pages.as_ref().map_or(TilePages::NONE, |pages| {
+                        self.page_writer.write(draw.terrain.index, pages, selected, &detail)
+                    }));
             }
         }
+
+        self.page_writer
+            .submit(self.scene.terrains().iter().map(|terrain| terrain.pages.as_deref()));
     }
 
     fn record_frame(&mut self, image_index: u32) -> anyhow::Result<Recording> {
@@ -798,7 +820,19 @@ impl Renderer {
             timer.end(device, frame.command_buffer);
         }
 
+        let mut terrain_pages = TerrainPageStatistics::default();
+
+        for pages in self
+            .scene
+            .terrains()
+            .iter()
+            .filter_map(|terrain| terrain.pages.as_ref())
+        {
+            terrain_pages.add(&pages.statistics());
+        }
+
         self.statistics = FrameStatistics {
+            terrain_pages,
             triangles: context.triangles.get(),
             tiles: self.selected_tiles.len(),
             deepest_depth: self.selected_tiles.iter().map(|selected| selected.tile.depth).max(),
@@ -868,6 +902,7 @@ impl Renderer {
 
         for frame in &mut self.frames {
             frame.tiles = Frame::create_tile_buffer(&self.gpu.memory, self.tile_capacity)?;
+            frame.tile_pages = Frame::create_tile_pages_buffer(&self.gpu.memory, self.tile_capacity)?;
         }
 
         Ok(())

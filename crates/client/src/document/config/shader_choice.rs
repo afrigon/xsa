@@ -12,6 +12,8 @@ impl ConfigChoice for Option<Shader> {
         Some(Shader::Motion),
         Some(Shader::Lod),
         Some(Shader::Scale),
+        Some(Shader::TerrainLevels),
+        Some(Shader::TerrainFallback),
     ];
 
     fn config_name(self) -> &'static str {
@@ -23,6 +25,8 @@ impl ConfigChoice for Option<Shader> {
             Some(Shader::Motion) => "motion",
             Some(Shader::Lod) => "lod",
             Some(Shader::Scale) => "scale",
+            Some(Shader::TerrainLevels) => "terrain-levels",
+            Some(Shader::TerrainFallback) => "terrain-fallback",
             _ => "none",
         }
     }

@@ -302,6 +302,25 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         None
     }
 
+    pub fn bytes(&self, key: K, coarser: impl Fn(K) -> Option<K>) -> Option<(K, Arc<[u8]>)> {
+        let mut current = Some(key);
+
+        while let Some(key) = current {
+            if let Some(bytes) = self
+                .ids
+                .get(&key)
+                .and_then(|page| self.records.get(page))
+                .and_then(|record| record.bytes.as_ref())
+            {
+                return Some((key, Arc::clone(bytes)));
+            }
+
+            current = coarser(key);
+        }
+
+        None
+    }
+
     pub fn cell_uses(&self) -> impl Iterator<Item = CellUse> + '_ {
         self.records.iter().filter_map(|(&page, record)| {
             Some(CellUse {
@@ -472,6 +491,20 @@ mod tests {
         let table = SetTable::<Key>::new();
 
         assert_eq!(table.placement(key(1, 2), coarser), None);
+    }
+
+    #[test]
+    fn a_page_without_bytes_reads_its_nearest_coarser_page_in_ram() {
+        let mut table = SetTable::new();
+        table.request([wanted(key(0, 0), 1.0), wanted(key(2, 9), 4.0)]);
+        table.apply(1);
+        let page = page_of(&table, key(0, 0));
+        table.start_read(page).unwrap();
+        table.finish_read(page, bytes());
+
+        let (found, _) = table.bytes(key(2, 9), coarser).unwrap();
+        assert_eq!(found, key(0, 0));
+        assert!(SetTable::<Key>::new().bytes(key(2, 9), coarser).is_none());
     }
 
     #[test]

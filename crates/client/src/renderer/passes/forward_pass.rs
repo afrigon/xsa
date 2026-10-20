@@ -87,7 +87,7 @@ impl ForwardPass {
             for draw in frame.terrain_draws {
                 let terrain = frame.scene.terrain(draw.terrain);
 
-                if draw.surface.geometry() != program.geometry {
+                if draw.shape.geometry() != program.geometry {
                     continue;
                 }
 
@@ -105,13 +105,7 @@ impl ForwardPass {
                     bound = true;
                 }
 
-                frame.push_draw_constants(
-                    pipeline,
-                    terrain.object.index,
-                    terrain.material,
-                    draw.first_tile,
-                    draw.surface.terrain_data(),
-                );
+                frame.push_draw_constants(pipeline, terrain.object.index, terrain.material, draw.first_tile);
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);
                 frame

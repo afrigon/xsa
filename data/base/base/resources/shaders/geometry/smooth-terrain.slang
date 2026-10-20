@@ -1,6 +1,6 @@
 import geometry.tile;
 
-struct SmoothSurface : TileSurface {
+struct SmoothHeight : TileHeight {
     float height(TileData tile, ObjectData object, int2 cell) {
         return 0.0;
     }
@@ -8,7 +8,7 @@ struct SmoothSurface : TileSurface {
 
 struct SmoothTerrainGeometry : Geometry {
     static TileVertex transform(VertexInput input) {
-        SmoothSurface surface;
-        return transformTile(surface, input);
+        SmoothHeight heights;
+        return transformTile(heights, input);
     }
 }
