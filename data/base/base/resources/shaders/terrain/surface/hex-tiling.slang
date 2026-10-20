@@ -45,7 +45,7 @@ HexCorners hexCorners(HexAnchor anchor, float2 offset) {
 }
 
 // How a cell lays the texture: turned by its own angle (as a matrix) and shifted (repeats), from its id hashed with
-// the surface's seed. `layer` tells apart the lattices of a surface's projection planes.
+// the surface's seed. `layer` tells apart the lattices of a surface's projection planes and levels.
 struct HexCellPlacement {
     float2x2 turn;
     float2 shift;

@@ -1,14 +1,18 @@
 import debug.palette;
 import draw;
-import terrain.surface.fade;
 import terrain.surface.blend;
 import terrain.surface.hex_tiling;
 import terrain.surface.normal_blend;
 __exported import terrain.surface.surface_data;
 
-// A plane takes part in the triplanar blend only where the normal leans toward its axis by more than this cosine: one
-// plane on level ground mid-face, two along a face's edge, three at its corners.
-static const float triplanarBias = 0.55;
+// A plane weighs the normal's component along its axis beyond 1/√3. A component above it is never the smallest, so the
+// second plane weighs nothing wherever it could swap with the third, and only one plane is sampled mid-face.
+static const float biplanarBias = 0.57735027;
+
+// A surface's repeat keeps its size until it spans fewer than this many pixels, then grows `surfaceLevelGrowth` times
+// each time the pixel's footprint grows this ratio, so it shrinks slowly on screen and never shows a dense grid.
+static const float surfaceRepeatPixels = 512.0;
+static const float surfaceLevelDistanceRatio = 3.4;
 
 // A pixel's offset from the camera in the body's frame (m), how it changes across the screen, and the ground it covers
 // (m). Its derivatives are taken where every pixel of a quad still runs, before any surface is sampled.
@@ -48,13 +52,20 @@ float2 planeCoordinates(float3 value, int plane) {
     return float2(value[(plane + 1) % 3], value[(plane + 2) % 3]);
 }
 
-// A variant of the surface projected on one plane, from the hexagonal cells around the pixel, its normal reoriented
-// onto `normal` in the plane's frame.
-PlaneSample samplePlane(SurfaceData *surface, HexAnchor anchor, uint variant, SurfacePoint point, int plane,
+// The continuous level a pixel covering `footprint` meters reads a surface repeating every `size` meters at.
+float surfaceLevel(float size, float footprint) {
+    float level = log(footprint * surfaceRepeatPixels / size) / log(surfaceLevelDistanceRatio);
+    return clamp(level, 0.0, float(surfaceLevels - 1));
+}
+
+// A variant of the surface projected on one plane at one level, from the hexagonal cells around the pixel, its normal
+// reoriented onto `normal` in the plane's frame.
+PlaneSample samplePlane(SurfaceData *surface, HexAnchor anchor, uint variant, SurfacePoint point, int plane, int level,
                         float3 normal) {
-    float2 offset = planeCoordinates(point.offset, plane) / surface.size;
-    float2 uvPerPixelX = planeCoordinates(point.offsetPerPixelX, plane) / surface.size;
-    float2 uvPerPixelY = planeCoordinates(point.offsetPerPixelY, plane) / surface.size;
+    float repeat = surface.size * pow(surfaceLevelGrowth, float(level));
+    float2 offset = planeCoordinates(point.offset, plane) / repeat;
+    float2 uvPerPixelX = planeCoordinates(point.offsetPerPixelX, plane) / repeat;
+    float2 uvPerPixelY = planeCoordinates(point.offsetPerPixelY, plane) / repeat;
     HexCorners corners = hexCorners(anchor, offset / surface.hexCellSize);
     HexCellPlacement placements[3];
     float3 locations[3];
@@ -62,7 +73,8 @@ PlaneSample samplePlane(SurfaceData *surface, HexAnchor anchor, uint variant, Su
 
     [ForceUnroll]
     for (int corner = 0; corner < 3; corner++) {
-        placements[corner] = hexCellPlacement(corners.cells[corner], uint(plane), surface.tilingSeed);
+        placements[corner] =
+            hexCellPlacement(corners.cells[corner], uint(level * projectionAxes + plane), surface.tilingSeed);
         float2 uv =
             mul(placements[corner].turn, corners.offsets[corner] * surface.hexCellSize) + placements[corner].shift;
         locations[corner] = float3(uv, float(variant));
@@ -116,70 +128,82 @@ PlaneSample samplePlane(SurfaceData *surface, HexAnchor anchor, uint variant, Su
     return sample;
 }
 
-// A variant of a surface at a pixel, with the plane weights it was drawn with and how much of it still shows.
+// A variant of a surface at a pixel, with the plane weights it was drawn with.
 struct SurfaceSample {
     float3 color;
     float3 normal;
     float displacement;
     float3 planeWeights;
     float3 cells;
-    float fade;
 };
 
-// The colour, slope and displacement of one projection plane, added to their blends.
+// The colour, slope and displacement of one projection plane at one level, added to their blends.
 void addPlane(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant, float weight,
-              SurfacePoint point, int plane, float3 normal, inout ContrastBlend color, inout ContrastBlend slope,
-              inout ContrastBlend displacement, inout ContrastBlend cells) {
+              SurfacePoint point, int plane, int level, float3 normal, inout ContrastBlend color,
+              inout ContrastBlend slope, inout ContrastBlend displacement, inout ContrastBlend cells) {
     if (weight <= 0.0) {
         return;
     }
 
-    PlaneSample sample = samplePlane(surface, anchors.planes[surfaceClass][plane], variant, point, plane, normal);
+    PlaneSample sample =
+        samplePlane(surface, anchors.planes[surfaceClass][plane][level], variant, point, plane, level, normal);
     color.add(sample.color - surface.averageColor, weight);
     slope.add(sample.normal - normal, weight);
     displacement.add(sample.displacement.xxx, weight);
     cells.add(sample.cells, weight);
 }
 
-// Projected on the planes the normal leans toward, blended so the surface keeps its contrast where they meet, and
-// faded toward its average as the pixel's footprint grows to its whole repeat.
+// Projected on the two planes the normal leans toward most, at the two levels around the pixel's own, blended so the
+// surface keeps its contrast where they meet.
 SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant,
                             SurfacePoint point, float3 normal) {
+    float3 lean = abs(normal);
+    int major = lean.x >= lean.y && lean.x >= lean.z ? 0 : (lean.y >= lean.z ? 1 : 2);
+    int next = (major + 1) % 3;
+    int last = (major + 2) % 3;
+    int median = lean[next] >= lean[last] ? next : last;
     SurfaceSample result;
-    result.planeWeights = saturate(abs(normal) - triplanarBias);
-    result.planeWeights /= result.planeWeights.x + result.planeWeights.y + result.planeWeights.z;
-    result.fade = surfaceFadeOut(surface.size, point.footprint);
-    result.color = surface.averageColor;
-    result.normal = normal;
-    result.displacement = 0.0;
-    result.cells = float3(0.0);
-
-    if (result.fade <= 0.0) {
-        return result;
-    }
-
+    result.planeWeights = float3(0.0);
+    result.planeWeights[major] = lean[major] - biplanarBias;
+    result.planeWeights[median] = saturate(lean[median] - biplanarBias);
+    result.planeWeights /= result.planeWeights[major] + result.planeWeights[median];
     ContrastBlend color = contrastBlend();
     ContrastBlend slope = contrastBlend();
     ContrastBlend displacement = contrastBlend();
     ContrastBlend cells = contrastBlend();
 
-    for (int plane = 0; plane < triplanarPlanes; plane++) {
-        addPlane(surface,
-                 anchors,
-                 surfaceClass,
-                 variant,
-                 result.planeWeights[plane],
-                 point,
-                 plane,
-                 normal,
-                 color,
-                 slope,
-                 displacement,
-                 cells);
+    int2 planes = int2(major, median);
+    float level = surfaceLevel(surface.size, point.footprint);
+    int finer = int(level);
+    float2 levelWeights = float2(1.0 - (level - float(finer)), level - float(finer));
+
+    [ForceUnroll]
+    for (int step = 0; step < 2; step++) {
+        if (levelWeights[step] <= 0.0) {
+            continue;
+        }
+
+        [ForceUnroll]
+        for (int index = 0; index < 2; index++) {
+            int plane = planes[index];
+            addPlane(surface,
+                     anchors,
+                     surfaceClass,
+                     variant,
+                     result.planeWeights[plane] * levelWeights[step],
+                     point,
+                     plane,
+                     finer + step,
+                     normal,
+                     color,
+                     slope,
+                     displacement,
+                     cells);
+        }
     }
 
-    result.color = max(surface.averageColor + color.deviation() * result.fade, 0.0);
-    result.normal = normalize(normal + slope.deviation() * result.fade);
+    result.color = max(surface.averageColor + color.deviation(), 0.0);
+    result.normal = normalize(normal + slope.deviation());
     result.displacement = displacement.average().x;
     result.cells = cells.average();
     return result;

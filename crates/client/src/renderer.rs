@@ -32,7 +32,6 @@ mod star_visibility;
 mod static_buffer;
 mod surface;
 mod surface_debug_view;
-mod surface_tint;
 mod temporal_history;
 mod terrain;
 mod terrain_debug_view;
@@ -53,7 +52,6 @@ pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, S
 pub use shader_binaries::ShaderBinaries;
 pub use surface::{BiomeSurfaces, SurfaceClass, SurfaceTextures};
 pub use surface_debug_view::SurfaceDebugView;
-pub use surface_tint::SurfaceTint;
 pub use terrain::{TerrainLayer, TerrainPageStatistics, TerrainPages};
 pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;
@@ -572,8 +570,7 @@ impl Renderer {
             tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             vertex_spacing_angle: self.render.terrain_lod.vertex_spacing_pixels / self.focal_length_pixels,
-            surface_tint: self.render.surface_tint.shader_id(),
-            padding: [0; 3],
+            padding: [0; 4],
             white_balance: self.white_balance.rows(self.render.white_balance.enabled),
         };
 
@@ -719,12 +716,7 @@ impl Renderer {
                 .as_deref()
                 .filter(|_| self.noise_volume.index().is_some());
             let range = |tile: &SelectedTile| match (surfaces, finest_color) {
-                (Some(surfaces), Some(level))
-                    if detail.magnifies(level, tile.nearest)
-                        && surfaces.shows_at(detail.pixel_footprint(tile.nearest)) =>
-                {
-                    ShadingRange::Near
-                }
+                (Some(_), Some(level)) if detail.magnifies(level, tile.nearest) => ShadingRange::Near,
                 _ => ShadingRange::Far,
             };
             let draw_key = |tile: &SelectedTile| (range(tile), DetailRanges::grid_cells(tile.detail));

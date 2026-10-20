@@ -1,6 +1,6 @@
 use crate::NodeExtension;
 
-// How the ground's shape moves its class: convex ground leans steep, concave ground leans flat, and ground below its
+// How the ground's shape moves its class: convex ground leans toward slopes, concave ground leans flat, and ground below its
 // surroundings leans flat. Radians of slope per unit of each measure: curvature is the change in slope across one
 // texel of the heights, relief the height above the ground two levels coarser over that level's texel spacing.
 #[derive(Clone, Copy, Debug)]

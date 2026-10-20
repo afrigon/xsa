@@ -437,7 +437,6 @@ impl ClientWorld {
         let slot = |class: SurfaceClass| match class {
             SurfaceClass::Flat => &definition.flat,
             SurfaceClass::Slope => &definition.slope,
-            SurfaceClass::Steep => &definition.steep,
         };
         let mut load = |class: SurfaceClass, slot: &SurfaceSlot| {
             let surface = &slot.surface;
@@ -456,9 +455,9 @@ impl ClientWorld {
                 seed,
             )
         };
-        let [flat, slope, steep] = SurfaceClass::ALL.map(|class| load(class, slot(class)));
+        let [flat, slope] = SurfaceClass::ALL.map(|class| load(class, slot(class)));
 
-        Ok(Some(BiomeSurfaces::new([flat?, slope?, steep?], &definition, seed)))
+        Ok(Some(BiomeSurfaces::new([flat?, slope?], &definition, seed)))
     }
 
     fn create_material(

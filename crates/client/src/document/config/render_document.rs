@@ -3,7 +3,7 @@ use super::{
     LensDocument, TerrainLodDocument, WhiteBalanceDocument,
 };
 use crate::config::RenderConfig;
-use crate::renderer::{DebugView, SurfaceDebugView, SurfaceTint, TerrainDebugView, Tonemapper};
+use crate::renderer::{DebugView, SurfaceDebugView, TerrainDebugView, Tonemapper};
 
 pub struct RenderDocument {
     tonemapper: Option<Option<Tonemapper>>,
@@ -16,7 +16,6 @@ pub struct RenderDocument {
     shader_override: Option<Option<DebugView>>,
     terrain_shader_override: Option<Option<TerrainDebugView>>,
     surface_shader_override: Option<Option<SurfaceDebugView>>,
-    surface_tint: Option<SurfaceTint>,
     terrain_lod: TerrainLodDocument,
 }
 
@@ -47,12 +46,6 @@ impl RenderDocument {
             names: <Option<SurfaceDebugView> as ConfigChoice>::names,
         },
     );
-    pub const SURFACE_TINT: ConfigKey = ConfigKey::session(
-        "render.shader.surface.tint",
-        ConfigValueKind::Choice {
-            names: <SurfaceTint as ConfigChoice>::names,
-        },
-    );
 
     pub fn read(values: &ConfigValues) -> RenderDocument {
         RenderDocument {
@@ -66,7 +59,6 @@ impl RenderDocument {
             shader_override: values.choice(RenderDocument::SHADER_OVERRIDE),
             terrain_shader_override: values.choice(RenderDocument::TERRAIN_SHADER_OVERRIDE),
             surface_shader_override: values.choice(RenderDocument::SURFACE_SHADER_OVERRIDE),
-            surface_tint: values.choice(RenderDocument::SURFACE_TINT),
             terrain_lod: TerrainLodDocument::read(values),
         }
     }
@@ -83,7 +75,6 @@ impl RenderDocument {
             shader_override: self.shader_override.unwrap_or(defaults.shader_override),
             terrain_shader_override: self.terrain_shader_override.unwrap_or(defaults.terrain_shader_override),
             surface_shader_override: self.surface_shader_override.unwrap_or(defaults.surface_shader_override),
-            surface_tint: self.surface_tint.unwrap_or(defaults.surface_tint),
             terrain_lod: self.terrain_lod.into_config(&defaults.terrain_lod),
         }
     }
@@ -107,10 +98,6 @@ impl RenderDocument {
         layer.set(
             RenderDocument::SURFACE_SHADER_OVERRIDE.path,
             config.surface_shader_override.config_name().into(),
-        );
-        layer.set(
-            RenderDocument::SURFACE_TINT.path,
-            config.surface_tint.config_name().into(),
         );
         TerrainLodDocument::write(&config.terrain_lod, layer);
     }

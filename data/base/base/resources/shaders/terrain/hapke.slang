@@ -9,7 +9,6 @@ import terrain.surface.surface;
 import terrain.surface.blend;
 import terrain.surface.classes;
 import terrain.surface.debug_view;
-import terrain.surface.tint;
 import terrain.surface.variants;
 import terrain.texture;
 
@@ -76,8 +75,7 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, DrawVarying
 
 // The ground up close: the class and variant materials weighed at the pixel, the two strongest sampled and blended by
 // height, brightening or darkening the colour layer and adding their relief to the normal layer's, fading in as the
-// colour layer is magnified past its texels and out as the pixel grows to cover their repeat. `debugColor` is what the
-// surface debug view shows.
+// colour layer is magnified past its texels. `debugColor` is what the surface debug view shows.
 void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint point, HapkeVaryings shape, float3 up,
                  inout float3 albedo, inout float3 normal, out float3 debugColor) {
     debugColor = float3(0.0);
@@ -87,16 +85,15 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint
     }
 
     float fade = surfaceFade(coordinates);
-    float largestSize = max(material.surfaces[0].size, max(material.surfaces[1].size, material.surfaces[2].size));
 
-    if (fade <= 0.0 || surfaceFadeOut(largestSize, point.footprint) <= 0.0) {
+    if (fade <= 0.0) {
         return;
     }
 
     SurfaceAnchors *anchors = surfaceAnchors();
     float handoverNoise = noiseAt(anchors.noiseVolume, anchors.handoverNoise, point.offset);
     float slope = classSlope(material.biome, normal, up, shape.curvature, shape.relativeHeight, handoverNoise);
-    float3 classes = classWeights(material.biome, slope);
+    float2 classes = classWeights(material.biome, slope);
     StrongestTwo strongest = strongestTwo();
 
     for (uint surfaceClass = 0; surfaceClass < surfaceClasses; surfaceClass++) {
@@ -120,7 +117,7 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint
     SurfaceData *firstSurface = &material.surfaces[strongest.first.surfaceClass];
     SurfaceSample first =
         sampleSurface(firstSurface, anchors, strongest.first.surfaceClass, strongest.first.variant, point, normal);
-    float3 color = tintSpace(first.color, firstSurface.averageColor, *constants.frame);
+    float3 color = first.color / firstSurface.averageColor;
     float3 relief = first.normal;
 
     if (weights.y > 0.0) {
@@ -129,11 +126,11 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint
             secondSurface, anchors, strongest.second.surfaceClass, strongest.second.variant, point, normal);
         float contrast = 0.5 * (firstSurface.heightContrast + secondSurface.heightContrast);
         weights = heightBlend(weights, float2(first.displacement, second.displacement), contrast);
-        color = color * weights.x + tintSpace(second.color, secondSurface.averageColor, *constants.frame) * weights.y;
+        color = color * weights.x + second.color / secondSurface.averageColor * weights.y;
         relief = normalize(first.normal * weights.x + second.normal * weights.y);
     }
 
-    albedo = tintedAlbedo(albedo, color, fade, *constants.frame);
+    albedo *= lerp(float3(1.0), color, fade);
     normal = normalize(lerp(normal, relief, fade));
 
     switch (surfaceDebugView) {
@@ -142,7 +139,7 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint
         debugColor[strongest.second.surfaceClass] += weights.y;
         break;
     case uint(SurfaceDebugView.Fade):
-        debugColor = (fade * first.fade).xxx;
+        debugColor = fade.xxx;
         break;
     case uint(SurfaceDebugView.Planes):
         debugColor = first.planeWeights;
