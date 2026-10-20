@@ -4,7 +4,6 @@ pub enum SurfaceDebugView {
     Classes,
     Planes,
     Fade,
-    HexCells,
 }
 
 impl SurfaceDebugView {
@@ -14,7 +13,6 @@ impl SurfaceDebugView {
             SurfaceDebugView::Classes => 1,
             SurfaceDebugView::Planes => 2,
             SurfaceDebugView::Fade => 3,
-            SurfaceDebugView::HexCells => 4,
         }
     }
 }

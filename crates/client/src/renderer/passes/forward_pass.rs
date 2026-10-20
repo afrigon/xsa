@@ -80,7 +80,6 @@ impl ForwardPass {
                         view: render.shader_override,
                         terrain_view: render.terrain_shader_override,
                         surface_view: render.surface_shader_override,
-                        tiling: render.surface_tiling,
                     };
 
                     if let Entry::Vacant(entry) = self.pipelines.entry(key) {
@@ -114,7 +113,7 @@ impl ForwardPass {
         let drawn = self
             .pipelines
             .iter()
-            .filter(|(key, _)| ForwardPass::matches_config(key, frame.render));
+            .filter(|(key, _)| ForwardPass::shows_views(key, frame.render));
 
         for (key, pipeline) in drawn {
             let mut bound = false;
@@ -152,11 +151,10 @@ impl ForwardPass {
         recorder.set_wireframe(false);
     }
 
-    fn matches_config(key: &ForwardPipeline, render: &RenderConfig) -> bool {
+    fn shows_views(key: &ForwardPipeline, render: &RenderConfig) -> bool {
         key.view == render.shader_override
             && key.terrain_view == render.terrain_shader_override
             && key.surface_view == render.surface_shader_override
-            && key.tiling == render.surface_tiling
     }
 
     fn create_pipeline(

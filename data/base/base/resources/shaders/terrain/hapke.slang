@@ -144,9 +144,6 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint
     case uint(SurfaceDebugView.Planes):
         debugColor = first.planeWeights;
         break;
-    case uint(SurfaceDebugView.HexCells):
-        debugColor = first.cells;
-        break;
     default:
         break;
     }

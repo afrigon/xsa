@@ -8,7 +8,6 @@ impl ConfigChoice for Option<SurfaceDebugView> {
         Some(SurfaceDebugView::Classes),
         Some(SurfaceDebugView::Planes),
         Some(SurfaceDebugView::Fade),
-        Some(SurfaceDebugView::HexCells),
     ];
 
     fn config_name(self) -> &'static str {
@@ -17,7 +16,6 @@ impl ConfigChoice for Option<SurfaceDebugView> {
             Some(SurfaceDebugView::Classes) => "classes",
             Some(SurfaceDebugView::Planes) => "planes",
             Some(SurfaceDebugView::Fade) => "fade",
-            Some(SurfaceDebugView::HexCells) => "hex-cells",
         }
     }
 }

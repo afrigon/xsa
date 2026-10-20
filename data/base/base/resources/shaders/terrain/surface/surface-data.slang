@@ -25,9 +25,8 @@ struct SurfaceData {
     float displacementHigh;
     float3 averageColor;
     float heightContrast;
-    float hexCellSize;
     uint tilingSeed;
-    uint padding[2];
+    uint padding[3];
 };
 
 // Mirrors `BiomeData` in the renderer: where a biome's classes hand over, and how the ground's shape moves them.
@@ -42,17 +41,9 @@ struct BiomeData {
     uint padding[2];
 };
 
-// Mirrors `HexAnchor`: where the camera stands on a lattice of hexagonal cells, skewed.
-struct HexAnchor {
-    int2 cell;
-    float2 fraction;
-};
-
-// Mirrors `SurfaceAnchorData`: where the camera stands on each class's hexagonal cells, for every projection plane and
-// level.
+// Mirrors `SurfaceAnchorData`: where the camera stands within each class's repeat, in repeats, for every projection
+// plane and level.
 struct SurfaceAnchors {
-    HexAnchor planes[surfaceClasses][projectionAxes][surfaceLevels];
-    // The camera's place within each plain repeat, in repeats, for offset tiling.
     float2 repeats[surfaceClasses][projectionAxes][surfaceLevels];
     NoiseAnchor handoverNoise;
     NoiseAnchor variantNoise[surfaceClasses];

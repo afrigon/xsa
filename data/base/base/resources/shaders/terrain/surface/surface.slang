@@ -1,9 +1,6 @@
-import debug.palette;
 import draw;
 import terrain.surface.blend;
-import terrain.surface.hex_tiling;
 import terrain.surface.normal_blend;
-import terrain.surface.tiling;
 __exported import terrain.surface.surface_data;
 
 // A plane weighs the normal's component along its axis beyond 1/√3. A component above it is never the smallest, so the
@@ -14,6 +11,9 @@ static const float biplanarBias = 0.57735027;
 // each time the pixel's footprint grows this ratio, so it shrinks slowly on screen and never shows a dense grid.
 static const float surfaceRepeatPixels = 512.0;
 static const float surfaceLevelDistanceRatio = 3.4;
+
+// Turns a 32-bit hash into [0, 1).
+static const float hashToUnit = 1.0 / 4294967296.0;
 
 // A pixel's offset from the camera in the body's frame (m), how it changes across the screen, and the ground it covers
 // (m). Its derivatives are taken where every pixel of a quad still runs, before any surface is sampled.
@@ -35,13 +35,11 @@ SurfacePoint surfacePoint(float3 worldOffset, ObjectData object) {
     return point;
 }
 
-// One sample of a surface: its colour (linear), its normal (body frame), its displacement (0 to 1) and the colours of
-// the hexagonal cells it was drawn from.
+// One sample of a surface: its colour (linear), its normal (body frame) and its displacement (0 to 1).
 struct PlaneSample {
     float3 color;
     float3 normal;
     float displacement;
-    float3 cells;
 };
 
 // The body frame's axis `index`, built by comparison rather than read from a table.
@@ -59,6 +57,12 @@ float surfaceLevel(float size, float footprint) {
     return clamp(level, 0.0, float(surfaceLevels - 1));
 }
 
+// The seeded shift (repeats) of a surface's repeat at one level on one plane, so its levels and planes never line up.
+float2 repeatShift(int level, int plane, uint seed) {
+    uint3 hash = pcg3d(uint3(uint(level), uint(plane), seed));
+    return float2(hash.xy) * hashToUnit;
+}
+
 // A surface's relief `detail`, in the frame of projection plane `plane`, reoriented onto `normal` in the body's frame.
 float3 planeNormal(float3 detail, float3 normal, int plane) {
     float side = normal[plane] < 0.0 ? -1.0 : 1.0;
@@ -68,79 +72,13 @@ float3 planeNormal(float3 detail, float3 normal, int plane) {
            blended.z * side * bodyAxis(plane);
 }
 
-// A variant of the surface projected on one plane at one level, from the hexagonal cells around the pixel, its normal
-// reoriented onto `normal` in the plane's frame.
-PlaneSample samplePlane(SurfaceData *surface, HexAnchor anchor, uint variant, SurfacePoint point, int plane, int level,
-                        float3 normal) {
+// A variant of the surface projected on one plane at one level, its repeat shifted by its seeded offset.
+PlaneSample samplePlane(SurfaceData *surface, float2 repeatPlace, uint variant, SurfacePoint point, int plane,
+                        int level, float3 normal) {
     float repeat = surface.size * pow(surfaceLevelGrowth, float(level));
-    float2 offset = planeCoordinates(point.offset, plane) / repeat;
-    float2 uvPerPixelX = planeCoordinates(point.offsetPerPixelX, plane) / repeat;
-    float2 uvPerPixelY = planeCoordinates(point.offsetPerPixelY, plane) / repeat;
-    HexCorners corners = hexCorners(anchor, offset / surface.hexCellSize);
-    HexCellPlacement placements[3];
-    float3 locations[3];
-    float3 displacements = float3(0.0);
-
-    [ForceUnroll]
-    for (int corner = 0; corner < 3; corner++) {
-        placements[corner] =
-            hexCellPlacement(corners.cells[corner], uint(level * projectionAxes + plane), surface.tilingSeed);
-        float2 uv =
-            mul(placements[corner].turn, corners.offsets[corner] * surface.hexCellSize) + placements[corner].shift;
-        locations[corner] = float3(uv, float(variant));
-
-        if (corners.weights[corner] > 0.0) {
-            displacements[corner] = textureArrays[NonUniformResourceIndex(surface.displacementTexture)]
-                                        .SampleGrad(tilingSampler,
-                                                    locations[corner],
-                                                    mul(placements[corner].turn, uvPerPixelX),
-                                                    mul(placements[corner].turn, uvPerPixelY))
-                                        .r;
-        }
-    }
-
-    float3 shown = hexBlend(corners.weights, displacements);
-    PlaneSample sample;
-    sample.color = float3(0.0);
-    sample.displacement = dot(displacements, shown);
-    sample.cells = float3(0.0);
-    float3 detail = float3(0.0);
-
-    [ForceUnroll]
-    for (int corner = 0; corner < 3; corner++) {
-        if (shown[corner] <= 0.0) {
-            continue;
-        }
-
-        float2x2 cellTurn = placements[corner].turn;
-        float2 cellPerPixelX = mul(cellTurn, uvPerPixelX);
-        float2 cellPerPixelY = mul(cellTurn, uvPerPixelY);
-        sample.color += textureArrays[NonUniformResourceIndex(surface.colorTexture)]
-                            .SampleGrad(tilingSampler, locations[corner], cellPerPixelX, cellPerPixelY)
-                            .rgb *
-                        shown[corner];
-        float2 slope = textureArrays[NonUniformResourceIndex(surface.normalTexture)]
-                               .SampleGrad(tilingSampler, locations[corner], cellPerPixelX, cellPerPixelY)
-                               .rg *
-                           2.0 -
-                       1.0;
-        // Green points to the image's top, against v; the slope turns back from texture to plane coordinates.
-        float2 planeSlope = mul(transpose(cellTurn), float2(slope.x, -slope.y));
-        detail += float3(planeSlope, sqrt(saturate(1.0 - dot(slope, slope)))) * shown[corner];
-        sample.cells += hueColor(placements[corner].hue) * shown[corner];
-    }
-
-    sample.normal = planeNormal(detail, normal, plane);
-    return sample;
-}
-
-// A variant of the surface projected on one plane at one level as a plain repeat, shifted by its seeded offset.
-PlaneSample sampleOffsetPlane(SurfaceData *surface, float2 repeatPlace, uint variant, SurfacePoint point, int plane,
-                              int level, float3 normal) {
-    float repeat = surface.size * pow(surfaceLevelGrowth, float(level));
-    HexCellPlacement placement = hexCellPlacement(int2(0), uint(level * projectionAxes + plane), surface.tilingSeed);
-    float3 location =
-        float3(repeatPlace + planeCoordinates(point.offset, plane) / repeat + placement.shift, float(variant));
+    float2 uv =
+        repeatPlace + planeCoordinates(point.offset, plane) / repeat + repeatShift(level, plane, surface.tilingSeed);
+    float3 location = float3(uv, float(variant));
     float2 uvPerPixelX = planeCoordinates(point.offsetPerPixelX, plane) / repeat;
     float2 uvPerPixelY = planeCoordinates(point.offsetPerPixelY, plane) / repeat;
     PlaneSample sample;
@@ -158,7 +96,6 @@ PlaneSample sampleOffsetPlane(SurfaceData *surface, float2 repeatPlace, uint var
     // Green points to the image's top, against v.
     float3 detail = float3(slope.x, -slope.y, sqrt(saturate(1.0 - dot(slope, slope))));
     sample.normal = planeNormal(detail, normal, plane);
-    sample.cells = hueColor(placement.hue);
     return sample;
 }
 
@@ -168,30 +105,21 @@ struct SurfaceSample {
     float3 normal;
     float displacement;
     float3 planeWeights;
-    float3 cells;
 };
 
 // The colour, slope and displacement of one projection plane at one level, added to their blends.
 void addPlane(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant, float weight,
               SurfacePoint point, int plane, int level, float3 normal, inout ContrastBlend color,
-              inout ContrastBlend slope, inout ContrastBlend displacement, inout ContrastBlend cells) {
+              inout ContrastBlend slope, inout ContrastBlend displacement) {
     if (weight <= 0.0) {
         return;
     }
 
-    PlaneSample sample;
-
-    if (surfaceTiling == uint(SurfaceTiling.Offset)) {
-        sample = sampleOffsetPlane(
-            surface, anchors.repeats[surfaceClass][plane][level], variant, point, plane, level, normal);
-    } else {
-        sample = samplePlane(surface, anchors.planes[surfaceClass][plane][level], variant, point, plane, level, normal);
-    }
-
+    PlaneSample sample =
+        samplePlane(surface, anchors.repeats[surfaceClass][plane][level], variant, point, plane, level, normal);
     color.add(sample.color - surface.averageColor, weight);
     slope.add(sample.normal - normal, weight);
     displacement.add(sample.displacement.xxx, weight);
-    cells.add(sample.cells, weight);
 }
 
 // Projected on the two planes the normal leans toward most, at the two levels around the pixel's own, blended so the
@@ -211,7 +139,6 @@ SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint 
     ContrastBlend color = contrastBlend();
     ContrastBlend slope = contrastBlend();
     ContrastBlend displacement = contrastBlend();
-    ContrastBlend cells = contrastBlend();
 
     int2 planes = int2(major, median);
     float level = surfaceLevel(surface.size, point.footprint);
@@ -238,14 +165,12 @@ SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint 
                      normal,
                      color,
                      slope,
-                     displacement,
-                     cells);
+                     displacement);
         }
     }
 
     result.color = max(surface.averageColor + color.deviation(), 0.0);
     result.normal = normalize(normal + slope.deviation());
     result.displacement = displacement.average().x;
-    result.cells = cells.average();
     return result;
 }

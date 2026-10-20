@@ -5,8 +5,8 @@ use glam::{DVec2, DVec3, Vec2, Vec3};
 use resource_vulkan::{ResourceHandle, TextureArray};
 use xsa_core::random::Seed;
 
-use super::{HEX_CELL_SIZE, SURFACE_LEVEL_GROWTH, SurfaceClass};
-use crate::renderer::gpu_data::{HexAnchor, NoiseAnchor, SurfaceData};
+use super::{SURFACE_LEVEL_GROWTH, SurfaceClass};
+use crate::renderer::gpu_data::{NoiseAnchor, SurfaceData};
 
 const AVERAGE_COLOR_KEY: &str = "xsa.averageColor";
 
@@ -77,10 +77,9 @@ impl SurfaceTextures {
             displacement_high: self.displacement_high,
             average_color,
             height_contrast: self.height_contrast,
-            hex_cell_size: HEX_CELL_SIZE as f32,
             // The shader hashes 32 bits; the seed's low half keeps its spread.
             tiling_seed: self.tiling_seed.value as u32,
-            padding: [0; 2],
+            padding: [0; 3],
         })
     }
 
@@ -97,11 +96,6 @@ impl SurfaceTextures {
 
     pub(in crate::renderer) fn variant_noise_anchor(&self, camera_in_body: DVec3) -> NoiseAnchor {
         NoiseAnchor::at(camera_in_body, self.variant_noise, self.variant_seed)
-    }
-
-    // Where `point` (m, on a projection plane) falls on the hexagonal cells of its repeat at `level`.
-    pub(in crate::renderer) fn anchor(&self, point: DVec2, level: usize) -> HexAnchor {
-        HexAnchor::at(point / (self.repeat(level) * HEX_CELL_SIZE))
     }
 
     // Where `point` (m, on a projection plane) falls within its repeat at `level`, in repeats.

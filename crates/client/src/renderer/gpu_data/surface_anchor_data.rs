@@ -1,16 +1,15 @@
 use glam::Vec2;
 
-use super::{GpuData, HexAnchor, NoiseAnchor};
+use super::{GpuData, NoiseAnchor};
 use crate::renderer::surface::{PROJECTION_AXES, SURFACE_CLASSES, SURFACE_LEVELS};
 
-// Where the camera stands on each class's lattice of hexagonal cells, for every projection plane and level. Placed
-// in f64 each frame, so pixels only add their small offset from the camera in f32, with the noises that move the
-// handovers and choose each class's variants, read from the noise volume at bindless index `noise_volume`. Mirrored by `SurfaceAnchors` in terrain/surface/surface-data.slang.
+// Where the camera stands within each class's repeat, in repeats, for every projection plane and level. Placed in f64
+// each frame, so pixels only add their small offset from the camera in f32, with the noises that move the handovers
+// and choose each class's variants, read from the noise volume at bindless index `noise_volume`. Mirrored by
+// `SurfaceAnchors` in terrain/surface/surface-data.slang.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct SurfaceAnchorData {
-    pub planes: [[[HexAnchor; SURFACE_LEVELS]; PROJECTION_AXES]; SURFACE_CLASSES],
-    // The camera's place within each plain repeat, in repeats, for offset tiling.
     pub repeats: [[[Vec2; SURFACE_LEVELS]; PROJECTION_AXES]; SURFACE_CLASSES],
     pub handover_noise: NoiseAnchor,
     pub variant_noise: [NoiseAnchor; SURFACE_CLASSES],
@@ -18,6 +17,6 @@ pub(in crate::renderer) struct SurfaceAnchorData {
     pub padding: [u32; 3],
 }
 
-const _: () = assert!(size_of::<SurfaceAnchorData>() == 1792);
+const _: () = assert!(size_of::<SurfaceAnchorData>() == 640);
 
 unsafe impl GpuData for SurfaceAnchorData {}

@@ -18,7 +18,6 @@ mod number_range;
 mod render_document;
 mod resources_document;
 mod surface_debug_view_choice;
-mod surface_tiling_choice;
 mod terrain_debug_view_choice;
 mod terrain_lod_document;
 mod terrain_streaming_document;

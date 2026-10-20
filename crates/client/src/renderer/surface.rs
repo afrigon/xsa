@@ -13,5 +13,3 @@ pub(in crate::renderer) const PROJECTION_AXES: usize = 3;
 // Must match `surfaceLevels` and `surfaceLevelGrowth` in terrain/surface/surface-data.slang.
 pub(in crate::renderer) const SURFACE_LEVELS: usize = 12;
 pub(in crate::renderer) const SURFACE_LEVEL_GROWTH: f64 = 3.0;
-// The distance between neighbouring hexagonal cells' centres, in repeats of the texture.
-pub(in crate::renderer) const HEX_CELL_SIZE: f64 = 1.0;
