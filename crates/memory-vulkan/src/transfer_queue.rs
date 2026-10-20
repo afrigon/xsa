@@ -68,6 +68,7 @@ pub(crate) use upload_target::UploadTarget;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use ash::vk;
 
@@ -226,6 +227,11 @@ impl TransferQueue {
         });
 
         ReadbackTicket::new(TransferTicket::new(slot, id, self.clone()))
+    }
+
+    /// How long the queue takes to copy `bytes`, at the rate it last measured; zero until a batch completed.
+    pub fn copy_duration(&self, bytes: u64) -> Duration {
+        self.shared().copy_rate().duration_of(bytes)
     }
 
     /// A wait for every copy whose ticket was seen complete, for the submissions that use their results. Its value

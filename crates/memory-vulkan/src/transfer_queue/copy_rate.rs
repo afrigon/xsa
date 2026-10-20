@@ -24,6 +24,15 @@ impl CopyRate {
     pub fn bytes_in(&self, latency: Duration) -> u64 {
         (self.bytes_per_second * latency.as_secs_f64()) as u64
     }
+
+    // How long the queue takes to copy `bytes`; nothing until a batch was measured.
+    pub fn duration_of(&self, bytes: u64) -> Duration {
+        if self.bytes_per_second == 0.0 {
+            return Duration::ZERO;
+        }
+
+        Duration::from_secs_f64(bytes as f64 / self.bytes_per_second)
+    }
 }
 
 #[cfg(test)]
@@ -43,5 +52,6 @@ mod tests {
     #[test]
     fn nothing_is_budgeted_before_a_measurement() {
         assert_eq!(CopyRate::default().bytes_in(Duration::from_secs(1)), 0);
+        assert_eq!(CopyRate::default().duration_of(1000), Duration::ZERO);
     }
 }

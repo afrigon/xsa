@@ -3,7 +3,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use ash::vk;
 
-use crate::transfer_queue::{PendingRequests, RequestId, TransferRequest};
+use crate::transfer_queue::{CopyRate, PendingRequests, RequestId, TransferRequest};
 use crate::{DeviceObject, MemoryContext, MemoryError, QueueSharing, Timeline, TransferPriority};
 
 // What the queue's handles and its submission thread share.
@@ -17,6 +17,7 @@ pub(crate) struct TransferShared {
     // GPU at once.
     pub wake: DeviceObject<vk::Semaphore>,
     requests: Mutex<PendingRequests>,
+    copy_rate: Mutex<CopyRate>,
     // The latest transfer timeline value the thread saw completed, raised before it settles any ticket.
     observed: AtomicU64,
     next_request: AtomicU64,
@@ -43,6 +44,7 @@ impl TransferShared {
             sharing,
             wake,
             requests: Mutex::new(PendingRequests::default()),
+            copy_rate: Mutex::new(CopyRate::default()),
             observed: AtomicU64::new(0),
             next_request: AtomicU64::new(0),
         })
@@ -89,6 +91,10 @@ impl TransferShared {
 
     pub fn requests(&self) -> MutexGuard<'_, PendingRequests> {
         self.requests.lock().expect("the transfer requests' lock is poisoned")
+    }
+
+    pub fn copy_rate(&self) -> MutexGuard<'_, CopyRate> {
+        self.copy_rate.lock().expect("the copy rate's lock is poisoned")
     }
 
     pub fn observe(&self, completed: u64) {
