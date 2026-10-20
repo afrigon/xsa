@@ -5,16 +5,20 @@ struct VertexInput {
     uint instance : SV_InstanceID;
 };
 
-// Everything a tile's vertex stage computes, passed on whole by every terrain program. The face offset is in the
-// face's equal-angle coordinates from the tile's center, which the tile's pages are read at.
+// Everything a tile's vertex stage computes; each terrain program passes on the part its fragment stage reads. The
+// face offset is in the face's equal-angle coordinates from the tile's center, which the tile's pages are read at.
 struct TileVertex {
     DrawVaryings draw;
     float2 cell;
-    nointerpolation int detail;
-    nointerpolation uint gridCells;
+    int detail;
+    uint gridCells;
     float heightMeters;
-    nointerpolation uint tile;
+    uint tile;
     float2 faceOffset;
+    // The change in slope across one texel of the heights, and the height above the ground two levels coarser over
+    // that level's texel spacing.
+    float curvature;
+    float relativeHeight;
 };
 
 // A quad sphere tile: centers are relative to their frame's camera, the cube center is on the cube spanning -1 to 1,
@@ -85,10 +89,42 @@ int2 pageOffset(TileLayerPage page) {
     return int2(page.offset & 0xFFFFu, page.offset >> 16u);
 }
 
+// What every terrain program's fragment stage reads, its debug views included.
+struct TerrainVaryings {
+    DrawVaryings draw;
+    float2 cell;
+    nointerpolation int detail;
+    nointerpolation uint gridCells;
+    float heightMeters;
+    nointerpolation uint tile;
+    float2 faceOffset;
+};
+
+TerrainVaryings terrainVaryings(TileVertex vertex) {
+    TerrainVaryings varyings;
+    varyings.draw = vertex.draw;
+    varyings.cell = vertex.cell;
+    varyings.detail = vertex.detail;
+    varyings.gridCells = vertex.gridCells;
+    varyings.heightMeters = vertex.heightMeters;
+    varyings.tile = vertex.tile;
+    varyings.faceOffset = vertex.faceOffset;
+    return varyings;
+}
+
+// A tile's ground at a vertex: its height in radii, relative to the radius, and its shape (see `TileVertex`).
+struct TerrainShape {
+    float height;
+    float curvature;
+    float relativeHeight;
+};
+
 // The height of a tile's ground above the unit sphere.
 interface TileHeight {
     // In radii, relative to the radius.
     float height(TileData tile, ObjectData object, int2 cell);
+
+    TerrainShape shape(TileData tile, ObjectData object, int2 cell);
 }
 
 TileData tileData(uint tile) {
@@ -199,7 +235,10 @@ TileVertex transformTile<H : TileHeight>(H heights, VertexInput input) {
     output.cell = float2(input.cell);
     output.detail = tile.detail;
     output.gridCells = tile.gridCells;
-    output.heightMeters = heights.height(tile, object, cell) * length(object.worldFromModel[0].xyz);
+    TerrainShape shape = heights.shape(tile, object, cell);
+    output.heightMeters = shape.height * length(object.worldFromModel[0].xyz);
+    output.curvature = shape.curvature;
+    output.relativeHeight = shape.relativeHeight;
     output.tile = tileIndex;
     output.faceOffset = faceOffset(tile, cell);
     return output;

@@ -22,7 +22,7 @@ use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
 use crate::renderer::shading_range::ShadingRange;
 use crate::renderer::static_buffer::StaticBuffer;
 use crate::renderer::tile_shape::TileShape;
-use crate::renderer::{DebugView, Shader, ShaderBinaries, TerrainDebugView};
+use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
 const TRIANGLES_PER_CELL: u64 = 2;
@@ -59,25 +59,17 @@ impl ForwardPass {
         let vertex_buffer = vertex_buffer.into_buffer()?;
         let index_buffer = index_buffer.into_buffer()?;
 
-        let mut pass = ForwardPass {
+        Ok(ForwardPass {
             programs: binaries.forward.clone(),
             pipelines: HashMap::new(),
             grids,
             vertex_buffer,
             index_buffer,
-        };
-        pass.ensure_pipelines(gpu, None, None)?;
-
-        Ok(pass)
+        })
     }
 
-    // Builds the pipelines the current debug views draw with, the first time they are shown.
-    pub fn ensure_pipelines(
-        &mut self,
-        gpu: &GpuContext,
-        view: Option<DebugView>,
-        terrain_view: Option<TerrainDebugView>,
-    ) -> anyhow::Result<()> {
+    // Builds the pipelines `render`'s debug views draw with, the first time they are shown.
+    pub fn ensure_pipelines(&mut self, gpu: &GpuContext, render: &RenderConfig) -> anyhow::Result<()> {
         for (shader, spirv) in &self.programs {
             for shape in TileShape::ALL {
                 for range in ShadingRange::ALL {
@@ -85,8 +77,9 @@ impl ForwardPass {
                         shader: *shader,
                         shape,
                         range,
-                        view,
-                        terrain_view,
+                        view: render.shader_override,
+                        terrain_view: render.terrain_shader_override,
+                        surface_view: render.surface_shader_override,
                     };
 
                     if let Entry::Vacant(entry) = self.pipelines.entry(key) {
@@ -159,7 +152,9 @@ impl ForwardPass {
     }
 
     fn shows_views(key: &ForwardPipeline, render: &RenderConfig) -> bool {
-        key.view == render.shader_override && key.terrain_view == render.terrain_shader_override
+        key.view == render.shader_override
+            && key.terrain_view == render.terrain_shader_override
+            && key.surface_view == render.surface_shader_override
     }
 
     fn create_pipeline(

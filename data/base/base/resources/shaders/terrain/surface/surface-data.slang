@@ -1,4 +1,5 @@
 import draw;
+__exported import noise;
 
 // Must match the renderer: `MAX_SURFACE_SCALES`, `SURFACE_CLASSES`, `TRIPLANAR_PLANES` and `SurfaceClass`.
 static const int maxSurfaceScales = 6;
@@ -23,13 +24,30 @@ struct SurfaceData {
     float displacementHigh;
     float3 averageColor;
     uint scaleCount;
+    float heightContrast;
+    uint padding[3];
     float2 scaleRotations[maxSurfaceScales];
+};
+
+// Mirrors `BiomeData` in the renderer: where a biome's classes hand over, and how the ground's shape moves them.
+// Angles and biases are in radians.
+struct BiomeData {
+    float flatToSlopeAngle;
+    float flatToSlopeWidth;
+    float slopeToSteepAngle;
+    float slopeToSteepWidth;
+    float handoverNoiseAmplitude;
+    float convexBias;
+    float concaveBias;
+    float reliefBias;
 };
 
 // Mirrors `SurfaceAnchorData`: where the camera stands within each class's texture repeat, for every scale and
 // projection plane, in repeats.
 struct SurfaceAnchors {
     float2 planes[surfaceClasses][maxSurfaceScales][triplanarPlanes];
+    NoiseAnchor handoverNoise;
+    NoiseAnchor variantNoise[surfaceClasses];
 };
 
 SurfaceAnchors *surfaceAnchors() {

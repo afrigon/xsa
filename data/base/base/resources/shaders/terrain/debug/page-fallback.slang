@@ -8,7 +8,7 @@ static const float3 fallbackColors[4] = {
     float3(1.0, 0.15, 0.15),
 };
 
-float3 pageFallbackColor(TileVertex input) {
+float3 pageFallbackColor(TerrainVaryings input) {
     ColorPage page = colorPage(input);
     uint fallback = min(page.wantedLevel - min(page.read.level, page.wantedLevel), 3u);
     return shadedPage(page, fallbackColors[fallback]);

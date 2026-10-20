@@ -14,7 +14,7 @@ static const float pageBorderShade = 0.15;
 static const float pageBorderWidthPixels = 1.5;
 static const float3 noPageColor = float3(1.0);
 
-ColorPage colorPage(TileVertex input) {
+ColorPage colorPage(TerrainVaryings input) {
     LayerCoordinates coordinates = layerCoordinates(input.tile, input.faceOffset);
     ColorPage page;
     page.read = readLayer(coordinates, colorLayer);

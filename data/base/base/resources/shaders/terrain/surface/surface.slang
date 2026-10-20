@@ -1,4 +1,5 @@
 import draw;
+import terrain.surface.blend;
 import terrain.surface.normal_blend;
 __exported import terrain.surface.surface_data;
 
@@ -24,30 +25,36 @@ SurfacePoint surfacePoint(float3 worldOffset, ObjectData object) {
     return point;
 }
 
-// A surface's colour (linear) and normal (body frame) at a pixel.
-struct SurfaceSample {
+// One sample of a surface: its colour (linear), its normal (body frame) and its displacement (0 to 1).
+struct ScaleSample {
     float3 color;
     float3 normal;
+    float displacement;
 };
 
 float2 planeCoordinates(float3 value, int plane) {
     return float2(value[(plane + 1) % 3], value[(plane + 2) % 3]);
 }
 
-// The surface on one projection plane at one scale, its normal reoriented onto `normal` in the plane's frame.
-SurfaceSample sampleScale(SurfaceData surface, float2 anchor, int scale, SurfacePoint point, int plane, float3 normal) {
+// A variant of the surface on one projection plane at one scale, its normal reoriented onto `normal` in the plane's
+// frame.
+ScaleSample sampleScale(SurfaceData surface, float2 anchor, uint variant, int scale, SurfacePoint point, int plane,
+                        float3 normal) {
     float repeat = surface.size * exp2(float(scale));
     float2 rotation = surface.scaleRotations[scale];
     float2x2 turn = float2x2(rotation.x, -rotation.y, rotation.y, rotation.x);
     float2 uv = anchor + mul(turn, planeCoordinates(point.offset, plane)) / repeat;
     float2 uvPerPixelX = mul(turn, planeCoordinates(point.offsetPerPixelX, plane)) / repeat;
     float2 uvPerPixelY = mul(turn, planeCoordinates(point.offsetPerPixelY, plane)) / repeat;
-    float3 location = float3(uv, 0.0);
+    float3 location = float3(uv, float(variant));
 
-    SurfaceSample sample;
+    ScaleSample sample;
     sample.color = textureArrays[NonUniformResourceIndex(surface.colorTexture)]
                        .SampleGrad(tilingSampler, location, uvPerPixelX, uvPerPixelY)
                        .rgb;
+    sample.displacement = textureArrays[NonUniformResourceIndex(surface.displacementTexture)]
+                              .SampleGrad(tilingSampler, location, uvPerPixelX, uvPerPixelY)
+                              .r;
     float2 slope = textureArrays[NonUniformResourceIndex(surface.normalTexture)]
                            .SampleGrad(tilingSampler, location, uvPerPixelX, uvPerPixelY)
                            .rg *
@@ -66,44 +73,57 @@ SurfaceSample sampleScale(SurfaceData surface, float2 anchor, int scale, Surface
     return sample;
 }
 
-// A surface at a pixel: projected on the planes the normal leans toward, at the two scales of its ladder around the
-// pixel's footprint on the ground.
-SurfaceSample sampleSurface(SurfaceData surface, SurfaceAnchors *anchors, uint surfaceClass, SurfacePoint point,
-                            float3 normal) {
-    float3 planeWeights = saturate(abs(normal) - triplanarBias);
-    planeWeights /= planeWeights.x + planeWeights.y + planeWeights.z;
+// A variant of a surface at a pixel, with the scale level and plane weights it was drawn with.
+struct SurfaceSample {
+    float3 color;
+    float3 normal;
+    float displacement;
+    float level;
+    float3 planeWeights;
+};
+
+// Projected on the planes the normal leans toward, at the two scales of the ladder around the pixel's footprint on
+// the ground, blended so the surface keeps its contrast where they meet.
+SurfaceSample sampleSurface(SurfaceData surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant,
+                            SurfacePoint point, float3 normal) {
+    SurfaceSample result;
+    result.planeWeights = saturate(abs(normal) - triplanarBias);
+    result.planeWeights /= result.planeWeights.x + result.planeWeights.y + result.planeWeights.z;
 
     float footprint = min(length(point.offsetPerPixelX), length(point.offsetPerPixelY));
-    float level = clamp(log2(footprint * surface.texels / surface.size), 0.0, float(surface.scaleCount - 1));
-    int finer = int(level);
+    result.level = clamp(log2(footprint * surface.texels / surface.size), 0.0, float(surface.scaleCount - 1));
+    int finer = int(result.level);
     int coarser = min(finer + 1, int(surface.scaleCount) - 1);
-    float scaleWeights[2] = { 1.0 - (level - float(finer)), level - float(finer) };
+    float scaleWeights[2] = { 1.0 - (result.level - float(finer)), result.level - float(finer) };
     int scales[2] = { finer, coarser };
 
-    SurfaceSample sum;
-    sum.color = float3(0.0);
-    sum.normal = float3(0.0);
+    ContrastBlend color = contrastBlend();
+    ContrastBlend slope = contrastBlend();
+    ContrastBlend displacement = contrastBlend();
 
     for (int plane = 0; plane < triplanarPlanes; plane++) {
-        if (planeWeights[plane] <= 0.0) {
+        if (result.planeWeights[plane] <= 0.0) {
             continue;
         }
 
         for (int index = 0; index < 2; index++) {
-            float weight = planeWeights[plane] * scaleWeights[index];
+            float weight = result.planeWeights[plane] * scaleWeights[index];
 
             if (weight <= 0.0) {
                 continue;
             }
 
             int scale = scales[index];
-            SurfaceSample sample =
-                sampleScale(surface, anchors.planes[surfaceClass][scale][plane], scale, point, plane, normal);
-            sum.color += sample.color * weight;
-            sum.normal += sample.normal * weight;
+            ScaleSample sample =
+                sampleScale(surface, anchors.planes[surfaceClass][scale][plane], variant, scale, point, plane, normal);
+            color.add(sample.color - surface.averageColor, weight);
+            slope.add(sample.normal - normal, weight);
+            displacement.add(sample.displacement.xxx, weight);
         }
     }
 
-    sum.normal = normalize(sum.normal);
-    return sum;
+    result.color = max(surface.averageColor + color.deviation(), 0.0);
+    result.normal = normalize(normal + slope.deviation());
+    result.displacement = displacement.average().x;
+    return result;
 }

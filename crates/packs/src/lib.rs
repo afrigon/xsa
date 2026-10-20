@@ -17,7 +17,7 @@ mod surface_definition;
 mod terrain_definition;
 mod theme;
 
-pub use biome::{BiomeDefinition, BiomeSurfacesDefinition, Handover, HandoverNoise, SurfaceSlot};
+pub use biome::{BiomeDefinition, BiomeSurfacesDefinition, CurvatureBias, Handover, HandoverNoise, SurfaceSlot};
 pub use dependency::Dependency;
 pub use document::{Document, NodeExtension};
 pub use from_node::FromNode;

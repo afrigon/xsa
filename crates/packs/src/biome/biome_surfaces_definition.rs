@@ -1,11 +1,12 @@
-use anyhow::Context;
+use anyhow::{Context, ensure};
 
-use super::{Handover, HandoverNoise, SurfaceSlot};
+use super::{CurvatureBias, Handover, HandoverNoise, SurfaceSlot};
 use crate::{DOCUMENT_EXTENSION, Document, Id, NodeExtension, PackStack};
 
 const BIOMES: &str = "biomes";
 
-// How a biome's ground looks up close: a surface for flat ground, slopes and steep ground, and where they hand over.
+// How a biome's ground looks up close: a surface for flat ground, slopes and steep ground, where they hand over, and
+// how the ground's shape moves the handovers.
 pub struct BiomeSurfacesDefinition {
     pub flat: SurfaceSlot,
     pub slope: SurfaceSlot,
@@ -13,6 +14,7 @@ pub struct BiomeSurfacesDefinition {
     pub flat_to_slope: Handover,
     pub slope_to_steep: Handover,
     pub handover_noise: HandoverNoise,
+    pub curvature: CurvatureBias,
 }
 
 impl BiomeSurfacesDefinition {
@@ -38,13 +40,21 @@ impl BiomeSurfacesDefinition {
                 .with_context(|| format!("`handovers` needs a `{name}`"))
         };
 
+        let flat_to_slope = Handover::parse(child("flat-to-slope")?)?;
+        let slope_to_steep = Handover::parse(child("slope-to-steep")?)?;
+        ensure!(
+            flat_to_slope.angle + flat_to_slope.width / 2.0 <= slope_to_steep.angle - slope_to_steep.width / 2.0,
+            "`flat-to-slope` must end before `slope-to-steep` starts"
+        );
+
         Ok(Some(BiomeSurfacesDefinition {
             flat,
             slope,
             steep,
-            flat_to_slope: Handover::parse(child("flat-to-slope")?)?,
-            slope_to_steep: Handover::parse(child("slope-to-steep")?)?,
+            flat_to_slope,
+            slope_to_steep,
             handover_noise: HandoverNoise::parse(child("noise")?)?,
+            curvature: CurvatureBias::parse(document.node("curvature")?)?,
         }))
     }
 }

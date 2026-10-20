@@ -6,7 +6,8 @@ use super::GpuData;
 pub(in crate::renderer) const MAX_SURFACE_SCALES: usize = 6;
 
 // One class's surface as the terrain programs read it. Mirrored by `SurfaceData` in terrain/surface/surface-data.slang.
-// Sizes are in meters; each scale's rotation is stored as its cosine and sine.
+// Sizes are in meters; each scale's rotation is stored as its cosine and sine. Displacements are compared across the
+// two blended materials, the higher showing through by `height_contrast` of the 0 to 1 displacement range.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(in crate::renderer) struct SurfaceData {
@@ -20,10 +21,12 @@ pub(in crate::renderer) struct SurfaceData {
     pub displacement_high: f32,
     pub average_color: Vec3,
     pub scale_count: u32,
+    pub height_contrast: f32,
+    pub padding: [u32; 3],
     pub scale_rotations: [Vec2; MAX_SURFACE_SCALES],
 }
 
-const _: () = assert!(size_of::<SurfaceData>() == 96);
+const _: () = assert!(size_of::<SurfaceData>() == 112);
 
 unsafe impl GpuData for SurfaceData {}
 
@@ -39,6 +42,8 @@ impl SurfaceData {
         displacement_high: 0.0,
         average_color: Vec3::ZERO,
         scale_count: 0,
+        height_contrast: 0.0,
+        padding: [0; 3],
         scale_rotations: [Vec2::ZERO; MAX_SURFACE_SCALES],
     };
 }

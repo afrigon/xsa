@@ -6,12 +6,29 @@ import terrain.output;
 import terrain.surface.fade;
 import terrain.surface.range;
 import terrain.surface.surface;
+import terrain.surface.blend;
+import terrain.surface.classes;
+import terrain.surface.debug_view;
 import terrain.surface.tint;
+import terrain.surface.variants;
+import debug.palette;
 import terrain.texture;
 
+// The terrain's varyings and the ground's shape, which picks the class of its surfaces.
+struct HapkeVaryings {
+    TerrainVaryings terrain;
+    float curvature;
+    float relativeHeight;
+};
+
 [shader("vertex")]
-TileVertex vertexMain(VertexInput input) {
-    return terrainVertex(input);
+HapkeVaryings vertexMain(VertexInput input) {
+    TileVertex vertex = terrainVertex(input);
+    HapkeVaryings output;
+    output.terrain = terrainVaryings(vertex);
+    output.curvature = vertex.curvature;
+    output.relativeHeight = vertex.relativeHeight;
+    return output;
 }
 
 // Mirrors `HapkeData` in the renderer. Its surfaces are read only once every class's arrays are loaded.
@@ -21,6 +38,7 @@ struct HapkeData {
     float emissiveLuminance;
     uint surfacesLoaded;
     uint padding[2];
+    BiomeData biome;
     SurfaceData surfaces[surfaceClasses];
 };
 
@@ -57,30 +75,89 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, DrawVarying
     return hapkeReflectance(parameters, geometry) * starIlluminance(star, input.worldPosition);
 }
 
-// The ground up close: the flat class's surface brightens or darkens the colour layer and adds its relief to the normal
-// layer's, fading in as the colour layer is magnified past its texels.
-void addSurfaces(HapkeData material, LayerCoordinates coordinates, SurfacePoint point, inout float3 albedo,
-                 inout float3 normal) {
+// The ground up close: the class and variant materials weighed at the pixel, the two strongest sampled and blended by
+// height, brightening or darkening the colour layer and adding their relief to the normal layer's, fading in as the
+// colour layer is magnified past its texels. `debugColor` is what the surface debug view shows.
+void addSurfaces(HapkeData material, LayerCoordinates coordinates, SurfacePoint point, HapkeVaryings shape, float3 up,
+                 inout float3 albedo, inout float3 normal, out float3 debugColor) {
+    debugColor = float3(0.0);
+
     if (!shadesSurfaces() || material.surfacesLoaded == 0) {
         return;
     }
 
     float fade = surfaceFade(coordinates);
 
+    if (surfaceDebugView == uint(SurfaceDebugView.Fade)) {
+        debugColor = fade.xxx;
+    }
+
     if (fade <= 0.0) {
         return;
     }
 
-    uint surfaceClass = uint(SurfaceClass.Flat);
-    SurfaceData surface = material.surfaces[surfaceClass];
-    SurfaceSample sample = sampleSurface(surface, surfaceAnchors(), surfaceClass, point, normal);
-    albedo = tintedAlbedo(albedo, sample.color, surface.averageColor, fade, *constants.frame);
-    normal = normalize(lerp(normal, sample.normal, fade));
+    SurfaceAnchors *anchors = surfaceAnchors();
+    float handoverNoise = noiseAt(anchors.handoverNoise, point.offset);
+    float slope = classSlope(material.biome, normal, up, shape.curvature, shape.relativeHeight, handoverNoise);
+    float3 classes = classWeights(material.biome, slope);
+    StrongestTwo strongest = strongestTwo();
+
+    for (uint surfaceClass = 0; surfaceClass < surfaceClasses; surfaceClass++) {
+        if (classes[surfaceClass] <= 0.0) {
+            continue;
+        }
+
+        SurfaceData surface = material.surfaces[surfaceClass];
+        VariantPair pair = variantPair(noiseAt(anchors.variantNoise[surfaceClass], point.offset), surface.variantCount);
+        Material first = { surfaceClass, pair.first, classes[surfaceClass] * (1.0 - pair.secondWeight) };
+        strongest.offer(first);
+
+        if (pair.secondWeight > 0.0) {
+            Material second = { surfaceClass, pair.second, classes[surfaceClass] * pair.secondWeight };
+            strongest.offer(second);
+        }
+    }
+
+    float2 weights = strongest.weights();
+    SurfaceData firstSurface = material.surfaces[strongest.first.surfaceClass];
+    SurfaceSample first =
+        sampleSurface(firstSurface, anchors, strongest.first.surfaceClass, strongest.first.variant, point, normal);
+    float3 color = tintSpace(first.color, firstSurface.averageColor, *constants.frame);
+    float3 relief = first.normal;
+
+    if (weights.y > 0.0) {
+        SurfaceData secondSurface = material.surfaces[strongest.second.surfaceClass];
+        SurfaceSample second = sampleSurface(
+            secondSurface, anchors, strongest.second.surfaceClass, strongest.second.variant, point, normal);
+        float contrast = 0.5 * (firstSurface.heightContrast + secondSurface.heightContrast);
+        weights = heightBlend(weights, float2(first.displacement, second.displacement), contrast);
+        color = color * weights.x + tintSpace(second.color, secondSurface.averageColor, *constants.frame) * weights.y;
+        relief = normalize(first.normal * weights.x + second.normal * weights.y);
+    }
+
+    albedo = tintedAlbedo(albedo, color, fade, *constants.frame);
+    normal = normalize(lerp(normal, relief, fade));
+
+    switch (surfaceDebugView) {
+    case uint(SurfaceDebugView.Classes):
+        debugColor[strongest.first.surfaceClass] += weights.x;
+        debugColor[strongest.second.surfaceClass] += weights.y;
+        break;
+    case uint(SurfaceDebugView.Scales):
+        debugColor = hueColor(first.level * huePerLevel);
+        break;
+    case uint(SurfaceDebugView.Planes):
+        debugColor = first.planeWeights;
+        break;
+    default:
+        break;
+    }
 }
 
 // Where the tile has no page of either Hapke layer, it is shaded with Lambert.
 [shader("fragment")]
-FragmentOutput fragmentMain(TileVertex input, uint primitive: SV_PrimitiveID) {
+FragmentOutput fragmentMain(HapkeVaryings varyings, uint primitive: SV_PrimitiveID) {
+    TerrainVaryings input = varyings.terrain;
     HapkeData material = currentMaterial<HapkeData>();
     float3 modelNormal = normalize(input.draw.modelNormal);
     LayerCoordinates coordinates = layerCoordinates(input.tile, input.faceOffset);
@@ -89,7 +166,20 @@ FragmentOutput fragmentMain(TileVertex input, uint primitive: SV_PrimitiveID) {
     LayerRead opposition = readLayer(coordinates, oppositionLayer);
     float3 normal = layerNormal(readLayer(coordinates, normalLayer), coordinates.tile, modelNormal);
     float3 albedo = color.resident ? color.value.rgb : material.baseColor;
-    addSurfaces(material, coordinates, surfacePoint(input.draw.worldPosition, currentObject()), albedo, normal);
+    float3 surfaceDebugColor;
+    addSurfaces(material,
+                coordinates,
+                surfacePoint(input.draw.worldPosition, currentObject()),
+                varyings,
+                modelNormal,
+                albedo,
+                normal,
+                surfaceDebugColor);
+
+    if (showsSurfaceDebugView()) {
+        return fragmentOutput(float4(surfaceDebugColor, 1.0), input.draw);
+    }
+
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
     float3 geometricNormal = normalize(input.draw.normal);
     float3 luminance = starlightLuminance(albedo);

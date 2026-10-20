@@ -4,8 +4,8 @@ import terrain.output;
 import terrain.texture;
 
 [shader("vertex")]
-TileVertex vertexMain(VertexInput input) {
-    return terrainVertex(input);
+TerrainVaryings vertexMain(VertexInput input) {
+    return terrainVaryings(terrainVertex(input));
 }
 
 struct LambertData {
@@ -18,7 +18,7 @@ struct LambertData {
 };
 
 [shader("fragment")]
-FragmentOutput fragmentMain(TileVertex vertex, uint primitive: SV_PrimitiveID) {
+FragmentOutput fragmentMain(TerrainVaryings vertex, uint primitive: SV_PrimitiveID) {
     DrawVaryings input = vertex.draw;
     LambertData material = currentMaterial<LambertData>();
     float3 modelNormal = normalize(input.modelNormal);

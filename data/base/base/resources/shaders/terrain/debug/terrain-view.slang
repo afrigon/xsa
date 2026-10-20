@@ -20,7 +20,7 @@ bool showsTerrainDebugView() {
     return terrainDebugView != uint(TerrainDebugView.None);
 }
 
-float3 terrainDebugViewColor(TileVertex input) {
+float3 terrainDebugViewColor(TerrainVaryings input) {
     switch (terrainDebugView) {
     case uint(TerrainDebugView.Lod):
         return lodColor(input);

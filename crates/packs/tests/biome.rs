@@ -23,6 +23,7 @@ handovers {
     slope-to-steep angle=24 width=6
     noise size=1500 amplitude=3
 }
+curvature convex=10 concave=8 relief=4
 "#;
 const TEXTURES: [&str; 3] = ["color", "normal", "displacement"];
 
@@ -107,6 +108,29 @@ fn a_biome_reads_its_surfaces_and_handovers() {
     assert_eq!(biome.steep.height_contrast, 0.6);
     assert!((biome.slope_to_steep.angle - 24.0_f32.to_radians()).abs() < 1e-6);
     assert_eq!(biome.handover_noise.size, 1500.0);
+}
+
+#[test]
+fn a_biome_reads_how_curvature_moves_its_classes() {
+    let pack = TestPack::new("curvature", "", BODY, &TEXTURES);
+    let biome = BiomeSurfacesDefinition::load(&pack.stack, &TestPack::id("rock/plains"))
+        .unwrap()
+        .unwrap();
+
+    assert!((biome.curvature.concave - 8.0_f32.to_radians()).abs() < 1e-6);
+}
+
+#[test]
+fn a_biome_refuses_overlapping_handovers() {
+    let pack = TestPack::new("overlapping", "", BODY, &TEXTURES);
+    let path = pack.directory.join("test/test/resources/biomes/rock/plains.kdl");
+    fs::write(
+        &path,
+        BIOME_SURFACES.replace("slope-to-steep angle=24", "slope-to-steep angle=12"),
+    )
+    .unwrap();
+
+    assert!(BiomeSurfacesDefinition::load(&pack.stack, &TestPack::id("rock/plains")).is_err());
 }
 
 #[test]

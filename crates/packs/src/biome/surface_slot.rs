@@ -1,7 +1,10 @@
+use anyhow::ensure;
+
 use crate::{Id, NodeExtension, PackStack, SurfaceDefinition};
 
 // One class of a biome's ground: its surface, the feature size (m) of the seeded noise choosing between the surface's
-// variants, and how sharply the higher of two blended materials shows through.
+// variants, and how sharply the higher of two blended materials shows through: from 0, a cross-fade over the whole
+// displacement range, toward 1, only the higher material.
 pub struct SurfaceSlot {
     pub surface: SurfaceDefinition,
     pub variant_noise: f32,
@@ -16,10 +19,16 @@ impl SurfaceSlot {
             return Ok(None);
         };
 
+        let height_contrast = node.number_property("height-contrast")? as f32;
+        ensure!(
+            (0.0..1.0).contains(&height_contrast),
+            "`height-contrast` runs from 0 up to, but not including, 1"
+        );
+
         Ok(Some(SurfaceSlot {
             surface,
             variant_noise: node.number_property("variant-noise")? as f32,
-            height_contrast: node.number_property("height-contrast")? as f32,
+            height_contrast,
         }))
     }
 }

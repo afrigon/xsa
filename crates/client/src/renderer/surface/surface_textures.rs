@@ -1,17 +1,17 @@
 use std::sync::OnceLock;
 
 use anyhow::ensure;
-use glam::{DVec2, Vec2, Vec3};
+use glam::{DVec2, DVec3, Vec2, Vec3};
 use resource_vulkan::{ResourceHandle, TextureArray};
 use xsa_core::random::Seed;
 
 use super::{SurfaceClass, SurfaceScale};
-use crate::renderer::gpu_data::{MAX_SURFACE_SCALES, SurfaceData};
+use crate::renderer::gpu_data::{MAX_SURFACE_SCALES, NoiseAnchor, SurfaceData};
 
 const AVERAGE_COLOR_KEY: &str = "xsa.averageColor";
 
-// One class's surface: its three texture arrays, its size and displacement range (m), and its scale ladder, which
-// doubles from its own size up to its largest magnification.
+// One class's surface: its three texture arrays, its size and displacement range (m), its scale ladder, which doubles
+// from its own size up to its largest magnification, and the seeded noise (m) choosing between its variants.
 pub struct SurfaceTextures {
     pub color: ResourceHandle<TextureArray>,
     pub normal: ResourceHandle<TextureArray>,
@@ -20,6 +20,9 @@ pub struct SurfaceTextures {
     pub displacement_low: f32,
     pub displacement_high: f32,
     pub(in crate::renderer) scales: Vec<SurfaceScale>,
+    variant_noise: f64,
+    variant_seed: Seed,
+    height_contrast: f32,
     // Read from the colour array's metadata once it is loaded; None when the metadata is unusable.
     average_color: OnceLock<Option<Vec3>>,
 }
@@ -29,10 +32,11 @@ impl SurfaceTextures {
         color: ResourceHandle<TextureArray>,
         normal: ResourceHandle<TextureArray>,
         displacement: ResourceHandle<TextureArray>,
-        definition: &xsa_packs::SurfaceDefinition,
+        slot: &xsa_packs::SurfaceSlot,
         class: SurfaceClass,
         seed: Seed,
     ) -> anyhow::Result<SurfaceTextures> {
+        let definition = &slot.surface;
         let scale_count = definition.largest_magnification.log2().floor() as usize + 1;
         ensure!(
             scale_count <= MAX_SURFACE_SCALES,
@@ -51,6 +55,9 @@ impl SurfaceTextures {
             scales: (0..scale_count)
                 .map(|scale| SurfaceScale::new(class_seed.derive(&format!("scale-{scale}"))))
                 .collect(),
+            variant_noise: f64::from(slot.variant_noise),
+            variant_seed: class_seed.derive("variants"),
+            height_contrast: slot.height_contrast,
             average_color: OnceLock::new(),
         })
     }
@@ -84,6 +91,8 @@ impl SurfaceTextures {
             displacement_high: self.displacement_high,
             average_color,
             scale_count: self.scales.len() as u32,
+            height_contrast: self.height_contrast,
+            padding: [0; 3],
             scale_rotations,
         })
     }
@@ -97,6 +106,10 @@ impl SurfaceTextures {
         );
 
         Ok(Vec3::from_slice(&average))
+    }
+
+    pub(in crate::renderer) fn variant_noise_anchor(&self, camera_in_body: DVec3) -> NoiseAnchor {
+        NoiseAnchor::at(camera_in_body, self.variant_noise, self.variant_seed)
     }
 
     // Where `point` (m, on a projection plane) falls within each scale's repeat.

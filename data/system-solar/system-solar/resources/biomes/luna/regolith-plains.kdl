@@ -6,3 +6,4 @@ handovers {
     slope-to-steep angle=25 width=8
     noise size=20000 amplitude=3
 }
+curvature convex=10 concave=10 relief=5

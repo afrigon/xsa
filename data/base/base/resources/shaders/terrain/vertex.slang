@@ -14,6 +14,14 @@ struct SmoothHeight : TileHeight {
     float height(TileData tile, ObjectData object, int2 cell) {
         return 0.0;
     }
+
+    TerrainShape shape(TileData tile, ObjectData object, int2 cell) {
+        TerrainShape shape;
+        shape.height = 0.0;
+        shape.curvature = 0.0;
+        shape.relativeHeight = 0.0;
+        return shape;
+    }
 }
 
 TileVertex terrainVertex(VertexInput input) {

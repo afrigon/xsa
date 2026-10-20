@@ -28,7 +28,7 @@ float lineStrength(float meters, float spacing) {
     return coverage * fade;
 }
 
-float3 scaleColor(TileVertex input) {
+float3 scaleColor(TerrainVaryings input) {
     ObjectData object = currentObject();
     float3 bodyCenter = float3(object.worldFromModel[0][3], object.worldFromModel[1][3], object.worldFromModel[2][3]);
     float3 up = normalize(-bodyCenter);
