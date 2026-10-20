@@ -352,16 +352,19 @@ impl SharedResources {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::num::NonZeroUsize;
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, Instant};
 
     use ash::vk;
-    use memory_vulkan::{TestDevice, TexelBlock};
+    use memory_vulkan::{Buffer, MemoryLocation, TestDevice, TexelBlock, TransferPriority};
 
     use super::*;
     use crate::streaming::PagePool;
-    use crate::{PageRequest, Residency};
+    use crate::{LoadContext, MemoryUsage, PageRequest, PendingResource, Residency};
+
+    const MIB: u64 = 1024 * 1024;
 
     const PAGE_EXTENT: u32 = 64;
     const TEXEL_SIZE: u32 = 4;
@@ -413,6 +416,69 @@ mod tests {
             let texels = (PAGE_EXTENT * PAGE_EXTENT) as usize;
 
             Ok(Some(key.texel().to_le_bytes().repeat(texels)))
+        }
+    }
+
+    // A resource of `size_mib` MiB of video memory in shared blocks, as costly to load as `load_millis` says.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    struct BlockOptions {
+        size_mib: u64,
+        load_millis: u64,
+        name: u32,
+    }
+
+    struct Block {
+        buffer: Buffer,
+    }
+
+    struct PendingBlock {
+        block: Option<Block>,
+    }
+
+    impl ResourceKind for Block {
+        type Options = BlockOptions;
+
+        fn load(
+            context: &LoadContext,
+            _: &std::path::Path,
+            options: &BlockOptions,
+        ) -> anyhow::Result<Box<dyn PendingResource<Block>>> {
+            std::thread::sleep(Duration::from_millis(options.load_millis));
+            let buffer = Buffer::new(
+                context.memory,
+                context.name,
+                options.size_mib * MIB,
+                vk::BufferUsageFlags::STORAGE_BUFFER,
+                MemoryLocation::GpuOnly,
+                &context.transfer.sharing(),
+            )?;
+
+            Ok(Box::new(PendingBlock {
+                block: Some(Block { buffer }),
+            }))
+        }
+
+        fn memory(&self) -> MemoryUsage {
+            MemoryUsage {
+                video: self.buffer.size(),
+                ram: 0,
+            }
+        }
+    }
+
+    impl PendingResource<Block> for PendingBlock {
+        fn poll(&mut self, _: &BindlessTable) -> anyhow::Result<Option<Block>> {
+            Ok(self.block.take())
+        }
+
+        fn set_priority(&self, _: TransferPriority) {}
+    }
+
+    fn block(name: u32, size_mib: u64, load_millis: u64) -> BlockOptions {
+        BlockOptions {
+            size_mib,
+            load_millis,
+            name,
         }
     }
 
@@ -533,6 +599,64 @@ mod tests {
             });
 
             limit
+        }
+
+        // Loads every block, waits until all are ready, and returns their handles.
+        fn load_blocks(&mut self, blocks: &[BlockOptions]) -> Vec<ResourceHandle<Block>> {
+            let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+            let handles: Vec<_> = blocks
+                .iter()
+                .map(|&options| {
+                    self.resources
+                        .load::<Block>(LoadRequest::new(manifest, format!("block {}", options.name)), options)
+                })
+                .collect();
+            self.run_until(&[], |_| handles.iter().all(|handle| handle.get().is_some()));
+
+            handles
+        }
+
+        fn is_cached(&self, options: BlockOptions) -> bool {
+            let key = ResourceKey::<Block> {
+                path: concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml").into(),
+                options,
+            };
+
+            self.resources.shared.registry().kind::<Block>().contains_key(&key)
+        }
+
+        // Lowers the video memory limit to `below` bytes under what objects occupy now.
+        fn limit_below_usage(&self, below: u64) {
+            self.resources.set_limits(ResourceLimits {
+                max_video_memory_usage: Some(self.video_usage() - below),
+                ..ResourceLimits::default()
+            });
+        }
+
+        fn resident_pages(&self, pages: &[PageRequest<QuadKey>]) -> Vec<PageRequest<QuadKey>> {
+            pages
+                .iter()
+                .copied()
+                .filter(|request| self.is_resident(request.key))
+                .collect()
+        }
+
+        fn assert_holds_its_own_content(&self, key: QuadKey) {
+            let placement = self.set.page(key).unwrap();
+            let image = self.resources.shared.streamer().chunk_image(placement.slot).unwrap();
+            let bytes = self
+                .device
+                .read_region(
+                    &image,
+                    vk::ImageLayout::GENERAL,
+                    placement.offset,
+                    Harness::format().extent,
+                    Harness::format().page_size(),
+                )
+                .unwrap();
+            let texels = (PAGE_EXTENT * PAGE_EXTENT) as usize;
+
+            assert_eq!(bytes, key.texel().to_le_bytes().repeat(texels), "{key:?}");
         }
 
         fn assert_clean(&self) {
@@ -708,6 +832,153 @@ mod tests {
 
         harness.set.set_residency(Residency::Live);
         harness.run_until(&levels(3..=3), |harness| harness.all_resident(&levels(3..=3)));
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn of_cached_resources_the_cheapest_to_reload_goes_first_and_only_what_is_needed() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let cheap = block(1, 16, 0);
+        let costly = block(2, 16, 300);
+        let other_cheap = block(3, 16, 0);
+        drop(harness.load_blocks(&[cheap, costly, other_cheap]));
+        harness.run_frames(&[], 2);
+        harness.limit_below_usage(8 * MIB);
+        harness.run_frames(&[], 30);
+
+        assert!(harness.is_cached(costly));
+        assert_eq!(
+            [cheap, other_cheap]
+                .into_iter()
+                .filter(|&options| harness.is_cached(options))
+                .count(),
+            1,
+            "exactly one cheap block goes"
+        );
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn of_cached_resources_as_costly_to_reload_the_larger_goes_first() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let large = block(1, 64, 100);
+        let small = block(2, 8, 100);
+        drop(harness.load_blocks(&[large, small]));
+        harness.run_frames(&[], 2);
+        harness.limit_below_usage(4 * MIB);
+        harness.run_frames(&[], 30);
+
+        assert!(!harness.is_cached(large));
+        assert!(harness.is_cached(small));
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn of_cached_resources_the_one_unused_longest_goes_first() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let stale = block(1, 16, 50);
+        let recent = block(2, 16, 50);
+        let mut handles = harness.load_blocks(&[stale, recent]);
+        drop(handles.remove(0));
+        harness.run_frames(&[], 60);
+        drop(handles);
+        harness.run_frames(&[], 2);
+        harness.limit_below_usage(8 * MIB);
+        harness.run_frames(&[], 30);
+
+        assert!(!harness.is_cached(stale));
+        assert!(harness.is_cached(recent));
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn an_unused_cached_resource_goes_before_wanted_pages() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let cached = block(1, 16, 1000);
+        drop(harness.load_blocks(&[cached]));
+        let pages = levels(4..=5);
+        harness.run_until(&pages, |harness| harness.all_resident(&pages));
+        harness.limit_below_usage(8 * MIB);
+        harness.run_frames(&pages, 30);
+
+        assert!(!harness.is_cached(cached));
+        assert!(harness.all_resident(&pages));
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn a_shrinking_pool_keeps_its_most_important_pages_and_moves_them_intact() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let loading = level(6, |index| 8192.0 - index as f32);
+        harness.run_until(&loading, |harness| harness.all_resident(&loading));
+        let chunks = harness.chunk_count();
+
+        assert!(chunks >= 2);
+
+        // Scores no longer follow the order pages were placed in, so the least important are spread across chunks.
+        let pages = level(6, |index| ((index * 7919) % 4096) as f32 + 1.0);
+        let before: HashMap<QuadKey, (u32, vk::Offset2D)> = pages
+            .iter()
+            .map(|request| {
+                let placement = harness.set.page(request.key).unwrap();
+                (request.key, (placement.slot, placement.offset))
+            })
+            .collect();
+        harness.run_frames(&pages, 2);
+        harness.limit_below_usage(Harness::chunk_size() / 2);
+        harness.run_until(&pages, |harness| harness.chunk_count() < chunks);
+        harness.run_frames(&pages, 30);
+        let resident = harness.resident_pages(&pages);
+        let lowest_resident = resident
+            .iter()
+            .map(|request| request.score)
+            .fold(f32::INFINITY, f32::min);
+        let highest_dropped = pages
+            .iter()
+            .filter(|request| !harness.is_resident(request.key))
+            .map(|request| request.score)
+            .fold(0.0, f32::max);
+
+        assert_eq!(harness.chunk_count(), chunks - 1);
+        assert!(
+            lowest_resident > highest_dropped,
+            "a page of score {highest_dropped} fell back while one of {lowest_resident} stayed"
+        );
+
+        let moved: Vec<_> = resident
+            .iter()
+            .filter(|request| {
+                let placement = harness.set.page(request.key).unwrap();
+                before[&request.key] != (placement.slot, placement.offset)
+            })
+            .collect();
+
+        assert!(!moved.is_empty());
+
+        for request in moved {
+            harness.assert_holds_its_own_content(request.key);
+        }
+
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn pages_that_do_not_fit_in_ram_are_not_read_again_and_again() {
+        let mut harness = Harness::new(
+            ResourceLimits {
+                max_memory_usage: Some(4 * MIB),
+                ..ResourceLimits::default()
+            },
+            8,
+        );
+        let pages = level(6, |index| 4096.0 - index as f32);
+        harness.run_frames(&pages, 120);
+        let reads = harness.reads.load(Ordering::Acquire);
+        harness.run_frames(&pages, 60);
+
+        assert_eq!(harness.reads.load(Ordering::Acquire), reads, "pages are read again");
+        assert!(harness.resources.shared.streamer().ram_bytes() <= 4 * MIB);
+        assert!(harness.is_resident(pages[0].key));
         harness.assert_clean();
     }
 }

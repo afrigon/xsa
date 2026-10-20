@@ -132,3 +132,131 @@ impl PoolPick {
         cells >= self.capacity.cells_per_chunk * (self.chunks + 1)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use ash::vk;
+    use memory_vulkan::TexelBlock;
+
+    use super::*;
+    use crate::EvictionRank;
+    use crate::streaming::{PageId, SetId};
+
+    const MIB: u64 = 1024 * 1024;
+    const CELLS: usize = 4;
+    const CHUNK: u64 = 32 * MIB;
+
+    fn format() -> PageFormat {
+        PageFormat {
+            format: vk::Format::R8G8B8A8_UNORM,
+            extent: vk::Extent2D { width: 64, height: 64 },
+            texel_block: TexelBlock {
+                extent: vk::Extent2D { width: 1, height: 1 },
+                size: 4,
+            },
+        }
+    }
+
+    fn pool(free_cells: usize) -> PoolCapacity {
+        PoolCapacity {
+            format: format(),
+            cells_per_chunk: CELLS,
+            chunk_size: CHUNK,
+            free_cells,
+        }
+    }
+
+    fn idle() -> EvictionRank {
+        EvictionRank::Idle {
+            reload_time: Duration::from_millis(1),
+            bytes: MIB,
+            idle_updates: 1,
+        }
+    }
+
+    fn page(value: u64) -> PageOwner {
+        PageOwner {
+            set: SetId { value: 1 },
+            page: PageId { value },
+        }
+    }
+
+    fn cell(value: u64) -> SoftUsage {
+        SoftUsage {
+            owner: SoftOwner::Cell {
+                pool: format(),
+                page: page(value),
+            },
+            memory: MemoryUsage {
+                video: CHUNK / CELLS as u64,
+                ram: 0,
+            },
+            rank: idle(),
+        }
+    }
+
+    fn entry(value: u64, video: u64) -> SoftUsage {
+        SoftUsage {
+            owner: SoftOwner::Entry(EntryId { value }),
+            memory: MemoryUsage { video, ram: 0 },
+            rank: idle(),
+        }
+    }
+
+    fn video(bytes: u64) -> MemoryUsage {
+        MemoryUsage { video: bytes, ram: 0 }
+    }
+
+    #[test]
+    fn entries_go_in_order_until_the_overage_is_covered() {
+        let soft = [entry(1, 60 * MIB), entry(2, 60 * MIB), entry(3, 60 * MIB)];
+        let plan = EvictionPlan::new(video(100 * MIB), &soft, &[]);
+
+        assert_eq!(plan.entries, vec![EntryId { value: 1 }, EntryId { value: 2 }]);
+    }
+
+    #[test]
+    fn pages_free_video_memory_only_a_whole_chunk_at_a_time() {
+        let soft = [cell(1), cell(2), entry(3, 10 * MIB), cell(4), cell(5)];
+        let plan = EvictionPlan::new(video(20 * MIB), &soft, &[pool(0)]);
+
+        assert_eq!(plan.entries, vec![EntryId { value: 3 }]);
+        assert_eq!(plan.shrinks.len(), 1);
+        assert_eq!(plan.shrinks[0].evicted, vec![page(1), page(2), page(4), page(5)]);
+        assert_eq!(plan.freed.video, 10 * MIB + CHUNK);
+    }
+
+    #[test]
+    fn pages_past_the_last_whole_chunk_stay() {
+        let soft = [cell(1), cell(2), entry(3, 40 * MIB)];
+        let plan = EvictionPlan::new(video(40 * MIB), &soft, &[pool(0)]);
+
+        assert!(plan.shrinks.is_empty());
+        assert_eq!(plan.entries, vec![EntryId { value: 3 }]);
+    }
+
+    #[test]
+    fn free_cells_fill_a_chunk_before_any_page_goes() {
+        let plan = EvictionPlan::new(video(CHUNK), &[cell(1), cell(2)], &[pool(3)]);
+
+        assert_eq!(plan.shrinks[0].evicted, vec![page(1)]);
+        assert_eq!(plan.shrinks[0].chunks, 1);
+    }
+
+    #[test]
+    fn a_pool_not_given_is_not_shrunk() {
+        let plan = EvictionPlan::new(video(CHUNK), &[cell(1), cell(2), cell(3), cell(4)], &[]);
+
+        assert!(plan.shrinks.is_empty());
+        assert_eq!(plan.freed, MemoryUsage::default());
+    }
+
+    #[test]
+    fn reclaimable_memory_counts_pages_in_whole_chunks_only() {
+        let soft = [cell(1), cell(2), cell(3), cell(4), cell(5), entry(6, MIB)];
+
+        assert_eq!(EvictionPlan::reclaimable(&soft, &[pool(1)]).video, CHUNK + MIB);
+    }
+}
