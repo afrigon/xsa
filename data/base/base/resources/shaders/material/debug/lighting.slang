@@ -2,12 +2,12 @@ import material.light.star;
 import material.material;
 
 [shader("vertex")]
-SurfaceVaryings vertexMain<G : Geometry>(VertexInput input) {
-    return G.transform(input).surface;
+DrawVaryings vertexMain<G : Geometry>(VertexInput input) {
+    return G.transform(input).draw;
 }
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(SurfaceVaryings input) {
+FragmentOutput fragmentMain(DrawVaryings input) {
     float3 normal = normalize(input.normal);
     float cosine = 0.0;
 
@@ -15,5 +15,5 @@ SurfaceOutput fragmentMain(SurfaceVaryings input) {
         cosine += starCosine(constants.frame.stars[index], input.worldPosition, normal);
     }
 
-    return surfaceOutput(float4(saturate(cosine).xxx, 1.0), input);
+    return fragmentOutput(float4(saturate(cosine).xxx, 1.0), input);
 }

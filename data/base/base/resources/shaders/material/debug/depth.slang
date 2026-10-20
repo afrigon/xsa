@@ -1,14 +1,14 @@
 import material.material;
 
 [shader("vertex")]
-SurfaceVaryings vertexMain<G : Geometry>(VertexInput input) {
-    return G.transform(input).surface;
+DrawVaryings vertexMain<G : Geometry>(VertexInput input) {
+    return G.transform(input).draw;
 }
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(SurfaceVaryings input) {
+FragmentOutput fragmentMain(DrawVaryings input) {
     static const float maximumDistanceExponent = 12.0;
     float distance = max(length(input.worldPosition), 1.0);
     float brightness = 1.0 - saturate(log10(distance) / maximumDistanceExponent);
-    return surfaceOutput(float4(brightness.xxx, 1.0), input);
+    return fragmentOutput(float4(brightness.xxx, 1.0), input);
 }

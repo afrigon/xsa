@@ -233,7 +233,7 @@ impl CameraController {
             Some(body) => world.find_body(body)?,
             None => around.context("the camera is around no body; name one")?,
         };
-        let current = world.surface(index, self.camera.position, self.camera.orientation);
+        let current = world.position_reading(index, self.camera.position, self.camera.orientation);
         let latitude = command.latitude.map_or(current.latitude, f64::to_radians);
         ensure!(
             latitude.abs() <= FRAC_PI_2,

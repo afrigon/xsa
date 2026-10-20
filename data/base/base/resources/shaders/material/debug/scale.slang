@@ -1,7 +1,7 @@
 import material.material;
 
 struct ScaleVaryings {
-    SurfaceVaryings surface;
+    DrawVaryings draw;
     float heightMeters;
 };
 
@@ -9,7 +9,7 @@ struct ScaleVaryings {
 ScaleVaryings vertexMain<G : Geometry>(VertexInput input) {
     TileVertex tile = G.transform(input);
     ScaleVaryings output;
-    output.surface = tile.surface;
+    output.draw = tile.draw;
     output.heightMeters = tile.heightMeters;
     return output;
 }
@@ -43,11 +43,11 @@ float lineStrength(float meters, float spacing) {
 }
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(ScaleVaryings input) {
+FragmentOutput fragmentMain(ScaleVaryings input) {
     ObjectData object = currentObject();
     float3 bodyCenter = float3(object.worldFromModel[0][3], object.worldFromModel[1][3], object.worldFromModel[2][3]);
     float3 up = normalize(-bodyCenter);
-    float3 position = input.surface.worldPosition;
+    float3 position = input.draw.worldPosition;
     float3 normal = normalize(cross(ddy(position), ddx(position)));
     normal = dot(normal, position) > 0.0 ? -normal : normal;
     float3 color = baseShade * lerp(steepShade, flatShade, saturate(dot(normal, up)));
@@ -60,5 +60,5 @@ SurfaceOutput fragmentMain(ScaleVaryings input) {
         spacing *= 10.0;
     }
 
-    return surfaceOutput(float4(color, 1.0), input.surface);
+    return fragmentOutput(float4(color, 1.0), input.draw);
 }

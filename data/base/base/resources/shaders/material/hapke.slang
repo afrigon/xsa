@@ -6,7 +6,7 @@ import material.material;
 import material.texture;
 
 struct HapkeVaryings {
-    SurfaceVaryings surface;
+    DrawVaryings draw;
     float2 faceOffset;
     nointerpolation uint tile;
 };
@@ -15,7 +15,7 @@ struct HapkeVaryings {
 HapkeVaryings vertexMain<G : Geometry>(VertexInput input) {
     TileVertex vertex = G.transform(input);
     HapkeVaryings output;
-    output.surface = vertex.surface;
+    output.draw = vertex.draw;
     output.faceOffset = vertex.faceOffset;
     output.tile = vertex.tile;
     return output;
@@ -44,8 +44,8 @@ HapkeParameters hapkeParameters(float4 medium, float4 opposition, float3 diffusi
     return parameters;
 }
 
-// cd/m² the surface reflects from one star.
-float3 reflectedLuminance(StarData star, HapkeParameters parameters, SurfaceVaryings input, float3 worldNormal) {
+// cd/m² the terrain reflects from one star.
+float3 reflectedLuminance(StarData star, HapkeParameters parameters, DrawVaryings input, float3 worldNormal) {
     float cosine = mappedCosine(star, input.worldPosition, normalize(input.normal), worldNormal);
 
     if (cosine <= 0.0) {
@@ -63,16 +63,16 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, SurfaceVary
 
 // Where the tile has no page of either Hapke layer, it is shaded with Lambert.
 [shader("fragment")]
-SurfaceOutput fragmentMain(HapkeVaryings input) {
+FragmentOutput fragmentMain(HapkeVaryings input) {
     HapkeData material = currentMaterial<HapkeData>();
-    float3 modelNormal = normalize(input.surface.modelNormal);
+    float3 modelNormal = normalize(input.draw.modelNormal);
     LayerCoordinates coordinates = layerCoordinates(input.tile, input.faceOffset);
     LayerRead color = readLayer(coordinates, colorLayer);
     LayerRead medium = readLayer(coordinates, mediumLayer);
     LayerRead opposition = readLayer(coordinates, oppositionLayer);
     float3 normal = layerNormal(readLayer(coordinates, normalLayer), coordinates.tile, modelNormal);
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
-    float3 geometricNormal = normalize(input.surface.normal);
+    float3 geometricNormal = normalize(input.draw.normal);
     float3 albedo = color.resident ? color.value.rgb : material.baseColor;
     float3 luminance = starlightLuminance(albedo);
 
@@ -80,17 +80,17 @@ SurfaceOutput fragmentMain(HapkeVaryings input) {
         HapkeParameters parameters = hapkeParameters(medium.value, opposition.value, albedo);
 
         for (uint index = 0; index < constants.frame.starCount; index++) {
-            luminance += reflectedLuminance(constants.frame.stars[index], parameters, input.surface, worldNormal);
+            luminance += reflectedLuminance(constants.frame.stars[index], parameters, input.draw, worldNormal);
         }
     } else {
         for (uint index = 0; index < constants.frame.starCount; index++) {
             StarData star = constants.frame.stars[index];
-            float cosine = mappedCosine(star, input.surface.worldPosition, geometricNormal, worldNormal);
-            luminance += lambertLuminance(albedo, starIlluminance(star, input.surface.worldPosition), cosine);
+            float cosine = mappedCosine(star, input.draw.worldPosition, geometricNormal, worldNormal);
+            luminance += lambertLuminance(albedo, starIlluminance(star, input.draw.worldPosition), cosine);
         }
     }
 
     TextureCoordinates emissionCoordinates = equirectangularCoordinates(modelNormal);
     luminance += mappedEmission(material.emissiveTexture, material.emissiveLuminance, emissionCoordinates);
-    return surfaceOutput(float4(luminance * constants.frame.exposure, 1.0), input.surface);
+    return fragmentOutput(float4(luminance * constants.frame.exposure, 1.0), input.draw);
 }

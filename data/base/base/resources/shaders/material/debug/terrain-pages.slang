@@ -4,7 +4,7 @@ __exported import material.layers;
 __exported import material.material;
 
 struct TerrainPageVaryings {
-    SurfaceVaryings surface;
+    DrawVaryings draw;
     float2 faceOffset;
     nointerpolation uint tile;
 };
@@ -23,7 +23,7 @@ static const float3 noPageColor = float3(1.0);
 
 TerrainPageVaryings terrainPageVertex(TileVertex vertex) {
     TerrainPageVaryings output;
-    output.surface = vertex.surface;
+    output.draw = vertex.draw;
     output.faceOffset = vertex.faceOffset;
     output.tile = vertex.tile;
     return output;
@@ -34,7 +34,7 @@ ColorPage colorPage(TerrainPageVaryings input) {
     ColorPage page;
     page.read = readLayer(coordinates, colorLayer);
     page.wantedLevel = min(uint(ceil(coordinates.level)), finestLevel(coordinates.tile, colorLayer));
-    page.facing = saturate(dot(normalize(input.surface.normal), normalize(-input.surface.worldPosition)));
+    page.facing = saturate(dot(normalize(input.draw.normal), normalize(-input.draw.worldPosition)));
     return page;
 }
 

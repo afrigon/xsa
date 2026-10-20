@@ -50,7 +50,7 @@ float roughnessEta(float angle, float roughness) {
                                                        (2.0 - roughnessE1(angle, roughness)));
 }
 
-struct RoughSurface {
+struct RoughnessCorrection {
     float incidenceCosine;
     float emissionCosine;
     float shadowing;
@@ -58,7 +58,7 @@ struct RoughSurface {
 
 // Macroscopic roughness (12.46-12.54): effective cosines of incidence and emission and the shadowing function S, for
 // mean slope angle `roughness` and azimuth `azimuth` between the planes of incidence and emission.
-RoughSurface roughSurface(float incidenceCosine, float emissionCosine, float azimuth, float roughness) {
+RoughnessCorrection roughnessCorrection(float incidenceCosine, float emissionCosine, float azimuth, float roughness) {
     float incidence = acos(incidenceCosine);
     float emission = acos(emissionCosine);
     float chi = roughnessChi(roughness);
@@ -72,27 +72,27 @@ RoughSurface roughSurface(float incidenceCosine, float emissionCosine, float azi
     float e1e = roughnessE1(emission, roughness);
     float e2e = roughnessE2(emission, roughness);
 
-    RoughSurface surface;
+    RoughnessCorrection correction;
     if (incidence <= emission) {
         float denominator = 2.0 - e1e - azimuth / hapkePi * e1i;
-        surface.incidenceCosine =
+        correction.incidenceCosine =
             chi *
             (incidenceCosine + sin(incidence) * tangent * (cos(azimuth) * e2e + sinHalfAzimuth2 * e2i) / denominator);
-        surface.emissionCosine =
+        correction.emissionCosine =
             chi * (emissionCosine + sin(emission) * tangent * (e2e - sinHalfAzimuth2 * e2i) / denominator);
-        surface.shadowing = surface.emissionCosine / etaEmission * incidenceCosine / etaIncidence * chi /
-                            (1.0 - f + f * chi * incidenceCosine / etaIncidence);
+        correction.shadowing = correction.emissionCosine / etaEmission * incidenceCosine / etaIncidence * chi /
+                               (1.0 - f + f * chi * incidenceCosine / etaIncidence);
     } else {
         float denominator = 2.0 - e1i - azimuth / hapkePi * e1e;
-        surface.incidenceCosine =
+        correction.incidenceCosine =
             chi * (incidenceCosine + sin(incidence) * tangent * (e2i - sinHalfAzimuth2 * e2e) / denominator);
-        surface.emissionCosine =
+        correction.emissionCosine =
             chi *
             (emissionCosine + sin(emission) * tangent * (cos(azimuth) * e2i + sinHalfAzimuth2 * e2e) / denominator);
-        surface.shadowing = surface.emissionCosine / etaEmission * incidenceCosine / etaIncidence * chi /
-                            (1.0 - f + f * chi * emissionCosine / etaEmission);
+        correction.shadowing = correction.emissionCosine / etaEmission * incidenceCosine / etaIncidence * chi /
+                               (1.0 - f + f * chi * emissionCosine / etaEmission);
     }
-    return surface;
+    return correction;
 }
 
 // Angle between the planes of incidence and emission, from the phase angle and both cosines.
@@ -141,25 +141,26 @@ float coherentBackscatterOpposition(float phaseAngle, float width) {
 
 // Hapke's bidirectional reflectance with porosity, both opposition effects and macroscopic roughness (12.55), per
 // color channel. Returns cd/m² per lux.
-float3 hapkeReflectance(HapkeParameters surface, HapkeGeometry geometry) {
-    float3 w = clamp(surface.singleScatteringAlbedo, 0.0, 0.999);
+float3 hapkeReflectance(HapkeParameters parameters, HapkeGeometry geometry) {
+    float3 w = clamp(parameters.singleScatteringAlbedo, 0.0, 0.999);
     float3 gamma = sqrt(1.0 - w);
     float3 diffusiveReflectance = (1.0 - gamma) / (1.0 + gamma);
-    float porosity = surface.porosity;
+    float porosity = parameters.porosity;
     float g = geometry.phaseAngle;
 
-    RoughSurface rough =
-        roughSurface(geometry.incidenceCosine, geometry.emissionCosine, azimuthAngle(geometry), surface.roughness);
+    RoughnessCorrection rough = roughnessCorrection(
+        geometry.incidenceCosine, geometry.emissionCosine, azimuthAngle(geometry), parameters.roughness);
     float mu0 = max(rough.incidenceCosine, 1e-4);
     float mu = max(rough.emissionCosine, 1e-4);
 
-    float shadowHidingOpposition = 1.0 + surface.shadowHidingAmplitude * shadowHiding(g, surface.shadowHidingWidth);
-    float singleScattering = phaseFunction(g, surface.lobeWidth, surface.lobeBalance) * shadowHidingOpposition;
+    float shadowHidingOpposition =
+        1.0 + parameters.shadowHidingAmplitude * shadowHiding(g, parameters.shadowHidingWidth);
+    float singleScattering = phaseFunction(g, parameters.lobeWidth, parameters.lobeBalance) * shadowHidingOpposition;
     float3 multipleScattering = chandrasekharH(mu0 / porosity, w, diffusiveReflectance) *
                                     chandrasekharH(mu / porosity, w, diffusiveReflectance) -
                                 1.0;
     float backscatterOpposition =
-        1.0 + surface.backscatterAmplitude * coherentBackscatterOpposition(g, surface.backscatterWidth);
+        1.0 + parameters.backscatterAmplitude * coherentBackscatterOpposition(g, parameters.backscatterWidth);
 
     return porosity * w / (4.0 * hapkePi) * mu0 / (mu0 + mu) * (singleScattering + multipleScattering) *
            backscatterOpposition * rough.shadowing;

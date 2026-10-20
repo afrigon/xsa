@@ -28,7 +28,7 @@ impl HorizonCuller {
         }
     }
 
-    // Whether a cap of the surface, centered on `direction` and reaching up to `highest_radius`, lies entirely past
+    // Whether a cap of the ground, centered on `direction` and reaching up to `highest_radius`, lies entirely past
     // the horizon.
     pub fn is_hidden(&self, direction: DVec3, angular_radius: f64, highest_radius: f64) -> bool {
         let angle = self
@@ -84,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn the_horizon_closes_in_near_the_surface() {
+    fn the_horizon_closes_in_near_the_ground() {
         let altitude = 1.0e-6;
         let low = HorizonCuller::new(DVec3::new(0.0, 0.0, RADIUS + altitude), RADIUS);
         let horizon = (2.0 * altitude).sqrt();

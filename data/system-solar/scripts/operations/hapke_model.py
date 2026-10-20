@@ -30,7 +30,7 @@ class HapkeModel:
     def reflectance(self, albedo: np.ndarray, geometry: Geometry) -> np.ndarray:
         w = np.clip(albedo, 0.0, MAXIMUM_ALBEDO)
         r0 = HapkeModel.diffusive_reflectance(w)
-        incidence_cosine, emission_cosine, shadowing = self._rough_surface(geometry)
+        incidence_cosine, emission_cosine, shadowing = self._roughness_correction(geometry)
         mu0 = max(incidence_cosine, MINIMUM_COSINE)
         mu = max(emission_cosine, MINIMUM_COSINE)
         g = geometry.phase
@@ -88,7 +88,7 @@ class HapkeModel:
         return 1 / (1 - albedo * x * (r0 + (1 - 2 * r0 * x) / 2 * np.log((1 + x) / x)))
 
     # Macroscopic roughness (eq. 12.46-12.54): effective cosines and the shadowing function.
-    def _rough_surface(self, geometry: Geometry) -> tuple[float, float, float]:
+    def _roughness_correction(self, geometry: Geometry) -> tuple[float, float, float]:
         i, e = geometry.incidence, geometry.emission
         tangent = np.tan(self.roughness)
         azimuth = self._azimuth(geometry)

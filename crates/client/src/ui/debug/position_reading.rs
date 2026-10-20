@@ -2,7 +2,7 @@ use crate::camera::Attitude;
 
 // The camera against the body it is around. Angles in radians; altitudes in meters at the feet, above the ground
 // only for a body with terrain.
-pub struct SurfaceReading {
+pub struct PositionReading {
     pub body: String,
     pub latitude: f64,
     pub longitude: f64,

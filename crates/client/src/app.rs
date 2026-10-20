@@ -381,7 +381,7 @@ impl App {
             height: window_size.height as f32,
         };
         let fill = Some(f32::INFINITY);
-        let surface = self
+        let position = self
             .world
             .as_ref()
             .zip(self.cameras.as_ref())
@@ -389,7 +389,7 @@ impl App {
                 let camera = cameras.camera();
                 cameras
                     .reference_body(world)
-                    .map(|body| world.surface(body, camera.position, camera.orientation))
+                    .map(|body| world.position_reading(body, camera.position, camera.orientation))
             });
         let debug_overlay = self.overlays.contains(&Overlay::DebugOverlay).then(|| {
             DebugOverlayView {
@@ -397,7 +397,7 @@ impl App {
                 gpu_milliseconds: self.frame_timing.gpu_milliseconds(),
                 statistics: renderer.statistics(),
                 camera: self.cameras.as_ref().map(CameraController::reading),
-                surface,
+                position,
                 clock: self.session.state().map(|state| ClockReading {
                     time: state.time(),
                     time_flow: state.time_flow(),

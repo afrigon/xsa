@@ -138,8 +138,8 @@ uint2 pageKey(TileData tile, uint level, uint finer, uint2 part) {
     return key >> (tile.depth + finer - level);
 }
 
-// From the tile's center to the surface above a grid point.
-float3 surfaceOffset<H : TileHeight>(H heights, TileData tile, ObjectData object, int2 cell) {
+// From the tile's center to the terrain above a grid point.
+float3 terrainOffset<H : TileHeight>(H heights, TileData tile, ObjectData object, int2 cell) {
     float3 direction = normalize(cubePoint(tile, cell));
     return sphereOffset(tile, cell) + direction * heights.height(tile, object, cell);
 }
@@ -148,7 +148,7 @@ float3 surfaceOffset<H : TileHeight>(H heights, TileData tile, ObjectData object
 // even neighbors: the tile becomes exactly its parent's triangles, and matches neighbors on faces whose grids run
 // the other way.
 float3 morphedOffset<H : TileHeight>(H heights, TileData tile, ObjectData object, int2 cell) {
-    float3 offset = surfaceOffset(heights, tile, object, cell);
+    float3 offset = terrainOffset(heights, tile, object, cell);
     float distance = length(tile.center + mul(object.worldFromModel, float4(offset, 0.0)).xyz);
     float morph =
         distance < tile.morphStart ? 0.0 : saturate((distance - tile.morphStart) / (tile.morphEnd - tile.morphStart));
@@ -159,7 +159,7 @@ float3 morphedOffset<H : TileHeight>(H heights, TileData tile, ObjectData object
     }
 
     float3 parentMidpoint =
-        (surfaceOffset(heights, tile, object, cell - odd) + surfaceOffset(heights, tile, object, cell + odd)) * 0.5;
+        (terrainOffset(heights, tile, object, cell - odd) + terrainOffset(heights, tile, object, cell + odd)) * 0.5;
     return lerp(offset, parentMidpoint, morph);
 }
 
@@ -173,12 +173,12 @@ TileVertex transformTile<H : TileHeight>(H heights, VertexInput input) {
     float3 previousWorld = tile.previousCenter + mul(object.previousWorldFromModel, float4(offset, 0.0)).xyz;
     float3 modelNormal = normalize(normalize(tile.cubeCenter) + offset);
     TileVertex output;
-    output.surface.position = mul(constants.frame.viewProjection, float4(world, 1.0));
-    output.surface.currentClip = unjittered(output.surface.position);
-    output.surface.previousClip = mul(constants.frame.previousViewProjection, float4(previousWorld, 1.0));
-    output.surface.worldPosition = world;
-    output.surface.normal = mul(object.worldFromModel, float4(modelNormal, 0.0)).xyz;
-    output.surface.modelNormal = modelNormal;
+    output.draw.position = mul(constants.frame.viewProjection, float4(world, 1.0));
+    output.draw.currentClip = unjittered(output.draw.position);
+    output.draw.previousClip = mul(constants.frame.previousViewProjection, float4(previousWorld, 1.0));
+    output.draw.worldPosition = world;
+    output.draw.normal = mul(object.worldFromModel, float4(modelNormal, 0.0)).xyz;
+    output.draw.modelNormal = modelNormal;
     output.cell = float2(input.cell);
     output.detail = tile.detail;
     output.gridCells = tile.gridCells;

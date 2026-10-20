@@ -174,7 +174,7 @@ mod tests {
         tiles
     }
 
-    // The camera looks along +Y: a sphere ahead, or one just below the camera to look along its surface.
+    // The camera looks along +Y: a sphere ahead, or one just below the camera to look along the ground.
     fn ahead(distance: f64) -> DVec3 {
         DVec3::new(0.0, distance, 0.0)
     }
@@ -220,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn tiles_get_finer_near_the_surface() {
+    fn tiles_get_finer_near_the_ground() {
         let tiles = select(below(100.0));
         let deepest = tiles.iter().map(|tile| tile.tile.depth).max().unwrap();
 
