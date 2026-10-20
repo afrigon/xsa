@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.5493 0.5490 0.5429
-color-terrain "bodies/kerberos/color"
-normal-terrain "bodies/kerberos/normal"
-medium-terrain "bodies/kerberos/hapke-medium"
-opposition-terrain "bodies/kerberos/hapke-opposition"

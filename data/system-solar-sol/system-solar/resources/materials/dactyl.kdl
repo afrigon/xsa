@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.2236 0.2002 0.1674
-color-terrain "bodies/dactyl/color"
-normal-terrain "bodies/dactyl/normal"
-medium-terrain "bodies/dactyl/hapke-medium"
-opposition-terrain "bodies/dactyl/hapke-opposition"

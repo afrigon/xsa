@@ -1,4 +1,0 @@
-shader "base:lambert"
-base-color 0.4682 0.4400 0.3710
-color-texture "bodies/hyperion/color"
-normal-texture "bodies/hyperion/normal"

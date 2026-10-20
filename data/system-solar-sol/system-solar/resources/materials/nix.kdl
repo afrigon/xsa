@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.3613 0.3544 0.3418
-color-terrain "bodies/nix/color"
-normal-terrain "bodies/nix/normal"
-medium-terrain "bodies/nix/hapke-medium"
-opposition-terrain "bodies/nix/hapke-opposition"

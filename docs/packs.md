@@ -334,8 +334,8 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 
 Textures are equirectangular with the first row at the south pole, longitude 0
 at u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
-Parallax, which Sol's textures follow). Normal textures are tangent-space with
-red toward west and green toward north; z is reconstructed.
+Parallax). Normal textures are tangent-space with red toward west and green
+toward north; z is reconstructed.
 
 ### Lenses — `<namespace>/resources/lenses/`
 

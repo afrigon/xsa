@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.2770 0.2444 0.1946
-color-terrain "bodies/eros/color"
-normal-terrain "bodies/eros/normal"
-medium-terrain "bodies/eros/hapke-medium"
-opposition-terrain "bodies/eros/hapke-opposition"

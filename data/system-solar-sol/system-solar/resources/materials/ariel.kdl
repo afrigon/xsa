@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.5232 0.5257 0.5254
-color-terrain "bodies/ariel/color"
-normal-terrain "bodies/ariel/normal"
-medium-terrain "bodies/ariel/hapke-medium"
-opposition-terrain "bodies/ariel/hapke-opposition"

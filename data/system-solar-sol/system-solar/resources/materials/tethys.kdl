@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.4465 0.4465 0.4440
-color-terrain "bodies/tethys/color"
-normal-terrain "bodies/tethys/normal"
-medium-terrain "bodies/tethys/hapke-medium"
-opposition-terrain "bodies/tethys/hapke-opposition"

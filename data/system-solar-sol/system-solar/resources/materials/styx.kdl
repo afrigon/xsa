@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.6497 0.6424 0.6247
-color-terrain "bodies/styx/color"
-normal-terrain "bodies/styx/normal"
-medium-terrain "bodies/styx/hapke-medium"
-opposition-terrain "bodies/styx/hapke-opposition"

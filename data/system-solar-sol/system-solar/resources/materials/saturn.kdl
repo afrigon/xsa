@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.6780 0.5459 0.3767
-color-terrain "bodies/saturn/color"
-normal-terrain "bodies/saturn/normal"
-medium-terrain "bodies/saturn/hapke-medium"
-opposition-terrain "bodies/saturn/hapke-opposition"

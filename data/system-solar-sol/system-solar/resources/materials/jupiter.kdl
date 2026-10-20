@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.3763 0.3392 0.3049
-color-terrain "bodies/jupiter/color"
-normal-terrain "bodies/jupiter/normal"
-medium-terrain "bodies/jupiter/hapke-medium"
-opposition-terrain "bodies/jupiter/hapke-opposition"
