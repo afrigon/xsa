@@ -43,7 +43,7 @@ Everything runs through mise; tools are pinned in `mise.toml`.
 | `mise run build [--release]` / `build-server` | Build everything / the server-only binary |
 | `mise run test` / `fmt` / `lint` | Unit tests / format (120 columns) / Clippy with warnings as errors, full and server-only builds |
 | `mise run shaders` | Compile the Slang shaders to SPIR-V and validate them |
-| `mise run generate [-- <recipe> …]` | Generate system-solar's textures, materials and `LICENSE` from their sources (`data/system-solar/scripts/`) |
+| `mise run generate -- <pack> [<argument> …]` | Generate a pack's assets and `LICENSE` from their sources with its `scripts/` (`system-solar [<recipe> …]`, `base-surfaces --density <texels per meter>`) |
 
 Before calling a change done: `fmt`, `lint` and `test` pass, and a run of the
 game prints no validation messages.

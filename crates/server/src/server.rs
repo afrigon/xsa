@@ -208,7 +208,11 @@ mod tests {
         fn in_environment(environment: SessionEnvironment) -> Self {
             let world = World::load(&WorldOptions {
                 packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")),
-                packs: vec!["base".to_string(), "system-solar".to_string()],
+                packs: vec![
+                    "base".to_string(),
+                    "base-surfaces".to_string(),
+                    "system-solar".to_string(),
+                ],
                 simulation: None,
             })
             .unwrap();

@@ -130,6 +130,13 @@ cargo run -p xsa --no-default-features --features server --target-dir {{vars.ser
 """
 
 [tasks.generate]
-description = "Generate system-solar's assets from their sources; recipe names after --, e.g. -- luna skybox"
-dir = "data/system-solar/scripts"
-run = "uv run build.py"
+description = "Generate a pack's assets from their sources; the pack, then its scripts' arguments after --, e.g. -- system-solar luna skybox, or -- base-surfaces --density 1024"
+# No usage spec: mise would take --help meant for the pack's scripts as a request for this task's help.
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+pack="${1:?the pack to generate, e.g. system-solar}"
+shift
+cd "data/$pack/scripts"
+uv run build.py "$@"
+"""
