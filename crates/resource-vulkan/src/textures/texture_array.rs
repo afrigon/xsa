@@ -11,6 +11,8 @@ use crate::{LoadContext, MemoryUsage, PendingResource, ResourceKind};
 pub struct TextureArray {
     texture: Texture,
     metadata: TextureMetadata,
+    layer_count: u32,
+    width: u32,
 }
 
 impl TextureArray {
@@ -21,6 +23,15 @@ impl TextureArray {
 
     pub fn metadata(&self) -> &TextureMetadata {
         &self.metadata
+    }
+
+    pub fn layer_count(&self) -> u32 {
+        self.layer_count
+    }
+
+    /// In texels, at its largest level.
+    pub fn width(&self) -> u32 {
+        self.width
     }
 }
 
@@ -34,10 +45,14 @@ impl ResourceKind for TextureArray {
     ) -> anyhow::Result<Box<dyn PendingResource<TextureArray>>> {
         let image = TextureImage::read(path, *color_space)?;
         let metadata = image.all_metadata().clone();
+        let layer_count = image.layers().len() as u32;
+        let width = image.width();
 
         Ok(Box::new(PendingTextureArray {
             texture: TextureUpload::new(image).array(context)?,
             metadata: Some(metadata),
+            layer_count,
+            width,
         }))
     }
 
@@ -50,6 +65,8 @@ struct PendingTextureArray {
     texture: PendingTexture,
     // Taken by the array once its upload completes.
     metadata: Option<TextureMetadata>,
+    layer_count: u32,
+    width: u32,
 }
 
 impl PendingResource<TextureArray> for PendingTextureArray {
@@ -61,6 +78,8 @@ impl PendingResource<TextureArray> for PendingTextureArray {
         Ok(Some(TextureArray {
             texture,
             metadata: self.metadata.take().unwrap_or_default(),
+            layer_count: self.layer_count,
+            width: self.width,
         }))
     }
 

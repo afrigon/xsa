@@ -3,8 +3,15 @@ __exported import frame;
 [[vk::binding(2, 0)]]
 SamplerState wrappingSampler;
 
+// Repeats both ways, for textures that tile the ground.
+[[vk::binding(6, 0)]]
+SamplerState tilingSampler;
+
 [[vk::binding(3, 0)]]
 Texture2D textures[];
+
+[[vk::binding(5, 0)]]
+Texture2DArray textureArrays[];
 
 // What every vertex stage passes on, whatever places its vertices.
 struct DrawVaryings {
@@ -30,6 +37,8 @@ struct PushConstants {
     void *tiles;
     // The pages each tile reads, by tile index.
     void *tilePages;
+    // Where the camera stands in the terrain's surfaces; null for a terrain without surfaces.
+    void *surfaceAnchors;
 };
 
 [[vk::push_constant]]

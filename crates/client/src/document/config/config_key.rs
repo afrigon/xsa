@@ -22,6 +22,7 @@ impl ConfigKey {
         RenderDocument::WIREFRAME,
         RenderDocument::SHADER_OVERRIDE,
         RenderDocument::TERRAIN_SHADER_OVERRIDE,
+        RenderDocument::SURFACE_TINT,
         TerrainLodDocument::VERTEX_SPACING,
         TerrainLodDocument::FREEZE,
         AnimationDocument::DURATION_SCALE,

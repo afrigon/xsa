@@ -15,10 +15,12 @@ use crate::{DeviceObject, MemoryContext, MemoryError};
 
 const SAMPLER_BINDING: u32 = 0;
 const WRAPPING_SAMPLER_BINDING: u32 = 2;
-const SAMPLER_COUNT: u32 = 2;
+const TILING_SAMPLER_BINDING: u32 = 6;
+const SAMPLER_COUNT: u32 = 3;
 
-/// The descriptor set every shader reads images through: two samplers, then arrays of textures, cube maps, storage
-/// images and texture arrays, each image at the index of the slot it was written into.
+/// The descriptor set every shader reads images through: samplers clamping, repeating across u only (equirectangular
+/// maps) and repeating both ways (tiling textures), then arrays of textures, cube maps, storage images and texture
+/// arrays, each image at the index of the slot it was written into.
 ///
 /// Cloning it is cheap, and clones share the table across threads.
 #[derive(Clone)]
@@ -33,6 +35,7 @@ struct SharedTable {
     layout: DeviceObject<vk::DescriptorSetLayout>,
     _sampler: DeviceObject<vk::Sampler>,
     _wrapping_sampler: DeviceObject<vk::Sampler>,
+    _tiling_sampler: DeviceObject<vk::Sampler>,
     free: Arc<Mutex<FreeSlots>>,
     // Updating a descriptor set must be externally synchronized.
     writes: Mutex<()>,
@@ -58,6 +61,8 @@ impl BindlessTable {
         let wrapping_sampler_info = sampler_info.address_mode_u(vk::SamplerAddressMode::REPEAT);
         let wrapping_sampler =
             DeviceObject::new(memory, unsafe { device.create_sampler(&wrapping_sampler_info, None) }?);
+        let tiling_sampler_info = wrapping_sampler_info.address_mode_v(vk::SamplerAddressMode::REPEAT);
+        let tiling_sampler = DeviceObject::new(memory, unsafe { device.create_sampler(&tiling_sampler_info, None) }?);
 
         let all_stages = vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE;
         let image_stages = |binding: BindlessBinding| match binding {
@@ -78,6 +83,11 @@ impl BindlessTable {
                 .descriptor_type(vk::DescriptorType::SAMPLER)
                 .descriptor_count(1)
                 .stage_flags(all_stages),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(TILING_SAMPLER_BINDING)
+                .descriptor_type(vk::DescriptorType::SAMPLER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE),
         ];
         let mut binding_flags = vec![vk::DescriptorBindingFlags::empty(); bindings.len()];
 
@@ -134,6 +144,7 @@ impl BindlessTable {
 
         let sampler_infos = [vk::DescriptorImageInfo::default().sampler(sampler.handle())];
         let wrapping_sampler_infos = [vk::DescriptorImageInfo::default().sampler(wrapping_sampler.handle())];
+        let tiling_sampler_infos = [vk::DescriptorImageInfo::default().sampler(tiling_sampler.handle())];
         let writes = [
             vk::WriteDescriptorSet::default()
                 .dst_set(set)
@@ -145,6 +156,11 @@ impl BindlessTable {
                 .dst_binding(WRAPPING_SAMPLER_BINDING)
                 .descriptor_type(vk::DescriptorType::SAMPLER)
                 .image_info(&wrapping_sampler_infos),
+            vk::WriteDescriptorSet::default()
+                .dst_set(set)
+                .dst_binding(TILING_SAMPLER_BINDING)
+                .descriptor_type(vk::DescriptorType::SAMPLER)
+                .image_info(&tiling_sampler_infos),
         ];
         unsafe { device.update_descriptor_sets(&writes, &[]) };
 
@@ -155,6 +171,7 @@ impl BindlessTable {
                 layout,
                 _sampler: sampler,
                 _wrapping_sampler: wrapping_sampler,
+                _tiling_sampler: tiling_sampler,
                 free: Arc::new(Mutex::new(FreeSlots::default())),
                 writes: Mutex::new(()),
                 memory: memory.clone(),

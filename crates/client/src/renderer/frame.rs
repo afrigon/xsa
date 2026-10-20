@@ -1,7 +1,7 @@
 use ash::vk;
 use memory_vulkan::{Buffer, DeviceObject, MemoryContext, MemoryLocation, QueueSharing, TimelineValue};
 
-use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData, TilePages};
+use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TileData, TilePages};
 use super::gpu_timer::GpuTimer;
 use super::star_visibility::HISTOGRAM_BINS;
 use crate::vulkan::Device;
@@ -16,6 +16,7 @@ pub(super) struct Frame {
     pub tile_pages: Buffer,
     pub stars: Buffer,
     pub projected_lights: Buffer,
+    pub surface_anchors: Buffer,
     pub histogram: Buffer,
     pub timer: Option<GpuTimer>,
     // The graphics timeline value of the last frame submitted from this slot; once it is reached, the slot may be
@@ -31,6 +32,7 @@ impl Frame {
         tile_capacity: usize,
         star_capacity: usize,
         light_capacity: usize,
+        surface_anchor_capacity: usize,
     ) -> anyhow::Result<Self> {
         let frame_data = Frame::create_shader_buffer(memory, "frame data", size_of::<FrameData>())?;
         let objects = Frame::create_object_buffer(memory, object_capacity)?;
@@ -38,6 +40,7 @@ impl Frame {
         let tile_pages = Frame::create_tile_pages_buffer(memory, tile_capacity)?;
         let stars = Frame::create_star_buffer(memory, star_capacity)?;
         let projected_lights = Frame::create_projected_light_buffer(memory, light_capacity)?;
+        let surface_anchors = Frame::create_surface_anchor_buffer(memory, surface_anchor_capacity)?;
 
         let histogram = Buffer::new(
             memory,
@@ -74,6 +77,7 @@ impl Frame {
             tile_pages,
             stars,
             projected_lights,
+            surface_anchors,
             histogram,
             timer,
             submitted: None,
@@ -102,6 +106,10 @@ impl Frame {
             "projected light data",
             capacity * size_of::<ProjectedLightData>(),
         )
+    }
+
+    pub fn create_surface_anchor_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(memory, "surface anchors", capacity * size_of::<SurfaceAnchorData>())
     }
 
     fn create_shader_buffer(memory: &MemoryContext, name: &str, size: usize) -> anyhow::Result<Buffer> {

@@ -3,6 +3,10 @@ import light.lambert;
 import light.star;
 import terrain.layers;
 import terrain.output;
+import terrain.surface.fade;
+import terrain.surface.range;
+import terrain.surface.surface;
+import terrain.surface.tint;
 import terrain.texture;
 
 [shader("vertex")]
@@ -10,11 +14,14 @@ TileVertex vertexMain(VertexInput input) {
     return terrainVertex(input);
 }
 
+// Mirrors `HapkeData` in the renderer. Its surfaces are read only once every class's arrays are loaded.
 struct HapkeData {
     float3 baseColor;
     uint emissiveTexture;
     float emissiveLuminance;
-    uint padding[3];
+    uint surfacesLoaded;
+    uint padding[2];
+    SurfaceData surfaces[surfaceClasses];
 };
 
 // Hapke 2012's parameters at this point: w from the calibrated color layer, the rest from the medium and opposition
@@ -50,6 +57,27 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, DrawVarying
     return hapkeReflectance(parameters, geometry) * starIlluminance(star, input.worldPosition);
 }
 
+// The ground up close: the flat class's surface brightens or darkens the colour layer and adds its relief to the normal
+// layer's, fading in as the colour layer is magnified past its texels.
+void addSurfaces(HapkeData material, LayerCoordinates coordinates, SurfacePoint point, inout float3 albedo,
+                 inout float3 normal) {
+    if (!shadesSurfaces() || material.surfacesLoaded == 0) {
+        return;
+    }
+
+    float fade = surfaceFade(coordinates);
+
+    if (fade <= 0.0) {
+        return;
+    }
+
+    uint surfaceClass = uint(SurfaceClass.Flat);
+    SurfaceData surface = material.surfaces[surfaceClass];
+    SurfaceSample sample = sampleSurface(surface, surfaceAnchors(), surfaceClass, point, normal);
+    albedo = tintedAlbedo(albedo, sample.color, surface.averageColor, fade, *constants.frame);
+    normal = normalize(lerp(normal, sample.normal, fade));
+}
+
 // Where the tile has no page of either Hapke layer, it is shaded with Lambert.
 [shader("fragment")]
 FragmentOutput fragmentMain(TileVertex input, uint primitive: SV_PrimitiveID) {
@@ -60,9 +88,10 @@ FragmentOutput fragmentMain(TileVertex input, uint primitive: SV_PrimitiveID) {
     LayerRead medium = readLayer(coordinates, mediumLayer);
     LayerRead opposition = readLayer(coordinates, oppositionLayer);
     float3 normal = layerNormal(readLayer(coordinates, normalLayer), coordinates.tile, modelNormal);
+    float3 albedo = color.resident ? color.value.rgb : material.baseColor;
+    addSurfaces(material, coordinates, surfacePoint(input.draw.worldPosition, currentObject()), albedo, normal);
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
     float3 geometricNormal = normalize(input.draw.normal);
-    float3 albedo = color.resident ? color.value.rgb : material.baseColor;
     float3 luminance = starlightLuminance(albedo);
 
     if (medium.resident && opposition.resident) {

@@ -19,6 +19,7 @@ use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
+use crate::renderer::shading_range::ShadingRange;
 use crate::renderer::static_buffer::StaticBuffer;
 use crate::renderer::tile_shape::TileShape;
 use crate::renderer::{DebugView, Shader, ShaderBinaries, TerrainDebugView};
@@ -79,19 +80,22 @@ impl ForwardPass {
     ) -> anyhow::Result<()> {
         for (shader, spirv) in &self.programs {
             for shape in TileShape::ALL {
-                let key = ForwardPipeline {
-                    shader: *shader,
-                    shape,
-                    view,
-                    terrain_view,
-                };
+                for range in ShadingRange::ALL {
+                    let key = ForwardPipeline {
+                        shader: *shader,
+                        shape,
+                        range,
+                        view,
+                        terrain_view,
+                    };
 
-                if let Entry::Vacant(entry) = self.pipelines.entry(key) {
-                    entry.insert(ForwardPass::create_pipeline(
-                        gpu,
-                        spirv,
-                        &key.specialization_constants(),
-                    )?);
+                    if let Entry::Vacant(entry) = self.pipelines.entry(key) {
+                        entry.insert(ForwardPass::create_pipeline(
+                            gpu,
+                            spirv,
+                            &key.specialization_constants(),
+                        )?);
+                    }
                 }
             }
         }
@@ -124,7 +128,10 @@ impl ForwardPass {
             for draw in frame.terrain_draws {
                 let terrain = frame.scene.terrain(draw.terrain);
 
-                if draw.shape != key.shape || frame.material(terrain.material).shader() != Some(key.shader) {
+                if draw.shape != key.shape
+                    || draw.range != key.range
+                    || frame.material(terrain.material).shader() != Some(key.shader)
+                {
                     continue;
                 }
 
@@ -133,7 +140,13 @@ impl ForwardPass {
                     bound = true;
                 }
 
-                frame.push_draw_constants(pipeline, terrain.object.index, terrain.material, draw.first_tile);
+                frame.push_draw_constants(
+                    pipeline,
+                    terrain.object.index,
+                    terrain.material,
+                    draw.first_tile,
+                    frame.surface_anchors(draw.terrain),
+                );
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);
                 frame

@@ -8,7 +8,7 @@ use super::{
     KeyChord, LensConfig, RenderConfig, TerrainLodConfig, TerrainStreamingConfig, WhiteBalanceConfig,
 };
 
-use crate::renderer::Tonemapper;
+use crate::renderer::{SurfaceTint, Tonemapper};
 
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
 const BLOOM_STRENGTH: f32 = 0.02;
@@ -83,6 +83,7 @@ impl Default for Config {
                 wireframe: false,
                 shader_override: None,
                 terrain_shader_override: None,
+                surface_tint: SurfaceTint::Relative,
                 terrain_lod: TerrainLodConfig {
                     vertex_spacing_pixels: TERRAIN_VERTEX_SPACING_PIXELS,
                     freeze: false,

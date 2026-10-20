@@ -3,6 +3,8 @@ const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const SPLIT_MIX_INCREMENT: u64 = 0x9e37_79b9_7f4a_7c15;
 const SPLIT_MIX_FIRST_MULTIPLIER: u64 = 0xbf58_476d_1ce4_e5b9;
 const SPLIT_MIX_SECOND_MULTIPLIER: u64 = 0x94d0_49bb_1331_11eb;
+const FRACTION_SHIFT: u32 = 64 - f64::MANTISSA_DIGITS;
+const FRACTION_SCALE: f64 = (1_u64 << f64::MANTISSA_DIGITS) as f64;
 
 // Where randomness starts. Every use derives its own seed from its place, so the client and the server agree by
 // construction and no two uses share a pattern. The hashes are fixed algorithms, never the standard library's, which
@@ -23,6 +25,11 @@ impl Seed {
         Seed {
             value: Seed::split_mix(self.value ^ Seed::fnv(place)),
         }
+    }
+
+    // Spread evenly over [0, 1), from the seed's top 53 bits: as many as an f64 holds exactly.
+    pub fn fraction(self) -> f64 {
+        (self.value >> FRACTION_SHIFT) as f64 / FRACTION_SCALE
     }
 
     fn fnv(text: &str) -> u64 {
@@ -54,6 +61,12 @@ mod tests {
         let body = Seed::from_id("luna");
         assert_ne!(body.derive("flat"), body.derive("slope"));
         assert_ne!(body.derive("flat"), body);
+    }
+
+    #[test]
+    fn fractions_stay_below_one() {
+        assert_eq!(Seed { value: 0 }.fraction(), 0.0);
+        assert!(Seed { value: u64::MAX }.fraction() < 1.0);
     }
 
     // Pins the algorithm: a changed hash would move every seeded pattern in saved games and between versions.

@@ -7,7 +7,7 @@ static const int oppositionLayer = 3;
 static const uint finestLevelBits = 5;
 
 // Where a pixel of a tile reads its layers: its face offset from the tile's center, how fast that changes across the
-// screen, and the level whose texels are a pixel wide there, within those the tile reads.
+// screen, and the level whose texels are a pixel wide there, within those the tile reads and before that limit.
 struct LayerCoordinates {
     TileData tile;
     TilePages *pages;
@@ -15,6 +15,7 @@ struct LayerCoordinates {
     float2 offsetPerPixelX;
     float2 offsetPerPixelY;
     float level;
+    float pixelLevel;
 };
 
 // A layer's value at a pixel, and the page it came from: its level and the pixel's place on its texels. Not resident
@@ -36,7 +37,8 @@ LayerCoordinates layerCoordinates(uint tile, float2 offset) {
     float levelZeroTexelsPerPixel =
         max(length(coordinates.offsetPerPixelX), length(coordinates.offsetPerPixelY)) * pageInterior / 2.0;
     float depth = float(coordinates.tile.depth);
-    coordinates.level = clamp(-log2(levelZeroTexelsPerPixel), depth, depth + float(layerLevels - 1));
+    coordinates.pixelLevel = -log2(levelZeroTexelsPerPixel);
+    coordinates.level = clamp(coordinates.pixelLevel, depth, depth + float(layerLevels - 1));
     return coordinates;
 }
 

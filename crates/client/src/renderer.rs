@@ -26,8 +26,11 @@ mod quad_sphere;
 mod render_passes;
 mod scene;
 mod shader_binaries;
+mod shading_range;
 mod star_visibility;
 mod static_buffer;
+mod surface;
+mod surface_tint;
 mod temporal_history;
 mod terrain;
 mod terrain_debug_view;
@@ -46,6 +49,8 @@ pub use pending_capture::PendingCapture;
 pub use resource_loader::texture::ColorSpace;
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
+pub use surface::{BiomeSurfaces, SurfaceClass, SurfaceTextures};
+pub use surface_tint::SurfaceTint;
 pub use terrain::{TerrainLayer, TerrainPageStatistics, TerrainPages};
 pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;
@@ -74,7 +79,7 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData, TilePages};
+use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TileData, TilePages};
 use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
@@ -85,6 +90,7 @@ use passes::TaaPass;
 use pending_capture::BYTES_PER_PIXEL;
 use quad_sphere::{DetailRanges, QuadSphere, SelectedTile, TileHeightBounds};
 use render_passes::RenderPasses;
+use shading_range::ShadingRange;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
 use terrain::{PageDetail, TilePageWriter};
@@ -98,6 +104,7 @@ const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_TILE_CAPACITY: usize = 4096;
 const INITIAL_STAR_CAPACITY: usize = 4;
+const INITIAL_SURFACE_ANCHOR_CAPACITY: usize = 4;
 const INITIAL_LIGHT_CAPACITY: usize = 4;
 // Presentation waits on the acquire semaphore at the color attachment output stage.
 const SWAPCHAIN_ACQUIRED: ImageState = ImageState {
@@ -142,12 +149,16 @@ pub struct Renderer {
     terrain_draws: Vec<TerrainDraw>,
     tile_data: Vec<TileData>,
     tile_pages: Vec<TilePages>,
+    surface_anchor_data: Vec<SurfaceAnchorData>,
+    // Each terrain's slot in `surface_anchor_data`, by terrain index; None for terrains without surfaces.
+    surface_anchor_slots: Vec<Option<usize>>,
     page_writer: TilePageWriter,
     // Whether terrain pages follow what tiles request, or stay as they are.
     terrain_residency: Residency,
     object_capacity: usize,
     tile_capacity: usize,
     star_capacity: usize,
+    surface_anchor_capacity: usize,
     light_capacity: usize,
     materials: Vec<MaterialBuffer>,
     lens: Option<Lens>,
@@ -183,6 +194,7 @@ impl Renderer {
                     INITIAL_TILE_CAPACITY,
                     INITIAL_STAR_CAPACITY,
                     INITIAL_LIGHT_CAPACITY,
+                    INITIAL_SURFACE_ANCHOR_CAPACITY,
                 )
             })
             .collect::<anyhow::Result<_>>()?;
@@ -211,11 +223,14 @@ impl Renderer {
             terrain_draws: Vec::new(),
             tile_data: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             tile_pages: Vec::with_capacity(INITIAL_TILE_CAPACITY),
+            surface_anchor_data: Vec::with_capacity(INITIAL_SURFACE_ANCHOR_CAPACITY),
+            surface_anchor_slots: Vec::new(),
             page_writer: TilePageWriter::new(),
             terrain_residency: Residency::Live,
             object_capacity: INITIAL_OBJECT_CAPACITY,
             tile_capacity: INITIAL_TILE_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
+            surface_anchor_capacity: INITIAL_SURFACE_ANCHOR_CAPACITY,
             light_capacity: INITIAL_LIGHT_CAPACITY,
             materials: Vec::new(),
             lens: None,
@@ -549,7 +564,8 @@ impl Renderer {
             tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             vertex_spacing_angle: self.render.terrain_lod.vertex_spacing_pixels / self.focal_length_pixels,
-            padding: [0; 4],
+            surface_tint: self.render.surface_tint.shader_id(),
+            padding: [0; 3],
             white_balance: self.white_balance.rows(self.render.white_balance.enabled),
         };
 
@@ -625,6 +641,8 @@ impl Renderer {
 
         self.write_tiles(camera);
         self.ensure_tile_capacity()?;
+        self.write_surface_anchors(camera);
+        self.ensure_surface_anchor_capacity()?;
 
         let frame = &mut self.frames[self.frame_index];
         frame.frame_data.write(&[frame_data])?;
@@ -632,6 +650,7 @@ impl Renderer {
         frame.tiles.write(&self.tile_data)?;
         frame.tile_pages.write(&self.tile_pages)?;
         frame.stars.write(&self.star_data)?;
+        frame.surface_anchors.write(&self.surface_anchor_data)?;
         Ok(frame.projected_lights.write(&self.projected_light_data)?)
     }
 
@@ -643,7 +662,8 @@ impl Renderer {
         )
     }
 
-    // Tiles are grouped into one draw per terrain and grid size.
+    // Tiles are grouped into one draw per terrain, shading range and grid size. A tile is shaded with surfaces where
+    // some pixel of it can magnify the colour layer past its finest texels.
     fn select_tiles(&mut self, camera: &Camera) {
         let culler = Culler::new(camera, self.swapchain.extent());
         self.selected_tiles.clear();
@@ -675,18 +695,34 @@ impl Renderer {
                 center,
                 orientation: object.orientation,
             };
+            let ranges = self.detail_ranges(object.scale);
+            let detail = PageDetail {
+                radius: object.scale,
+                focal_length_pixels: f64::from(self.focal_length_pixels),
+                vertex_spacing_angle: ranges.vertex_spacing_angle(),
+            };
+            let finest_color = terrain
+                .surfaces
+                .as_ref()
+                .and(terrain.pages.as_ref())
+                .and_then(|pages| pages.layer(TerrainLayer::Color))
+                .map(|(_, finest)| finest);
+            let range = |tile: &SelectedTile| match finest_color {
+                Some(level) if detail.magnifies(level, tile.nearest) => ShadingRange::Near,
+                _ => ShadingRange::Far,
+            };
+            let draw_key = |tile: &SelectedTile| (range(tile), DetailRanges::grid_cells(tile.detail));
             let first_tile = self.selected_tiles.len();
-            sphere.select(&self.detail_ranges(object.scale), &culler, &mut self.selected_tiles);
+            sphere.select(&ranges, &culler, &mut self.selected_tiles);
             let tiles = &mut self.selected_tiles[first_tile..];
-            tiles.sort_by_key(|tile| DetailRanges::grid_cells(tile.detail));
+            tiles.sort_by_key(draw_key);
             let mut run_start = first_tile;
 
-            for run in tiles.chunk_by(|first, second| {
-                DetailRanges::grid_cells(first.detail) == DetailRanges::grid_cells(second.detail)
-            }) {
+            for run in tiles.chunk_by(|first, second| draw_key(first) == draw_key(second)) {
                 self.terrain_draws.push(TerrainDraw {
                     terrain: TerrainHandle { index },
                     shape,
+                    range: range(&run[0]),
                     grid_cells: DetailRanges::grid_cells(run[0].detail),
                     first_tile: run_start as u32,
                     tile_count: run.len() as u32,
@@ -747,6 +783,22 @@ impl Renderer {
 
         self.page_writer
             .submit(self.scene.terrains().iter().map(|terrain| terrain.pages.as_deref()));
+    }
+
+    // Where the camera stands in each terrain's surfaces, computed in f64 in the body's frame.
+    fn write_surface_anchors(&mut self, camera: &Camera) {
+        self.surface_anchor_data.clear();
+        self.surface_anchor_slots.clear();
+
+        for terrain in self.scene.terrains() {
+            let slot = terrain.surfaces.as_ref().map(|surfaces| {
+                let object = self.scene.object(terrain.object);
+                let camera_in_body = object.orientation.inverse() * (camera.position - object.position);
+                self.surface_anchor_data.push(surfaces.anchor_data(camera_in_body));
+                self.surface_anchor_data.len() - 1
+            });
+            self.surface_anchor_slots.push(slot);
+        }
     }
 
     fn record_frame(&mut self, image_index: u32) -> anyhow::Result<Recording> {
@@ -814,6 +866,7 @@ impl Renderer {
             lens: self.lens.as_ref().and_then(Lens::flare),
             focal_length_pixels: self.focal_length_pixels,
             terrain_draws: &self.terrain_draws,
+            surface_anchor_slots: &self.surface_anchor_slots,
             descriptor_set: bindless.set(),
             user_interface: &self.user_interface,
             triangles: Cell::new(0),
@@ -907,6 +960,23 @@ impl Renderer {
         for frame in &mut self.frames {
             frame.tiles = Frame::create_tile_buffer(&self.gpu.memory, self.tile_capacity)?;
             frame.tile_pages = Frame::create_tile_pages_buffer(&self.gpu.memory, self.tile_capacity)?;
+        }
+
+        Ok(())
+    }
+
+    fn ensure_surface_anchor_capacity(&mut self) -> anyhow::Result<()> {
+        let anchor_count = self.surface_anchor_data.len();
+
+        if anchor_count <= self.surface_anchor_capacity {
+            return Ok(());
+        }
+
+        self.surface_anchor_capacity = anchor_count.next_power_of_two();
+
+        for frame in &mut self.frames {
+            frame.surface_anchors =
+                Frame::create_surface_anchor_buffer(&self.gpu.memory, self.surface_anchor_capacity)?;
         }
 
         Ok(())
