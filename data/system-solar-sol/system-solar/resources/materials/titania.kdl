@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.3462 0.3366 0.3260
-color-terrain "bodies/titania/color"
-normal-terrain "bodies/titania/normal"
-medium-terrain "bodies/titania/hapke-medium"
-opposition-terrain "bodies/titania/hapke-opposition"

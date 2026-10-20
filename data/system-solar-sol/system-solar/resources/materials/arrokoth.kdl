@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.2782 0.2100 0.1521
-color-terrain "bodies/arrokoth/color"
-normal-terrain "bodies/arrokoth/normal"
-medium-terrain "bodies/arrokoth/hapke-medium"
-opposition-terrain "bodies/arrokoth/hapke-opposition"

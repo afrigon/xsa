@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.2017 0.1986 0.1953
-color-terrain "bodies/mimas/color"
-normal-terrain "bodies/mimas/normal"
-medium-terrain "bodies/mimas/hapke-medium"
-opposition-terrain "bodies/mimas/hapke-opposition"

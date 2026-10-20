@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.0926 0.0926 0.0926
-color-terrain "bodies/ryugu/color"
-normal-terrain "bodies/ryugu/normal"
-medium-terrain "bodies/ryugu/hapke-medium"
-opposition-terrain "bodies/ryugu/hapke-opposition"

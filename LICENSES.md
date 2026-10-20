@@ -22,9 +22,8 @@ credited in `data/system-solar/LICENSE`, which the scripts write.
   repositories' releases
 - **License:** configs under CC BY-NC-SA (no version named); everything else
   is not licensed for redistribution and never ships with this repository or
-  its packs. Sol's content lives in the `system-solar-sol` overlay pack; the
-  `system-solar` pack's material base colors, for bodies its scripts do not
-  generate, are averages of Sol's color maps
+  its packs. The `system-solar` pack's material base colors, for bodies its
+  scripts do not generate, are averages of Sol's color maps
 
 ## AdvancedPQSTools (Hapke shader code)
 

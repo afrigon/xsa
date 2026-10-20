@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.2563 0.2542 0.2543
-color-terrain "bodies/umbriel/color"
-normal-terrain "bodies/umbriel/normal"
-medium-terrain "bodies/umbriel/hapke-medium"
-opposition-terrain "bodies/umbriel/hapke-opposition"

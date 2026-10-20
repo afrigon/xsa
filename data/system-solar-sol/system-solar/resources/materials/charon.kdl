@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.4169 0.4122 0.4094
-color-terrain "bodies/charon/color"
-normal-terrain "bodies/charon/normal"
-medium-terrain "bodies/charon/hapke-medium"
-opposition-terrain "bodies/charon/hapke-opposition"

@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.6264 0.6136 0.5782
-color-terrain "bodies/triton/color"
-normal-terrain "bodies/triton/normal"
-medium-terrain "bodies/triton/hapke-medium"
-opposition-terrain "bodies/triton/hapke-opposition"

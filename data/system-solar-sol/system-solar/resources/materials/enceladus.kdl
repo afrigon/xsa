@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.6382 0.6382 0.6382
-color-terrain "bodies/enceladus/color"
-normal-terrain "bodies/enceladus/normal"
-medium-terrain "bodies/enceladus/hapke-medium"
-opposition-terrain "bodies/enceladus/hapke-opposition"

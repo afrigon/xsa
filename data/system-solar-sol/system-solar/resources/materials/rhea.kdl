@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.3576 0.3537 0.3438
-color-terrain "bodies/rhea/color"
-normal-terrain "bodies/rhea/normal"
-medium-terrain "bodies/rhea/hapke-medium"
-opposition-terrain "bodies/rhea/hapke-opposition"

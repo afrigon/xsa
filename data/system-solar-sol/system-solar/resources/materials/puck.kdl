@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.1436 0.1436 0.1436
-color-terrain "bodies/puck/color"
-normal-terrain "bodies/puck/normal"
-medium-terrain "bodies/puck/hapke-medium"
-opposition-terrain "bodies/puck/hapke-opposition"

@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.1894 0.1521 0.1163
-color-terrain "bodies/callisto/color"
-normal-terrain "bodies/callisto/normal"
-medium-terrain "bodies/callisto/hapke-medium"
-opposition-terrain "bodies/callisto/hapke-opposition"

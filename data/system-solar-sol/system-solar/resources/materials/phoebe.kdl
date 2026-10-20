@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.0832 0.0861 0.0856
-color-terrain "bodies/phoebe/color"
-normal-terrain "bodies/phoebe/normal"
-medium-terrain "bodies/phoebe/hapke-medium"
-opposition-terrain "bodies/phoebe/hapke-opposition"

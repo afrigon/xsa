@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.2874 0.2829 0.2756
-color-terrain "bodies/iapetus/color"
-normal-terrain "bodies/iapetus/normal"
-medium-terrain "bodies/iapetus/hapke-medium"
-opposition-terrain "bodies/iapetus/hapke-opposition"

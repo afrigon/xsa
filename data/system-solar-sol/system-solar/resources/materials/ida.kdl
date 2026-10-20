@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.2229 0.2041 0.1755
-color-terrain "bodies/ida/color"
-normal-terrain "bodies/ida/normal"
-medium-terrain "bodies/ida/hapke-medium"
-opposition-terrain "bodies/ida/hapke-opposition"

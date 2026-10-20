@@ -1,6 +1,0 @@
-shader "base:hapke"
-base-color 0.5391 0.4796 0.3969
-color-terrain "bodies/pluto/color"
-normal-terrain "bodies/pluto/normal"
-medium-terrain "bodies/pluto/hapke-medium"
-opposition-terrain "bodies/pluto/hapke-opposition"
