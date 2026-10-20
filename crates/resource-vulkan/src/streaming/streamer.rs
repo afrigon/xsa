@@ -522,12 +522,9 @@ impl Streamer {
 
             let format = set.format();
 
-            if !claims.contains_key(&format) {
-                let pool_claims = self.cell_claims(format, now, transfer);
-                claims.insert(format, pool_claims);
-            }
-
-            let pool_claims = claims.get_mut(&format).expect("claims were just added");
+            let pool_claims = claims
+                .entry(format)
+                .or_insert_with(|| self.cell_claims(format, now, transfer));
             let Some(claim) = self.claim(format, page.score, pool_claims, admission, now, transfer) else {
                 continue;
             };

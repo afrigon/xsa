@@ -181,7 +181,9 @@ mod tests {
             .flat_map(|piece| &piece.copies)
             .map(|copy| match copy.region {
                 CopyRegion::Image { offset, extent, .. } => (offset.y, extent.height),
-                CopyRegion::Buffer { .. } => unreachable!("an image upload copies to an image"),
+                CopyRegion::Buffer { .. } | CopyRegion::ImageToImage { .. } => {
+                    unreachable!("an image upload copies from staging to an image")
+                }
             })
             .collect()
     }
