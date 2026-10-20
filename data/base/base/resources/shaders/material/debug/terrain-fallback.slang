@@ -14,9 +14,9 @@ static const float3 fallbackColors[4] = {
 };
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(TerrainPageVaryings input) {
+FragmentOutput fragmentMain(TerrainPageVaryings input) {
     ColorPage page = colorPage(input);
     uint fallback = min(page.wantedLevel - min(page.read.level, page.wantedLevel), 3u);
     float3 color = shadedPage(page, fallbackColors[fallback]);
-    return surfaceOutput(float4(color, 1.0), input.surface);
+    return fragmentOutput(float4(color, 1.0), input.draw);
 }

@@ -19,7 +19,7 @@ use crate::renderer::{
     ColorSpace, EmissiveMaterial, HapkeMaterial, LambertMaterial, LightSource, MaterialHandle, ObjectHandle, Renderer,
     SceneObject, SkyboxMaterial, Star, Terrain, TerrainLayer, TerrainPages,
 };
-use crate::ui::SurfaceReading;
+use crate::ui::PositionReading;
 
 const DEFAULT_NAMESPACE: &str = "base";
 const MAIN_LENS: &str = "main";
@@ -199,7 +199,7 @@ impl ClientWorld {
 
     // The camera against `index`: latitude, longitude and altitudes at the feet, EYE_HEIGHT_METERS below the camera,
     // and its attitude against the local horizon.
-    pub fn surface(&self, index: BodyIndex, position: DVec3, orientation: DQuat) -> SurfaceReading {
+    pub fn position_reading(&self, index: BodyIndex, position: DVec3, orientation: DQuat) -> PositionReading {
         let body = self.body(index);
         let state = self.body_state(index);
         let offset = position - state.position;
@@ -209,7 +209,7 @@ impl ClientWorld {
         let latitude = direction.z.clamp(-1.0, 1.0).asin();
         let longitude = direction.y.atan2(direction.x);
 
-        SurfaceReading {
+        PositionReading {
             body: body.id.to_string(),
             latitude,
             longitude,

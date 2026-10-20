@@ -4,8 +4,8 @@ import material.material;
 import material.texture;
 
 [shader("vertex")]
-SurfaceVaryings vertexMain<G : Geometry>(VertexInput input) {
-    return G.transform(input).surface;
+DrawVaryings vertexMain<G : Geometry>(VertexInput input) {
+    return G.transform(input).draw;
 }
 
 struct LambertData {
@@ -18,7 +18,7 @@ struct LambertData {
 };
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(SurfaceVaryings input) {
+FragmentOutput fragmentMain(DrawVaryings input) {
     LambertData material = currentMaterial<LambertData>();
     float3 modelNormal = normalize(input.modelNormal);
     TextureCoordinates coordinates = equirectangularCoordinates(modelNormal);
@@ -35,5 +35,5 @@ SurfaceOutput fragmentMain(SurfaceVaryings input) {
     }
 
     luminance += mappedEmission(material.emissiveTexture, material.emissiveLuminance, coordinates);
-    return surfaceOutput(float4(luminance * constants.frame.exposure, 1.0), input);
+    return fragmentOutput(float4(luminance * constants.frame.exposure, 1.0), input);
 }

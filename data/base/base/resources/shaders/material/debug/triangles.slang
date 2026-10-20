@@ -1,8 +1,8 @@
 import material.material;
 
 [shader("vertex")]
-SurfaceVaryings vertexMain<G : Geometry>(VertexInput input) {
-    return G.transform(input).surface;
+DrawVaryings vertexMain<G : Geometry>(VertexInput input) {
+    return G.transform(input).draw;
 }
 
 // PCG integer hash: unlike a plain multiply, it sends 0 to a well-mixed value rather than to black.
@@ -13,8 +13,8 @@ uint pcgHash(uint value) {
 }
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(SurfaceVaryings input, uint primitive: SV_PrimitiveID) {
+FragmentOutput fragmentMain(DrawVaryings input, uint primitive: SV_PrimitiveID) {
     uint hash = pcgHash(primitive);
     float3 color = float3(hash & 0xff, (hash >> 8) & 0xff, (hash >> 16) & 0xff) / 255.0;
-    return surfaceOutput(float4(color, 1.0), input);
+    return fragmentOutput(float4(color, 1.0), input);
 }

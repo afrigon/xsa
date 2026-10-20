@@ -1,7 +1,7 @@
 use xsa_units::TimeRate;
 use xui::{Context, EdgeInsets, Text, View};
 
-use super::{CameraReading, ClockReading, SurfaceReading};
+use super::{CameraReading, ClockReading, PositionReading};
 use crate::camera::CameraMode;
 use crate::renderer::{FrameStatistics, TerrainLayer};
 use crate::ui::ThemedView;
@@ -20,7 +20,7 @@ pub struct DebugOverlayView {
     pub gpu_milliseconds: Option<f64>,
     pub statistics: FrameStatistics,
     pub camera: Option<CameraReading>,
-    pub surface: Option<SurfaceReading>,
+    pub position: Option<PositionReading>,
     pub clock: Option<ClockReading>,
 }
 
@@ -77,21 +77,21 @@ impl DebugOverlayView {
         )
     }
 
-    fn surface(&self) -> String {
-        let Some(surface) = &self.surface else {
+    fn position(&self) -> String {
+        let Some(position) = &self.position else {
             return format!("target: {MISSING}");
         };
-        let above_ground = surface.above_ground.map_or_else(|| MISSING.to_string(), distance);
+        let above_ground = position.above_ground.map_or_else(|| MISSING.to_string(), distance);
         format!(
             "target: {}\nlat: {} · lon: {}\naltitude: {above_ground} ground · {} sea\n\
              rotation: yaw {} · pitch {} · roll {}",
-            surface.body,
-            angle(surface.latitude),
-            angle(surface.longitude),
-            distance(surface.above_sea),
-            heading(surface.attitude.yaw),
-            angle(surface.attitude.pitch),
-            angle(surface.attitude.roll)
+            position.body,
+            angle(position.latitude),
+            angle(position.longitude),
+            distance(position.above_sea),
+            heading(position.attitude.yaw),
+            angle(position.attitude.pitch),
+            angle(position.attitude.roll)
         )
     }
 
@@ -152,7 +152,7 @@ impl View for DebugOverlayView {
             self.performance(),
             self.terrain_pages(),
             self.camera(),
-            self.surface(),
+            self.position(),
             self.clock()
         ))
         .text_style("telemetry")

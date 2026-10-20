@@ -1,6 +1,6 @@
 __exported import draw;
 
-struct SurfaceVaryings {
+struct DrawVaryings {
     float4 position : SV_Position;
     float3 worldPosition;
     float3 normal;
@@ -17,7 +17,7 @@ struct VertexInput {
 // Everything a tile's vertex stage computes; each material passes on the part its fragment stage reads. The face
 // offset is in the face's equal-angle coordinates from the tile's center, which the tile's pages are read at.
 struct TileVertex {
-    SurfaceVaryings surface;
+    DrawVaryings draw;
     float2 cell;
     int detail;
     uint gridCells;

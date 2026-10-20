@@ -1,8 +1,8 @@
 import material.material;
 
 [shader("vertex")]
-SurfaceVaryings vertexMain<G : Geometry>(VertexInput input) {
-    return G.transform(input).surface;
+DrawVaryings vertexMain<G : Geometry>(VertexInput input) {
+    return G.transform(input).draw;
 }
 
 struct EmissiveData {
@@ -11,6 +11,6 @@ struct EmissiveData {
 };
 
 [shader("fragment")]
-SurfaceOutput fragmentMain(SurfaceVaryings input) {
-    return surfaceOutput(float4(currentMaterial<EmissiveData>().luminance * constants.frame.exposure, 1.0), input);
+FragmentOutput fragmentMain(DrawVaryings input) {
+    return fragmentOutput(float4(currentMaterial<EmissiveData>().luminance * constants.frame.exposure, 1.0), input);
 }
