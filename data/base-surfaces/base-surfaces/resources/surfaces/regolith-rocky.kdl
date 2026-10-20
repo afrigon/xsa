@@ -1,0 +1,6 @@
+color-texture "surfaces/regolith-rocky/color"
+normal-texture "surfaces/regolith-rocky/normal"
+displacement-texture "surfaces/regolith-rocky/displacement"
+size 3.203125
+displacement low=0.0 high=0.25
+largest-magnification 2.0
