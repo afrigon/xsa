@@ -46,8 +46,8 @@ pub use queue_sharing::QueueSharing;
 pub use test_device::TestDevice;
 pub use timeline::{Recording, Timeline, TimelineValue};
 pub use transfer_queue::{
-    GpuUpload, ImageCopy, ImageUpload, ReadbackTicket, TexelBlock, TransferPriority, TransferQueue, TransferStatus,
-    UploadTicket,
+    GpuUpload, ImageCopy, ImageUpload, ReadbackTicket, RegionCopy, TexelBlock, TransferPriority, TransferQueue,
+    TransferStatus, UploadTicket,
 };
 
 #[cfg(test)]

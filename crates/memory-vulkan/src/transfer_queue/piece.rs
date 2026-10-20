@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use ash::vk;
 
 use crate::transfer_queue::{CopyRegion, PieceCopy, STAGING_BLOCK_SIZE};
-use crate::{ImageUpload, MemoryError};
+use crate::{ImageUpload, MemoryError, RegionCopy, TexelBlock};
 
 // A queue without graphics or compute copies a buffer to an image only from offsets that are multiples of 4.
 const IMAGE_COPY_ALIGNMENT: usize = 4;
@@ -80,6 +80,23 @@ impl Piece {
             size: (size - start).min(STAGING_BLOCK_SIZE),
             alignment: BYTE_ALIGNMENT,
             region: CopyRegion::Buffer { offset: start as u64 },
+        });
+
+        Piece::pack(copies)
+    }
+
+    // Copies between images stage nothing; their bytes still count against the queue's latency budget.
+    pub fn split_regions(copies: &[RegionCopy], block: TexelBlock) -> VecDeque<Piece> {
+        let copies = copies.iter().map(|copy| PieceCopy {
+            data: 0,
+            data_offset: 0,
+            size: block.rows(copy.extent.height) as usize * block.row_size(copy.extent.width),
+            alignment: BYTE_ALIGNMENT,
+            region: CopyRegion::ImageToImage {
+                source_offset: copy.source_offset,
+                destination_offset: copy.destination_offset,
+                extent: copy.extent,
+            },
         });
 
         Piece::pack(copies)

@@ -10,6 +10,8 @@ use crate::transfer_queue::{
 #[derive(Default)]
 pub(crate) struct BatchBuilder {
     pub bytes: u64,
+    // Set when the batch copies from an image region earlier batches may have written.
+    reads_copied_images: bool,
     before: Vec<vk::ImageMemoryBarrier2<'static>>,
     copies: Vec<TransferCommand>,
     after: Vec<vk::ImageMemoryBarrier2<'static>>,
@@ -23,8 +25,13 @@ impl BatchBuilder {
         self.copies.is_empty() && self.completions.is_empty()
     }
 
-    // An owned image leaves its undefined layout before its first copy.
+    // An owned image leaves its undefined layout before its first copy. A copy between images waits for the copies
+    // submitted before it, which may have written its source.
     pub fn begin(&mut self, request: &TransferRequest) {
+        if matches!(request.work, TransferWork::ImageToImage { .. }) {
+            self.reads_copied_images = true;
+        }
+
         if let Some((image, range, _)) = BatchBuilder::owned_image(request) {
             self.before.push(
                 vk::ImageMemoryBarrier2::default()
@@ -90,10 +97,23 @@ impl BatchBuilder {
 
     pub unsafe fn record(&self, device: &ash::Device, command_buffer: vk::CommandBuffer) {
         unsafe {
-            if !self.before.is_empty() {
+            let copy_writes = vk::MemoryBarrier2::default()
+                .src_stage_mask(vk::PipelineStageFlags2::COPY)
+                .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                .dst_stage_mask(vk::PipelineStageFlags2::COPY)
+                .dst_access_mask(vk::AccessFlags2::TRANSFER_READ);
+            let memory_barriers = if self.reads_copied_images {
+                std::slice::from_ref(&copy_writes)
+            } else {
+                &[]
+            };
+
+            if !self.before.is_empty() || !memory_barriers.is_empty() {
                 device.cmd_pipeline_barrier2(
                     command_buffer,
-                    &vk::DependencyInfo::default().image_memory_barriers(&self.before),
+                    &vk::DependencyInfo::default()
+                        .memory_barriers(memory_barriers)
+                        .image_memory_barriers(&self.before),
                 );
             }
 
