@@ -1,6 +1,8 @@
+use std::collections::BTreeMap;
+
 use image::ImageFormat;
 
-use super::{TextureFormat, TextureImage, TextureLoader};
+use super::{TextureFormat, TextureImage, TextureLoader, TextureShape};
 
 /// Reads PNG files as a single sRGB-encoded RGBA level, PNG's default color space.
 pub struct PngLoader;
@@ -13,10 +15,12 @@ impl TextureLoader for PngLoader {
 
         Ok(TextureImage {
             format: TextureFormat::Rgba8Srgb,
+            shape: TextureShape::Plane,
             width: rgba.width(),
             height: rgba.height(),
             mip_levels: 1,
             layers: vec![rgba.into_raw()],
+            metadata: BTreeMap::new(),
         })
     }
 }

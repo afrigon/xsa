@@ -3,12 +3,10 @@ use ash::vk;
 use memory_vulkan::{
     BindlessBinding, Image, ImageCopy, ImageDescription, ImageLayers, ImageMemory, ImageUpload, TexelBlock,
 };
-use resource_loader::texture::TextureImage;
+use resource_loader::texture::{TextureImage, TextureShape};
 
 use crate::LoadContext;
 use crate::textures::PendingTexture;
-
-const CUBE_FACE_COUNT: usize = 6;
 
 // Creates a texture's image, takes its bindless slot and queues the upload of every level of every layer.
 pub(crate) struct TextureUpload {
@@ -22,8 +20,9 @@ impl TextureUpload {
 
     pub fn cube_map(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
         ensure!(
-            self.image.layers().len() == CUBE_FACE_COUNT,
-            "a cube map needs {CUBE_FACE_COUNT} faces"
+            self.image.shape() == TextureShape::CubeMap,
+            "expected a cube map, found a {}",
+            self.image.shape()
         );
         ensure!(
             self.image.width() == self.image.height(),
@@ -35,8 +34,9 @@ impl TextureUpload {
 
     pub fn texture(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
         ensure!(
-            self.image.layers().len() == 1,
-            "expected a 2D texture, found a cube map"
+            self.image.shape() == TextureShape::Plane,
+            "expected a 2D texture, found a {}",
+            self.image.shape()
         );
 
         self.upload(context, BindlessBinding::Texture, ImageLayers::Single)
