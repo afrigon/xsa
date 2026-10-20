@@ -14,6 +14,8 @@ pub trait NodeExtension {
 
     fn number_arguments(&self) -> anyhow::Result<Vec<f64>>;
 
+    fn integer_argument(&self) -> anyhow::Result<u64>;
+
     fn number_property(&self, key: &str) -> anyhow::Result<f64>;
 
     fn optional_number_property(&self, key: &str) -> anyhow::Result<Option<f64>>;
@@ -57,6 +59,14 @@ impl NodeExtension for KdlNode {
         self.arguments()
             .map(|value| as_number(value).with_context(|| format!("`{}` arguments must be numbers", self.node_name())))
             .collect()
+    }
+
+    fn integer_argument(&self) -> anyhow::Result<u64> {
+        self.arguments()
+            .next()
+            .and_then(KdlValue::as_integer)
+            .and_then(|value| u64::try_from(value).ok())
+            .with_context(|| format!("`{}` needs a whole number argument from 0", self.node_name()))
     }
 
     fn number_property(&self, key: &str) -> anyhow::Result<f64> {

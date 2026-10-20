@@ -45,6 +45,7 @@ mod tests {
     use glam::DQuat;
 
     use super::*;
+    use crate::random::Seed;
     use crate::simulation::{BodyCategory, BodyId, Star};
 
     const ASTRONOMICAL_UNIT: f64 = 1.495_978_707e11;
@@ -84,6 +85,7 @@ mod tests {
                 radius,
                 gravitational_parameter: 0.0,
                 star,
+                seed: Seed::from_id(id),
             });
             self.states.push(BodyState {
                 position,

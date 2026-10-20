@@ -1,5 +1,6 @@
 use anyhow::{anyhow, ensure};
-use xsa_core::simulation::{BodyCategory, BodyDescription, Star};
+use xsa_core::random::Seed;
+use xsa_core::simulation::{BodyCategory, BodyDescription, BodyId, Star};
 
 use crate::{Document, NodeExtension, PackData, ParseContext};
 
@@ -13,15 +14,21 @@ impl PackData for BodyDescription {
             .parse()
             .map_err(|err: String| anyhow!(err))?;
         let star = parse_star(document)?;
+        let id: BodyId = context.id.into();
+        let seed = match document.optional_node("seed") {
+            Some(node) => Seed(node.integer_argument()?),
+            None => Seed::from_id(&id.value),
+        };
 
         Ok(BodyDescription {
-            id: context.id.into(),
+            id,
             category,
             radius: document.node("radius")?.number_argument()?,
             gravitational_parameter: document.node("gravitational-parameter")?.number_argument()?,
             rotation_period: document.node("rotation-period")?.number_argument()?,
             axial_tilt: document.node("axial-tilt")?.number_argument()?.to_radians(),
             star,
+            seed,
         })
     }
 }
