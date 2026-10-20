@@ -38,6 +38,7 @@ impl LensPass {
             &gpu.device,
             &GraphicsPipelineDescription {
                 spirv,
+                specialization_constants: &[],
                 color_formats: &[LENS_FORMAT],
                 depth_format: None,
                 depth_compare_op: vk::CompareOp::ALWAYS,

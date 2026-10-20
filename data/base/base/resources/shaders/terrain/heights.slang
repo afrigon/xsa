@@ -1,4 +1,4 @@
-import geometry.tile;
+import terrain.tile;
 
 // The angle between neighboring texels of level 0 pages, across a face's middle.
 static const float levelZeroTexelAngle = pi / 2.0 / pageInterior;
@@ -63,13 +63,5 @@ struct TerrainHeight : TileHeight {
         return lerp(pageHeight(tile, pages.heights[coarser], offset),
                     pageHeight(tile, pages.heights[finer], offset),
                     slot - float(coarser));
-    }
-}
-
-struct TerrainGeometry : Geometry {
-    static TileVertex transform(VertexInput input) {
-        TerrainHeight heights;
-        heights.pages = tilePages(constants.firstTile + input.instance);
-        return transformTile(heights, input);
     }
 }

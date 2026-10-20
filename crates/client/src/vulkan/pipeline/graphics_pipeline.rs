@@ -56,15 +56,34 @@ impl GraphicsPipeline {
 
         let layout = DeviceObject::new(memory, unsafe { device.create_pipeline_layout(&layout_info, None) }?);
 
+        let constant_size = size_of::<u32>();
+        let constant_entries: Vec<vk::SpecializationMapEntry> = (0..description.specialization_constants.len())
+            .map(|id| {
+                vk::SpecializationMapEntry::default()
+                    .constant_id(id as u32)
+                    .offset((id * constant_size) as u32)
+                    .size(constant_size)
+            })
+            .collect();
+        let constant_bytes: Vec<u8> = description
+            .specialization_constants
+            .iter()
+            .flat_map(|value| value.to_ne_bytes())
+            .collect();
+        let specialization = vk::SpecializationInfo::default()
+            .map_entries(&constant_entries)
+            .data(&constant_bytes);
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::VERTEX)
                 .module(module)
-                .name(c"vertexMain"),
+                .name(c"vertexMain")
+                .specialization_info(&specialization),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::FRAGMENT)
                 .module(module)
-                .name(c"fragmentMain"),
+                .name(c"fragmentMain")
+                .specialization_info(&specialization),
         ];
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(description.vertex_bindings)

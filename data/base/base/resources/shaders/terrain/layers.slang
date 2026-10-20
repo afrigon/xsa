@@ -1,4 +1,4 @@
-import geometry.tile;
+import terrain.tile;
 
 static const int colorLayer = 0;
 static const int normalLayer = 1;

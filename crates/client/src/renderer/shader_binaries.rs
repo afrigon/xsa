@@ -5,7 +5,6 @@ use anyhow::Context;
 use xsa_packs::{Id, PackStack};
 
 use super::Shader;
-use super::forward_program::ForwardProgram;
 
 const BASE_NAMESPACE: &str = "base";
 const SHADERS: &str = "shaders";
@@ -19,7 +18,8 @@ const LENS_LIGHT_SHADER_PATH: &str = "post/lens/light";
 const LENS_GHOSTS_SHADER_PATH: &str = "post/lens/ghosts";
 
 pub struct ShaderBinaries {
-    pub(in crate::renderer) forward: HashMap<ForwardProgram, Vec<u8>>,
+    // Each terrain program, by the shader it compiles.
+    pub(in crate::renderer) forward: HashMap<Shader, Vec<u8>>,
     pub skybox: Vec<u8>,
     pub tonemap: Vec<u8>,
     pub histogram: Vec<u8>,
@@ -45,8 +45,11 @@ impl ShaderBinaries {
         };
 
         Ok(ShaderBinaries {
-            forward: ForwardProgram::all()
-                .map(|program| Ok((program, read(&program.path())?)))
+            // The skybox is drawn by its own pass.
+            forward: Shader::ALL
+                .iter()
+                .filter(|shader| **shader != Shader::Skybox)
+                .map(|shader| Ok((*shader, read(shader.path())?)))
                 .collect::<anyhow::Result<_>>()?,
             skybox: read(Shader::Skybox.path())?,
             tonemap: read(TONEMAP_SHADER_PATH)?,

@@ -1,13 +1,6 @@
-__exported import geometry.tile;
-__exported import material.debug.palette;
-__exported import material.layers;
-__exported import material.material;
-
-struct TerrainPageVaryings {
-    DrawVaryings draw;
-    float2 faceOffset;
-    nointerpolation uint tile;
-};
+__exported import debug.palette;
+__exported import terrain.layers;
+__exported import terrain.tile;
 
 // The page a pixel reads its color from, as the terrain debug views show it.
 struct ColorPage {
@@ -21,15 +14,7 @@ static const float pageBorderShade = 0.15;
 static const float pageBorderWidthPixels = 1.5;
 static const float3 noPageColor = float3(1.0);
 
-TerrainPageVaryings terrainPageVertex(TileVertex vertex) {
-    TerrainPageVaryings output;
-    output.draw = vertex.draw;
-    output.faceOffset = vertex.faceOffset;
-    output.tile = vertex.tile;
-    return output;
-}
-
-ColorPage colorPage(TerrainPageVaryings input) {
+ColorPage colorPage(TileVertex input) {
     LayerCoordinates coordinates = layerCoordinates(input.tile, input.faceOffset);
     ColorPage page;
     page.read = readLayer(coordinates, colorLayer);

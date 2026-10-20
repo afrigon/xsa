@@ -1,31 +1,12 @@
-import material.debug.palette;
-import material.material;
-
-struct LodVaryings {
-    DrawVaryings draw;
-    float2 cell;
-    nointerpolation int detail;
-    nointerpolation uint gridCells;
-};
-
-[shader("vertex")]
-LodVaryings vertexMain<G : Geometry>(VertexInput input) {
-    TileVertex tile = G.transform(input);
-    LodVaryings output;
-    output.draw = tile.draw;
-    output.cell = tile.cell;
-    output.detail = tile.detail;
-    output.gridCells = tile.gridCells;
-    return output;
-}
+import debug.palette;
+import terrain.tile;
 
 static const float cellLineShade = 0.55;
 static const float tileEdgeShade = 0.1;
 static const float lineWidthPixels = 1.0;
 static const float tileEdgeWidthPixels = 2.0;
 
-[shader("fragment")]
-FragmentOutput fragmentMain(LodVaryings input) {
+float3 lodColor(TileVertex input) {
     float3 toCamera = normalize(-input.draw.worldPosition);
     float facing = saturate(dot(normalize(input.draw.normal), toCamera));
     float3 color = hueColor(float(input.detail) * huePerLevel) * lerp(ambientShade, 1.0, facing);
@@ -33,5 +14,5 @@ FragmentOutput fragmentMain(LodVaryings input) {
     float tileEdge = lineCoverage(input.cell / float(input.gridCells), tileEdgeWidthPixels);
     color *= lerp(1.0, cellLineShade, cellLine);
     color *= lerp(1.0, tileEdgeShade, tileEdge);
-    return fragmentOutput(float4(color, 1.0), input.draw);
+    return color;
 }

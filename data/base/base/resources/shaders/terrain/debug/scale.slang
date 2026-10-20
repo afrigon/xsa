@@ -1,18 +1,4 @@
-import material.material;
-
-struct ScaleVaryings {
-    DrawVaryings draw;
-    float heightMeters;
-};
-
-[shader("vertex")]
-ScaleVaryings vertexMain<G : Geometry>(VertexInput input) {
-    TileVertex tile = G.transform(input);
-    ScaleVaryings output;
-    output.draw = tile.draw;
-    output.heightMeters = tile.heightMeters;
-    return output;
-}
+import terrain.tile;
 
 // Each power of ten of meters, from 1 m to 10 km, draws in its own color: range rings bright, height contours darker.
 static const uint decades = 5;
@@ -42,8 +28,7 @@ float lineStrength(float meters, float spacing) {
     return coverage * fade;
 }
 
-[shader("fragment")]
-FragmentOutput fragmentMain(ScaleVaryings input) {
+float3 scaleColor(TileVertex input) {
     ObjectData object = currentObject();
     float3 bodyCenter = float3(object.worldFromModel[0][3], object.worldFromModel[1][3], object.worldFromModel[2][3]);
     float3 up = normalize(-bodyCenter);
@@ -60,5 +45,5 @@ FragmentOutput fragmentMain(ScaleVaryings input) {
         spacing *= 10.0;
     }
 
-    return fragmentOutput(float4(color, 1.0), input.draw);
+    return color;
 }

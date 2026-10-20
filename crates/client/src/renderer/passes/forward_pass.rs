@@ -3,6 +3,7 @@ mod forward_resources;
 pub(in crate::renderer) use forward_resources::ForwardResources;
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::mem::offset_of;
 
 use ash::vk;
@@ -11,14 +12,16 @@ use render_graph_vulkan::{
     Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass,
 };
 
+use crate::config::RenderConfig;
 use crate::mesh::{GridMesh, GridVertex};
-use crate::renderer::ShaderBinaries;
-use crate::renderer::forward_program::ForwardProgram;
+use crate::renderer::forward_pipeline::ForwardPipeline;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
 use crate::renderer::static_buffer::StaticBuffer;
+use crate::renderer::tile_shape::TileShape;
+use crate::renderer::{DebugView, Shader, ShaderBinaries, TerrainDebugView};
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
 const TRIANGLES_PER_CELL: u64 = 2;
@@ -29,7 +32,8 @@ const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
-    pipelines: HashMap<ForwardProgram, GraphicsPipeline>,
+    programs: HashMap<Shader, Vec<u8>>,
+    pipelines: HashMap<ForwardPipeline, GraphicsPipeline>,
     grids: GridMesh,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -37,11 +41,6 @@ pub(in crate::renderer) struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
-        let pipelines = binaries
-            .forward
-            .iter()
-            .map(|(program, spirv)| Ok((*program, ForwardPass::create_pipeline(gpu, spirv)?)))
-            .collect::<anyhow::Result<_>>()?;
         let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
         // Every frame draws the grid, so it is in GPU memory before the first one.
         let vertex_buffer = StaticBuffer::new(
@@ -59,12 +58,45 @@ impl ForwardPass {
         let vertex_buffer = vertex_buffer.into_buffer()?;
         let index_buffer = index_buffer.into_buffer()?;
 
-        Ok(ForwardPass {
-            pipelines,
+        let mut pass = ForwardPass {
+            programs: binaries.forward.clone(),
+            pipelines: HashMap::new(),
             grids,
             vertex_buffer,
             index_buffer,
-        })
+        };
+        pass.ensure_pipelines(gpu, None, None)?;
+
+        Ok(pass)
+    }
+
+    // Builds the pipelines the current debug views draw with, the first time they are shown.
+    pub fn ensure_pipelines(
+        &mut self,
+        gpu: &GpuContext,
+        view: Option<DebugView>,
+        terrain_view: Option<TerrainDebugView>,
+    ) -> anyhow::Result<()> {
+        for (shader, spirv) in &self.programs {
+            for shape in TileShape::ALL {
+                let key = ForwardPipeline {
+                    shader: *shader,
+                    shape,
+                    view,
+                    terrain_view,
+                };
+
+                if let Entry::Vacant(entry) = self.pipelines.entry(key) {
+                    entry.insert(ForwardPass::create_pipeline(
+                        gpu,
+                        spirv,
+                        &key.specialization_constants(),
+                    )?);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn target(name: &'static str, format: vk::Format) -> GraphImageDescription {
@@ -81,22 +113,18 @@ impl ForwardPass {
         recorder.set_wireframe(frame.render.wireframe);
         recorder.bind_mesh(&self.vertex_buffer, &self.index_buffer);
 
-        for (program, pipeline) in &self.pipelines {
+        let drawn = self
+            .pipelines
+            .iter()
+            .filter(|(key, _)| ForwardPass::shows_views(key, frame.render));
+
+        for (key, pipeline) in drawn {
             let mut bound = false;
 
             for draw in frame.terrain_draws {
                 let terrain = frame.scene.terrain(draw.terrain);
 
-                if draw.shape.geometry() != program.geometry {
-                    continue;
-                }
-
-                let Some(material_shader) = frame.material(terrain.material).shader() else {
-                    continue;
-                };
-                let terrain_shader = frame.render.shader_override.unwrap_or(material_shader);
-
-                if terrain_shader != program.shader {
+                if draw.shape != key.shape || frame.material(terrain.material).shader() != Some(key.shader) {
                     continue;
                 }
 
@@ -117,7 +145,15 @@ impl ForwardPass {
         recorder.set_wireframe(false);
     }
 
-    fn create_pipeline(gpu: &GpuContext, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
+    fn shows_views(key: &ForwardPipeline, render: &RenderConfig) -> bool {
+        key.view == render.shader_override && key.terrain_view == render.terrain_shader_override
+    }
+
+    fn create_pipeline(
+        gpu: &GpuContext,
+        spirv: &[u8],
+        specialization_constants: &[u32],
+    ) -> anyhow::Result<GraphicsPipeline> {
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(size_of::<GridVertex>() as u32)
@@ -129,6 +165,7 @@ impl ForwardPass {
             .offset(offset_of!(GridVertex, cell) as u32)];
         let description = GraphicsPipelineDescription {
             spirv,
+            specialization_constants,
             color_formats: &[HDR_FORMAT, MOTION_FORMAT],
             depth_format: Some(DEPTH_FORMAT),
             depth_compare_op: vk::CompareOp::GREATER,

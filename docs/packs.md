@@ -298,23 +298,23 @@ skybox texture="skyboxes/deep-star-maps" frame="equatorial" luminance=0.05
 ### Materials — `<namespace>/resources/materials/`
 
 ```kdl
-shader "base:lambert"
+shader "base:terrain/lambert"
 base-color 0.1 0.25 0.6
 ```
 
 Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 (cd/m²), and emissive values are luminances in cd/m².
 
-- **`shader "base:lambert"`** with **`base-color`** (the average albedo,
+- **`shader "base:terrain/lambert"`** with **`base-color`** (the average albedo,
   linear red green blue) and optional **`color-texture`** (sRGB albedo),
   **`normal-texture`** and **`emissive-texture`** (sRGB), each a texture id;
   an emissive texture needs **`emissive-luminance`** (cd/m² for a texture
   value of 1). Without a color texture the surface takes the base color. A
   texture no loaded pack provides is skipped with a warning.
-- **`shader "base:hapke"`** for a body's terrain, shaded with Hapke's model
+- **`shader "base:terrain/hapke"`** for a body's terrain, shaded with Hapke's model
   of particulate surfaces (Hapke 2012, eq. 12.55), with **`base-color`**,
   optional **`emissive-texture`** and **`emissive-luminance`** as for
-  `base:lambert`, and its maps as terrain layers (`resources/terrains/`, see
+  `base:terrain/lambert`, and its maps as terrain layers (`resources/terrains/`, see
   Terrain layers), each a layer id: **`color-terrain`** (sRGB albedo),
   **`normal-terrain`**, and two layers holding Hapke's other standard
   parameters, as published: **`medium-terrain`** (the particulate medium:
@@ -329,7 +329,7 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
   shaded with Lambert. Normal layers are tangent space in the frame of the
   face they lie on: red along the face's columns and green across them, both
   on the sphere's tangent plane; z is reconstructed.
-- **`shader "base:emissive"`** with optional **`color`** (a tint, white by
+- **`shader "base:terrain/emissive"`** with optional **`color`** (a tint, white by
   default) and **`luminance`** (cd/m²). A star takes its luminance and color
   from its data and needs neither.
 
@@ -416,7 +416,8 @@ go to `target/lens-bake/`.
 ### Shaders — `base/resources/shaders/`
 
 The built-in shaders live in the base pack as Slang sources compiled to SPIR-V
-by `mise run shaders`; materials name them by id (`base:lambert`). Shaders from
+by `mise run shaders`; materials name them by id (`base:terrain/lambert`), and
+`docs/rendering.md` describes how they are organized. Shaders from
 other packs, with their own material properties, are planned.
 
 ### Textures — `<namespace>/resources/textures/`

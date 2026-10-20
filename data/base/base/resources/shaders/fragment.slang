@@ -1,6 +1,13 @@
-__exported import geometry.geometry;
+__exported import draw;
 
 static const float uvPerNdc = 0.5;
+
+// What a program's material is at a pixel, as the debug views read it. Roughness is Hapke's θ̄ in radians, 0 for
+// models without one.
+struct MaterialSample {
+    float3 albedo;
+    float roughness;
+};
 
 struct FragmentOutput {
     float4 color : SV_Target0;

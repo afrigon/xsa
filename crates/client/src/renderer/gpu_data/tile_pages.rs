@@ -7,7 +7,7 @@ pub(in crate::renderer) const LAYER_LEVELS: usize = 3;
 pub(in crate::renderer) const LAYER_PAGES: usize = 1 + 4 + 16;
 pub(in crate::renderer) const LAYERS: usize = 4;
 
-// The pages one tile reads, at the same index as its tile data. Mirrored by `TilePages` in `geometry/tile.slang`.
+// The pages one tile reads, at the same index as its tile data. Mirrored by `TilePages` in `terrain/tile.slang`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct TilePages {

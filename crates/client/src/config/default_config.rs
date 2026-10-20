@@ -82,6 +82,7 @@ impl Default for Config {
                 },
                 wireframe: false,
                 shader_override: None,
+                terrain_shader_override: None,
                 terrain_lod: TerrainLodConfig {
                     vertex_spacing_pixels: TERRAIN_VERTEX_SPACING_PIXELS,
                     freeze: false,

@@ -1,11 +1,11 @@
-import material.light.lambert;
-import material.light.star;
-import material.material;
-import material.texture;
+import light.lambert;
+import light.star;
+import terrain.output;
+import terrain.texture;
 
 [shader("vertex")]
-DrawVaryings vertexMain<G : Geometry>(VertexInput input) {
-    return G.transform(input).draw;
+TileVertex vertexMain(VertexInput input) {
+    return terrainVertex(input);
 }
 
 struct LambertData {
@@ -18,7 +18,8 @@ struct LambertData {
 };
 
 [shader("fragment")]
-FragmentOutput fragmentMain(DrawVaryings input) {
+FragmentOutput fragmentMain(TileVertex vertex, uint primitive: SV_PrimitiveID) {
+    DrawVaryings input = vertex.draw;
     LambertData material = currentMaterial<LambertData>();
     float3 modelNormal = normalize(input.modelNormal);
     TextureCoordinates coordinates = equirectangularCoordinates(modelNormal);
@@ -35,5 +36,8 @@ FragmentOutput fragmentMain(DrawVaryings input) {
     }
 
     luminance += mappedEmission(material.emissiveTexture, material.emissiveLuminance, coordinates);
-    return fragmentOutput(float4(luminance * constants.frame.exposure, 1.0), input);
+    MaterialSample sample;
+    sample.albedo = albedo;
+    sample.roughness = 0.0;
+    return terrainOutput(luminance, sample, vertex, primitive);
 }

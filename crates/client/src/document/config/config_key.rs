@@ -21,6 +21,7 @@ impl ConfigKey {
         AntialiasingDocument::KIND,
         RenderDocument::WIREFRAME,
         RenderDocument::SHADER_OVERRIDE,
+        RenderDocument::TERRAIN_SHADER_OVERRIDE,
         TerrainLodDocument::VERTEX_SPACING,
         TerrainLodDocument::FREEZE,
         AnimationDocument::DURATION_SCALE,

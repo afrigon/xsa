@@ -27,6 +27,7 @@ impl TonemapPass {
             &gpu.device,
             &GraphicsPipelineDescription {
                 spirv: &binaries.tonemap,
+                specialization_constants: &[],
                 color_formats: &[output_format],
                 depth_format: None,
                 depth_compare_op: vk::CompareOp::ALWAYS,

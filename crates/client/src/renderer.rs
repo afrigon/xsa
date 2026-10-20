@@ -2,13 +2,13 @@ mod auto_exposure;
 mod captured_image;
 mod command_recorder;
 mod culler;
-mod forward_program;
+mod debug_view;
+mod forward_pipeline;
 mod frame;
 mod frame_context;
 mod frame_inputs;
 mod frame_statistics;
 mod frustum;
-mod geometry;
 mod gpu_context;
 mod gpu_data;
 mod gpu_timer;
@@ -30,6 +30,7 @@ mod star_visibility;
 mod static_buffer;
 mod temporal_history;
 mod terrain;
+mod terrain_debug_view;
 mod terrain_draw;
 mod tile_shape;
 mod tonemapper;
@@ -37,6 +38,7 @@ mod white_balance;
 
 pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
+pub use debug_view::DebugView;
 pub use frame_statistics::FrameStatistics;
 pub use lens_lights::LensLights;
 pub use material::{EmissiveMaterial, HapkeMaterial, LambertMaterial, Material, Shader, SkyboxMaterial};
@@ -45,6 +47,7 @@ pub use resource_loader::texture::ColorSpace;
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
 pub use terrain::{TerrainLayer, TerrainPageStatistics, TerrainPages};
+pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
@@ -352,6 +355,7 @@ impl Renderer {
         }
 
         self.poll_uploads()?;
+        self.passes.ensure_pipelines(&self.gpu, &self.render)?;
         self.ensure_object_capacity()?;
         self.ensure_star_capacity()?;
         self.ensure_light_capacity()?;

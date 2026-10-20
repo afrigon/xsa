@@ -23,6 +23,7 @@ impl SkyboxPass {
             &gpu.device,
             &GraphicsPipelineDescription {
                 spirv: &binaries.skybox,
+                specialization_constants: &[],
                 color_formats: &[HDR_FORMAT, MOTION_FORMAT],
                 depth_format: Some(DEPTH_FORMAT),
                 depth_compare_op: vk::CompareOp::GREATER_OR_EQUAL,

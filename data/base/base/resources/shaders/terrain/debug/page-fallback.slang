@@ -1,9 +1,4 @@
-import material.debug.terrain_pages;
-
-[shader("vertex")]
-TerrainPageVaryings vertexMain<G : Geometry>(VertexInput input) {
-    return terrainPageVertex(G.transform(input));
-}
+import terrain.debug.pages;
 
 // How many levels coarser than wanted each pixel's color page is: none green, then yellow, orange, red from three.
 static const float3 fallbackColors[4] = {
@@ -13,10 +8,8 @@ static const float3 fallbackColors[4] = {
     float3(1.0, 0.15, 0.15),
 };
 
-[shader("fragment")]
-FragmentOutput fragmentMain(TerrainPageVaryings input) {
+float3 pageFallbackColor(TileVertex input) {
     ColorPage page = colorPage(input);
     uint fallback = min(page.wantedLevel - min(page.read.level, page.wantedLevel), 3u);
-    float3 color = shadedPage(page, fallbackColors[fallback]);
-    return fragmentOutput(float4(color, 1.0), input.draw);
+    return shadedPage(page, fallbackColors[fallback]);
 }

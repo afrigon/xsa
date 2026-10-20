@@ -1,4 +1,21 @@
-__exported import geometry.geometry;
+__exported import draw;
+
+struct VertexInput {
+    uint2 cell;
+    uint instance : SV_InstanceID;
+};
+
+// Everything a tile's vertex stage computes, passed on whole by every terrain program. The face offset is in the
+// face's equal-angle coordinates from the tile's center, which the tile's pages are read at.
+struct TileVertex {
+    DrawVaryings draw;
+    float2 cell;
+    nointerpolation int detail;
+    nointerpolation uint gridCells;
+    float heightMeters;
+    nointerpolation uint tile;
+    float2 faceOffset;
+};
 
 // A quad sphere tile: centers are relative to their frame's camera, the cube center is on the cube spanning -1 to 1,
 // the axes are its face's unit column and row axes, and the half size is in the face's equal-angle coordinates.

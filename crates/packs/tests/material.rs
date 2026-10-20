@@ -6,7 +6,7 @@ use xsa_packs::{Id, MaterialDefinition, PackStack};
 
 const MANIFEST: &str = "version \"0.1.0\"\nformat 1\n";
 const OBJECT: &str = "material \"rock\"\n";
-const MATERIAL: &str = r#"shader "base:hapke"
+const MATERIAL: &str = r#"shader "base:terrain/hapke"
 base-color 0.25 0.5 0.75
 color-terrain "rock/color"
 normal-terrain "rock/normal"

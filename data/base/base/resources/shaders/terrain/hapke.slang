@@ -1,24 +1,13 @@
-import material.layers;
-import material.light.hapke;
-import material.light.lambert;
-import material.light.star;
-import material.material;
-import material.texture;
-
-struct HapkeVaryings {
-    DrawVaryings draw;
-    float2 faceOffset;
-    nointerpolation uint tile;
-};
+import light.hapke;
+import light.lambert;
+import light.star;
+import terrain.layers;
+import terrain.output;
+import terrain.texture;
 
 [shader("vertex")]
-HapkeVaryings vertexMain<G : Geometry>(VertexInput input) {
-    TileVertex vertex = G.transform(input);
-    HapkeVaryings output;
-    output.draw = vertex.draw;
-    output.faceOffset = vertex.faceOffset;
-    output.tile = vertex.tile;
-    return output;
+TileVertex vertexMain(VertexInput input) {
+    return terrainVertex(input);
 }
 
 struct HapkeData {
@@ -63,7 +52,7 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, DrawVarying
 
 // Where the tile has no page of either Hapke layer, it is shaded with Lambert.
 [shader("fragment")]
-FragmentOutput fragmentMain(HapkeVaryings input) {
+FragmentOutput fragmentMain(TileVertex input, uint primitive: SV_PrimitiveID) {
     HapkeData material = currentMaterial<HapkeData>();
     float3 modelNormal = normalize(input.draw.modelNormal);
     LayerCoordinates coordinates = layerCoordinates(input.tile, input.faceOffset);
@@ -92,5 +81,8 @@ FragmentOutput fragmentMain(HapkeVaryings input) {
 
     TextureCoordinates emissionCoordinates = equirectangularCoordinates(modelNormal);
     luminance += mappedEmission(material.emissiveTexture, material.emissiveLuminance, emissionCoordinates);
-    return fragmentOutput(float4(luminance * constants.frame.exposure, 1.0), input.draw);
+    MaterialSample sample;
+    sample.albedo = albedo;
+    sample.roughness = medium.resident ? radians(medium.value.b) : 0.0;
+    return terrainOutput(luminance, sample, input, primitive);
 }

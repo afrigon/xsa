@@ -6,6 +6,16 @@ SamplerState wrappingSampler;
 [[vk::binding(3, 0)]]
 Texture2D textures[];
 
+// What every vertex stage passes on, whatever places its vertices.
+struct DrawVaryings {
+    float4 position : SV_Position;
+    float3 worldPosition;
+    float3 normal;
+    float3 modelNormal;
+    float4 currentClip;
+    float4 previousClip;
+};
+
 struct ObjectData {
     float4x4 worldFromModel;
     float4x4 previousWorldFromModel;
