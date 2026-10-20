@@ -1,17 +1,17 @@
 use std::sync::OnceLock;
 
 use anyhow::ensure;
-use glam::{DVec2, DVec3, Vec2, Vec3};
+use glam::{DVec2, DVec3, Vec3};
 use resource_vulkan::{ResourceHandle, TextureArray};
 use xsa_core::random::Seed;
 
-use super::{SurfaceClass, SurfaceScale};
-use crate::renderer::gpu_data::{MAX_SURFACE_SCALES, NoiseAnchor, SurfaceData};
+use super::{HEX_CELL_SIZE, SurfaceClass};
+use crate::renderer::gpu_data::{HexAnchor, NoiseAnchor, SurfaceData};
 
 const AVERAGE_COLOR_KEY: &str = "xsa.averageColor";
 
-// One class's surface: its three texture arrays, its size and displacement range (m), its scale ladder, which doubles
-// from its own size up to its largest magnification, and the seeded noise (m) choosing between its variants.
+// One class's surface: its three texture arrays, its size and displacement range (m), and the seeded noise (m)
+// choosing between its variants.
 pub struct SurfaceTextures {
     pub color: ResourceHandle<TextureArray>,
     pub normal: ResourceHandle<TextureArray>,
@@ -19,10 +19,10 @@ pub struct SurfaceTextures {
     pub size: f32,
     pub displacement_low: f32,
     pub displacement_high: f32,
-    pub(in crate::renderer) scales: Vec<SurfaceScale>,
     variant_noise: f64,
     variant_seed: Seed,
     height_contrast: f32,
+    tiling_seed: Seed,
     // Read from the colour array's metadata once it is loaded; None when the metadata is unusable.
     average_color: OnceLock<Option<Vec3>>,
 }
@@ -37,12 +37,6 @@ impl SurfaceTextures {
         seed: Seed,
     ) -> anyhow::Result<SurfaceTextures> {
         let definition = &slot.surface;
-        let scale_count = definition.largest_magnification.log2().floor() as usize + 1;
-        ensure!(
-            scale_count <= MAX_SURFACE_SCALES,
-            "a largest magnification of {} needs {scale_count} scales, more than the {MAX_SURFACE_SCALES} drawn",
-            definition.largest_magnification
-        );
         let class_seed = seed.derive(class.name());
 
         Ok(SurfaceTextures {
@@ -52,12 +46,10 @@ impl SurfaceTextures {
             size: definition.size,
             displacement_low: definition.displacement_low,
             displacement_high: definition.displacement_high,
-            scales: (0..scale_count)
-                .map(|scale| SurfaceScale::new(class_seed.derive(&format!("scale-{scale}"))))
-                .collect(),
             variant_noise: f64::from(slot.variant_noise),
             variant_seed: class_seed.derive("variants"),
             height_contrast: slot.height_contrast,
+            tiling_seed: class_seed.derive("tiling"),
             average_color: OnceLock::new(),
         })
     }
@@ -74,12 +66,6 @@ impl SurfaceTextures {
                 .inspect_err(|err| tracing::error!("a surface cannot be drawn: {err:#}"))
                 .ok()
         }))?;
-        let mut scale_rotations = [Vec2::ZERO; MAX_SURFACE_SCALES];
-
-        for (rotation, scale) in scale_rotations.iter_mut().zip(&self.scales) {
-            *rotation = scale.rotation_data();
-        }
-
         Some(SurfaceData {
             color_texture: color.index(),
             normal_texture: normal.index(),
@@ -90,10 +76,11 @@ impl SurfaceTextures {
             displacement_low: self.displacement_low,
             displacement_high: self.displacement_high,
             average_color,
-            scale_count: self.scales.len() as u32,
             height_contrast: self.height_contrast,
-            padding: [0; 3],
-            scale_rotations,
+            hex_cell_size: HEX_CELL_SIZE as f32,
+            // The shader hashes 32 bits; the seed's low half keeps its spread.
+            tiling_seed: self.tiling_seed.value as u32,
+            padding: [0; 2],
         })
     }
 
@@ -112,16 +99,8 @@ impl SurfaceTextures {
         NoiseAnchor::at(camera_in_body, self.variant_noise, self.variant_seed)
     }
 
-    // Where `point` (m, on a projection plane) falls within each scale's repeat.
-    pub(in crate::renderer) fn anchors(&self, point: DVec2) -> [Vec2; MAX_SURFACE_SCALES] {
-        let mut anchors = [Vec2::ZERO; MAX_SURFACE_SCALES];
-        let mut repeat = f64::from(self.size);
-
-        for (anchor, scale) in anchors.iter_mut().zip(&self.scales) {
-            *anchor = scale.anchor(point, repeat);
-            repeat *= 2.0;
-        }
-
-        anchors
+    // Where `point` (m, on a projection plane) falls on its hexagonal cells.
+    pub(in crate::renderer) fn anchor(&self, point: DVec2) -> HexAnchor {
+        HexAnchor::at(point / (f64::from(self.size) * HEX_CELL_SIZE))
     }
 }

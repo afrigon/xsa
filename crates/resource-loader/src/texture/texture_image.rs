@@ -2,19 +2,17 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{
-    ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader, TextureMetadata, TextureShape,
-};
+use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureKind, TextureLoader, TextureMetadata};
 use crate::utils::HalfFloat;
 
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;
 
-/// A decoded texture: one or more layers arranged as its shape says, each holding its full mip chain, largest level
+/// A decoded texture: one or more layers arranged as its kind says, each holding its full mip chain, largest level
 /// first, with the key/value metadata its file carries.
 pub struct TextureImage {
     pub(super) format: TextureFormat,
-    pub(super) shape: TextureShape,
+    pub(super) kind: TextureKind,
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) mip_levels: u32,
@@ -24,10 +22,10 @@ pub struct TextureImage {
 
 impl TextureImage {
     /// A texture from its layers' texels, each layer its mip chain, largest level first, refusing layers of the wrong
-    /// size or count for its shape.
+    /// size or count for its kind.
     pub fn new(
         format: TextureFormat,
-        shape: TextureShape,
+        kind: TextureKind,
         width: u32,
         height: u32,
         mip_levels: u32,
@@ -35,7 +33,7 @@ impl TextureImage {
     ) -> anyhow::Result<TextureImage> {
         let image = TextureImage {
             format,
-            shape,
+            kind,
             width,
             height,
             mip_levels,
@@ -92,8 +90,8 @@ impl TextureImage {
         self.format
     }
 
-    pub fn shape(&self) -> TextureShape {
-        self.shape
+    pub fn kind(&self) -> TextureKind {
+        self.kind
     }
 
     pub fn width(&self) -> u32 {
@@ -158,9 +156,9 @@ impl TextureImage {
 
     pub(super) fn check_layer_count(&self) -> anyhow::Result<()> {
         ensure!(
-            self.shape.holds(self.layers.len()),
+            self.kind.holds(self.layers.len()),
             "a {} cannot hold {} layers",
-            self.shape,
+            self.kind,
             self.layers.len()
         );
 

@@ -14,6 +14,7 @@ const MISSING: &str = "–";
 const ANGLE_PRECISION: f64 = 1000.0;
 const FULL_TURN_DEGREES: f64 = 360.0;
 const BYTES_PER_MEBIBYTE: f64 = 1024.0 * 1024.0;
+const MILLISECONDS_PER_SECOND: f64 = 1000.0;
 
 pub struct DebugOverlayView {
     pub frames_per_second: Option<f64>,
@@ -29,6 +30,10 @@ impl DebugOverlayView {
         let frames_per_second = self
             .frames_per_second
             .map_or_else(|| MISSING.to_string(), |rate| format!("{rate:.0}"));
+        let frame_milliseconds = self.frames_per_second.map_or_else(
+            || MISSING.to_string(),
+            |rate| format!("{:.2}", MILLISECONDS_PER_SECOND / rate),
+        );
         let gpu_milliseconds = self
             .gpu_milliseconds
             .map_or_else(|| MISSING.to_string(), |milliseconds| format!("{milliseconds:.2}"));
@@ -36,9 +41,11 @@ impl DebugOverlayView {
             .statistics
             .deepest_depth
             .map_or_else(String::new, |depth| format!(" · depth {depth}"));
+        let build = if cfg!(debug_assertions) { "debug" } else { "release" };
 
         format!(
-            "FPS: {frames_per_second} · GPU {gpu_milliseconds} ms\n{} faces · {} tiles{depth}",
+            "FPS: {frames_per_second} · {frame_milliseconds} ms · GPU {gpu_milliseconds} ms\n\
+             {} faces · {} tiles{depth}\nbuild: {build}",
             self.statistics.triangles, self.statistics.tiles
         )
     }

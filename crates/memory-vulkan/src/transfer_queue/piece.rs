@@ -55,9 +55,9 @@ impl Piece {
                     region: CopyRegion::Image {
                         mip_level: copy.mip_level,
                         array_layer: copy.array_layer,
-                        offset: vk::Offset2D {
-                            x: copy.image_offset.x,
+                        offset: vk::Offset3D {
                             y: copy.image_offset.y + top as i32,
+                            ..copy.image_offset
                         },
                         extent: vk::Extent2D {
                             width: copy.extent.width,
@@ -151,7 +151,7 @@ mod tests {
                 offset: 0,
                 mip_level: 0,
                 array_layer: 0,
-                image_offset: vk::Offset2D::default(),
+                image_offset: vk::Offset3D::default(),
                 extent: vk::Extent2D { width, height },
             }],
             texel_block: BC7,

@@ -13,7 +13,6 @@ normal-texture "surfaces/dust/normal"
 displacement-texture "surfaces/dust/displacement"
 size 3.0
 displacement low=0.0 high=0.05
-largest-magnification 8.0
 "#;
 const BIOME_SURFACES: &str = r#"flat "dust" variant-noise=12 height-contrast=0.4
 slope "dust" variant-noise=12 height-contrast=0.4

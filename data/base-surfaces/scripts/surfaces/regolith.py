@@ -8,4 +8,3 @@ class Regolith(SurfaceRecipe):
     name = "regolith"
     sets = [PolyhavenSet("moon_01"), PolyhavenSet("moon_02")]
     displacement = DisplacementRange(low=0.0, high=0.05)
-    largest_magnification = 8.0

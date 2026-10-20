@@ -2,9 +2,9 @@
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum SurfaceDebugView {
     Classes,
-    Scales,
     Planes,
     Fade,
+    HexCells,
 }
 
 impl SurfaceDebugView {
@@ -12,9 +12,9 @@ impl SurfaceDebugView {
     pub(super) fn shader_id(self) -> u32 {
         match self {
             SurfaceDebugView::Classes => 1,
-            SurfaceDebugView::Scales => 2,
-            SurfaceDebugView::Planes => 3,
-            SurfaceDebugView::Fade => 4,
+            SurfaceDebugView::Planes => 2,
+            SurfaceDebugView::Fade => 3,
+            SurfaceDebugView::HexCells => 4,
         }
     }
 }

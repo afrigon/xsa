@@ -1,9 +1,9 @@
-use glam::{DVec2, DVec3, Vec2};
+use glam::{DVec2, DVec3};
 use xsa_core::random::Seed;
 use xsa_packs::BiomeSurfacesDefinition;
 
 use super::{SURFACE_CLASSES, SurfaceTextures, TRIPLANAR_PLANES};
-use crate::renderer::gpu_data::{BiomeData, MAX_SURFACE_SCALES, NoiseAnchor, SurfaceAnchorData, SurfaceData};
+use crate::renderer::gpu_data::{BiomeData, HexAnchor, NoiseAnchor, SurfaceAnchorData, SurfaceData};
 
 // A body's biome as its ground draws up close: a surface per class of ground, where the classes hand over, and the
 // seeded noise (m) moving the handovers.
@@ -37,6 +37,12 @@ impl BiomeSurfaces {
         }
     }
 
+    // Whether any of its surfaces still shows in a pixel covering `footprint` meters: until the pixel covers the largest
+    // repeat. Mirrors `surfaceFadeOut` in terrain/surface/fade.slang.
+    pub(in crate::renderer) fn shows_at(&self, footprint: f64) -> bool {
+        self.classes.iter().any(|class| footprint < f64::from(class.size))
+    }
+
     pub(in crate::renderer) fn biome_data(&self) -> BiomeData {
         self.biome
     }
@@ -53,8 +59,8 @@ impl BiomeSurfaces {
     }
 
     // Plane p projects along the body frame's axis p, its coordinates the two axes after it.
-    pub(in crate::renderer) fn anchor_data(&self, camera_in_body: DVec3) -> SurfaceAnchorData {
-        let mut planes = [[[Vec2::ZERO; TRIPLANAR_PLANES]; MAX_SURFACE_SCALES]; SURFACE_CLASSES];
+    pub(in crate::renderer) fn anchor_data(&self, camera_in_body: DVec3, noise_volume: u32) -> SurfaceAnchorData {
+        let mut planes = [[HexAnchor::NONE; TRIPLANAR_PLANES]; SURFACE_CLASSES];
 
         for (class_planes, class) in planes.iter_mut().zip(&self.classes) {
             for plane in 0..TRIPLANAR_PLANES {
@@ -63,9 +69,7 @@ impl BiomeSurfaces {
                     camera_in_body[(plane + 2) % TRIPLANAR_PLANES],
                 );
 
-                for (scale, anchor) in class.anchors(point).into_iter().enumerate() {
-                    class_planes[scale][plane] = anchor;
-                }
+                class_planes[plane] = class.anchor(point);
             }
         }
 
@@ -79,6 +83,8 @@ impl BiomeSurfaces {
             planes,
             handover_noise: NoiseAnchor::at(camera_in_body, self.handover_noise, self.handover_seed),
             variant_noise,
+            noise_volume,
+            padding: [0; 3],
         }
     }
 }

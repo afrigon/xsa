@@ -25,8 +25,6 @@ logger = logging.getLogger(__name__)
 class SurfaceRecipe(Recipe):
     sets: list[PolyhavenSet]
     displacement: DisplacementRange
-    # How many times the surface can be scaled up before it stops looking right.
-    largest_magnification: float
 
     def build(self, context: BuildContext) -> None:
         pixels = self._pixels(context)
@@ -53,9 +51,7 @@ class SurfaceRecipe(Recipe):
         ArrayWriter.color().write(context.texture_path(textures["color-texture"]), color_chains, color_metadata)
         ArrayWriter.normal().write(context.texture_path(textures["normal-texture"]), slope_chains, normal_metadata)
         ArrayWriter.displacement().write(context.texture_path(textures["displacement-texture"]), displacement_chains, {})
-        context.surfaces.write(
-            self.name, textures, pixels / context.density, self.displacement, self.largest_magnification
-        )
+        context.surfaces.write(self.name, textures, pixels / context.density, self.displacement)
 
     def credits(self, cache: Path) -> list[Credit]:
         location = f"base-surfaces/resources/textures/surfaces/{self.name}/"

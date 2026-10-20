@@ -75,7 +75,7 @@ saved) of that level:
 | --- | --- | --- |
 | `render.shader.override` | `normals`, `depth`, `motion`, `lighting`, `triangles`, `albedo`, `roughness` | every draw, from its vertices and material sample |
 | `render.shader.terrain.override` | `lod`, `scale`, `page-levels`, `page-fallback` | every terrain program |
-| `render.shader.surface.override` | `classes`, `scales`, `planes`, `fade` | terrain programs with surfaces |
+| `render.shader.surface.override` | `classes`, `planes`, `fade`, `hex-cells` | terrain programs with surfaces |
 
 Where several are set, a draw shows the most specific one it supports: its
 surface view, then its family's, then the generic one. Adding a family or a

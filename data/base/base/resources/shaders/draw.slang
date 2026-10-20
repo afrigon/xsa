@@ -3,7 +3,7 @@ __exported import frame;
 [[vk::binding(2, 0)]]
 SamplerState wrappingSampler;
 
-// Repeats both ways, for textures that tile the ground.
+// Repeats along every axis, for textures that tile the ground and volumes that tile space.
 [[vk::binding(6, 0)]]
 SamplerState tilingSampler;
 
@@ -12,6 +12,9 @@ Texture2D textures[];
 
 [[vk::binding(5, 0)]]
 Texture2DArray textureArrays[];
+
+[[vk::binding(7, 0)]]
+Texture3D volumes[];
 
 // What every vertex stage passes on, whatever places its vertices.
 struct DrawVaryings {

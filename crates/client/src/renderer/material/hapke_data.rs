@@ -19,7 +19,7 @@ pub struct HapkeData {
     pub(super) surfaces: [SurfaceData; SURFACE_CLASSES],
 }
 
-const _: () = assert!(size_of::<HapkeData>() == 400);
+const _: () = assert!(size_of::<HapkeData>() == 256);
 
 unsafe impl GpuData for HapkeData {}
 

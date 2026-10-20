@@ -8,4 +8,3 @@ class RegolithRocky(SurfaceRecipe):
     name = "regolith-rocky"
     sets = [PolyhavenSet("moon_meteor_02")]
     displacement = DisplacementRange(low=0.0, high=0.25)
-    largest_magnification = 2.0

@@ -19,8 +19,8 @@ const TILING_SAMPLER_BINDING: u32 = 6;
 const SAMPLER_COUNT: u32 = 3;
 
 /// The descriptor set every shader reads images through: samplers clamping, repeating across u only (equirectangular
-/// maps) and repeating both ways (tiling textures), then arrays of textures, cube maps, storage images and texture
-/// arrays, each image at the index of the slot it was written into.
+/// maps) and repeating along every axis (tiling textures and volumes), then arrays of textures, cube maps, storage
+/// images, texture arrays and volumes, each image at the index of the slot it was written into.
 ///
 /// Cloning it is cheap, and clones share the table across threads.
 #[derive(Clone)]
@@ -61,13 +61,15 @@ impl BindlessTable {
         let wrapping_sampler_info = sampler_info.address_mode_u(vk::SamplerAddressMode::REPEAT);
         let wrapping_sampler =
             DeviceObject::new(memory, unsafe { device.create_sampler(&wrapping_sampler_info, None) }?);
-        let tiling_sampler_info = wrapping_sampler_info.address_mode_v(vk::SamplerAddressMode::REPEAT);
+        let tiling_sampler_info = wrapping_sampler_info
+            .address_mode_v(vk::SamplerAddressMode::REPEAT)
+            .address_mode_w(vk::SamplerAddressMode::REPEAT);
         let tiling_sampler = DeviceObject::new(memory, unsafe { device.create_sampler(&tiling_sampler_info, None) }?);
 
         let all_stages = vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE;
         let image_stages = |binding: BindlessBinding| match binding {
             BindlessBinding::Texture => all_stages,
-            BindlessBinding::CubeMap | BindlessBinding::TextureArray => {
+            BindlessBinding::CubeMap | BindlessBinding::TextureArray | BindlessBinding::Volume => {
                 vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE
             }
             BindlessBinding::StorageImage => vk::ShaderStageFlags::COMPUTE,
@@ -118,7 +120,8 @@ impl BindlessTable {
 
         let sampled_count = BindlessBinding::Texture.capacity()
             + BindlessBinding::CubeMap.capacity()
-            + BindlessBinding::TextureArray.capacity();
+            + BindlessBinding::TextureArray.capacity()
+            + BindlessBinding::Volume.capacity();
         let pool_sizes = [
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::SAMPLER)

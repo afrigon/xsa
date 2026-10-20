@@ -1,5 +1,5 @@
 use resource_loader::texture::{
-    ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureImage, TextureLoader, TextureShape,
+    ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureImage, TextureKind, TextureLoader,
 };
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
@@ -374,7 +374,7 @@ fn a_texture_with_layers_of_the_wrong_size_is_refused() {
     assert!(
         TextureImage::new(
             TextureFormat::Rgba8Unorm,
-            TextureShape::Plane,
+            TextureKind::Plane,
             2,
             2,
             1,
@@ -382,7 +382,7 @@ fn a_texture_with_layers_of_the_wrong_size_is_refused() {
         )
         .is_err()
     );
-    assert!(TextureImage::new(TextureFormat::Rgba8Unorm, TextureShape::Array, 2, 2, 1, Vec::new()).is_err());
+    assert!(TextureImage::new(TextureFormat::Rgba8Unorm, TextureKind::Array, 2, 2, 1, Vec::new()).is_err());
 }
 
 #[test]
@@ -408,7 +408,7 @@ fn a_ktx2_array_reads_each_layer_with_its_mip_chain() {
     };
     let image = Ktx2Loader::load(&file.bytes()).unwrap();
 
-    assert_eq!(image.shape(), TextureShape::Array);
+    assert_eq!(image.kind(), TextureKind::Array);
     assert_eq!(image.layers().len(), 3);
 
     for (index, layer) in image.layers().iter().enumerate() {
@@ -451,7 +451,7 @@ fn ktx2_metadata_reads_back_by_key() {
     };
     let image = Ktx2Loader::load(&file.bytes()).unwrap();
 
-    assert_eq!(image.shape(), TextureShape::Plane);
+    assert_eq!(image.kind(), TextureKind::Plane);
     assert_eq!(image.metadata("xsa.binary"), Some([1, 2, 3].as_slice()));
     assert_eq!(image.metadata_numbers("xsa.slopeSpread").unwrap(), [0.5, 0.25, 1e-3]);
     assert!(image.metadata_numbers("xsa.binary").is_err());

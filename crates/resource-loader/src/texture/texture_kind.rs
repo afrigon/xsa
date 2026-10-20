@@ -4,7 +4,7 @@ const CUBE_FACE_COUNT: usize = 6;
 
 /// How a texture's layers are arranged: what each layer of a `TextureImage` is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TextureShape {
+pub enum TextureKind {
     /// A single 2D image.
     Plane,
     /// Six square faces, in Vulkan's face order.
@@ -13,23 +13,23 @@ pub enum TextureShape {
     Array,
 }
 
-impl TextureShape {
-    /// Whether a texture of this shape can hold this many layers.
+impl TextureKind {
+    /// Whether a texture of this kind can hold this many layers.
     pub fn holds(self, layer_count: usize) -> bool {
         match self {
-            TextureShape::Plane => layer_count == 1,
-            TextureShape::CubeMap => layer_count == CUBE_FACE_COUNT,
-            TextureShape::Array => layer_count >= 1,
+            TextureKind::Plane => layer_count == 1,
+            TextureKind::CubeMap => layer_count == CUBE_FACE_COUNT,
+            TextureKind::Array => layer_count >= 1,
         }
     }
 }
 
-impl fmt::Display for TextureShape {
+impl fmt::Display for TextureKind {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let name = match self {
-            TextureShape::Plane => "2D texture",
-            TextureShape::CubeMap => "cube map",
-            TextureShape::Array => "texture array",
+            TextureKind::Plane => "2D texture",
+            TextureKind::CubeMap => "cube map",
+            TextureKind::Array => "texture array",
         };
 
         formatter.write_str(name)

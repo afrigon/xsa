@@ -2,9 +2,9 @@
 enum SurfaceDebugView : uint {
     None = 0,
     Classes = 1,
-    Scales = 2,
-    Planes = 3,
-    Fade = 4,
+    Planes = 2,
+    Fade = 3,
+    HexCells = 4,
 }
 
 [vk::constant_id(4)]

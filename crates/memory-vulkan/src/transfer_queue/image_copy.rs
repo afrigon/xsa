@@ -9,6 +9,7 @@ pub struct ImageCopy {
     pub offset: usize,
     pub mip_level: u32,
     pub array_layer: u32,
-    pub image_offset: vk::Offset2D,
+    /// Where the region starts in the image; z is the depth slice of a volume, 0 otherwise.
+    pub image_offset: vk::Offset3D,
     pub extent: vk::Extent2D,
 }

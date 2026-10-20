@@ -1,8 +1,7 @@
 import draw;
 __exported import noise;
 
-// Must match the renderer: `MAX_SURFACE_SCALES`, `SURFACE_CLASSES`, `TRIPLANAR_PLANES` and `SurfaceClass`.
-static const int maxSurfaceScales = 6;
+// Must match the renderer: `SURFACE_CLASSES`, `TRIPLANAR_PLANES` and `SurfaceClass`.
 static const int surfaceClasses = 3;
 static const int triplanarPlanes = 3;
 
@@ -12,7 +11,7 @@ enum SurfaceClass : uint {
     Steep = 2,
 }
 
-// Mirrors `SurfaceData` in the renderer. Sizes are in meters; each scale's rotation is its cosine and sine.
+// Mirrors `SurfaceData` in the renderer. Sizes are in meters.
 struct SurfaceData {
     uint colorTexture;
     uint normalTexture;
@@ -23,10 +22,10 @@ struct SurfaceData {
     float displacementLow;
     float displacementHigh;
     float3 averageColor;
-    uint scaleCount;
     float heightContrast;
-    uint padding[3];
-    float2 scaleRotations[maxSurfaceScales];
+    float hexCellSize;
+    uint tilingSeed;
+    uint padding[2];
 };
 
 // Mirrors `BiomeData` in the renderer: where a biome's classes hand over, and how the ground's shape moves them.
@@ -42,12 +41,19 @@ struct BiomeData {
     float reliefBias;
 };
 
-// Mirrors `SurfaceAnchorData`: where the camera stands within each class's texture repeat, for every scale and
-// projection plane, in repeats.
+// Mirrors `HexAnchor`: where the camera stands on a lattice of hexagonal cells, skewed.
+struct HexAnchor {
+    int2 cell;
+    float2 fraction;
+};
+
+// Mirrors `SurfaceAnchorData`: where the camera stands on each class's hexagonal cells, for every projection plane.
 struct SurfaceAnchors {
-    float2 planes[surfaceClasses][maxSurfaceScales][triplanarPlanes];
+    HexAnchor planes[surfaceClasses][triplanarPlanes];
     NoiseAnchor handoverNoise;
     NoiseAnchor variantNoise[surfaceClasses];
+    uint noiseVolume;
+    uint padding[3];
 };
 
 SurfaceAnchors *surfaceAnchors() {

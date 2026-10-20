@@ -7,7 +7,7 @@ use crate::{DOCUMENT_EXTENSION, Document, Id, NodeExtension, PackStack, ParseCon
 const SURFACES: &str = "surfaces";
 
 // A close-up ground material: three texture arrays of interchangeable variants, the side of the square one tile covers
-// (m), the heights its displacement's 0 and 1 stand for (m), and how far it may be scaled up.
+// (m) and the heights its displacement's 0 and 1 stand for (m).
 pub struct SurfaceDefinition {
     pub color: PathBuf,
     pub normal: PathBuf,
@@ -15,7 +15,6 @@ pub struct SurfaceDefinition {
     pub size: f32,
     pub displacement_low: f32,
     pub displacement_high: f32,
-    pub largest_magnification: f32,
 }
 
 impl SurfaceDefinition {
@@ -46,7 +45,6 @@ impl SurfaceDefinition {
             size: document.node("size")?.number_argument()? as f32,
             displacement_low: displacement_node.number_property("low")? as f32,
             displacement_high: displacement_node.number_property("high")? as f32,
-            largest_magnification: document.node("largest-magnification")?.number_argument()? as f32,
         }))
     }
 }

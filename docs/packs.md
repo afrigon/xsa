@@ -445,7 +445,6 @@ normal-texture "surfaces/regolith/normal"
 displacement-texture "surfaces/regolith/displacement"
 size 3.1015625
 displacement low=0.0 high=0.05
-largest-magnification 8.0
 ```
 
 - **`color-texture`**, **`normal-texture`**, **`displacement-texture`:**
@@ -465,9 +464,6 @@ largest-magnification 8.0
 - **`size`** (m): the side of the square one tile covers.
 - **`displacement`** (m): the heights a displacement of 0 (`low`) and 1
   (`high`) stand for.
-- **`largest-magnification`:** how many times the surface can be scaled up
-  before it stops looking right: regolith is roughly self-similar, grass is
-  not.
 
 Metadata values are text, numbers separated by spaces, ending with a NUL.
 

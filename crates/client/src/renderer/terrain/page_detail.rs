@@ -32,6 +32,11 @@ impl PageDetail {
         PageDetail::LEVEL_ZERO_TEXEL_ANGLE / f64::from(level).exp2() * self.radius * self.focal_length_pixels / distance
     }
 
+    // The ground a pixel covers at `distance` (m), seen face on.
+    pub fn pixel_footprint(&self, distance: f64) -> f64 {
+        distance / self.focal_length_pixels
+    }
+
     // Whether some texel of `level` is wider than a pixel at `distance`: the narrowest texels of an equal-angle face,
     // a factor of √2 below those across its middle, included.
     pub fn magnifies(&self, level: u32, distance: f64) -> bool {

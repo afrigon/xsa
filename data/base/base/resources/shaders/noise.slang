@@ -1,9 +1,9 @@
-// Where the camera stands in a seeded noise, in the body's frame: its cell and the fraction across it, so a pixel adds
-// only its small offset. Mirrors `NoiseAnchor` in the renderer.
+import draw;
+
+// Where the camera stands in a seeded noise, in the body's frame: its place in the noise volume (periods), and the
+// volume's periods per meter, so a pixel adds only its small offset. Mirrored by `NoiseAnchor` in the renderer.
 struct NoiseAnchor {
-    int3 cell;
-    uint seed;
-    float3 fraction;
+    float3 place;
     float inverseSize;
 };
 
@@ -45,9 +45,7 @@ float gradientNoise(int3 cell, float3 fraction, uint seed) {
     return lerp(alongY.x, alongY.y, fade.z);
 }
 
-// The noise `offset` (m) away from where its anchor stands.
-float noiseAt(NoiseAnchor anchor, float3 offset) {
-    float3 place = anchor.fraction + offset * anchor.inverseSize;
-    float3 whole = floor(place);
-    return gradientNoise(anchor.cell + int3(whole), place - whole, anchor.seed);
+// The noise `offset` (m) away from where its anchor stands, read from the noise volume at bindless index `volume`.
+float noiseAt(uint volume, NoiseAnchor anchor, float3 offset) {
+    return volumes[volume].SampleLevel(tilingSampler, anchor.place + offset * anchor.inverseSize, 0.0).r;
 }

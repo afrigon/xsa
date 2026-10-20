@@ -3,4 +3,3 @@ normal-texture "surfaces/regolith-cratered/normal"
 displacement-texture "surfaces/regolith-cratered/displacement"
 size 3.203125
 displacement low=0.0 high=0.15
-largest-magnification 4.0

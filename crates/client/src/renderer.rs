@@ -19,6 +19,7 @@ mod lens_lights;
 mod light_occlusion;
 mod light_projection;
 mod material;
+mod noise_volume;
 mod object_pose;
 mod passes;
 mod pending_capture;
@@ -87,6 +88,7 @@ use lens::Lens;
 use light_occlusion::LightOcclusion;
 use light_projection::LightProjection;
 use material::MaterialBuffer;
+use noise_volume::NoiseVolume;
 use object_pose::ObjectPose;
 use passes::TaaPass;
 use pending_capture::BYTES_PER_PIXEL;
@@ -154,6 +156,7 @@ pub struct Renderer {
     surface_anchor_data: Vec<SurfaceAnchorData>,
     // Each terrain's slot in `surface_anchor_data`, by terrain index; None for terrains without surfaces.
     surface_anchor_slots: Vec<Option<usize>>,
+    noise_volume: NoiseVolume,
     page_writer: TilePageWriter,
     // Whether terrain pages follow what tiles request, or stay as they are.
     terrain_residency: Residency,
@@ -202,6 +205,7 @@ impl Renderer {
             .collect::<anyhow::Result<_>>()?;
         let mut graph = RenderGraph::new(&gpu.memory, swapchain.extent());
         let passes = RenderPasses::new(&gpu, &mut graph, shaders, swapchain.format(), FRAMES_IN_FLIGHT)?;
+        let noise_volume = NoiseVolume::new(&gpu)?;
 
         Ok(Self {
             scene: Scene::default(),
@@ -227,6 +231,7 @@ impl Renderer {
             tile_pages: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             surface_anchor_data: Vec::with_capacity(INITIAL_SURFACE_ANCHOR_CAPACITY),
             surface_anchor_slots: Vec::new(),
+            noise_volume,
             page_writer: TilePageWriter::new(),
             terrain_residency: Residency::Live,
             object_capacity: INITIAL_OBJECT_CAPACITY,
@@ -539,6 +544,7 @@ impl Renderer {
     }
 
     fn write_frame_data(&mut self, camera: &Camera) -> anyhow::Result<()> {
+        self.noise_volume.poll(&self.gpu)?;
         let extent = self.swapchain.extent();
         let clip_from_view = camera.clip_from_view();
         let unjittered_view_projection = clip_from_view * camera.view_rotation();
@@ -704,13 +710,21 @@ impl Renderer {
                 vertex_spacing_angle: ranges.vertex_spacing_angle(),
             };
             let finest_color = terrain
-                .surfaces
+                .pages
                 .as_ref()
-                .and(terrain.pages.as_ref())
                 .and_then(|pages| pages.layer(TerrainLayer::Color))
                 .map(|(_, finest)| finest);
-            let range = |tile: &SelectedTile| match finest_color {
-                Some(level) if detail.magnifies(level, tile.nearest) => ShadingRange::Near,
+            let surfaces = terrain
+                .surfaces
+                .as_deref()
+                .filter(|_| self.noise_volume.index().is_some());
+            let range = |tile: &SelectedTile| match (surfaces, finest_color) {
+                (Some(surfaces), Some(level))
+                    if detail.magnifies(level, tile.nearest)
+                        && surfaces.shows_at(detail.pixel_footprint(tile.nearest)) =>
+                {
+                    ShadingRange::Near
+                }
                 _ => ShadingRange::Far,
             };
             let draw_key = |tile: &SelectedTile| (range(tile), DetailRanges::grid_cells(tile.detail));
@@ -787,18 +801,25 @@ impl Renderer {
             .submit(self.scene.terrains().iter().map(|terrain| terrain.pages.as_deref()));
     }
 
-    // Where the camera stands in each terrain's surfaces, computed in f64 in the body's frame.
+    // Where the camera stands in each terrain's surfaces, computed in f64 in the body's frame. Surfaces are drawn only
+    // once the noise they read is uploaded.
     fn write_surface_anchors(&mut self, camera: &Camera) {
         self.surface_anchor_data.clear();
         self.surface_anchor_slots.clear();
+        let noise_volume = self.noise_volume.index();
 
         for terrain in self.scene.terrains() {
-            let slot = terrain.surfaces.as_ref().map(|surfaces| {
-                let object = self.scene.object(terrain.object);
-                let camera_in_body = object.orientation.inverse() * (camera.position - object.position);
-                self.surface_anchor_data.push(surfaces.anchor_data(camera_in_body));
-                self.surface_anchor_data.len() - 1
-            });
+            let slot = terrain
+                .surfaces
+                .as_ref()
+                .zip(noise_volume)
+                .map(|(surfaces, noise_volume)| {
+                    let object = self.scene.object(terrain.object);
+                    let camera_in_body = object.orientation.inverse() * (camera.position - object.position);
+                    self.surface_anchor_data
+                        .push(surfaces.anchor_data(camera_in_body, noise_volume));
+                    self.surface_anchor_data.len() - 1
+                });
             self.surface_anchor_slots.push(slot);
         }
     }

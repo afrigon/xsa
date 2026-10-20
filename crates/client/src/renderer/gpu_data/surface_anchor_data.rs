@@ -1,19 +1,19 @@
-use glam::Vec2;
-
-use super::{GpuData, MAX_SURFACE_SCALES, NoiseAnchor};
+use super::{GpuData, HexAnchor, NoiseAnchor};
 use crate::renderer::surface::{SURFACE_CLASSES, TRIPLANAR_PLANES};
 
-// Where the camera stands within each class's texture repeat, for every scale and projection plane, in repeats. Placed
+// Where the camera stands on each class's lattice of hexagonal cells, for every projection plane. Placed
 // in f64 each frame, so pixels only add their small offset from the camera in f32, with the noises that move the
-// handovers and choose each class's variants. Mirrored by `SurfaceAnchors` in terrain/surface/surface-data.slang.
+// handovers and choose each class's variants, read from the noise volume at bindless index `noise_volume`. Mirrored by `SurfaceAnchors` in terrain/surface/surface-data.slang.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct SurfaceAnchorData {
-    pub planes: [[[Vec2; TRIPLANAR_PLANES]; MAX_SURFACE_SCALES]; SURFACE_CLASSES],
+    pub planes: [[HexAnchor; TRIPLANAR_PLANES]; SURFACE_CLASSES],
     pub handover_noise: NoiseAnchor,
     pub variant_noise: [NoiseAnchor; SURFACE_CLASSES],
+    pub noise_volume: u32,
+    pub padding: [u32; 3],
 }
 
-const _: () = assert!(size_of::<SurfaceAnchorData>() == 560);
+const _: () = assert!(size_of::<SurfaceAnchorData>() == 224);
 
 unsafe impl GpuData for SurfaceAnchorData {}
