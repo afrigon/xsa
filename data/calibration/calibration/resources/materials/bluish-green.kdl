@@ -1,2 +1,2 @@
-shader "base:lambert"
+shader "base:terrain/lambert"
 base-color 0.12299 0.51915 0.40414

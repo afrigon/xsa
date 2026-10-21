@@ -8,7 +8,8 @@ use xsa_commands::completion::CompletionCandidate;
 use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
 use xsa_packs::{
-    Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition, TerrainDefinition,
+    BiomeSurfacesDefinition, Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition,
+    SurfaceDefinition, TerrainDefinition,
 };
 use xsa_proto::event::WorldState;
 use xsa_units::SimulationTime;
@@ -16,8 +17,9 @@ use xsa_units::SimulationTime;
 use super::body_step::BodyStep;
 use crate::camera::Attitude;
 use crate::renderer::{
-    ColorSpace, EmissiveMaterial, HapkeMaterial, LambertMaterial, LightSource, MaterialHandle, ObjectHandle, Renderer,
-    SceneObject, SkyboxMaterial, Star, Terrain, TerrainLayer, TerrainPages,
+    BiomeSurfaces, ColorSpace, EmissiveMaterial, HapkeMaterial, LambertMaterial, LightSource, MaterialHandle,
+    ObjectHandle, Renderer, SceneObject, SkyboxMaterial, Star, SurfaceClass, SurfaceTextures, Terrain, TerrainLayer,
+    TerrainPages,
 };
 use crate::ui::PositionReading;
 
@@ -67,19 +69,40 @@ impl ClientWorld {
         let illumination = Illumination::new(simulation.bodies());
         let mut materials = Vec::new();
         let mut terrains = Vec::new();
+        let mut surfaces = Vec::new();
 
         for (value, body) in simulation.bodies().iter().enumerate() {
             let id = Id::parse(&body.id.value, DEFAULT_NAMESPACE)?;
             let definition = MaterialDefinition::load_for_body(&stack, &id)
                 .with_context(|| format!("loading the material of {}", body.id))?;
-            let terrain = ClientWorld::load_terrain(&stack, &id, &definition, resources, &mut group)
+            let terrain_definition = TerrainDefinition::load_for_body(&stack, &id)
                 .with_context(|| format!("loading the terrain of {}", body.id))?;
+            let terrain =
+                ClientWorld::load_terrain(&id, terrain_definition.as_ref(), &definition, resources, &mut group);
+            let body_surfaces = ClientWorld::load_surfaces(
+                &stack,
+                body,
+                terrain_definition.as_ref(),
+                &definition,
+                resources,
+                &mut group,
+            )
+            .with_context(|| format!("loading the surfaces of {}", body.id))?
+            .map(Arc::new);
             let star_light = illumination.star_light(BodyIndex { value });
-            let material =
-                ClientWorld::create_material(renderer, resources, &mut group, &body.id, definition, star_light)
-                    .with_context(|| format!("loading the material of {}", body.id))?;
+            let material = ClientWorld::create_material(
+                renderer,
+                resources,
+                &mut group,
+                &body.id,
+                definition,
+                body_surfaces.clone(),
+                star_light,
+            )
+            .with_context(|| format!("loading the material of {}", body.id))?;
             materials.push(material);
             terrains.push(terrain.map(Arc::new));
+            surfaces.push(body_surfaces);
         }
 
         let mut state = SimulationState::default();
@@ -91,8 +114,9 @@ impl ClientWorld {
             .iter()
             .zip(&materials)
             .zip(&terrains)
+            .zip(&surfaces)
             .zip(&state.bodies)
-            .map(|(((body, &material), terrain), body_state)| {
+            .map(|((((body, &material), terrain), surfaces), body_state)| {
                 let object = scene.add(SceneObject {
                     position: body_state.position,
                     orientation: body_state.orientation,
@@ -103,6 +127,7 @@ impl ClientWorld {
                     object,
                     material,
                     pages: terrain.clone(),
+                    surfaces: surfaces.clone(),
                 });
                 scene.add_occluder(object);
                 object
@@ -359,13 +384,13 @@ impl ClientWorld {
 
     // The body's heights and the layers its material shades with; None when it has neither, drawn smooth.
     fn load_terrain(
-        stack: &PackStack,
         body: &Id,
+        terrain: Option<&TerrainDefinition>,
         material: &MaterialDefinition,
         resources: &Resources,
         group: &mut ResourceGroup,
-    ) -> anyhow::Result<Option<TerrainPages>> {
-        let heights = TerrainDefinition::load_for_body(stack, body)?.and_then(|definition| definition.height_map);
+    ) -> Option<TerrainPages> {
+        let heights = terrain.and_then(|definition| definition.height_map.clone());
         let layers = match material {
             MaterialDefinition::Hapke {
                 color,
@@ -383,16 +408,55 @@ impl ClientWorld {
         };
 
         if heights.is_none() && layers.iter().all(Option::is_none) {
-            return Ok(None);
+            return None;
         }
 
-        Ok(Some(TerrainPages::new(
-            resources,
-            group,
-            &body.to_string(),
-            heights,
-            layers,
-        )))
+        Some(TerrainPages::new(resources, group, &body.to_string(), heights, layers))
+    }
+
+    // The surfaces of the body's biome, for ground shaded with Hapke; None without a biome, and while a surface's
+    // textures are missing.
+    fn load_surfaces(
+        stack: &PackStack,
+        body: &Body,
+        terrain: Option<&TerrainDefinition>,
+        material: &MaterialDefinition,
+        resources: &Resources,
+        group: &mut ResourceGroup,
+    ) -> anyhow::Result<Option<BiomeSurfaces>> {
+        let MaterialDefinition::Hapke { .. } = material else {
+            return Ok(None);
+        };
+        let Some(biome) = terrain.and_then(|definition| definition.biomes.first()) else {
+            return Ok(None);
+        };
+        let Some(definition) = BiomeSurfacesDefinition::load(stack, biome)? else {
+            return Ok(None);
+        };
+        let seed = body.seed.derive(&format!("biome/{biome}"));
+        let definition_of = |class: SurfaceClass| match class {
+            SurfaceClass::Flat => &definition.flat,
+            SurfaceClass::Slope => &definition.slope,
+        };
+        let mut load = |class: SurfaceClass, surface: &SurfaceDefinition| {
+            let mut array = |kind: &str, path: &PathBuf, color_space| {
+                let name = format!("{} {} {kind}", body.id, class.name());
+                let array = resources.load(LoadRequest::new(path, name), color_space);
+                group.add(&array);
+                array
+            };
+            SurfaceTextures::new(
+                array("color", &surface.color, ColorSpace::Srgb),
+                array("normal", &surface.normal, ColorSpace::Linear),
+                array("displacement", &surface.displacement, ColorSpace::Linear),
+                surface,
+                class,
+                seed,
+            )
+        };
+        let [flat, slope] = SurfaceClass::ALL.map(|class| load(class, definition_of(class)));
+
+        Ok(Some(BiomeSurfaces::new([flat?, slope?], &definition, seed)))
     }
 
     fn create_material(
@@ -401,6 +465,7 @@ impl ClientWorld {
         group: &mut ResourceGroup,
         body: &BodyId,
         definition: MaterialDefinition,
+        surfaces: Option<Arc<BiomeSurfaces>>,
         star_light: Option<&StarLight>,
     ) -> anyhow::Result<MaterialHandle> {
         let name = format!("{body} material");
@@ -438,6 +503,7 @@ impl ClientWorld {
                     base_color,
                     emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
                     emissive_luminance,
+                    surfaces,
                 };
                 renderer.add_material(&name, material)
             }

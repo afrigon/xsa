@@ -1,4 +1,4 @@
-use std::f64::consts::FRAC_PI_2;
+use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_2};
 
 use resource_loader::terrain::PAGE_INTERIOR;
 
@@ -30,5 +30,11 @@ impl PageDetail {
     // instead, whose texels are twice as wide.
     pub fn texel_pixels(&self, level: u32, distance: f64) -> f64 {
         PageDetail::LEVEL_ZERO_TEXEL_ANGLE / f64::from(level).exp2() * self.radius * self.focal_length_pixels / distance
+    }
+
+    // Whether some texel of `level` is wider than a pixel at `distance`: the narrowest texels of an equal-angle face,
+    // a factor of √2 below those across its middle, included.
+    pub fn magnifies(&self, level: u32, distance: f64) -> bool {
+        self.texel_pixels(level, distance) * FRAC_1_SQRT_2 > 1.0
     }
 }

@@ -382,6 +382,7 @@ impl Streamer {
         let chunk = pool.chunk(cell.chunk).expect("a free cell is in a chunk of its pool");
         let (image, _) = chunk.ready().expect("a free cell is in a ready chunk");
         let format = pool.format;
+        let offset = chunk.grid.offset(cell.cell);
         let upload = ImageUpload {
             data: vec![Box::new(bytes)],
             copies: vec![ImageCopy {
@@ -389,7 +390,11 @@ impl Streamer {
                 offset: 0,
                 mip_level: 0,
                 array_layer: 0,
-                image_offset: chunk.grid.offset(cell.cell),
+                image_offset: ash::vk::Offset3D {
+                    x: offset.x,
+                    y: offset.y,
+                    z: 0,
+                },
                 extent: format.extent,
             }],
             texel_block: format.texel_block,

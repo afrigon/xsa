@@ -3,7 +3,7 @@ use super::{
     LensDocument, TerrainLodDocument, WhiteBalanceDocument,
 };
 use crate::config::RenderConfig;
-use crate::renderer::{Shader, Tonemapper};
+use crate::renderer::{DebugView, SurfaceDebugView, TerrainDebugView, Tonemapper};
 
 pub struct RenderDocument {
     tonemapper: Option<Option<Tonemapper>>,
@@ -13,7 +13,9 @@ pub struct RenderDocument {
     white_balance: WhiteBalanceDocument,
     antialiasing: AntialiasingDocument,
     wireframe: Option<bool>,
-    shader_override: Option<Option<Shader>>,
+    shader_override: Option<Option<DebugView>>,
+    terrain_shader_override: Option<Option<TerrainDebugView>>,
+    surface_shader_override: Option<Option<SurfaceDebugView>>,
     terrain_lod: TerrainLodDocument,
 }
 
@@ -29,7 +31,19 @@ impl RenderDocument {
     pub const SHADER_OVERRIDE: ConfigKey = ConfigKey::session(
         "render.shader.override",
         ConfigValueKind::Choice {
-            names: <Option<Shader> as ConfigChoice>::names,
+            names: <Option<DebugView> as ConfigChoice>::names,
+        },
+    );
+    pub const TERRAIN_SHADER_OVERRIDE: ConfigKey = ConfigKey::session(
+        "render.shader.terrain.override",
+        ConfigValueKind::Choice {
+            names: <Option<TerrainDebugView> as ConfigChoice>::names,
+        },
+    );
+    pub const SURFACE_SHADER_OVERRIDE: ConfigKey = ConfigKey::session(
+        "render.shader.surface.override",
+        ConfigValueKind::Choice {
+            names: <Option<SurfaceDebugView> as ConfigChoice>::names,
         },
     );
 
@@ -43,6 +57,8 @@ impl RenderDocument {
             antialiasing: AntialiasingDocument::read(values),
             wireframe: values.bool(RenderDocument::WIREFRAME),
             shader_override: values.choice(RenderDocument::SHADER_OVERRIDE),
+            terrain_shader_override: values.choice(RenderDocument::TERRAIN_SHADER_OVERRIDE),
+            surface_shader_override: values.choice(RenderDocument::SURFACE_SHADER_OVERRIDE),
             terrain_lod: TerrainLodDocument::read(values),
         }
     }
@@ -57,6 +73,8 @@ impl RenderDocument {
             antialiasing: self.antialiasing.into_config(&defaults.antialiasing),
             wireframe: self.wireframe.unwrap_or(defaults.wireframe),
             shader_override: self.shader_override.unwrap_or(defaults.shader_override),
+            terrain_shader_override: self.terrain_shader_override.unwrap_or(defaults.terrain_shader_override),
+            surface_shader_override: self.surface_shader_override.unwrap_or(defaults.surface_shader_override),
             terrain_lod: self.terrain_lod.into_config(&defaults.terrain_lod),
         }
     }
@@ -72,6 +90,14 @@ impl RenderDocument {
         layer.set(
             RenderDocument::SHADER_OVERRIDE.path,
             config.shader_override.config_name().into(),
+        );
+        layer.set(
+            RenderDocument::TERRAIN_SHADER_OVERRIDE.path,
+            config.terrain_shader_override.config_name().into(),
+        );
+        layer.set(
+            RenderDocument::SURFACE_SHADER_OVERRIDE.path,
+            config.surface_shader_override.config_name().into(),
         );
         TerrainLodDocument::write(&config.terrain_lod, layer);
     }

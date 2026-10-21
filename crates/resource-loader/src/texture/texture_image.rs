@@ -1,32 +1,31 @@
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader, TextureShape};
+use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureKind, TextureLoader, TextureMetadata};
 use crate::utils::HalfFloat;
 
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;
 
-/// A decoded texture: one or more layers arranged as its shape says, each holding its full mip chain, largest level
+/// A decoded texture: one or more layers arranged as its kind says, each holding its full mip chain, largest level
 /// first, with the key/value metadata its file carries.
 pub struct TextureImage {
     pub(super) format: TextureFormat,
-    pub(super) shape: TextureShape,
+    pub(super) kind: TextureKind,
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) mip_levels: u32,
     pub(super) layers: Vec<Vec<u8>>,
-    pub(super) metadata: BTreeMap<String, Vec<u8>>,
+    pub(super) metadata: TextureMetadata,
 }
 
 impl TextureImage {
     /// A texture from its layers' texels, each layer its mip chain, largest level first, refusing layers of the wrong
-    /// size or count for its shape.
+    /// size or count for its kind.
     pub fn new(
         format: TextureFormat,
-        shape: TextureShape,
+        kind: TextureKind,
         width: u32,
         height: u32,
         mip_levels: u32,
@@ -34,12 +33,12 @@ impl TextureImage {
     ) -> anyhow::Result<TextureImage> {
         let image = TextureImage {
             format,
-            shape,
+            kind,
             width,
             height,
             mip_levels,
             layers,
-            metadata: BTreeMap::new(),
+            metadata: TextureMetadata::default(),
         };
         let layer_size = image.layer_size()?;
         image.check_layer_count()?;
@@ -91,8 +90,8 @@ impl TextureImage {
         self.format
     }
 
-    pub fn shape(&self) -> TextureShape {
-        self.shape
+    pub fn kind(&self) -> TextureKind {
+        self.kind
     }
 
     pub fn width(&self) -> u32 {
@@ -119,24 +118,17 @@ impl TextureImage {
 
     /// The value stored under a key/value metadata key, as the file holds it.
     pub fn metadata(&self, key: &str) -> Option<&[u8]> {
-        self.metadata.get(key).map(Vec::as_slice)
+        self.metadata.value(key)
     }
 
     /// The numbers stored under a key/value metadata key, written as text separated by spaces and ending with a NUL.
     pub fn metadata_numbers(&self, key: &str) -> anyhow::Result<Vec<f32>> {
-        let value = self.metadata(key).with_context(|| format!("no {key} metadata"))?;
-        let text = value
-            .strip_suffix(b"\0")
-            .and_then(|text| std::str::from_utf8(text).ok())
-            .with_context(|| format!("{key} metadata is not text ending with a NUL"))?;
+        self.metadata.numbers(key)
+    }
 
-        text.split_ascii_whitespace()
-            .map(|number| {
-                number
-                    .parse()
-                    .with_context(|| format!("{key} metadata: {number} is not a number"))
-            })
-            .collect()
+    /// Every key/value metadata entry the file carries.
+    pub fn all_metadata(&self) -> &TextureMetadata {
+        &self.metadata
     }
 
     /// The top mip level of a half-float image, row by row, as red green blue.
@@ -164,9 +156,9 @@ impl TextureImage {
 
     pub(super) fn check_layer_count(&self) -> anyhow::Result<()> {
         ensure!(
-            self.shape.holds(self.layers.len()),
+            self.kind.holds(self.layers.len()),
             "a {} cannot hold {} layers",
-            self.shape,
+            self.kind,
             self.layers.len()
         );
 

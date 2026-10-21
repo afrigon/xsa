@@ -24,7 +24,9 @@ item. Read it before proposing what to build next. Design documents live in
 `docs/launchpad.md`: releases, the pack repository, instances and `launchpad`;
 `docs/xui.md`:
 the vision and design of xui, the UI framework; read it before changing xui or
-the game's interface).
+the game's interface; `docs/rendering.md`: how drawing is organized into
+geometry families, programs, variants and debug views; read it before adding a
+shader or a debug view).
 
 Linux (Wayland, Hyprland) is the primary and tested platform. Windows must
 build, but X11 and Windows are not a testing focus.
@@ -172,8 +174,8 @@ Names in code, data and documents use these words in these meanings only:
   by temporal anti-aliasing and upscaling.
 - **Render graph:** every frame is built with the `render-graph-vulkan` crate,
   and every pass goes through it.
-- **Materials are typed:** a `Shader` is a program, a `Material` is a shader
-  plus typed parameters in a per-frame GPU buffer.
+- **Materials are typed:** a `Shader` is a program (`docs/rendering.md`), a
+  `Material` is a shader plus typed parameters in a per-frame GPU buffer.
 - Every rendering feature is explained before it is implemented: what it is,
   why the renderer needs it, how it fits the pipeline.
 - **Object lifetime:** `memory-vulkan`'s `MemoryContext` owns the device, its
@@ -197,24 +199,22 @@ Names in code, data and documents use these words in these meanings only:
   exception is `xui-vulkan`, a library: its shader lives in
   `crates/xui-vulkan/shaders/`, is compiled by the same task and is embedded
   in the crate.
-- Files are grouped by feature: `geometry/`, `material/` (its reflectance
-  functions in `light/`, the `render.shader.override` views in `debug/`) and
-  `post/` (post-processing); `frame.slang` and `draw.slang` at the root are
-  read by every program. Imports name the full path from the shader root
-  (`import material.light.hapke`), never one relative to the importing file.
+- Files are grouped by feature (`docs/rendering.md`): `terrain/` (the terrain
+  family's vertex stage, layers, programs and views), `light/` (light models
+  every program shares), `debug/` (the generic debug views) and `post/`
+  (post-processing); `frame.slang`, `draw.slang` and `fragment.slang` at the
+  root are read by every program. Imports name the full path from the shader
+  root (`import light.hapke`). Slang looks for an import next to the importing
+  file first, so a module path must not also exist under the importer's folder.
 - A program is a file with `[shader(...)]` entry points, `vertexMain` and
-  `fragmentMain`, compiled to a `.spv` next to it; every other file is a
-  module, only imported.
-- A material shader's `vertexMain<G : Geometry>` passes on only the varyings
-  its `fragmentMain` reads. A geometry (how a draw's vertices are placed) is a
-  `struct <Name> : Geometry` in `geometry/`. The task specializes every
-  material with every geometry into `<material>-<geometry>.spv`, one pipeline
-  each.
-- A material shader is named after the model it computes (`lambert`,
-  `hapke`, `emissive`) and registered in the renderer's `shaders!` list, which
+  `fragmentMain`, compiled whole to a `.spv` next to it; every other file is a
+  module, only imported. A program is named by its family and light model
+  (`terrain/hapke`), registered in the renderer's `shaders!` list, which
   generates the `Shader` enum; the struct of its parameters implements
-  `ShaderData`, naming that shader. A geometry is registered in the `Geometry`
-  enum.
+  `ShaderData`, naming that shader.
+- What varies within a program (tile shape, debug views) is a specialization
+  constant, declared with `[vk::constant_id(n)]` and mirrored by an enum in the
+  renderer; `ForwardPipeline` lists each pipeline's values by constant id.
 - **Struct layouts must match between Slang and Rust.** Rust size assertions
   can't see Slang's layout: after changing a shared struct, check `Offset` and
   `ArrayStride` in `spirv-dis` output. glam's `Mat4` forces 16-byte alignment,

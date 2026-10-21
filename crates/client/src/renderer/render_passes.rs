@@ -45,6 +45,11 @@ impl RenderPasses {
         })
     }
 
+    // Builds what the next frame draws with under `render`, before its recording starts.
+    pub fn ensure_pipelines(&mut self, gpu: &GpuContext, render: &RenderConfig) -> anyhow::Result<()> {
+        self.forward.ensure_pipelines(gpu, render)
+    }
+
     pub fn add_to<'passes, 'frame>(
         &'passes mut self,
         graph: &mut GraphBuilder<'_, 'passes, FrameContext<'frame>>,

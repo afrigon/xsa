@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use anyhow::bail;
 
-use resource_loader::texture::{TextureFormat, TextureImage, TextureShape};
+use resource_loader::texture::{TextureFormat, TextureImage, TextureKind};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const HEADER_SIZE: usize = 80;
@@ -21,7 +21,7 @@ impl Ktx2Writer {
             bail!("{} texels: only uncompressed formats can be written", image.format());
         };
 
-        if image.shape() == TextureShape::Array {
+        if image.kind() == TextureKind::Array {
             bail!("texture arrays cannot be written");
         }
 
@@ -258,7 +258,7 @@ mod tests {
                 layer
             })
             .collect();
-        let image = TextureImage::new(TextureFormat::Rg8Unorm, TextureShape::CubeMap, 4, 4, 3, layers.clone()).unwrap();
+        let image = TextureImage::new(TextureFormat::Rg8Unorm, TextureKind::CubeMap, 4, 4, 3, layers.clone()).unwrap();
         let read = Ktx2Loader::load(&written(&image)).unwrap();
 
         assert_eq!(read.format(), TextureFormat::Rg8Unorm);
@@ -278,7 +278,7 @@ mod tests {
         ] {
             let size = format.level_size(2, 1) + format.level_size(1, 1);
             let layer: Vec<u8> = (0..size as u8).collect();
-            let image = TextureImage::new(format, TextureShape::Plane, 2, 1, 2, vec![layer.clone()]).unwrap();
+            let image = TextureImage::new(format, TextureKind::Plane, 2, 1, 2, vec![layer.clone()]).unwrap();
             let read = Ktx2Loader::load(&written(&image)).unwrap();
 
             assert_eq!(read.format(), format, "{format}");
@@ -288,8 +288,7 @@ mod tests {
 
     #[test]
     fn a_written_file_describes_its_texels() {
-        let image =
-            TextureImage::new(TextureFormat::Rgba8Srgb, TextureShape::Plane, 1, 1, 1, vec![vec![0; 4]]).unwrap();
+        let image = TextureImage::new(TextureFormat::Rgba8Srgb, TextureKind::Plane, 1, 1, 1, vec![vec![0; 4]]).unwrap();
         let bytes = written(&image);
         let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
         let descriptor = word(48) as usize;
@@ -307,7 +306,7 @@ mod tests {
     fn block_compressed_textures_are_not_written() {
         let image = TextureImage::new(
             TextureFormat::Bc7Srgb,
-            TextureShape::Plane,
+            TextureKind::Plane,
             4,
             4,
             1,

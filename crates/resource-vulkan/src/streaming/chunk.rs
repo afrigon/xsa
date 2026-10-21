@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use memory_vulkan::{
-    BindlessBinding, BindlessSlot, BindlessTable, GpuUpload, Image, ImageDescription, ImageLayers, ImageMemory,
+    BindlessBinding, BindlessSlot, BindlessTable, GpuUpload, Image, ImageDescription, ImageKind, ImageMemory,
 };
 
 use crate::LoadEnvironment;
@@ -81,7 +81,7 @@ impl Chunk {
                     | vk::ImageUsageFlags::TRANSFER_SRC,
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: 1,
-                layers: ImageLayers::Single,
+                kind: ImageKind::Single,
                 memory: ImageMemory::Dedicated,
                 sharing: environment.transfer.sharing(),
             },

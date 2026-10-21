@@ -90,14 +90,14 @@ impl MaterialDefinition {
         let shader_name = shader.to_string();
 
         match shader_name.as_str() {
-            "base:emissive" => Ok(MaterialDefinition::Emissive {
+            "base:terrain/emissive" => Ok(MaterialDefinition::Emissive {
                 color: match document.optional_node("color") {
                     Some(_) => color("color")?,
                     None => Vec3::ONE,
                 },
                 luminance: number("luminance")?,
             }),
-            "base:lambert" => {
+            "base:terrain/lambert" => {
                 let (emissive, emissive_luminance) = emission()?;
 
                 Ok(MaterialDefinition::Lambert {
@@ -108,7 +108,7 @@ impl MaterialDefinition {
                     emissive_luminance,
                 })
             }
-            "base:hapke" => {
+            "base:terrain/hapke" => {
                 let (emissive, emissive_luminance) = emission()?;
                 let medium = layer("medium-terrain")?;
                 let opposition = layer("opposition-terrain")?;

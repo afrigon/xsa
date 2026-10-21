@@ -1,4 +1,5 @@
 use super::{BodyCategory, BodyId, BodyIndex, Star};
+use crate::random::Seed;
 
 pub struct Body {
     pub id: BodyId,
@@ -8,4 +9,5 @@ pub struct Body {
     pub radius: f64,
     pub gravitational_parameter: f64,
     pub star: Option<Star>,
+    pub seed: Seed,
 }

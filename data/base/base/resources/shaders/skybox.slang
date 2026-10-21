@@ -1,4 +1,4 @@
-import material.material;
+import fragment;
 
 [[vk::binding(0, 0)]]
 SamplerState linearSampler;

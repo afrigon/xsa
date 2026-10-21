@@ -2,7 +2,7 @@ use std::io::{Read, Seek};
 
 use anyhow::{Context, bail, ensure};
 use resource_loader::terrain::{PAGE_BORDER, PAGE_EXTENT, PAGE_INTERIOR, TerrainReader};
-use resource_loader::texture::{TextureImage, TextureShape};
+use resource_loader::texture::{TextureImage, TextureKind};
 use resource_loader::utils::CubeFace;
 
 use super::{LayerEncoding, LevelSelection, TerrainRegion};
@@ -27,8 +27,8 @@ impl<R: Read + Seek> TerrainExtractor<R> {
 
     pub fn extract(&mut self, region: TerrainRegion) -> anyhow::Result<TextureImage> {
         match region {
-            TerrainRegion::Cube(levels) => self.faces(&CubeFace::ALL, TextureShape::CubeMap, levels),
-            TerrainRegion::Face(face, levels) => self.faces(&[face], TextureShape::Plane, levels),
+            TerrainRegion::Cube(levels) => self.faces(&CubeFace::ALL, TextureKind::CubeMap, levels),
+            TerrainRegion::Face(face, levels) => self.faces(&[face], TextureKind::Plane, levels),
             TerrainRegion::Page(address) => {
                 let entry = self
                     .reader
@@ -38,7 +38,7 @@ impl<R: Read + Seek> TerrainExtractor<R> {
 
                 TextureImage::new(
                     self.layer.input_format(),
-                    TextureShape::Plane,
+                    TextureKind::Plane,
                     PAGE_EXTENT,
                     PAGE_EXTENT,
                     1,
@@ -49,12 +49,7 @@ impl<R: Read + Seek> TerrainExtractor<R> {
     }
 
     // Each face's mip chain over the selected levels, finest first.
-    fn faces(
-        &mut self,
-        faces: &[CubeFace],
-        shape: TextureShape,
-        levels: LevelSelection,
-    ) -> anyhow::Result<TextureImage> {
+    fn faces(&mut self, faces: &[CubeFace], kind: TextureKind, levels: LevelSelection) -> anyhow::Result<TextureImage> {
         let level_count = self.reader.header().level_count;
         ensure!(level_count > 0, "the file holds no levels");
 
@@ -80,7 +75,7 @@ impl<R: Read + Seek> TerrainExtractor<R> {
         let extent = PAGE_INTERIOR << levels[0];
         TextureImage::new(
             self.layer.input_format(),
-            shape,
+            kind,
             extent,
             extent,
             levels.len() as u32,

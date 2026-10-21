@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use kdl::KdlDocument;
-use resource_loader::texture::{TextureFormat, TextureImage, TextureShape};
+use resource_loader::texture::{TextureFormat, TextureImage, TextureKind};
 
 const DENSITIES: [f64; 2] = [512.0, 1024.0];
 const BLOCK_EXTENT: u32 = 4;
@@ -28,7 +28,7 @@ fn check_surface(path: &Path) {
     for (image, format) in [&color, &normal, &displacement].into_iter().zip(expected_formats) {
         let extent = color.width();
         assert_eq!(image.format(), format, "{}", path.display());
-        assert_eq!(image.shape(), TextureShape::Array, "{}", path.display());
+        assert_eq!(image.kind(), TextureKind::Array, "{}", path.display());
         assert_eq!(image.layers().len(), color.layers().len(), "{}", path.display());
         assert_eq!((image.width(), image.height()), (extent, extent), "{}", path.display());
         assert_eq!(image.mip_levels(), extent.ilog2() + 1, "{}", path.display());

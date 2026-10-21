@@ -4,7 +4,7 @@ use std::io::Read;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{TextureFormat, TextureImage, TextureLoader, TextureShape, VulkanFormat};
+use super::{TextureFormat, TextureImage, TextureKind, TextureLoader, TextureMetadata, VulkanFormat};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const VK_FORMAT_OFFSET: usize = 12;
@@ -50,10 +50,10 @@ impl TextureLoader for Ktx2Loader {
 
         let face_count = word(FACE_COUNT_OFFSET);
         let array_layer_count = word(LAYER_COUNT_OFFSET);
-        let shape = match (array_layer_count, face_count) {
-            (0, 1) => TextureShape::Plane,
-            (0, CUBE_FACE_COUNT) => TextureShape::CubeMap,
-            (_, 1) => TextureShape::Array,
+        let kind = match (array_layer_count, face_count) {
+            (0, 1) => TextureKind::Plane,
+            (0, CUBE_FACE_COUNT) => TextureKind::CubeMap,
+            (_, 1) => TextureKind::Array,
             (_, CUBE_FACE_COUNT) => bail!("cube map arrays are not supported"),
             _ => bail!("{face_count} faces: expected 1 or {CUBE_FACE_COUNT}"),
         };
@@ -65,12 +65,16 @@ impl TextureLoader for Ktx2Loader {
         let supercompression = word(SUPERCOMPRESSION_OFFSET);
         let mut image = TextureImage {
             format,
-            shape,
+            kind,
             width: word(PIXEL_WIDTH_OFFSET),
             height: word(PIXEL_HEIGHT_OFFSET),
             mip_levels,
             layers: Vec::new(),
-            metadata: Ktx2Loader::metadata(bytes, word(KEY_VALUE_OFFSET_OFFSET), word(KEY_VALUE_LENGTH_OFFSET))?,
+            metadata: TextureMetadata::new(Ktx2Loader::metadata(
+                bytes,
+                word(KEY_VALUE_OFFSET_OFFSET),
+                word(KEY_VALUE_LENGTH_OFFSET),
+            )?),
         };
         let layer_size = image.layer_size()?;
         let mut layers = Vec::new();

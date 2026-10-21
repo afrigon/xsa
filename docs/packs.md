@@ -30,12 +30,14 @@ data/<pack>/
       systems/                              how bodies relate: hierarchy and orbits
       simulations/                          which systems make up a playable simulation
       terrains/                             each body's heights
+      biomes/                               each body's kinds of ground
       parts/                                rocket parts (reserved)
     resources/                              presentation — read by the client
       objects/                              mirrors data/ one-to-one
         bodies/  systems/  simulations/  parts/
       materials/                            shader and its parameters
       surfaces/                             close-up ground materials, shared by every body
+      biomes/                               how each biome's ground looks up close
       terrains/                             terrain layers materials shade with
       shaders/                              SPIR-V shaders (base only, see below)
       textures/  models/  sounds/  fonts/   shared assets, organized freely
@@ -118,6 +120,10 @@ axial-tilt 23.4392811
   blackbody that matches it. Lighting derives from them: illuminance at any
   distance, the star's surface brightness and its color. The first star in a
   simulation is its light source.
+- **`seed`** (integer, optional): where the body's seeded patterns start (its
+  surfaces' tiling, the noise moving their handovers), so the same body looks the
+  same on every run and every machine. Derived from the body's id when absent.
+- **`terrain`** (optional): the body's terrain, an id in `data/terrains/`.
 
 ### Systems — `<namespace>/data/systems/`
 
@@ -230,6 +236,7 @@ A body's shape: its heights. A body names its terrain with `terrain "<id>"`.
 
 ```kdl
 height-map "luna"
+biome "luna/regolith-plains"
 ```
 
 - **`height-map`:** the heights, relative to `data/terrains/` like every
@@ -238,6 +245,8 @@ height-map "luna"
   relative to the body's `radius`. Each page stores 16-bit values over its own
   range; the body's overall range is the combined range of its six level 0
   pages.
+- **`biome`** (optional): the body's kind of ground, an id in `data/biomes/`. A
+  terrain names at most one.
 
 The heights are data, so the server and every client share one terrain
 whatever texture tier a player installs. The game streams pages: only those
@@ -273,6 +282,13 @@ it there. `launchpad terrain create [--height] <cube map>` runs that
 conversion on its own to check a layer before packaging, and its `--help`
 lists each face's orientation.
 
+### Biomes — `<namespace>/data/biomes/`
+
+A kind of ground (`luna/regolith-plains`), named by its body's terrain. Its
+data file carries no keys of its own: it is where the server's side of a biome
+(scatters, terrain detail) belongs. How its ground looks up close is the
+resource of the same id in `resources/biomes/` (below).
+
 ## Resources
 
 ### Objects — `<namespace>/resources/objects/`
@@ -298,23 +314,23 @@ skybox texture="skyboxes/deep-star-maps" frame="equatorial" luminance=0.05
 ### Materials — `<namespace>/resources/materials/`
 
 ```kdl
-shader "base:lambert"
+shader "base:terrain/lambert"
 base-color 0.1 0.25 0.6
 ```
 
 Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 (cd/m²), and emissive values are luminances in cd/m².
 
-- **`shader "base:lambert"`** with **`base-color`** (the average albedo,
+- **`shader "base:terrain/lambert"`** with **`base-color`** (the average albedo,
   linear red green blue) and optional **`color-texture`** (sRGB albedo),
   **`normal-texture`** and **`emissive-texture`** (sRGB), each a texture id;
   an emissive texture needs **`emissive-luminance`** (cd/m² for a texture
   value of 1). Without a color texture the surface takes the base color. A
   texture no loaded pack provides is skipped with a warning.
-- **`shader "base:hapke"`** for a body's terrain, shaded with Hapke's model
+- **`shader "base:terrain/hapke"`** for a body's terrain, shaded with Hapke's model
   of particulate surfaces (Hapke 2012, eq. 12.55), with **`base-color`**,
   optional **`emissive-texture`** and **`emissive-luminance`** as for
-  `base:lambert`, and its maps as terrain layers (`resources/terrains/`, see
+  `base:terrain/lambert`, and its maps as terrain layers (`resources/terrains/`, see
   Terrain layers), each a layer id: **`color-terrain`** (sRGB albedo),
   **`normal-terrain`**, and two layers holding Hapke's other standard
   parameters, as published: **`medium-terrain`** (the particulate medium:
@@ -329,7 +345,7 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
   shaded with Lambert. Normal layers are tangent space in the frame of the
   face they lie on: red along the face's columns and green across them, both
   on the sphere's tangent plane; z is reconstructed.
-- **`shader "base:emissive"`** with optional **`color`** (a tint, white by
+- **`shader "base:terrain/emissive"`** with optional **`color`** (a tint, white by
   default) and **`luminance`** (cd/m²). A star takes its luminance and color
   from its data and needs neither.
 
@@ -416,7 +432,8 @@ go to `target/lens-bake/`.
 ### Shaders — `base/resources/shaders/`
 
 The built-in shaders live in the base pack as Slang sources compiled to SPIR-V
-by `mise run shaders`; materials name them by id (`base:lambert`). Shaders from
+by `mise run shaders`; materials name them by id (`base:terrain/lambert`), and
+`docs/rendering.md` describes how they are organized. Shaders from
 other packs, with their own material properties, are planned.
 
 ### Textures — `<namespace>/resources/textures/`
@@ -444,29 +461,26 @@ normal-texture "surfaces/regolith/normal"
 displacement-texture "surfaces/regolith/displacement"
 size 3.1015625
 displacement low=0.0 high=0.05
-largest-magnification 8.0
 ```
 
 - **`color-texture`**, **`normal-texture`**, **`displacement-texture`:**
-  three texture arrays with the same size, mip chain and layer count. Each
-  layer is one variant: interchangeable tiles of the same material.
+  three texture arrays of one layer, with the same size and mip chain.
   - Colour: `BC7` sRGB, the photograph's colour kept in full. Its KTX2
     metadata `xsa.averageColor` holds the array's average linear red, green
-    and blue; one over its luminance scales the stored brightness back to an
-    average of 1.
+    and blue. The game divides the colour by it, so a surface brightens and
+    darkens the body's colour layer around its own average and never replaces
+    it.
   - Normal: `BC5`, x and y of a tangent-space normal in the OpenGL convention
     (green toward the image's top), z reconstructed. Its KTX2 metadata
     `xsa.slopeSpread` holds, for every mip level, the root mean square slope
     (height change per unit of distance) of the ground that level shows; each
     level's slopes are the area average of the level above.
   - Displacement: `BC4`, from 0 at the array's lowest point to 1 at its
-    highest, across every layer.
+    highest.
 - **`size`** (m): the side of the square one tile covers.
 - **`displacement`** (m): the heights a displacement of 0 (`low`) and 1
-  (`high`) stand for.
-- **`largest-magnification`:** how many times the surface can be scaled up
-  before it stops looking right: regolith is roughly self-similar, grass is
-  not.
+  (`high`) stand for. Near the camera the ground moves by them around their
+  average; collision does not.
 
 Metadata values are text, numbers separated by spaces, ending with a NUL.
 
@@ -475,6 +489,34 @@ density given in texels per meter: `mise run generate -- base-surfaces
 --density 1024`. Each set is resampled to the side nearest that density that
 is a multiple of 4 texels, with a Lanczos filter wrapping around its edges so
 it still tiles, and `size` is that side over the density.
+
+### Biomes — `<namespace>/resources/biomes/`
+
+How a biome's ground looks up close: a surface for flat ground and one for
+slopes, and where the ground's slope hands over from one to the other.
+
+```kdl
+flat "base-surfaces:regolith"
+slope "base-surfaces:regolith-rocky"
+handovers {
+    transition angle=29 width=17 blend-sharpness=0.4
+    noise size=20000 amplitude=3
+}
+curvature convex=10 concave=10 relief=5
+```
+
+- **`flat`**, **`slope`:** surface ids (`resources/surfaces/`).
+- **`transition`:** the slope (°) at the middle of the handover, the range of
+  slopes (°) it spans, and how sharply the higher of the two surfaces shows
+  through where both do: from 0, a cross-fade over their whole displacement
+  range, toward 1, only the higher one (rocks through dust). Below 1.
+- **`noise`:** a seeded noise moving the handover across the ground, so class
+  borders do not follow contour lines: its feature size (m) and how far it moves
+  the slope (°).
+- **`curvature`:** how the ground's shape moves the slope the handover reads,
+  in degrees per unit of each measure: `convex` ground (ridges, crater rims)
+  counts as steeper, `concave` ground (hollows) and ground lower than its
+  surroundings two levels coarser (`relief`) as flatter.
 
 ### Fonts — `<namespace>/resources/fonts/`
 
