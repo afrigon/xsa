@@ -44,7 +44,7 @@ pub(in crate::renderer) struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
-        let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
+        let grids = GridMesh::new((COARSEST_DETAIL..=0).map(|detail| DetailRanges::grid_cells(0, detail)));
         // Every frame draws the grid, so it is in GPU memory before the first one.
         let vertex_buffer = StaticBuffer::new(
             gpu,

@@ -3,6 +3,8 @@ use std::f64::consts::SQRT_2;
 const TILE_GRID_CELLS: u32 = 32;
 // Roots of distant bodies are drawn with 16, 8, 4 and down to 2 cells per side.
 pub(in crate::renderer) const COARSEST_DETAIL: i32 = -4;
+// A tile deeper than the roots is drawn at its depth or the level above: with each level's range at least four chord
+// radii of the next level's tiles, a tile whose parent split always lies within the parent's range.
 // The fraction of a level's range after which its vertices start morphing towards the coarser level's grid.
 const MORPH_START_FRACTION: f64 = 0.75;
 // Neighbors stay within one level of each other when a level's range exceeds four chord radii of the next level's
@@ -36,18 +38,20 @@ impl DetailRanges {
         self.root_distance * f64::from(-detail).exp2()
     }
 
-    // The detail a tile needs when its nearest point is `nearest` away, or None when it must split.
+    // The detail a tile needs when its nearest point is `nearest` away, or None when it must split: the coarsest its
+    // distance allows, so a tile lying beyond its depth's range is drawn as that part of its parent is, and morphs as
+    // its parent's neighbors do.
     pub fn detail(&self, depth: u32, nearest: f64) -> Option<i32> {
-        if depth > 0 {
-            let detail = depth as i32;
-            return (nearest >= self.fine_distance(detail)).then_some(detail);
-        }
+        let depth = depth as i32;
+        let coarsest = if depth == 0 { COARSEST_DETAIL } else { depth - 1 };
 
-        (COARSEST_DETAIL..=0).find(|&detail| nearest >= self.fine_distance(detail))
+        (coarsest..=depth).find(|&detail| nearest >= self.fine_distance(detail))
     }
 
-    pub fn grid_cells(detail: i32) -> u32 {
-        TILE_GRID_CELLS >> detail.min(0).unsigned_abs()
+    // Each level coarser than its depth halves a tile's cells per side, so its vertices are as far apart as the
+    // level's own tiles' are.
+    pub fn grid_cells(depth: u32, detail: i32) -> u32 {
+        TILE_GRID_CELLS >> (depth as i32 - detail)
     }
 
     // A tile is fully morphed where a coarser neighbor can start: at the coarser level's distance.
@@ -120,11 +124,20 @@ mod tests {
     }
 
     #[test]
-    fn grids_halve_below_level_zero() {
-        assert_eq!(DetailRanges::grid_cells(3), TILE_GRID_CELLS);
-        assert_eq!(DetailRanges::grid_cells(0), TILE_GRID_CELLS);
-        assert_eq!(DetailRanges::grid_cells(-1), TILE_GRID_CELLS / 2);
-        assert_eq!(DetailRanges::grid_cells(COARSEST_DETAIL), 2);
+    fn tiles_beyond_their_range_take_their_parents_level() {
+        let ranges = ranges();
+
+        assert_eq!(ranges.detail(4, ranges.fine_distance(3)), Some(3));
+        assert_eq!(ranges.detail(4, ranges.fine_distance(3) * 0.99), Some(4));
+    }
+
+    #[test]
+    fn grids_halve_with_each_coarser_level() {
+        assert_eq!(DetailRanges::grid_cells(3, 3), TILE_GRID_CELLS);
+        assert_eq!(DetailRanges::grid_cells(3, 2), TILE_GRID_CELLS / 2);
+        assert_eq!(DetailRanges::grid_cells(0, 0), TILE_GRID_CELLS);
+        assert_eq!(DetailRanges::grid_cells(0, -1), TILE_GRID_CELLS / 2);
+        assert_eq!(DetailRanges::grid_cells(0, COARSEST_DETAIL), 2);
     }
 
     #[test]

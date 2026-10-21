@@ -128,6 +128,8 @@ mod tests {
     use std::f32::consts::FRAC_PI_2;
 
     use ash::vk;
+    use glam::DVec2;
+    use xsa_core::terrain::FacePoint;
 
     use super::*;
     use crate::camera::Camera;
@@ -165,11 +167,18 @@ mod tests {
         }
     }
 
+    fn camera() -> Camera {
+        Camera::new(FRAC_PI_2, EXTENT.width as f32 / EXTENT.height as f32)
+    }
+
+    fn detail_ranges() -> DetailRanges {
+        let focal_length_pixels = f64::from(EXTENT.height) / 2.0 / f64::from(camera().vertical_fov() / 2.0).tan();
+        DetailRanges::new(RADIUS, focal_length_pixels, VERTEX_SPACING_PIXELS)
+    }
+
     fn select_over(center: DVec3, height: Option<&dyn TileHeightBounds>) -> Vec<SelectedTile> {
-        let camera = Camera::new(FRAC_PI_2, EXTENT.width as f32 / EXTENT.height as f32);
-        let culler = Culler::new(&camera, EXTENT);
-        let focal_length_pixels = f64::from(EXTENT.height) / 2.0 / f64::from(camera.vertical_fov() / 2.0).tan();
-        let ranges = DetailRanges::new(RADIUS, focal_length_pixels, VERTEX_SPACING_PIXELS);
+        let culler = Culler::new(&camera(), EXTENT);
+        let ranges = detail_ranges();
         let sphere = QuadSphere {
             radius: RADIUS,
             height,
@@ -275,6 +284,57 @@ mod tests {
                 );
             }
         }
+    }
+
+    // Where a tile meets a coarser neighbor, its corners on their shared edge are fully morphed and the neighbor's
+    // are not morphing yet, so both draw the coarser level's grid there and no crack opens.
+    #[test]
+    fn neighbors_meet_on_the_coarser_level() {
+        let mut checked = 0;
+
+        for altitude in [2.0, 100.0, 1.0e4, 1.0e6] {
+            let center = below(altitude);
+            let tiles = select(center);
+            let ranges = detail_ranges();
+
+            for fine in &tiles {
+                for coarse in tiles.iter().filter(|coarse| coarse.detail == fine.detail - 1) {
+                    if !share_an_edge(&fine.tile, &coarse.tile) {
+                        continue;
+                    }
+
+                    let [left, bottom, right, top] = face_rectangle(&coarse.tile);
+                    let [fine_left, fine_bottom, fine_right, fine_top] = face_rectangle(&fine.tile);
+                    let corners = [
+                        DVec2::new(fine_left, fine_bottom),
+                        DVec2::new(fine_right, fine_bottom),
+                        DVec2::new(fine_left, fine_top),
+                        DVec2::new(fine_right, fine_top),
+                    ];
+
+                    for corner in corners {
+                        if corner.x < left || corner.x > right || corner.y < bottom || corner.y > top {
+                            continue;
+                        }
+
+                        let point = FacePoint {
+                            face: fine.tile.face,
+                            coordinates: corner * 2.0 - 1.0,
+                        };
+                        let distance = (center + point.direction() * RADIUS).length();
+
+                        assert!(distance >= ranges.morph_end(fine.detail), "{fine:?} next to {coarse:?}");
+                        assert!(
+                            distance <= ranges.morph_start(coarse.detail),
+                            "{fine:?} next to {coarse:?}"
+                        );
+                        checked += 1;
+                    }
+                }
+            }
+        }
+
+        assert!(checked > 100, "{checked} corners checked");
     }
 
     #[test]

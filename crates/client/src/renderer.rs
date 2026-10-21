@@ -860,7 +860,7 @@ impl Renderer {
                 (Some(_), Some(level)) if detail.magnifies(level, tile.nearest) => ShadingRange::Near,
                 _ => ShadingRange::Far,
             };
-            let draw_key = |tile: &SelectedTile| (range(tile), DetailRanges::grid_cells(tile.detail));
+            let draw_key = |tile: &SelectedTile| (range(tile), DetailRanges::grid_cells(tile.tile.depth, tile.detail));
             let first_tile = self.selected_tiles.len();
             sphere.select(&ranges, &culler, &mut self.selected_tiles);
             let tiles = &mut self.selected_tiles[first_tile..];
@@ -872,7 +872,7 @@ impl Renderer {
                     terrain: TerrainHandle { index },
                     shape,
                     range: range(&run[0]),
-                    grid_cells: DetailRanges::grid_cells(run[0].detail),
+                    grid_cells: DetailRanges::grid_cells(run[0].tile.depth, run[0].detail),
                     first_tile: run_start as u32,
                     tile_count: run.len() as u32,
                 });
