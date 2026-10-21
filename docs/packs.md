@@ -30,12 +30,14 @@ data/<pack>/
       systems/                              how bodies relate: hierarchy and orbits
       simulations/                          which systems make up a playable simulation
       terrains/                             each body's heights
+      biomes/                               each body's kinds of ground
       parts/                                rocket parts (reserved)
     resources/                              presentation — read by the client
       objects/                              mirrors data/ one-to-one
         bodies/  systems/  simulations/  parts/
       materials/                            shader and its parameters
       surfaces/                             close-up ground materials, shared by every body
+      biomes/                               how each biome's ground looks up close
       terrains/                             terrain layers materials shade with
       shaders/                              SPIR-V shaders (base only, see below)
       textures/  models/  sounds/  fonts/   shared assets, organized freely
@@ -118,6 +120,10 @@ axial-tilt 23.4392811
   blackbody that matches it. Lighting derives from them: illuminance at any
   distance, the star's surface brightness and its color. The first star in a
   simulation is its light source.
+- **`seed`** (integer, optional): where the body's seeded patterns start (its
+  surfaces' tiling, the noise moving their handovers), so the same body looks the
+  same on every run and every machine. Derived from the body's id when absent.
+- **`terrain`** (optional): the body's terrain, an id in `data/terrains/`.
 
 ### Systems — `<namespace>/data/systems/`
 
@@ -230,6 +236,7 @@ A body's shape: its heights. A body names its terrain with `terrain "<id>"`.
 
 ```kdl
 height-map "luna"
+biome "luna/regolith-plains"
 ```
 
 - **`height-map`:** the heights, relative to `data/terrains/` like every
@@ -238,6 +245,8 @@ height-map "luna"
   relative to the body's `radius`. Each page stores 16-bit values over its own
   range; the body's overall range is the combined range of its six level 0
   pages.
+- **`biome`** (optional): the body's kind of ground, an id in `data/biomes/`. A
+  terrain names at most one.
 
 The heights are data, so the server and every client share one terrain
 whatever texture tier a player installs. The game streams pages: only those
@@ -272,6 +281,13 @@ Packaging converts each layer into the paged file the game reads, compressing
 it there. `launchpad terrain create [--height] <cube map>` runs that
 conversion on its own to check a layer before packaging, and its `--help`
 lists each face's orientation.
+
+### Biomes — `<namespace>/data/biomes/`
+
+A kind of ground (`luna/regolith-plains`), named by its body's terrain. Its
+data file carries no keys of its own: it is where the server's side of a biome
+(scatters, terrain detail) belongs. How its ground looks up close is the
+resource of the same id in `resources/biomes/` (below).
 
 ## Resources
 
@@ -448,22 +464,23 @@ displacement low=0.0 high=0.05
 ```
 
 - **`color-texture`**, **`normal-texture`**, **`displacement-texture`:**
-  three texture arrays with the same size, mip chain and layer count. Each
-  layer is one variant: interchangeable tiles of the same material.
+  three texture arrays of one layer, with the same size and mip chain.
   - Colour: `BC7` sRGB, the photograph's colour kept in full. Its KTX2
     metadata `xsa.averageColor` holds the array's average linear red, green
-    and blue; one over its luminance scales the stored brightness back to an
-    average of 1.
+    and blue. The game divides the colour by it, so a surface brightens and
+    darkens the body's colour layer around its own average and never replaces
+    it.
   - Normal: `BC5`, x and y of a tangent-space normal in the OpenGL convention
     (green toward the image's top), z reconstructed. Its KTX2 metadata
     `xsa.slopeSpread` holds, for every mip level, the root mean square slope
     (height change per unit of distance) of the ground that level shows; each
     level's slopes are the area average of the level above.
   - Displacement: `BC4`, from 0 at the array's lowest point to 1 at its
-    highest, across every layer.
+    highest.
 - **`size`** (m): the side of the square one tile covers.
 - **`displacement`** (m): the heights a displacement of 0 (`low`) and 1
-  (`high`) stand for.
+  (`high`) stand for. Near the camera the ground moves by them around their
+  average; collision does not.
 
 Metadata values are text, numbers separated by spaces, ending with a NUL.
 
@@ -472,6 +489,34 @@ density given in texels per meter: `mise run generate -- base-surfaces
 --density 1024`. Each set is resampled to the side nearest that density that
 is a multiple of 4 texels, with a Lanczos filter wrapping around its edges so
 it still tiles, and `size` is that side over the density.
+
+### Biomes — `<namespace>/resources/biomes/`
+
+How a biome's ground looks up close: a surface for flat ground and one for
+slopes, and where the ground's slope hands over from one to the other.
+
+```kdl
+flat "base-surfaces:regolith"
+slope "base-surfaces:regolith-rocky"
+handovers {
+    transition angle=29 width=17 blend-sharpness=0.4
+    noise size=20000 amplitude=3
+}
+curvature convex=10 concave=10 relief=5
+```
+
+- **`flat`**, **`slope`:** surface ids (`resources/surfaces/`).
+- **`transition`:** the slope (°) at the middle of the handover, the range of
+  slopes (°) it spans, and how sharply the higher of the two surfaces shows
+  through where both do: from 0, a cross-fade over their whole displacement
+  range, toward 1, only the higher one (rocks through dust). Below 1.
+- **`noise`:** a seeded noise moving the handover across the ground, so class
+  borders do not follow contour lines: its feature size (m) and how far it moves
+  the slope (°).
+- **`curvature`:** how the ground's shape moves the slope the handover reads,
+  in degrees per unit of each measure: `convex` ground (ridges, crater rims)
+  counts as steeper, `concave` ground (hollows) and ground lower than its
+  surroundings two levels coarser (`relief`) as flatter.
 
 ### Fonts — `<namespace>/resources/fonts/`
 

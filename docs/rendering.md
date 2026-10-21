@@ -81,6 +81,38 @@ Where several are set, a draw shows the most specific one it supports: its
 surface view, then its family's, then the generic one. Adding a family or a
 feature adds its own key, and its views are code in that family or feature.
 
+## Surfaces
+
+Up close, the Hapke program adds a biome's surfaces (`docs/packs.md`) to the
+terrain layers:
+
+- **Classes:** each pixel weighs the biome's flat and slope surfaces by the
+  terrain's slope, moved by curvature, relative height and a seeded noise, and
+  blends them by height where both show.
+- **Projection:** each surface is projected along the two body axes the ground
+  faces most, one where it faces a single axis.
+- **Repeat sizes:** a surface keeps its true size until its repeat spans fewer
+  than 512 pixels, then grows 3× each time the pixel's footprint grows 3.4×. A
+  pixel crossfades the two sizes around its own, each shifted by a seeded
+  offset, so the ground never shows a dense grid and stays textured at every
+  distance. The camera's place within every repeat is computed in f64 each
+  frame, so pixels add only their small offset in f32.
+- **Fade:** surfaces fade in over two levels as the colour layer is magnified
+  past its finest texels, and cover every distance where it is.
+- **Colour:** a surface multiplies the colour layer by its colour over its
+  average, keeping the body's measured albedo.
+- **Relief:** near the camera the vertex stage moves the ground by the
+  displacement of the surfaces its pixels show, at their true size, fading out
+  as their repeat starts to grow. Shading normals already hold that relief from
+  the normal maps, and collision does not see it.
+
+The surface debug views show how these choices land:
+
+- **`classes`:** flat surface in red, slope surface in green.
+- **`planes`:** the projection's weights, body axes x, y and z in red, green and
+  blue.
+- **`fade`:** how far surfaces have faded in, black to white.
+
 ## Shader files
 
 ```
