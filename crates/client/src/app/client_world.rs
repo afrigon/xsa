@@ -9,7 +9,7 @@ use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
 use xsa_packs::{
     BiomeSurfacesDefinition, Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition,
-    SurfaceSlot, TerrainDefinition,
+    SurfaceDefinition, TerrainDefinition,
 };
 use xsa_proto::event::WorldState;
 use xsa_units::SimulationTime;
@@ -434,12 +434,11 @@ impl ClientWorld {
             return Ok(None);
         };
         let seed = body.seed.derive(&format!("biome/{biome}"));
-        let slot = |class: SurfaceClass| match class {
+        let definition_of = |class: SurfaceClass| match class {
             SurfaceClass::Flat => &definition.flat,
             SurfaceClass::Slope => &definition.slope,
         };
-        let mut load = |class: SurfaceClass, slot: &SurfaceSlot| {
-            let surface = &slot.surface;
+        let mut load = |class: SurfaceClass, surface: &SurfaceDefinition| {
             let mut array = |kind: &str, path: &PathBuf, color_space| {
                 let name = format!("{} {} {kind}", body.id, class.name());
                 let array = resources.load(LoadRequest::new(path, name), color_space);
@@ -450,12 +449,12 @@ impl ClientWorld {
                 array("color", &surface.color, ColorSpace::Srgb),
                 array("normal", &surface.normal, ColorSpace::Linear),
                 array("displacement", &surface.displacement, ColorSpace::Linear),
-                slot,
+                surface,
                 class,
                 seed,
             )
         };
-        let [flat, slope] = SurfaceClass::ALL.map(|class| load(class, slot(class)));
+        let [flat, slope] = SurfaceClass::ALL.map(|class| load(class, definition_of(class)));
 
         Ok(Some(BiomeSurfaces::new([flat?, slope?], &definition, seed)))
     }

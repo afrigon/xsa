@@ -25,11 +25,12 @@ impl BiomeSurfaces {
             biome: BiomeData {
                 transition_angle: definition.transition.angle,
                 transition_width: definition.transition.width,
+                blend_sharpness: definition.transition.blend_sharpness,
                 handover_noise_amplitude: definition.handover_noise.amplitude,
                 convex_bias: definition.curvature.convex,
                 concave_bias: definition.curvature.concave,
                 relief_bias: definition.curvature.relief,
-                padding: [0; 2],
+                padding: [0; 1],
             },
             handover_noise: f64::from(definition.handover_noise.size),
             handover_seed: seed.derive("handovers"),

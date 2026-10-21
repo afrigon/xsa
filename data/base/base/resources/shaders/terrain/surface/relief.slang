@@ -44,8 +44,7 @@ struct SurfaceRelief : TileRelief {
         }
 
         if (weights.x > 0.0 && weights.y > 0.0) {
-            float contrast = 0.5 * (flatSurface.heightContrast + slopeSurface.heightContrast);
-            weights = heightBlend(weights, float2(flat.displacement, sloped.displacement), contrast);
+            weights = heightBlend(weights, float2(flat.displacement, sloped.displacement), biome.blendSharpness);
         }
 
         return flat.meters * weights.x + sloped.meters * weights.y;

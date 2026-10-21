@@ -14,10 +14,10 @@ displacement-texture "surfaces/dust/displacement"
 size 3.0
 displacement low=0.0 high=0.05
 "#;
-const BIOME_SURFACES: &str = r#"flat "dust" height-contrast=0.4
-slope "dust" height-contrast=0.6
+const BIOME_SURFACES: &str = r#"flat "dust"
+slope "dust"
 handovers {
-    transition angle=24 width=6
+    transition angle=24 width=6 blend-sharpness=0.6
     noise size=1500 amplitude=3
 }
 curvature convex=10 concave=8 relief=4
@@ -100,9 +100,9 @@ fn a_biome_reads_its_surfaces_and_handovers() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(biome.flat.surface.size, 3.0);
-    assert_eq!(biome.flat.surface.displacement_high, 0.05);
-    assert_eq!(biome.slope.height_contrast, 0.6);
+    assert_eq!(biome.flat.size, 3.0);
+    assert_eq!(biome.flat.displacement_high, 0.05);
+    assert_eq!(biome.transition.blend_sharpness, 0.6);
     assert!((biome.transition.angle - 24.0_f32.to_radians()).abs() < 1e-6);
     assert_eq!(biome.handover_noise.size, 1500.0);
 }

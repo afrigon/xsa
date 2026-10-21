@@ -1,15 +1,15 @@
 use anyhow::Context;
 
-use super::{CurvatureBias, Handover, HandoverNoise, SurfaceSlot};
-use crate::{DOCUMENT_EXTENSION, Document, Id, NodeExtension, PackStack};
+use super::{CurvatureBias, Handover, HandoverNoise};
+use crate::{DOCUMENT_EXTENSION, Document, Id, NodeExtension, PackStack, SurfaceDefinition};
 
 const BIOMES: &str = "biomes";
 
 // How a biome's ground looks up close: a surface for flat ground and one for slopes, where they hand over, and how the
 // ground's shape moves the handover.
 pub struct BiomeSurfacesDefinition {
-    pub flat: SurfaceSlot,
-    pub slope: SurfaceSlot,
+    pub flat: SurfaceDefinition,
+    pub slope: SurfaceDefinition,
     pub transition: Handover,
     pub handover_noise: HandoverNoise,
     pub curvature: CurvatureBias,
@@ -25,8 +25,11 @@ impl BiomeSurfacesDefinition {
     }
 
     fn parse(stack: &PackStack, document: &Document, biome: &Id) -> anyhow::Result<Option<BiomeSurfacesDefinition>> {
-        let slot = |name: &str| SurfaceSlot::load(stack, document.node(name)?, biome);
-        let (Some(flat), Some(slope)) = (slot("flat")?, slot("slope")?) else {
+        let surface = |name: &str| {
+            let surface = Id::parse(document.node(name)?.string_argument()?, &biome.namespace)?;
+            SurfaceDefinition::load(stack, &surface)
+        };
+        let (Some(flat), Some(slope)) = (surface("flat")?, surface("slope")?) else {
             return Ok(None);
         };
         let handovers = document.node("handovers")?;

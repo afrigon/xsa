@@ -18,7 +18,6 @@ pub struct SurfaceTextures {
     pub size: f32,
     pub displacement_low: f32,
     pub displacement_high: f32,
-    height_contrast: f32,
     tiling_seed: Seed,
     // Read from the colour array's metadata once it is loaded; None when the metadata is unusable.
     average_color: OnceLock<Option<Vec3>>,
@@ -29,11 +28,10 @@ impl SurfaceTextures {
         color: ResourceHandle<TextureArray>,
         normal: ResourceHandle<TextureArray>,
         displacement: ResourceHandle<TextureArray>,
-        slot: &xsa_packs::SurfaceSlot,
+        definition: &xsa_packs::SurfaceDefinition,
         class: SurfaceClass,
         seed: Seed,
     ) -> anyhow::Result<SurfaceTextures> {
-        let definition = &slot.surface;
         let class_seed = seed.derive(class.name());
 
         Ok(SurfaceTextures {
@@ -43,7 +41,6 @@ impl SurfaceTextures {
             size: definition.size,
             displacement_low: definition.displacement_low,
             displacement_high: definition.displacement_high,
-            height_contrast: slot.height_contrast,
             tiling_seed: class_seed.derive("tiling"),
             average_color: OnceLock::new(),
         })
@@ -72,8 +69,7 @@ impl SurfaceTextures {
             displacement_low: self.displacement_low,
             displacement_high: self.displacement_high,
             average_color,
-            height_contrast: self.height_contrast,
-            padding: [0; 4],
+            padding: [0; 5],
         })
     }
 

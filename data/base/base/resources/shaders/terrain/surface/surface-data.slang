@@ -24,8 +24,7 @@ struct SurfaceData {
     float displacementLow;
     float displacementHigh;
     float3 averageColor;
-    float heightContrast;
-    uint padding[4];
+    uint padding[5];
 };
 
 // Mirrors `BiomeData` in the renderer: where a biome's classes hand over, and how the ground's shape moves them.
@@ -33,11 +32,12 @@ struct SurfaceData {
 struct BiomeData {
     float transitionAngle;
     float transitionWidth;
+    float blendSharpness;
     float handoverNoiseAmplitude;
     float convexBias;
     float concaveBias;
     float reliefBias;
-    uint padding[2];
+    uint padding[1];
 };
 
 // Mirrors `SurfaceAnchorData`: where the camera stands within each class's repeat, in repeats, for every projection

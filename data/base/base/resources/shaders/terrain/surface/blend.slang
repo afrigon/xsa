@@ -30,10 +30,10 @@ ContrastBlend contrastBlend() {
     return blend;
 }
 
-// Two materials' weights once the higher one shows through: displacements from 0 to 1, and a contrast from 0 (a
+// Two materials' weights once the higher one shows through: displacements from 0 to 1, and a sharpness from 0 (a
 // cross-fade over the whole displacement range) toward 1 (only the higher material).
-float2 heightBlend(float2 weights, float2 displacements, float contrast) {
-    float depth = 1.0 - contrast;
+float2 heightBlend(float2 weights, float2 displacements, float sharpness) {
+    float depth = 1.0 - sharpness;
     float2 raised = weights + displacements;
     float top = max(raised.x, raised.y) - depth;
     float2 shown = max(raised - top, 0.0);
