@@ -13,6 +13,14 @@ impl HeightRange {
         maximum: 0.0,
     };
 
+    // The range moved `margin` meters further each way.
+    pub fn widened(self, margin: f64) -> HeightRange {
+        HeightRange {
+            minimum: self.minimum - margin,
+            maximum: self.maximum + margin,
+        }
+    }
+
     pub fn union(self, other: HeightRange) -> HeightRange {
         HeightRange {
             minimum: self.minimum.min(other.minimum),

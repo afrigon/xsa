@@ -16,3 +16,11 @@ float2 classWeights(BiomeData biome, float slope) {
                                slope);
     return float2(1.0 - toSlope, toSlope);
 }
+
+// How much of each class, flat then slope, shows at a point `offset` (m, body frame) from the camera, whose terrain
+// normal is `normal` under the sphere's `up`, with the heights' curvature and relative height there.
+float2 surfaceClassWeights(BiomeData biome, SurfaceAnchors *anchors, float3 offset, float3 normal, float3 up,
+                           float curvature, float relativeHeight) {
+    float handoverNoise = noiseAt(anchors.noiseVolume, anchors.handoverNoise, offset);
+    return classWeights(biome, classSlope(biome, normal, up, curvature, relativeHeight, handoverNoise));
+}

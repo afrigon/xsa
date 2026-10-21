@@ -5,6 +5,7 @@ import terrain.layers;
 import terrain.output;
 import terrain.surface.fade;
 import terrain.surface.range;
+import terrain.surface.relief;
 import terrain.surface.surface;
 import terrain.surface.blend;
 import terrain.surface.classes;
@@ -18,16 +19,6 @@ struct HapkeVaryings {
     float relativeHeight;
 };
 
-[shader("vertex")]
-HapkeVaryings vertexMain(VertexInput input) {
-    TileVertex vertex = terrainVertex(input);
-    HapkeVaryings output;
-    output.terrain = terrainVaryings(vertex);
-    output.curvature = vertex.curvature;
-    output.relativeHeight = vertex.relativeHeight;
-    return output;
-}
-
 // Mirrors `HapkeData` in the renderer. Its surfaces are read only once every class's arrays are loaded.
 struct HapkeData {
     float3 baseColor;
@@ -38,6 +29,21 @@ struct HapkeData {
     BiomeData biome;
     SurfaceData surfaces[surfaceClasses];
 };
+
+[shader("vertex")]
+HapkeVaryings vertexMain(VertexInput input) {
+    HapkeData *material = currentMaterialAddress<HapkeData>();
+    SurfaceRelief relief;
+    relief.biome = &material.biome;
+    relief.surfaces = &material.surfaces[0];
+    relief.loaded = material.surfacesLoaded != 0;
+    TileVertex vertex = terrainVertex(input, relief);
+    HapkeVaryings output;
+    output.terrain = terrainVaryings(vertex);
+    output.curvature = vertex.curvature;
+    output.relativeHeight = vertex.relativeHeight;
+    return output;
+}
 
 // Hapke 2012's parameters at this point: w from the calibrated color layer, the rest from the medium and opposition
 // layers, stored as published (θ̄ in degrees).
@@ -90,9 +96,8 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint
     }
 
     SurfaceAnchors *anchors = surfaceAnchors();
-    float handoverNoise = noiseAt(anchors.noiseVolume, anchors.handoverNoise, point.offset);
-    float slope = classSlope(material.biome, normal, up, shape.curvature, shape.relativeHeight, handoverNoise);
-    float2 weights = classWeights(material.biome, slope);
+    float2 weights =
+        surfaceClassWeights(material.biome, anchors, point.offset, normal, up, shape.curvature, shape.relativeHeight);
     SurfaceData *flatSurface = &material.surfaces[uint(SurfaceClass.Flat)];
     SurfaceData *slopeSurface = &material.surfaces[uint(SurfaceClass.Slope)];
     SurfaceSample flat = unsampledSurface(flatSurface, normal);

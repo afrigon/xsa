@@ -127,6 +127,18 @@ interface TileHeight {
     TerrainShape shape(TileData tile, ObjectData object, int2 cell);
 }
 
+// How far a tile's ground moves along the sphere's normal beyond its heights (m), at a vertex `world` from the camera
+// and `faceOffset` from its tile's center, where the heights have `shape`.
+interface TileRelief {
+    float relief(uint tile, float3 world, float3 modelNormal, float2 faceOffset, TerrainShape shape);
+}
+
+struct NoRelief : TileRelief {
+    float relief(uint tile, float3 world, float3 modelNormal, float2 faceOffset, TerrainShape shape) {
+        return 0.0;
+    }
+}
+
 TileData tileData(uint tile) {
     return ((TileData *)constants.tiles)[tile];
 }
@@ -216,15 +228,20 @@ float3 morphedOffset<H : TileHeight>(H heights, TileData tile, ObjectData object
     return lerp(offset, parentMidpoint, morph);
 }
 
-TileVertex transformTile<H : TileHeight>(H heights, VertexInput input) {
+TileVertex transformTile<H : TileHeight, R : TileRelief>(H heights, R relief, VertexInput input) {
     ObjectData object = currentObject();
     uint tileIndex = constants.firstTile + input.instance;
     TileData tile = tileData(tileIndex);
     int2 cell = int2(input.cell);
     float3 offset = morphedOffset(heights, tile, object, cell);
+    float3 modelNormal = normalize(normalize(tile.cubeCenter) + offset);
+    TerrainShape shape = heights.shape(tile, object, cell);
+    float2 vertexFaceOffset = faceOffset(tile, cell);
+    float radius = length(object.worldFromModel[0].xyz);
+    float3 ground = tile.center + mul(object.worldFromModel, float4(offset, 0.0)).xyz;
+    offset += modelNormal * relief.relief(tileIndex, ground, modelNormal, vertexFaceOffset, shape) / radius;
     float3 world = tile.center + mul(object.worldFromModel, float4(offset, 0.0)).xyz;
     float3 previousWorld = tile.previousCenter + mul(object.previousWorldFromModel, float4(offset, 0.0)).xyz;
-    float3 modelNormal = normalize(normalize(tile.cubeCenter) + offset);
     TileVertex output;
     output.draw.position = mul(constants.frame.viewProjection, float4(world, 1.0));
     output.draw.currentClip = unjittered(output.draw.position);
@@ -235,11 +252,10 @@ TileVertex transformTile<H : TileHeight>(H heights, VertexInput input) {
     output.cell = float2(input.cell);
     output.detail = tile.detail;
     output.gridCells = tile.gridCells;
-    TerrainShape shape = heights.shape(tile, object, cell);
-    output.heightMeters = shape.height * length(object.worldFromModel[0].xyz);
+    output.heightMeters = shape.height * radius;
     output.curvature = shape.curvature;
     output.relativeHeight = shape.relativeHeight;
     output.tile = tileIndex;
-    output.faceOffset = faceOffset(tile, cell);
+    output.faceOffset = vertexFaceOffset;
     return output;
 }

@@ -68,10 +68,10 @@ impl BindlessTable {
 
         let all_stages = vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE;
         let image_stages = |binding: BindlessBinding| match binding {
-            BindlessBinding::Texture => all_stages,
-            BindlessBinding::CubeMap | BindlessBinding::TextureArray | BindlessBinding::Volume => {
-                vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE
-            }
+            BindlessBinding::Texture
+            | BindlessBinding::CubeMap
+            | BindlessBinding::TextureArray
+            | BindlessBinding::Volume => all_stages,
             BindlessBinding::StorageImage => vk::ShaderStageFlags::COMPUTE,
         };
         let mut bindings = vec![
@@ -79,7 +79,7 @@ impl BindlessTable {
                 .binding(SAMPLER_BINDING)
                 .descriptor_type(vk::DescriptorType::SAMPLER)
                 .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE),
+                .stage_flags(all_stages),
             vk::DescriptorSetLayoutBinding::default()
                 .binding(WRAPPING_SAMPLER_BINDING)
                 .descriptor_type(vk::DescriptorType::SAMPLER)
@@ -89,7 +89,7 @@ impl BindlessTable {
                 .binding(TILING_SAMPLER_BINDING)
                 .descriptor_type(vk::DescriptorType::SAMPLER)
                 .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE),
+                .stage_flags(all_stages),
         ];
         let mut binding_flags = vec![vk::DescriptorBindingFlags::empty(); bindings.len()];
 

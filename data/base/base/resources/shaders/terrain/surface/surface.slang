@@ -99,6 +99,48 @@ PlaneSample samplePlane(SurfaceData *surface, float2 repeatPlace, SurfacePoint p
     return sample;
 }
 
+// The two planes a normal leans toward most, and their weights, summing to 1.
+struct ProjectionPlanes {
+    int2 planes;
+    float2 weights;
+};
+
+ProjectionPlanes projectionPlanes(float3 normal) {
+    float3 lean = abs(normal);
+    int major = lean.x >= lean.y && lean.x >= lean.z ? 0 : (lean.y >= lean.z ? 1 : 2);
+    int next = (major + 1) % 3;
+    int last = (major + 2) % 3;
+    int median = lean[next] >= lean[last] ? next : last;
+    ProjectionPlanes projection;
+    projection.planes = int2(major, median);
+    projection.weights = float2(lean[major] - biplanarBias, saturate(lean[median] - biplanarBias));
+    projection.weights /= projection.weights.x + projection.weights.y;
+    return projection;
+}
+
+// A surface's displacement texture, its width in texels and its number of mip levels.
+struct DisplacementTexture {
+    Texture2DArray texture;
+    float width;
+    uint levels;
+};
+
+DisplacementTexture displacementTexture(SurfaceData *surface) {
+    DisplacementTexture displacement;
+    displacement.texture = textureArrays[NonUniformResourceIndex(surface.displacementTexture)];
+    uint width;
+    uint height;
+    uint layers;
+    displacement.texture.GetDimensions(0, width, height, layers, displacement.levels);
+    displacement.width = float(width);
+    return displacement;
+}
+
+// The surface's average displacement: its smallest mip, a single texel.
+float meanDisplacement(DisplacementTexture displacement) {
+    return displacement.texture.SampleLevel(tilingSampler, float3(0.5, 0.5, 0.0), float(displacement.levels - 1)).r;
+}
+
 // A surface at a pixel, with the plane weights it was drawn with.
 struct SurfaceSample {
     float3 color;
@@ -117,10 +159,11 @@ SurfaceSample unsampledSurface(SurfaceData *surface, float3 normal) {
     return sample;
 }
 
-// The colour, slope and displacement of one projection plane at one level, added to their blends.
+// The colour, slope and displacement of one projection plane at one level, added to their blends around the
+// surface's averages.
 void addPlane(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, float weight, SurfacePoint point,
-              int plane, int level, float3 normal, inout ContrastBlend color, inout ContrastBlend slope,
-              inout ContrastBlend displacement) {
+              int plane, int level, float3 normal, float meanHeight, inout ContrastBlend color,
+              inout ContrastBlend slope, inout ContrastBlend displacement) {
     if (weight <= 0.0) {
         return;
     }
@@ -128,28 +171,22 @@ void addPlane(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, 
     PlaneSample sample = samplePlane(surface, anchors.repeats[surfaceClass][plane][level], point, plane, level, normal);
     color.add(sample.color - surface.averageColor, weight);
     slope.add(sample.normal - normal, weight);
-    displacement.add(sample.displacement.xxx, weight);
+    displacement.add((sample.displacement - meanHeight).xxx, weight);
 }
 
 // Projected on the two planes the normal leans toward most, at the two levels around the pixel's own, blended so the
 // surface keeps its contrast where they meet.
 SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, SurfacePoint point,
                             float3 normal) {
-    float3 lean = abs(normal);
-    int major = lean.x >= lean.y && lean.x >= lean.z ? 0 : (lean.y >= lean.z ? 1 : 2);
-    int next = (major + 1) % 3;
-    int last = (major + 2) % 3;
-    int median = lean[next] >= lean[last] ? next : last;
+    ProjectionPlanes projection = projectionPlanes(normal);
+    float meanHeight = meanDisplacement(displacementTexture(surface));
     SurfaceSample result;
     result.planeWeights = float3(0.0);
-    result.planeWeights[major] = lean[major] - biplanarBias;
-    result.planeWeights[median] = saturate(lean[median] - biplanarBias);
-    result.planeWeights /= result.planeWeights[major] + result.planeWeights[median];
+    result.planeWeights[projection.planes.x] = projection.weights.x;
+    result.planeWeights[projection.planes.y] = projection.weights.y;
     ContrastBlend color = contrastBlend();
     ContrastBlend slope = contrastBlend();
     ContrastBlend displacement = contrastBlend();
-
-    int2 planes = int2(major, median);
     float level = surfaceLevel(surface.size, point.footprint);
     int finer = int(level);
     float2 levelWeights = float2(1.0 - (level - float(finer)), level - float(finer));
@@ -162,15 +199,15 @@ SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint 
 
         [ForceUnroll]
         for (int index = 0; index < 2; index++) {
-            int plane = planes[index];
             addPlane(surface,
                      anchors,
                      surfaceClass,
-                     result.planeWeights[plane] * levelWeights[step],
+                     projection.weights[index] * levelWeights[step],
                      point,
-                     plane,
+                     projection.planes[index],
                      finer + step,
                      normal,
+                     meanHeight,
                      color,
                      slope,
                      displacement);
@@ -179,6 +216,58 @@ SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint 
 
     result.color = max(surface.averageColor + color.deviation(), 0.0);
     result.normal = normalize(normal + slope.deviation());
-    result.displacement = displacement.average().x;
+    result.displacement = meanHeight + displacement.deviation().x;
     return result;
+}
+
+// A surface's displacement (0 to 1) under a vertex `offset` (m, body frame) from the camera, at its true-size repeat
+// filtered to the `vertexSpacing` (m) between vertices, and how far it moves the ground from its average (m). It fades
+// out as the pixels there, covering `pixelFootprint` (m), move on to the next repeat size.
+struct ReliefSample {
+    float displacement;
+    float meters;
+};
+
+ReliefSample noRelief() {
+    ReliefSample sample;
+    sample.displacement = 0.0;
+    sample.meters = 0.0;
+    return sample;
+}
+
+ReliefSample surfaceReliefSample(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, float3 offset,
+                                 float3 normal, float pixelFootprint, float vertexSpacing) {
+    DisplacementTexture displacement = displacementTexture(surface);
+    float meanHeight = meanDisplacement(displacement);
+    float strength = saturate(1.0 - surfaceLevel(surface.size, pixelFootprint));
+    ReliefSample sample;
+    sample.displacement = meanHeight;
+    sample.meters = 0.0;
+
+    if (strength <= 0.0) {
+        return sample;
+    }
+
+    float mip = max(log2(vertexSpacing * displacement.width / surface.size), 0.0);
+    ProjectionPlanes projection = projectionPlanes(normal);
+    ContrastBlend blend = contrastBlend();
+
+    [ForceUnroll]
+    for (int index = 0; index < 2; index++) {
+        int plane = projection.planes[index];
+
+        if (projection.weights[index] <= 0.0) {
+            continue;
+        }
+
+        float2 uv = anchors.repeats[surfaceClass][plane][0] + planeCoordinates(offset, plane) / surface.size +
+                    repeatShift(0, plane, surface.tilingSeed);
+        float height = displacement.texture.SampleLevel(tilingSampler, float3(uv, 0.0), mip).r;
+        blend.add((height - meanHeight).xxx, projection.weights[index]);
+    }
+
+    float deviation = blend.deviation().x;
+    sample.displacement = meanHeight + deviation;
+    sample.meters = deviation * (surface.displacementHigh - surface.displacementLow) * strength;
+    return sample;
 }

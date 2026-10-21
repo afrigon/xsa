@@ -24,13 +24,13 @@ struct SmoothHeight : TileHeight {
     }
 }
 
-TileVertex terrainVertex(VertexInput input) {
+TileVertex terrainVertex<R : TileRelief>(VertexInput input, R relief) {
     if (tileShape == uint(TileShape.Displaced)) {
         TerrainHeight heights;
         heights.pages = tilePages(constants.firstTile + input.instance);
-        return transformTile(heights, input);
+        return transformTile(heights, relief, input);
     }
 
     SmoothHeight heights;
-    return transformTile(heights, input);
+    return transformTile(heights, relief, input);
 }

@@ -2,7 +2,7 @@ import terrain.output;
 
 [shader("vertex")]
 TerrainVaryings vertexMain(VertexInput input) {
-    return terrainVaryings(terrainVertex(input));
+    return terrainVaryings(terrainVertex(input, NoRelief()));
 }
 
 struct EmissiveData {

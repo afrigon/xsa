@@ -36,6 +36,14 @@ impl BiomeSurfaces {
         }
     }
 
+    // How far its surfaces' displacement can move the ground either way (m).
+    pub(in crate::renderer) fn relief(&self) -> f64 {
+        self.classes
+            .iter()
+            .map(|class| f64::from(class.displacement_high - class.displacement_low))
+            .fold(0.0, f64::max)
+    }
+
     pub(in crate::renderer) fn biome_data(&self) -> BiomeData {
         self.biome
     }

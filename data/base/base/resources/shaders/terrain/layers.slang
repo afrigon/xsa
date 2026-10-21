@@ -42,6 +42,19 @@ LayerCoordinates layerCoordinates(uint tile, float2 offset) {
     return coordinates;
 }
 
+// Where a vertex near the camera reads its tile's layers: their finest pages, which the ground there magnifies.
+LayerCoordinates magnifiedLayerCoordinates(uint tile, float2 offset) {
+    LayerCoordinates coordinates;
+    coordinates.tile = tileData(tile);
+    coordinates.pages = tilePages(tile);
+    coordinates.offset = offset;
+    coordinates.offsetPerPixelX = float2(0.0);
+    coordinates.offsetPerPixelY = float2(0.0);
+    coordinates.level = float(coordinates.tile.depth) + float(layerLevels - 1);
+    coordinates.pixelLevel = coordinates.level;
+    return coordinates;
+}
+
 // The finest level a layer has.
 uint finestLevel(TileData tile, int layer) {
     return (tile.layerFinestLevels >> (uint(layer) * finestLevelBits)) & ((1u << finestLevelBits) - 1u);

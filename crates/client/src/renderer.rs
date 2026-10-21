@@ -570,7 +570,8 @@ impl Renderer {
             tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             vertex_spacing_angle: self.render.terrain_lod.vertex_spacing_pixels / self.focal_length_pixels,
-            padding: [0; 4],
+            pixel_angle: self.focal_length_pixels.recip(),
+            padding: [0; 3],
             white_balance: self.white_balance.rows(self.render.white_balance.enabled),
         };
 
@@ -688,7 +689,8 @@ impl Renderer {
                 .as_ref()
                 .and_then(TileHeightBounds::overall_range)
                 .map_or(0.0, |range| range.maximum);
-            let bounding_radius = object.bounding_radius + highest;
+            let relief = terrain.surfaces.as_deref().map_or(0.0, BiomeSurfaces::relief);
+            let bounding_radius = object.bounding_radius + highest + relief;
 
             if !culler.is_visible(center, bounding_radius) {
                 continue;
@@ -697,6 +699,7 @@ impl Renderer {
             let sphere = QuadSphere {
                 radius: object.scale,
                 height: heights.as_ref().map(|heights| heights as &dyn TileHeightBounds),
+                relief,
                 center,
                 orientation: object.orientation,
             };
