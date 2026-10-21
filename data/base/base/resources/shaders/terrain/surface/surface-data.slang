@@ -18,15 +18,14 @@ struct SurfaceData {
     uint colorTexture;
     uint normalTexture;
     uint displacementTexture;
-    uint variantCount;
+    uint tilingSeed;
     float size;
     float texels;
     float displacementLow;
     float displacementHigh;
     float3 averageColor;
     float heightContrast;
-    uint tilingSeed;
-    uint padding[3];
+    uint padding[4];
 };
 
 // Mirrors `BiomeData` in the renderer: where a biome's classes hand over, and how the ground's shape moves them.
@@ -46,7 +45,6 @@ struct BiomeData {
 struct SurfaceAnchors {
     float2 repeats[surfaceClasses][projectionAxes][surfaceLevels];
     NoiseAnchor handoverNoise;
-    NoiseAnchor variantNoise[surfaceClasses];
     uint noiseVolume;
     uint padding[3];
 };

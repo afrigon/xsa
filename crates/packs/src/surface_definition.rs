@@ -6,7 +6,7 @@ use crate::{DOCUMENT_EXTENSION, Document, Id, NodeExtension, PackStack, ParseCon
 
 const SURFACES: &str = "surfaces";
 
-// A close-up ground material: three texture arrays of interchangeable variants, the side of the square one tile covers
+// A close-up ground material: three texture arrays, the side of the square one tile covers
 // (m) and the heights its displacement's 0 and 1 stand for (m).
 pub struct SurfaceDefinition {
     pub color: PathBuf,

@@ -12,15 +12,14 @@ pub(in crate::renderer) struct SurfaceData {
     pub color_texture: u32,
     pub normal_texture: u32,
     pub displacement_texture: u32,
-    pub variant_count: u32,
+    pub tiling_seed: u32,
     pub size: f32,
     pub texels: f32,
     pub displacement_low: f32,
     pub displacement_high: f32,
     pub average_color: Vec3,
     pub height_contrast: f32,
-    pub tiling_seed: u32,
-    pub padding: [u32; 3],
+    pub padding: [u32; 4],
 }
 
 const _: () = assert!(size_of::<SurfaceData>() == 64);
@@ -32,14 +31,13 @@ impl SurfaceData {
         color_texture: 0,
         normal_texture: 0,
         displacement_texture: 0,
-        variant_count: 0,
+        tiling_seed: 0,
         size: 0.0,
         texels: 0.0,
         displacement_low: 0.0,
         displacement_high: 0.0,
         average_color: Vec3::ZERO,
         height_contrast: 0.0,
-        tiling_seed: 0,
-        padding: [0; 3],
+        padding: [0; 4],
     };
 }

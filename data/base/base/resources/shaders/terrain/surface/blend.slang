@@ -30,54 +30,6 @@ ContrastBlend contrastBlend() {
     return blend;
 }
 
-// One class and variant of the ground, with its weight.
-struct Material {
-    uint surfaceClass;
-    uint variant;
-    float weight;
-};
-
-// The two strongest of the materials offered, each less the third's weight, so a material leaving the two fades out
-// before it is dropped.
-struct StrongestTwo {
-    Material first;
-    Material second;
-    float third;
-
-    [mutating]
-    void offer(Material material) {
-        if (material.weight > first.weight) {
-            third = second.weight;
-            second = first;
-            first = material;
-        } else if (material.weight > second.weight) {
-            third = second.weight;
-            second = material;
-        } else {
-            third = max(third, material.weight);
-        }
-    }
-
-    // The two weights, summing to 1.
-    float2 weights() {
-        float2 kept = float2(first.weight, second.weight) - third;
-        float sum = kept.x + kept.y;
-        return sum > 0.0 ? kept / sum : float2(1.0, 0.0);
-    }
-}
-
-StrongestTwo strongestTwo() {
-    Material none;
-    none.surfaceClass = 0;
-    none.variant = 0;
-    none.weight = 0.0;
-    StrongestTwo strongest;
-    strongest.first = none;
-    strongest.second = none;
-    strongest.third = 0.0;
-    return strongest;
-}
-
 // Two materials' weights once the higher one shows through: displacements from 0 to 1, and a contrast from 0 (a
 // cross-fade over the whole displacement range) toward 1 (only the higher material).
 float2 heightBlend(float2 weights, float2 displacements, float contrast) {

@@ -68,16 +68,9 @@ impl BiomeSurfaces {
             }
         }
 
-        let mut variant_noise = [NoiseAnchor::NONE; SURFACE_CLASSES];
-
-        for (anchor, class) in variant_noise.iter_mut().zip(&self.classes) {
-            *anchor = class.variant_noise_anchor(camera_in_body);
-        }
-
         SurfaceAnchorData {
             repeats,
             handover_noise: NoiseAnchor::at(camera_in_body, self.handover_noise, self.handover_seed),
-            variant_noise,
             noise_volume,
             padding: [0; 3],
         }

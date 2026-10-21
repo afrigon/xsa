@@ -16,11 +16,6 @@ pub(in crate::renderer) struct NoiseAnchor {
 }
 
 impl NoiseAnchor {
-    pub const NONE: NoiseAnchor = NoiseAnchor {
-        place: Vec3::ZERO,
-        inverse_size: 0.0,
-    };
-
     pub fn at(point: DVec3, size: f64, seed: Seed) -> NoiseAnchor {
         let period = size * f64::from(NoiseVolume::PERIOD_CELLS);
         let shift = DVec3::new(

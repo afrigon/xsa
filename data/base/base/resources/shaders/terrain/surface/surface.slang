@@ -72,13 +72,13 @@ float3 planeNormal(float3 detail, float3 normal, int plane) {
            blended.z * side * bodyAxis(plane);
 }
 
-// A variant of the surface projected on one plane at one level, its repeat shifted by its seeded offset.
-PlaneSample samplePlane(SurfaceData *surface, float2 repeatPlace, uint variant, SurfacePoint point, int plane,
-                        int level, float3 normal) {
+// The surface projected on one plane at one level, its repeat shifted by its seeded offset.
+PlaneSample samplePlane(SurfaceData *surface, float2 repeatPlace, SurfacePoint point, int plane, int level,
+                        float3 normal) {
     float repeat = surface.size * pow(surfaceLevelGrowth, float(level));
     float2 uv =
         repeatPlace + planeCoordinates(point.offset, plane) / repeat + repeatShift(level, plane, surface.tilingSeed);
-    float3 location = float3(uv, float(variant));
+    float3 location = float3(uv, 0.0);
     float2 uvPerPixelX = planeCoordinates(point.offsetPerPixelX, plane) / repeat;
     float2 uvPerPixelY = planeCoordinates(point.offsetPerPixelY, plane) / repeat;
     PlaneSample sample;
@@ -99,7 +99,7 @@ PlaneSample samplePlane(SurfaceData *surface, float2 repeatPlace, uint variant, 
     return sample;
 }
 
-// A variant of a surface at a pixel, with the plane weights it was drawn with.
+// A surface at a pixel, with the plane weights it was drawn with.
 struct SurfaceSample {
     float3 color;
     float3 normal;
@@ -107,16 +107,25 @@ struct SurfaceSample {
     float3 planeWeights;
 };
 
+// A surface left unsampled, where it has no weight: its average colour on the ground's own normal.
+SurfaceSample unsampledSurface(SurfaceData *surface, float3 normal) {
+    SurfaceSample sample;
+    sample.color = surface.averageColor;
+    sample.normal = normal;
+    sample.displacement = 0.0;
+    sample.planeWeights = float3(0.0);
+    return sample;
+}
+
 // The colour, slope and displacement of one projection plane at one level, added to their blends.
-void addPlane(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant, float weight,
-              SurfacePoint point, int plane, int level, float3 normal, inout ContrastBlend color,
-              inout ContrastBlend slope, inout ContrastBlend displacement) {
+void addPlane(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, float weight, SurfacePoint point,
+              int plane, int level, float3 normal, inout ContrastBlend color, inout ContrastBlend slope,
+              inout ContrastBlend displacement) {
     if (weight <= 0.0) {
         return;
     }
 
-    PlaneSample sample =
-        samplePlane(surface, anchors.repeats[surfaceClass][plane][level], variant, point, plane, level, normal);
+    PlaneSample sample = samplePlane(surface, anchors.repeats[surfaceClass][plane][level], point, plane, level, normal);
     color.add(sample.color - surface.averageColor, weight);
     slope.add(sample.normal - normal, weight);
     displacement.add(sample.displacement.xxx, weight);
@@ -124,8 +133,8 @@ void addPlane(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, 
 
 // Projected on the two planes the normal leans toward most, at the two levels around the pixel's own, blended so the
 // surface keeps its contrast where they meet.
-SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, uint variant,
-                            SurfacePoint point, float3 normal) {
+SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint surfaceClass, SurfacePoint point,
+                            float3 normal) {
     float3 lean = abs(normal);
     int major = lean.x >= lean.y && lean.x >= lean.z ? 0 : (lean.y >= lean.z ? 1 : 2);
     int next = (major + 1) % 3;
@@ -157,7 +166,6 @@ SurfaceSample sampleSurface(SurfaceData *surface, SurfaceAnchors *anchors, uint 
             addPlane(surface,
                      anchors,
                      surfaceClass,
-                     variant,
                      result.planeWeights[plane] * levelWeights[step],
                      point,
                      plane,

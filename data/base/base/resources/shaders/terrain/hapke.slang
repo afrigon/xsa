@@ -9,7 +9,6 @@ import terrain.surface.surface;
 import terrain.surface.blend;
 import terrain.surface.classes;
 import terrain.surface.debug_view;
-import terrain.surface.variants;
 import terrain.texture;
 
 // The terrain's varyings and the ground's shape, which picks the class of its surfaces.
@@ -73,9 +72,9 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, DrawVarying
     return hapkeReflectance(parameters, geometry) * starIlluminance(star, input.worldPosition);
 }
 
-// The ground up close: the class and variant materials weighed at the pixel, the two strongest sampled and blended by
-// height, brightening or darkening the colour layer and adding their relief to the normal layer's, fading in as the
-// colour layer is magnified past its texels. `debugColor` is what the surface debug view shows.
+// The ground up close: the flat and slope surfaces weighed at the pixel and blended by height where both show,
+// brightening or darkening the colour layer and adding their relief to the normal layer's, fading in as the colour
+// layer is magnified past its texels. `debugColor` is what the surface debug view shows.
 void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint point, HapkeVaryings shape, float3 up,
                  inout float3 albedo, inout float3 normal, out float3 debugColor) {
     debugColor = float3(0.0);
@@ -93,56 +92,40 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, SurfacePoint
     SurfaceAnchors *anchors = surfaceAnchors();
     float handoverNoise = noiseAt(anchors.noiseVolume, anchors.handoverNoise, point.offset);
     float slope = classSlope(material.biome, normal, up, shape.curvature, shape.relativeHeight, handoverNoise);
-    float2 classes = classWeights(material.biome, slope);
-    StrongestTwo strongest = strongestTwo();
+    float2 weights = classWeights(material.biome, slope);
+    SurfaceData *flatSurface = &material.surfaces[uint(SurfaceClass.Flat)];
+    SurfaceData *slopeSurface = &material.surfaces[uint(SurfaceClass.Slope)];
+    SurfaceSample flat = unsampledSurface(flatSurface, normal);
+    SurfaceSample sloped = unsampledSurface(slopeSurface, normal);
 
-    for (uint surfaceClass = 0; surfaceClass < surfaceClasses; surfaceClass++) {
-        if (classes[surfaceClass] <= 0.0) {
-            continue;
-        }
-
-        SurfaceData *surface = &material.surfaces[surfaceClass];
-        VariantPair pair = variantPair(noiseAt(anchors.noiseVolume, anchors.variantNoise[surfaceClass], point.offset),
-                                       surface.variantCount);
-        Material first = { surfaceClass, pair.first, classes[surfaceClass] * (1.0 - pair.secondWeight) };
-        strongest.offer(first);
-
-        if (pair.secondWeight > 0.0) {
-            Material second = { surfaceClass, pair.second, classes[surfaceClass] * pair.secondWeight };
-            strongest.offer(second);
-        }
+    if (weights.x > 0.0) {
+        flat = sampleSurface(flatSurface, anchors, uint(SurfaceClass.Flat), point, normal);
     }
-
-    float2 weights = strongest.weights();
-    SurfaceData *firstSurface = &material.surfaces[strongest.first.surfaceClass];
-    SurfaceSample first =
-        sampleSurface(firstSurface, anchors, strongest.first.surfaceClass, strongest.first.variant, point, normal);
-    float3 color = first.color / firstSurface.averageColor;
-    float3 relief = first.normal;
 
     if (weights.y > 0.0) {
-        SurfaceData *secondSurface = &material.surfaces[strongest.second.surfaceClass];
-        SurfaceSample second = sampleSurface(
-            secondSurface, anchors, strongest.second.surfaceClass, strongest.second.variant, point, normal);
-        float contrast = 0.5 * (firstSurface.heightContrast + secondSurface.heightContrast);
-        weights = heightBlend(weights, float2(first.displacement, second.displacement), contrast);
-        color = color * weights.x + second.color / secondSurface.averageColor * weights.y;
-        relief = normalize(first.normal * weights.x + second.normal * weights.y);
+        sloped = sampleSurface(slopeSurface, anchors, uint(SurfaceClass.Slope), point, normal);
     }
 
+    if (weights.x > 0.0 && weights.y > 0.0) {
+        float contrast = 0.5 * (flatSurface.heightContrast + slopeSurface.heightContrast);
+        weights = heightBlend(weights, float2(flat.displacement, sloped.displacement), contrast);
+    }
+
+    float3 color =
+        flat.color / flatSurface.averageColor * weights.x + sloped.color / slopeSurface.averageColor * weights.y;
+    float3 relief = normalize(flat.normal * weights.x + sloped.normal * weights.y);
     albedo *= lerp(float3(1.0), color, fade);
     normal = normalize(lerp(normal, relief, fade));
 
     switch (surfaceDebugView) {
     case uint(SurfaceDebugView.Classes):
-        debugColor[strongest.first.surfaceClass] += weights.x;
-        debugColor[strongest.second.surfaceClass] += weights.y;
+        debugColor = float3(weights, 0.0);
         break;
     case uint(SurfaceDebugView.Fade):
         debugColor = fade.xxx;
         break;
     case uint(SurfaceDebugView.Planes):
-        debugColor = first.planeWeights;
+        debugColor = weights.x >= weights.y ? flat.planeWeights : sloped.planeWeights;
         break;
     default:
         break;

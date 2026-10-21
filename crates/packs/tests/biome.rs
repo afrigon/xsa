@@ -14,8 +14,8 @@ displacement-texture "surfaces/dust/displacement"
 size 3.0
 displacement low=0.0 high=0.05
 "#;
-const BIOME_SURFACES: &str = r#"flat "dust" variant-noise=12 height-contrast=0.4
-slope "dust" variant-noise=8 height-contrast=0.6
+const BIOME_SURFACES: &str = r#"flat "dust" height-contrast=0.4
+slope "dust" height-contrast=0.6
 handovers {
     transition angle=24 width=6
     noise size=1500 amplitude=3

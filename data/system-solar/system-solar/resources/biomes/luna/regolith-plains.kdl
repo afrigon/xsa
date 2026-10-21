@@ -1,5 +1,5 @@
-flat "base-surfaces:regolith" variant-noise=10 height-contrast=0.4
-slope "base-surfaces:regolith-rocky" variant-noise=10 height-contrast=0.4
+flat "base-surfaces:regolith" height-contrast=0.4
+slope "base-surfaces:regolith-rocky" height-contrast=0.4
 handovers {
     transition angle=29 width=17
     noise size=20000 amplitude=3

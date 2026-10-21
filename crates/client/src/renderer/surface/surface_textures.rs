@@ -1,17 +1,16 @@
 use std::sync::OnceLock;
 
 use anyhow::ensure;
-use glam::{DVec2, DVec3, Vec2, Vec3};
+use glam::{DVec2, Vec2, Vec3};
 use resource_vulkan::{ResourceHandle, TextureArray};
 use xsa_core::random::Seed;
 
 use super::{SURFACE_LEVEL_GROWTH, SurfaceClass};
-use crate::renderer::gpu_data::{NoiseAnchor, SurfaceData};
+use crate::renderer::gpu_data::SurfaceData;
 
 const AVERAGE_COLOR_KEY: &str = "xsa.averageColor";
 
-// One class's surface: its three texture arrays, its size and displacement range (m), and the seeded noise (m)
-// choosing between its variants.
+// One class's surface: its three texture arrays, and its size and displacement range (m).
 pub struct SurfaceTextures {
     pub color: ResourceHandle<TextureArray>,
     pub normal: ResourceHandle<TextureArray>,
@@ -19,8 +18,6 @@ pub struct SurfaceTextures {
     pub size: f32,
     pub displacement_low: f32,
     pub displacement_high: f32,
-    variant_noise: f64,
-    variant_seed: Seed,
     height_contrast: f32,
     tiling_seed: Seed,
     // Read from the colour array's metadata once it is loaded; None when the metadata is unusable.
@@ -46,8 +43,6 @@ impl SurfaceTextures {
             size: definition.size,
             displacement_low: definition.displacement_low,
             displacement_high: definition.displacement_high,
-            variant_noise: f64::from(slot.variant_noise),
-            variant_seed: class_seed.derive("variants"),
             height_contrast: slot.height_contrast,
             tiling_seed: class_seed.derive("tiling"),
             average_color: OnceLock::new(),
@@ -70,16 +65,15 @@ impl SurfaceTextures {
             color_texture: color.index(),
             normal_texture: normal.index(),
             displacement_texture: displacement.index(),
-            variant_count: color.layer_count(),
+            // The shader hashes 32 bits; the seed's low half keeps its spread.
+            tiling_seed: self.tiling_seed.value as u32,
             size: self.size,
             texels: color.width() as f32,
             displacement_low: self.displacement_low,
             displacement_high: self.displacement_high,
             average_color,
             height_contrast: self.height_contrast,
-            // The shader hashes 32 bits; the seed's low half keeps its spread.
-            tiling_seed: self.tiling_seed.value as u32,
-            padding: [0; 3],
+            padding: [0; 4],
         })
     }
 
@@ -92,10 +86,6 @@ impl SurfaceTextures {
         );
 
         Ok(Vec3::from_slice(&average))
-    }
-
-    pub(in crate::renderer) fn variant_noise_anchor(&self, camera_in_body: DVec3) -> NoiseAnchor {
-        NoiseAnchor::at(camera_in_body, self.variant_noise, self.variant_seed)
     }
 
     // Where `point` (m, on a projection plane) falls within its repeat at `level`, in repeats.
