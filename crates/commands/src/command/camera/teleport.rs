@@ -26,7 +26,7 @@ pub struct CameraTeleportCommand {
     #[usage(
         long,
         allow_negative_numbers,
-        help = "Feet above the ground, e.g. 100m (m, km, Mm, Gm; a bare number is km); defaults to the current one"
+        help = "Feet above the ground, e.g. 100m (m, km, Mm, Gm; a bare number is km), the eyes at eye height above them; defaults to the current one"
     )]
     pub altitude: Option<Altitude>,
     #[usage(
