@@ -1,3 +1,4 @@
+mod colored_writer;
 mod logging;
 mod verbosity;
 mod verbosity_arguments;

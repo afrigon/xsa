@@ -3293,6 +3293,7 @@ dependencies = [
 name = "xsa-commands"
 version = "0.0.1"
 dependencies = [
+ "anstyle",
  "anyhow",
  "bitcode",
  "nix",
@@ -3338,6 +3339,7 @@ dependencies = [
 name = "xsa-logging"
 version = "0.0.1"
 dependencies = [
+ "anstream",
  "tracing",
  "tracing-subscriber",
  "usage-rs",
