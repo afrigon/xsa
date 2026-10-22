@@ -1,0 +1,4 @@
+ui push game
+ui show debug-overlay
+camera speed 100m/s
+camera tp --altitude 100m --lat 0 --pitch -20 luna

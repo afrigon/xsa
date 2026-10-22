@@ -5,7 +5,7 @@ use glam::{DMat3, DQuat, DVec3};
 use winit::dpi::PhysicalSize;
 use winit::event::MouseButton;
 use xsa_commands::command::{CameraTargetCommand, CameraTeleportCommand};
-use xsa_commands::value::Target;
+use xsa_commands::value::{Speed, Target};
 use xsa_core::simulation::BodyIndex;
 
 use super::body_step::BodyStep;
@@ -331,6 +331,17 @@ impl CameraController {
         self.debug.look_along(direction);
 
         Ok(format!("looking at {id}"))
+    }
+
+    pub fn set_debug_speed(&mut self, speed: Speed) -> anyhow::Result<String> {
+        ensure!(
+            speed.meters_per_second > 0.0,
+            "the debug camera's speed must be above zero"
+        );
+
+        self.debug.set_speed(speed.meters_per_second);
+
+        Ok(format!("camera: debug speed {} m/s", speed.meters_per_second))
     }
 
     fn aspect_ratio_of(window_size: PhysicalSize<u32>) -> f32 {

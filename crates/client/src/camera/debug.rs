@@ -47,6 +47,10 @@ impl DebugCamera {
         self.speed
     }
 
+    pub fn set_speed(&mut self, speed: f64) {
+        self.speed = speed;
+    }
+
     pub fn look_along(&mut self, direction: DVec3) {
         self.pending_view = Some(PendingView::Direction(direction));
     }
