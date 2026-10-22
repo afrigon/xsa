@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
 use anyhow::Context;
 use usage::Args;
 use xsa_client::{ClientOptions, GameClient, RemoteServer};
 
+use crate::current_build::current_build;
 use crate::world_arguments::WorldArguments;
 
 #[derive(Args)]
@@ -29,6 +32,11 @@ pub struct ClientArguments {
     pub fingerprint: Option<String>,
     #[usage(flatten)]
     pub world: WorldArguments,
+    #[usage(
+        long,
+        help = "File of commands to run at startup, one per line, each waiting for the previous one"
+    )]
+    pub script: Option<PathBuf>,
 }
 
 impl ClientArguments {
@@ -41,10 +49,12 @@ impl ClientArguments {
             None => None,
         };
         GameClient::new(ClientOptions {
+            build: current_build(),
             name: self.name,
             player: self.player,
             remote,
             world: self.world.into_options(),
+            script: self.script,
         })
         .run()
     }

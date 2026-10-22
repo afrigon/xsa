@@ -2,6 +2,7 @@ use xsa_units::TimeRate;
 use xui::{Context, EdgeInsets, Text, View};
 
 use super::{CameraReading, ClockReading, PositionReading};
+use crate::BuildIdentity;
 use crate::camera::CameraMode;
 use crate::renderer::{FrameStatistics, TerrainLayer};
 use crate::ui::ThemedView;
@@ -19,6 +20,7 @@ const MILLISECONDS_PER_SECOND: f64 = 1000.0;
 pub struct DebugOverlayView {
     pub frames_per_second: Option<f64>,
     pub gpu_milliseconds: Option<f64>,
+    pub build: BuildIdentity,
     pub statistics: FrameStatistics,
     pub camera: Option<CameraReading>,
     pub position: Option<PositionReading>,
@@ -41,12 +43,12 @@ impl DebugOverlayView {
             .statistics
             .deepest_depth
             .map_or_else(String::new, |depth| format!(" · depth {depth}"));
-        let build = if cfg!(debug_assertions) { "debug" } else { "release" };
 
         format!(
             "FPS: {frames_per_second} · {frame_milliseconds} ms · GPU {gpu_milliseconds} ms\n\
-             {} faces · {} tiles{depth}\nbuild: {build}",
-            self.statistics.triangles, self.statistics.tiles
+             build: {}\n\
+             {} faces · {} tiles{depth}",
+            self.build, self.statistics.triangles, self.statistics.tiles
         )
     }
 

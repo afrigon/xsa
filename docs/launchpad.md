@@ -23,7 +23,16 @@ The pack format itself is described in `docs/packs.md`.
 Authors host their own archives anywhere reachable over HTTPS. First-party
 packs are hosted on the xsa repository's GitHub Releases, one release per pack
 version, tagged `<pack>-v<version>` (`base-v0.0.1`, `system-solar-v0.0.1`);
-game releases are tagged `xsa-v<version>`.
+game releases are tagged `xsa-v<version>` and `launchpad` releases
+`launchpad-v<version>`.
+
+The two binaries are versioned by date, `<year>.<month>.<release that month>`
+with no leading zero (`2026.10.1`), each in its own crate's `Cargo.toml`; the
+libraries share the workspace's semantic version. A game build is an official
+release only when CI builds a commit tagged with its crate's version, and CI
+fails a build whose commit carries a different `xsa-v` tag. Official releases
+show their version in the debug overlay; every other build shows its profile,
+branch and commit.
 
 A release is one archive, `<pack>-v<version>.tar.zst`, holding the whole pack:
 data and resources together. It holds exactly one top-level directory named

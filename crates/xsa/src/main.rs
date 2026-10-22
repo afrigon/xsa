@@ -6,6 +6,8 @@ mod arguments;
 mod client_arguments;
 mod command;
 mod completion_arguments;
+#[cfg(feature = "client")]
+mod current_build;
 mod ipc_arguments;
 mod server_arguments;
 mod world_arguments;

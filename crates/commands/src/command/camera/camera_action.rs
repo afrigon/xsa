@@ -1,6 +1,9 @@
 use usage::Subcommands;
 
-use super::{CameraLookAtCommand, CameraModeCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand};
+use super::{
+    CameraLookAtCommand, CameraModeCommand, CameraSnapCommand, CameraSpeedCommand, CameraTargetCommand,
+    CameraTeleportCommand,
+};
 use crate::command::{Routable, Route};
 
 #[derive(Subcommands)]
@@ -13,6 +16,8 @@ pub enum CameraAction {
     Tp(CameraTeleportCommand),
     /// Turn the debug camera towards a body
     LookAt(CameraLookAtCommand),
+    /// Set the debug camera's flying speed
+    Speed(CameraSpeedCommand),
     /// Save the rendered frame as a PNG, returning once the file is written
     Snap(CameraSnapCommand),
 }
@@ -24,6 +29,7 @@ impl Routable for CameraAction {
             CameraAction::Target(command) => command.route(),
             CameraAction::Tp(command) => command.route(),
             CameraAction::LookAt(command) => command.route(),
+            CameraAction::Speed(command) => command.route(),
             CameraAction::Snap(command) => command.route(),
         }
     }

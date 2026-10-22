@@ -3,6 +3,7 @@ pub mod completion;
 pub mod ipc;
 pub mod repl;
 pub mod router;
+pub mod script;
 pub mod shell;
 pub mod terminal;
 pub mod value;
