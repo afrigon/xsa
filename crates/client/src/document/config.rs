@@ -14,6 +14,7 @@ mod duration_name;
 mod input_document;
 mod key_chord_name;
 mod lens_document;
+mod logging_document;
 mod number_range;
 mod render_document;
 mod resources_document;
@@ -41,6 +42,7 @@ use bind_document::BindDocument;
 use config_layer::ConfigLayer;
 use config_values::ConfigValues;
 use input_document::InputDocument;
+use logging_document::LoggingDocument;
 use resources_document::ResourcesDocument;
 use terrain_streaming_document::TerrainStreamingDocument;
 
@@ -85,6 +87,7 @@ impl ConfigDocument {
         InputDocument::write(&config.input, &mut defaults);
         ResourcesDocument::write(&config.resources, &mut defaults);
         TerrainStreamingDocument::write(&config.terrain_streaming, &mut defaults);
+        LoggingDocument::write(&config.logging, &mut defaults);
         let mut document = ConfigDocument {
             path,
             session: ConfigLayer::default(),
@@ -139,6 +142,7 @@ impl ConfigDocument {
             input: InputDocument::read(&values).into_config(&defaults.input),
             resources: ResourcesDocument::read(&values).into_config(&defaults.resources),
             terrain_streaming: TerrainStreamingDocument::read(&values).into_config(&defaults.terrain_streaming),
+            logging: LoggingDocument::read(&values).into_config(&defaults.logging),
         }
     }
 

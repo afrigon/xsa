@@ -23,13 +23,14 @@ use anyhow::{Context, bail};
 use glam::DVec2;
 use resource_vulkan::Resources;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
 use xsa_commands::command::{ClientCommand, Overlay, ViewControllerId};
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
+use xsa_commands::ipc::IpcLogging;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
 use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
@@ -70,6 +71,7 @@ pub struct App {
     session: ServerSession,
     router: CommandRouter,
     invocations: UnboundedReceiver<CommandInvocation>,
+    ipc_logging: watch::Sender<IpcLogging>,
     exit_requested: bool,
     tasks: Vec<RunningTask>,
     packs_directory: PathBuf,
@@ -95,6 +97,7 @@ impl App {
     pub fn new(
         session: ServerSession,
         invocations: UnboundedReceiver<CommandInvocation>,
+        ipc_logging: watch::Sender<IpcLogging>,
         packs_directory: PathBuf,
         config_document: ConfigDocument,
     ) -> Self {
@@ -114,6 +117,7 @@ impl App {
             session,
             router: CommandRouter::default(),
             invocations,
+            ipc_logging,
             exit_requested: false,
             tasks: Vec::new(),
             packs_directory,
@@ -299,6 +303,7 @@ impl App {
     }
 
     fn apply_config(&mut self) {
+        self.ipc_logging.send_replace(self.config.logging.ipc);
         let animation_duration_scale = self.config.animations.duration_scale;
         self.navigation.set_duration_scale(animation_duration_scale);
 

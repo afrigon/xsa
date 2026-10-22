@@ -1,4 +1,5 @@
 use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::watch;
 use winit::event_loop::EventLoop;
 use xsa_commands::ipc::{IpcEndpoint, ProcessKind};
 use xsa_commands::repl::Repl;
@@ -35,10 +36,16 @@ impl GameClient {
         }))?;
 
         let (invocation_sender, invocations) = unbounded_channel();
-        let _endpoint = IpcEndpoint::spawn(self.options.name, ProcessKind::Client, invocation_sender.clone())?;
+        let (ipc_logging, ipc_logging_receiver) = watch::channel(config.config().logging.ipc);
+        let _endpoint = IpcEndpoint::spawn(
+            self.options.name,
+            ProcessKind::Client,
+            invocation_sender.clone(),
+            ipc_logging_receiver,
+        )?;
         let _repl = Repl::spawn(invocation_sender)?;
         let event_loop = EventLoop::new()?;
-        let mut app = App::new(session, invocations, packs_directory, config);
+        let mut app = App::new(session, invocations, ipc_logging, packs_directory, config);
         event_loop.run_app(&mut app)?;
 
         app.into_result()
