@@ -1,23 +1,23 @@
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct IpcLogging {
+pub struct IpcTranscript {
     pub enabled: bool,
     pub input: bool,
     pub output: bool,
 }
 
-impl IpcLogging {
-    pub fn logs_input(self) -> bool {
+impl IpcTranscript {
+    pub fn shows_input(self) -> bool {
         self.enabled && self.input
     }
 
-    pub fn logs_output(self) -> bool {
+    pub fn shows_output(self) -> bool {
         self.enabled && self.output
     }
 }
 
-impl Default for IpcLogging {
+impl Default for IpcTranscript {
     fn default() -> Self {
-        IpcLogging {
+        IpcTranscript {
             enabled: true,
             input: true,
             output: true,

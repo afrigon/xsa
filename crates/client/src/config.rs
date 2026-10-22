@@ -9,8 +9,8 @@ mod default_config;
 mod input_config;
 mod key_chord;
 mod lens_config;
-mod logging_config;
 mod render_config;
+mod shell_config;
 mod terrain_lod_config;
 mod terrain_streaming_config;
 mod white_balance_config;
@@ -25,8 +25,8 @@ pub use byte_size::ByteSize;
 pub use input_config::InputConfig;
 pub use key_chord::KeyChord;
 pub use lens_config::LensConfig;
-pub use logging_config::LoggingConfig;
 pub use render_config::RenderConfig;
+pub use shell_config::ShellConfig;
 pub use terrain_lod_config::TerrainLodConfig;
 pub use terrain_streaming_config::TerrainStreamingConfig;
 pub use white_balance_config::WhiteBalanceConfig;
@@ -41,5 +41,5 @@ pub struct Config {
     pub input: InputConfig,
     pub resources: ResourceLimits,
     pub terrain_streaming: TerrainStreamingConfig,
-    pub logging: LoggingConfig,
+    pub shell: ShellConfig,
 }

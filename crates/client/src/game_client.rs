@@ -36,16 +36,16 @@ impl GameClient {
         }))?;
 
         let (invocation_sender, invocations) = unbounded_channel();
-        let (ipc_logging, ipc_logging_receiver) = watch::channel(config.config().logging.ipc);
+        let (ipc_transcript, ipc_transcript_receiver) = watch::channel(config.config().shell.ipc);
         let _endpoint = IpcEndpoint::spawn(
             self.options.name,
             ProcessKind::Client,
             invocation_sender.clone(),
-            ipc_logging_receiver,
+            ipc_transcript_receiver,
         )?;
         let _repl = Repl::spawn(invocation_sender)?;
         let event_loop = EventLoop::new()?;
-        let mut app = App::new(session, invocations, ipc_logging, packs_directory, config);
+        let mut app = App::new(session, invocations, ipc_transcript, packs_directory, config);
         event_loop.run_app(&mut app)?;
 
         app.into_result()

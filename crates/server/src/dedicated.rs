@@ -8,7 +8,7 @@ use std::thread;
 use anyhow::anyhow;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::watch;
-use xsa_commands::ipc::{IpcEndpoint, IpcLogging, ProcessKind};
+use xsa_commands::ipc::{IpcEndpoint, IpcTranscript, ProcessKind};
 use xsa_commands::repl::Repl;
 use xsa_proto::connection::Connection;
 use xsa_proto::network::{Identity, Listener};
@@ -50,12 +50,12 @@ impl DedicatedServer {
             .send(server_user_connection.link)
             .map_err(|_| anyhow!("the simulation thread stopped"))?;
         let (invocation_sender, invocations) = unbounded_channel();
-        let (_, ipc_logging) = watch::channel(IpcLogging::default());
+        let (_, ipc_transcript) = watch::channel(IpcTranscript::default());
         let _endpoint = IpcEndpoint::spawn(
             options.name,
             ProcessKind::Server,
             invocation_sender.clone(),
-            ipc_logging,
+            ipc_transcript,
         )?;
         let _repl = Repl::spawn(invocation_sender)?;
         let mut server_user = tokio::spawn(ServerUser::run(server_user_connection.connection, invocations));

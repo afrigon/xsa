@@ -128,9 +128,7 @@ kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
   pin it with `--fingerprint` (the SSH model).
 - **Logging:** diagnostics go through `tracing`: WARN by default, `-v` / `-vv` /
   `-vvv` / `-q` to change it, `RUST_LOG` to filter per crate
-  (`RUST_LOG=xsa_client=debug`). Commands received over IPC and their replies log at INFO under the `ipc`
-  target (`RUST_LOG=ipc=info`); the `logging.ipc.enabled`, `logging.ipc.input.enabled` and
-  `logging.ipc.output.enabled` keys choose which.
+  (`RUST_LOG=xsa_client=debug`).
 
 ## Terms
 
@@ -252,6 +250,8 @@ Names in code, data and documents use these words in these meanings only:
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
+- Commands received over IPC and their replies are printed to the shell, each pair under one sequence number;
+  `shell.ipc.enabled`, `shell.ipc.input.enabled` and `shell.ipc.output.enabled` choose which.
 - Agents driving the game inside herdr use one pane per workspace, labelled
   `xsa-game` and found by that label in `herdr pane list`; if missing, they
   create it as a sibling in the bottom 20% of the workspace

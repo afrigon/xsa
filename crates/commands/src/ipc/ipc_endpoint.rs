@@ -9,7 +9,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::watch;
 
 use super::ipc_connection::IpcConnection;
-use super::{IpcLogging, ProcessKind, platform};
+use super::{IpcTranscript, ProcessKind, platform};
 use crate::router::CommandInvocation;
 
 pub struct IpcEndpoint {
@@ -22,11 +22,11 @@ impl IpcEndpoint {
         name: Option<String>,
         kind: ProcessKind,
         invocations: UnboundedSender<CommandInvocation>,
-        logging: watch::Receiver<IpcLogging>,
+        transcript: watch::Receiver<IpcTranscript>,
     ) -> anyhow::Result<IpcEndpoint> {
         let name = name.unwrap_or_else(|| kind.default_name());
         IpcEndpoint::validate_name(&name)?;
-        let connection = IpcConnection::new(invocations, logging);
+        let connection = IpcConnection::new(invocations, transcript);
         let (bound_sender, bound) = std_mpsc::sync_channel(1);
 
         thread::Builder::new().name("ipc".into()).spawn(move || {

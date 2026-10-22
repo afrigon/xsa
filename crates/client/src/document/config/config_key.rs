@@ -1,6 +1,6 @@
 use super::{
     AnimationDocument, AntialiasingDocument, BindDocument, BloomDocument, ConfigValueKind, InputDocument, LensDocument,
-    LoggingDocument, RenderDocument, ResourcesDocument, TerrainLodDocument, TerrainStreamingDocument,
+    RenderDocument, ResourcesDocument, ShellDocument, TerrainLodDocument, TerrainStreamingDocument,
     WhiteBalanceDocument,
 };
 
@@ -33,9 +33,9 @@ impl ConfigKey {
         ResourcesDocument::MAX_VIDEO_MEMORY_USAGE,
         ResourcesDocument::STORAGE_DEBUG_DELAY,
         TerrainStreamingDocument::FREEZE,
-        LoggingDocument::IPC_ENABLED,
-        LoggingDocument::IPC_INPUT_ENABLED,
-        LoggingDocument::IPC_OUTPUT_ENABLED,
+        ShellDocument::IPC_ENABLED,
+        ShellDocument::IPC_INPUT_ENABLED,
+        ShellDocument::IPC_OUTPUT_ENABLED,
     ];
 
     pub fn all() -> Vec<ConfigKey> {
