@@ -2,11 +2,9 @@ use std::fs;
 
 use anyhow::Context;
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, ServerOptions};
-use tokio::sync::mpsc::UnboundedSender;
 
 use super::ipc_connection::IpcConnection;
 use super::{Bound, IpcEndpoint};
-use crate::router::CommandInvocation;
 
 const PIPE_DIRECTORY: &str = r"\\.\pipe\";
 const PIPE_PREFIX: &str = "xsa-";
@@ -15,7 +13,7 @@ fn pipe_name(name: &str) -> String {
     format!("{PIPE_DIRECTORY}{PIPE_PREFIX}{name}")
 }
 
-pub async fn serve(name: String, invocations: UnboundedSender<CommandInvocation>, bound: Bound) {
+pub async fn serve(name: String, connection: IpcConnection, bound: Bound) {
     let path = pipe_name(&name);
     let mut server = match ServerOptions::new()
         .first_pipe_instance(true)
@@ -40,7 +38,7 @@ pub async fn serve(name: String, invocations: UnboundedSender<CommandInvocation>
             Ok(server) => server,
             Err(_) => return,
         };
-        tokio::spawn(IpcConnection::new(invocations.clone()).handle(connected));
+        tokio::spawn(connection.clone().handle(connected));
     }
 }
 

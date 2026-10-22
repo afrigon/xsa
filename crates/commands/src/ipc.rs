@@ -1,9 +1,11 @@
 mod ipc_client;
 mod ipc_connection;
 mod ipc_endpoint;
+mod ipc_logging;
 mod ipc_request;
 mod ipc_response;
 mod process_kind;
+mod sequence_number;
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]
@@ -11,6 +13,7 @@ mod windows;
 
 pub use ipc_client::IpcClient;
 pub use ipc_endpoint::IpcEndpoint;
+pub use ipc_logging::IpcLogging;
 pub use process_kind::ProcessKind;
 
 use std::sync::mpsc as std_mpsc;
