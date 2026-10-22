@@ -4,6 +4,7 @@ use anyhow::Context;
 use usage::Args;
 use xsa_client::{ClientOptions, GameClient, RemoteServer};
 
+use crate::current_build::current_build;
 use crate::world_arguments::WorldArguments;
 
 #[derive(Args)]
@@ -48,6 +49,7 @@ impl ClientArguments {
             None => None,
         };
         GameClient::new(ClientOptions {
+            build: current_build(),
             name: self.name,
             player: self.player,
             remote,

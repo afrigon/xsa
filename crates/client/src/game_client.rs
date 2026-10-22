@@ -45,7 +45,7 @@ impl GameClient {
 
         let _repl = Repl::spawn(invocation_sender)?;
         let event_loop = EventLoop::new()?;
-        let mut app = App::new(session, invocations, packs_directory, config);
+        let mut app = App::new(session, invocations, packs_directory, config, self.options.build);
         event_loop.run_app(&mut app)?;
 
         app.into_result()

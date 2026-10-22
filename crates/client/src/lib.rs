@@ -1,4 +1,6 @@
 mod app;
+mod build_identity;
+mod build_profile;
 mod camera;
 mod client_options;
 mod config;
@@ -13,6 +15,8 @@ mod theme;
 mod ui;
 mod vulkan;
 
+pub use build_identity::BuildIdentity;
+pub use build_profile::BuildProfile;
 pub use client_options::ClientOptions;
 pub use game_client::GameClient;
 pub use remote_server::RemoteServer;

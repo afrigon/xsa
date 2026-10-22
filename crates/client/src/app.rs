@@ -40,6 +40,7 @@ use xui::{
     ScaleFactorKey, Size, View, ZStack,
 };
 
+use crate::BuildIdentity;
 use crate::camera::CameraMode;
 use crate::config::Config;
 use crate::document::{ConfigDocument, ConfigKey};
@@ -89,6 +90,7 @@ pub struct App {
     commands: GameCommands,
     overlays: HashSet<Overlay>,
     action_replies: Vec<oneshot::Receiver<Output>>,
+    build: BuildIdentity,
 }
 
 impl App {
@@ -97,6 +99,7 @@ impl App {
         invocations: UnboundedReceiver<CommandInvocation>,
         packs_directory: PathBuf,
         config_document: ConfigDocument,
+        build: BuildIdentity,
     ) -> Self {
         let commands = GameCommands::default();
         let navigation = NavigationController::new();
@@ -133,6 +136,7 @@ impl App {
             commands,
             overlays: HashSet::new(),
             action_replies: Vec::new(),
+            build,
         };
         app.set_view_controller(ViewControllerId::MainMenu);
 
@@ -395,6 +399,7 @@ impl App {
             DebugOverlayView {
                 frames_per_second: self.frame_timing.frames_per_second(),
                 gpu_milliseconds: self.frame_timing.gpu_milliseconds(),
+                build: self.build.clone(),
                 statistics: renderer.statistics(),
                 camera: self.cameras.as_ref().map(CameraController::reading),
                 position,

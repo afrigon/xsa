@@ -1,6 +1,6 @@
 [package]
 name = "xsa-launchpad"
-version.workspace = true
+version = "2026.10.1"
 edition.workspace = true
 
 [[bin]]
