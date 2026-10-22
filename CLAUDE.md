@@ -223,7 +223,8 @@ Names in code, data and documents use these words in these meanings only:
 ## Commands
 
 - Durations take `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
-  `Mm` or `Gm` (case-sensitive), a bare number is km; angles are degrees.
+  `Mm` or `Gm` (case-sensitive), a bare number is km; speeds take `m/s`, `km/s`, `Mm/s` or `Gm/s`, a bare number
+  is m/s; angles are degrees.
 - `time override <rate>` runs time at a rate without changing the configured one, until `time override none`; only
   singleplayer allows it (a message's `session_environment`), and the pause menu stops time with one.
 - Client commands may span frames: a handler returns `CommandProgress::Done`

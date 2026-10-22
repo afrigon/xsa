@@ -1,31 +1,6 @@
 use std::str::FromStr;
 
-const METERS_PER_KILOMETER: f64 = 1_000.0;
-
-struct LengthUnit {
-    suffix: &'static str,
-    meters: f64,
-}
-
-// Longest suffixes first: every unit ends with "m".
-const LENGTH_UNITS: [LengthUnit; 4] = [
-    LengthUnit {
-        suffix: "Gm",
-        meters: 1e9,
-    },
-    LengthUnit {
-        suffix: "Mm",
-        meters: 1e6,
-    },
-    LengthUnit {
-        suffix: "km",
-        meters: METERS_PER_KILOMETER,
-    },
-    LengthUnit {
-        suffix: "m",
-        meters: 1.0,
-    },
-];
+use super::length_unit::{LENGTH_UNITS, METERS_PER_KILOMETER};
 
 // Meters of the feet above the ground, below it when negative.
 #[derive(Debug, Clone, Copy, PartialEq)]

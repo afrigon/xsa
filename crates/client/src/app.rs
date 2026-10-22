@@ -539,6 +539,7 @@ impl CommandExecutor for App {
             ClientCommand::CameraTarget(command) => command.start(self),
             ClientCommand::CameraTeleport(command) => command.start(self),
             ClientCommand::CameraLookAt(command) => command.start(self),
+            ClientCommand::CameraSpeed(command) => command.start(self),
             ClientCommand::CameraSnap(command) => command.start(self),
             ClientCommand::ConfigGet(command) => command.start(self),
             ClientCommand::ConfigSet(command) => command.start(self),
