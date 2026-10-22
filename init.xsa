@@ -1,0 +1,3 @@
+ui push game
+ui show debug-overlay
+camera tp --altitude 100m --lat 0 luna

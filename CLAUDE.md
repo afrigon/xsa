@@ -37,7 +37,7 @@ Everything runs through mise; tools are pinned in `mise.toml`.
 
 | Task | Does |
 | --- | --- |
-| `mise run client [--release]` | Compile shaders, run the game with an integrated server (debug builds enable validation layers) |
+| `mise run client [--release]` | Compile shaders, run the game with an integrated server and the startup script `init.xsa` (debug builds enable validation layers) |
 | `mise run client -- --remote <host>:<port> --fingerprint <hash>` | Run the game against a dedicated server |
 | `mise run server [--release]` | Run a dedicated server (`-- --host <address> --port <port>`) |
 | `mise run ipc -- <command>` | Send a command to a running game or server (`--name <name>` when several run) |
@@ -245,6 +245,9 @@ Names in code, data and documents use these words in these meanings only:
   `mise run ipc --name agent-<workspace> config set input.enabled true`
   once the test is done. The session key stops camera input and mouse capture (key binds still
   work), and a red "input disabled" label shows while it is off.
+- `xsa client --script <path>` runs a file of commands at startup, one per line (`#` starts a comment), each
+  waiting for the previous one's reply; results are logged, and the first failure skips the rest. `mise run client`
+  passes `--script init.xsa`, the repository's development setup, unless the arguments name another script.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).

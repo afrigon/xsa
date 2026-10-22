@@ -4,6 +4,7 @@ pub mod console_log;
 pub mod ipc;
 pub mod repl;
 pub mod router;
+pub mod script;
 pub mod terminal;
 pub mod value;
 pub mod words;
