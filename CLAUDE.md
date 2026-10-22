@@ -128,7 +128,9 @@ kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
   pin it with `--fingerprint` (the SSH model).
 - **Logging:** diagnostics go through `tracing`: WARN by default, `-v` / `-vv` /
   `-vvv` / `-q` to change it, `RUST_LOG` to filter per crate
-  (`RUST_LOG=xsa_client=debug`).
+  (`RUST_LOG=xsa_client=debug`). Commands received over IPC and their replies log at INFO under the `ipc`
+  target (`RUST_LOG=ipc=info`); the `logging.ipc.enabled`, `logging.ipc.input.enabled` and
+  `logging.ipc.output.enabled` keys choose which.
 
 ## Terms
 
