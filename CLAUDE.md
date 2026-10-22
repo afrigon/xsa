@@ -142,6 +142,8 @@ Names in code, data and documents use these words in these meanings only:
 - **Surface:** the materials (textures) of the ground up close.
 - **Biome:** a region's kind of ground.
 - **Scatter:** props placed on the ground: rocks, trees, bushes.
+- **Console:** the in-game console.
+- **Shell:** the terminal output of a process (the game, the dedicated server, `launchpad`).
 
 ## Coordinates, units and precision
 
