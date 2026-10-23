@@ -3349,9 +3349,11 @@ dependencies = [
 name = "xsa-logging"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "tracing",
  "tracing-subscriber",
  "usage-rs",
+ "xsa-config",
 ]
 
 [[package]]

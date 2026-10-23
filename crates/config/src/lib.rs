@@ -25,3 +25,5 @@ pub use config_value::ConfigValue;
 pub use config_visitor::ConfigVisitor;
 pub use inheritable::Inheritable;
 pub use number_range::NumberRange;
+
+pub use kdl::KdlValue;
