@@ -1,0 +1,9 @@
+[package]
+name = "xsa-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+kdl = "6.7.1"
+tracing.workspace = true

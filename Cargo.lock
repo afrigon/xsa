@@ -3311,6 +3311,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xsa-config"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "kdl",
+ "tracing",
+]
+
+[[package]]
 name = "xsa-core"
 version = "0.0.1"
 dependencies = [

@@ -1,4 +1,13 @@
-use crate::config::ByteSize;
+use anyhow::Context;
+use kdl::KdlValue;
+
+use crate::ConfigValue;
+
+// An amount of memory, written with a unit in the config (`512MiB`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ByteSize {
+    pub bytes: u64,
+}
 
 struct ByteUnit {
     name: &'static str,
@@ -56,6 +65,20 @@ impl ByteSize {
             .unwrap_or(&UNITS[UNITS.len() - 1]);
 
         format!("{}{}", self.bytes / unit.bytes, unit.name)
+    }
+}
+
+impl ConfigValue for ByteSize {
+    fn from_kdl(value: &KdlValue) -> Option<ByteSize> {
+        value.as_string().and_then(ByteSize::from_config_name)
+    }
+
+    fn to_kdl(&self) -> KdlValue {
+        KdlValue::String(self.config_name())
+    }
+
+    fn parse(text: &str) -> anyhow::Result<ByteSize> {
+        ByteSize::from_config_name(text).with_context(|| format!("{text:?} is not a size like 512MiB, 2GB or 1024B"))
     }
 }
 

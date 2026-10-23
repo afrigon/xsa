@@ -1,5 +1,7 @@
 use std::fmt;
 
+use anyhow::bail;
+
 // Inclusive; an unbounded side is infinite.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NumberRange {
@@ -8,14 +10,11 @@ pub struct NumberRange {
 }
 
 impl NumberRange {
-    // ANY, at_least and between are building blocks for declaring settings, kept whether or not a setting uses them.
-    #[allow(dead_code)]
     pub const ANY: NumberRange = NumberRange {
         minimum: f32::NEG_INFINITY,
         maximum: f32::INFINITY,
     };
 
-    #[allow(dead_code)]
     pub const fn at_least(minimum: f32) -> NumberRange {
         NumberRange {
             minimum,
@@ -23,13 +22,20 @@ impl NumberRange {
         }
     }
 
-    #[allow(dead_code)]
     pub const fn between(minimum: f32, maximum: f32) -> NumberRange {
         NumberRange { minimum, maximum }
     }
 
     pub fn contains(self, number: f32) -> bool {
         (self.minimum..=self.maximum).contains(&number)
+    }
+
+    pub fn check(self, number: f32) -> anyhow::Result<()> {
+        if !self.contains(number) {
+            bail!("{number} is out of range: expected {self}");
+        }
+
+        Ok(())
     }
 }
 

@@ -1,19 +1,36 @@
+use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
+
+use anyhow::Context;
 use kdl::{FormatConfig, KdlDocument, KdlEntry, KdlNode, KdlValue};
 
-const PATH_SEPARATOR: char = '.';
+use crate::key_path::PATH_SEPARATOR;
 
 #[derive(Default, Clone)]
-pub struct ConfigLayer {
+pub(crate) struct ConfigLayer {
     document: KdlDocument,
 }
 
 impl ConfigLayer {
-    pub fn new(document: KdlDocument) -> ConfigLayer {
-        ConfigLayer { document }
+    // A missing file is an empty layer.
+    pub fn read(path: &Path) -> anyhow::Result<ConfigLayer> {
+        let text = match fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(err) if err.kind() == ErrorKind::NotFound => String::new(),
+            Err(err) => return Err(err).with_context(|| format!("reading {}", path.display())),
+        };
+        let document = KdlDocument::parse(&text).with_context(|| format!("parsing {}", path.display()))?;
+
+        Ok(ConfigLayer { document })
     }
 
-    pub fn document(&self) -> &KdlDocument {
-        &self.document
+    pub fn write(&self, path: &Path) -> anyhow::Result<()> {
+        if let Some(directory) = path.parent().filter(|directory| !directory.as_os_str().is_empty()) {
+            fs::create_dir_all(directory).with_context(|| format!("creating {}", directory.display()))?;
+        }
+
+        fs::write(path, self.document.to_string()).with_context(|| format!("writing {}", path.display()))
     }
 
     pub fn get(&self, path: &str) -> Option<&KdlValue> {
