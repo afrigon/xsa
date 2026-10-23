@@ -294,7 +294,7 @@ Always bring the game to a stable state first:
 
 ### After testing
 
-- Leave the game running so I can try the implementation by hand.
+- Inside herdr, leave the game running so I can try the implementation by hand; outside herdr, close it with `exit`.
 - Re-enable player input with `config set input.enabled true`.
 
 ## Dependencies and assets
