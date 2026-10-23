@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use resource_vulkan::ResourceLimits;
 use winit::keyboard::KeyCode;
+use xsa_commands::ipc::IpcTranscript;
 
 use super::{
     AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, InputConfig,
-    KeyChord, LensConfig, RenderConfig, TerrainLodConfig, TerrainStreamingConfig, WhiteBalanceConfig,
+    KeyChord, LensConfig, RenderConfig, ShellConfig, TerrainLodConfig, TerrainStreamingConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
@@ -98,6 +99,9 @@ impl Default for Config {
             input: InputConfig { enabled: INPUT_ENABLED },
             resources: ResourceLimits::default(),
             terrain_streaming: TerrainStreamingConfig { freeze: false },
+            shell: ShellConfig {
+                ipc: IpcTranscript::default(),
+            },
         }
     }
 }

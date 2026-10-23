@@ -13,12 +13,12 @@ mod server_arguments;
 mod world_arguments;
 
 use arguments::Arguments;
-use xsa_commands::console_log::ConsoleLog;
+use xsa_commands::shell::ShellLog;
 use xsa_logging::Logging;
 
 fn main() -> anyhow::Result<()> {
     let arguments = Arguments::parse();
-    Logging::new(arguments.verbosity.verbosity()).install(ConsoleLog::writer);
+    Logging::new(arguments.verbosity.verbosity()).install(ShellLog::writer);
 
     arguments.command.run()
 }

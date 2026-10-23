@@ -1,4 +1,5 @@
 use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::watch;
 use winit::event_loop::EventLoop;
 use xsa_commands::ipc::{IpcEndpoint, ProcessKind};
 use xsa_commands::repl::Repl;
@@ -37,7 +38,13 @@ impl GameClient {
         }))?;
 
         let (invocation_sender, invocations) = unbounded_channel();
-        let _endpoint = IpcEndpoint::spawn(self.options.name, ProcessKind::Client, invocation_sender.clone())?;
+        let (ipc_transcript, ipc_transcript_receiver) = watch::channel(config.config().shell.ipc);
+        let _endpoint = IpcEndpoint::spawn(
+            self.options.name,
+            ProcessKind::Client,
+            invocation_sender.clone(),
+            ipc_transcript_receiver,
+        )?;
 
         if let Some(script) = script {
             script.spawn(invocation_sender.clone())?;
@@ -45,7 +52,14 @@ impl GameClient {
 
         let _repl = Repl::spawn(invocation_sender)?;
         let event_loop = EventLoop::new()?;
-        let mut app = App::new(session, invocations, packs_directory, config, self.options.build);
+        let mut app = App::new(
+            session,
+            invocations,
+            ipc_transcript,
+            packs_directory,
+            config,
+            self.options.build,
+        );
         event_loop.run_app(&mut app)?;
 
         app.into_result()

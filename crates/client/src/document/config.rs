@@ -17,6 +17,7 @@ mod lens_document;
 mod number_range;
 mod render_document;
 mod resources_document;
+mod shell_document;
 mod surface_debug_view_choice;
 mod terrain_debug_view_choice;
 mod terrain_lod_document;
@@ -42,6 +43,7 @@ use config_layer::ConfigLayer;
 use config_values::ConfigValues;
 use input_document::InputDocument;
 use resources_document::ResourcesDocument;
+use shell_document::ShellDocument;
 use terrain_streaming_document::TerrainStreamingDocument;
 
 use std::env;
@@ -85,6 +87,7 @@ impl ConfigDocument {
         InputDocument::write(&config.input, &mut defaults);
         ResourcesDocument::write(&config.resources, &mut defaults);
         TerrainStreamingDocument::write(&config.terrain_streaming, &mut defaults);
+        ShellDocument::write(&config.shell, &mut defaults);
         let mut document = ConfigDocument {
             path,
             session: ConfigLayer::default(),
@@ -139,6 +142,7 @@ impl ConfigDocument {
             input: InputDocument::read(&values).into_config(&defaults.input),
             resources: ResourcesDocument::read(&values).into_config(&defaults.resources),
             terrain_streaming: TerrainStreamingDocument::read(&values).into_config(&defaults.terrain_streaming),
+            shell: ShellDocument::read(&values).into_config(&defaults.shell),
         }
     }
 

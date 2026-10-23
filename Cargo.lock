@@ -3293,6 +3293,8 @@ dependencies = [
 name = "xsa-commands"
 version = "0.0.1"
 dependencies = [
+ "anstream",
+ "anstyle",
  "anyhow",
  "bitcode",
  "nix",

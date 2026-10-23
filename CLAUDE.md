@@ -140,6 +140,8 @@ Names in code, data and documents use these words in these meanings only:
 - **Surface:** the materials (textures) of the ground up close.
 - **Biome:** a region's kind of ground.
 - **Scatter:** props placed on the ground: rocks, trees, bushes.
+- **Console:** the in-game console.
+- **Shell:** the terminal output of a process (the game, the dedicated server, `launchpad`).
 
 ## Coordinates, units and precision
 
@@ -252,6 +254,8 @@ Names in code, data and documents use these words in these meanings only:
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
+- Commands received over IPC and their replies are printed to the shell, each pair under one sequence number;
+  `shell.ipc.enabled`, `shell.ipc.input.enabled` and `shell.ipc.output.enabled` choose which.
 - Agents driving the game inside herdr use one pane per workspace, labelled
   `xsa-game` and found by that label in `herdr pane list`; if missing, they
   create it as a sibling in the bottom 20% of the workspace
