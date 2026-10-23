@@ -13,7 +13,7 @@ use super::material::MaterialBuffer;
 use super::temporal_history::TemporalHistory;
 use super::terrain_draw::TerrainDraw;
 use super::{MaterialHandle, Scene, TerrainHandle};
-use crate::config::RenderConfig;
+use crate::config::Config;
 use crate::vulkan::GraphicsPipeline;
 
 pub(super) const NO_ADDRESS: vk::DeviceAddress = 0;
@@ -24,7 +24,7 @@ pub(super) struct FrameContext<'a> {
     pub frame_slot: usize,
     pub textures: &'a GraphTextures,
     pub temporal: &'a TemporalHistory,
-    pub render: &'a RenderConfig,
+    pub config: &'a Config,
     pub scene: &'a Scene,
     pub materials: &'a [MaterialBuffer],
     pub lens: Option<&'a LensFlare>,

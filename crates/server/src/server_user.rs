@@ -1,12 +1,21 @@
 use tokio::sync::mpsc::UnboundedReceiver;
-use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter};
+use xsa_commands::command::LocalCommand;
+use xsa_commands::completion::{CompletionCandidate, CompletionKind};
+use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter, Output};
+use xsa_config::ConfigStore;
 use xsa_proto::connection::Connection;
 use xsa_proto::message::{ClientMessage, Join, Role};
 use xsa_proto::session::ServerSession;
 
+use crate::DedicatedConfig;
+
+pub(crate) type ApplyConfig = Box<dyn Fn(&DedicatedConfig) + Send>;
+
 pub(crate) struct ServerUser {
     session: ServerSession,
     exit_requested: bool,
+    config: ConfigStore<DedicatedConfig>,
+    apply_config: ApplyConfig,
 }
 
 impl CommandExecutor for ServerUser {
@@ -17,16 +26,34 @@ impl CommandExecutor for ServerUser {
     fn exit(&mut self) {
         self.exit_requested = true;
     }
+
+    fn completion_values(&self, kind: CompletionKind) -> Vec<CompletionCandidate> {
+        CompletionCandidate::config(kind, self.config.keys())
+    }
+
+    fn run_local(&mut self, command: LocalCommand) -> Output {
+        let result = command.run(&mut self.config);
+        (self.apply_config)(self.config.config());
+
+        match result {
+            Ok(text) => Output::success(text),
+            Err(err) => Output::failure(format!("{err:#}")),
+        }
+    }
 }
 
 impl ServerUser {
     pub async fn run(
         connection: Connection,
         mut invocations: UnboundedReceiver<CommandInvocation>,
+        config: ConfigStore<DedicatedConfig>,
+        apply_config: ApplyConfig,
     ) -> anyhow::Result<()> {
         let mut user = ServerUser {
             session: ServerSession::new(connection),
             exit_requested: false,
+            config,
+            apply_config,
         };
         user.session.send(ClientMessage::Join(Join { role: Role::Server }))?;
         let mut router = CommandRouter::default();
@@ -87,7 +114,9 @@ mod tests {
         .unwrap();
         let connection = Server::start_local(world).unwrap();
         let (invocations, receiver) = unbounded_channel();
-        let server_user = tokio::spawn(ServerUser::run(connection, receiver));
+        let config_path = std::env::temp_dir().join(format!("xsa-server-user-{}.kdl", std::process::id()));
+        let config = ConfigStore::<DedicatedConfig>::load(config_path).unwrap();
+        let server_user = tokio::spawn(ServerUser::run(connection, receiver, config, Box::new(|_| {})));
 
         let rate = invoke(&invocations, "time rate 5").await;
         assert!(rate.succeeded && rate.text.contains("rate 5×"), "{rate:?}");

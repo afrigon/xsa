@@ -1,4 +1,6 @@
+use anyhow::Context;
 use winit::keyboard::KeyCode;
+use xsa_config::{ConfigValue, KdlValue};
 
 use crate::config::KeyChord;
 
@@ -358,6 +360,24 @@ impl KeyChord {
         parts.push(key);
 
         parts.join(&MODIFIER_SEPARATOR.to_string())
+    }
+}
+
+impl ConfigValue for KeyChord {
+    fn from_kdl(value: &KdlValue) -> Option<KeyChord> {
+        value.as_string().and_then(KeyChord::from_config_name)
+    }
+
+    fn to_kdl(&self) -> KdlValue {
+        KdlValue::String(self.config_name())
+    }
+
+    fn parse(text: &str) -> anyhow::Result<KeyChord> {
+        KeyChord::from_config_name(text).with_context(|| format!("{text:?} is not a key like f4, tab, shift+tab or `"))
+    }
+
+    fn completions() -> Vec<String> {
+        KeyChord::key_names().into_iter().map(str::to_string).collect()
     }
 }
 

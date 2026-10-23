@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use usage::Args;
 use xsa_client::{ClientOptions, GameClient, RemoteServer};
+use xsa_logging::{LogFilter, LogFilterHandle};
 
 use crate::current_build::current_build;
 use crate::world_arguments::WorldArguments;
@@ -37,10 +38,15 @@ pub struct ClientArguments {
         help = "File of commands to run at startup, one per line, each waiting for the previous one"
     )]
     pub script: Option<PathBuf>,
+    #[usage(
+        long,
+        help = "Config file to read and save to; defaults to $XDG_CONFIG_HOME/xsa/config.kdl"
+    )]
+    pub config: Option<PathBuf>,
 }
 
 impl ClientArguments {
-    pub fn run(self) -> anyhow::Result<()> {
+    pub fn run(self, log_filter: LogFilterHandle, log_filter_override: Option<LogFilter>) -> anyhow::Result<()> {
         let remote = match self.remote {
             Some(address) => Some(RemoteServer {
                 address,
@@ -55,6 +61,9 @@ impl ClientArguments {
             remote,
             world: self.world.into_options(),
             script: self.script,
+            config: self.config,
+            log_filter,
+            log_filter_override,
         })
         .run()
     }

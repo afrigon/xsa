@@ -23,15 +23,16 @@ use anyhow::{Context, bail};
 use glam::DVec2;
 use resource_vulkan::Resources;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::{oneshot, watch};
+use tokio::sync::oneshot;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
-use xsa_commands::command::{ClientCommand, Overlay, ViewControllerId};
+use xsa_commands::command::{ClientCommand, LocalCommand, Overlay, ViewControllerId};
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
-use xsa_commands::ipc::IpcTranscript;
+use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
+use xsa_config::ConfigStore;
 use xsa_packs::PackStack;
 use xsa_proto::event::{ServerEvent, WorldState};
 use xsa_proto::message::{ClientMessage, Leave};
@@ -44,7 +45,6 @@ use xui::{
 use crate::BuildIdentity;
 use crate::camera::CameraMode;
 use crate::config::Config;
-use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
 use crate::renderer::{PendingCapture, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
@@ -72,13 +72,13 @@ pub struct App {
     session: ServerSession,
     router: CommandRouter,
     invocations: UnboundedReceiver<CommandInvocation>,
-    ipc_transcript: watch::Sender<IpcTranscript>,
+    shell_outputs: ShellOutputs,
     exit_requested: bool,
     tasks: Vec<RunningTask>,
     packs_directory: PathBuf,
     input: Input,
     cameras: Option<CameraController>,
-    config_document: ConfigDocument,
+    config_store: ConfigStore<Config>,
     config: Config,
     mouse_captured: bool,
     cursor: Point,
@@ -99,9 +99,9 @@ impl App {
     pub fn new(
         session: ServerSession,
         invocations: UnboundedReceiver<CommandInvocation>,
-        ipc_transcript: watch::Sender<IpcTranscript>,
+        shell_outputs: ShellOutputs,
         packs_directory: PathBuf,
-        config_document: ConfigDocument,
+        config_store: ConfigStore<Config>,
         build: BuildIdentity,
     ) -> Self {
         let commands = GameCommands::default();
@@ -120,14 +120,14 @@ impl App {
             session,
             router: CommandRouter::default(),
             invocations,
-            ipc_transcript,
+            shell_outputs,
             exit_requested: false,
             tasks: Vec::new(),
             packs_directory,
             input: Input::default(),
             cameras: None,
-            config: config_document.config(),
-            config_document,
+            config: config_store.config().clone(),
+            config_store,
             mouse_captured: false,
             cursor: Point::default(),
             pointer_moved: false,
@@ -266,7 +266,7 @@ impl App {
     }
 
     fn poll_input(&mut self) {
-        for action in self.config.bind.triggered(&self.input) {
+        for action in self.config.input.bind.triggered(&self.input) {
             self.run_bind_action(action);
         }
 
@@ -288,48 +288,35 @@ impl App {
     }
 
     fn reconfigure(&mut self) {
-        self.config = self.config_document.config();
+        self.config = self.config_store.config().clone();
         self.apply_config();
     }
 
-    fn apply_config_change(&mut self, key: &str, save: bool) -> anyhow::Result<String> {
-        self.reconfigure();
-        let mut description = format!("{key} {}", self.config_document.get(key)?);
+    fn apply_config(&mut self) {
+        self.shell_outputs.apply(&self.config.logging);
 
-        if save && ConfigKey::find(key).is_some_and(|key| !key.persisted) {
-            description.push_str(" (not saved: this setting only lasts for the session)");
-        } else if save {
-            self.config_document.save()?;
-            description.push_str(&format!(" (saved to {})", self.config_document.path().display()));
+        for chord in self.config.input.bind.shared_chords() {
+            tracing::warn!("{} is bound to more than one action", chord.config_name());
         }
 
-        Ok(description)
-    }
-
-    fn apply_config(&mut self) {
-        self.ipc_transcript.send_replace(self.config.shell.ipc);
-        let animation_duration_scale = self.config.animations.duration_scale;
-        self.navigation.set_duration_scale(animation_duration_scale);
+        self.navigation
+            .set_duration_scale(self.config.animation.ui_duration_scale());
 
         if let Some(cameras) = &mut self.cameras {
-            cameras.set_animation_duration_scale(f64::from(animation_duration_scale));
+            cameras.set_animation_duration_scale(f64::from(self.config.animation.camera_duration_scale()));
         }
 
         if let Some(resources) = &self.resources {
-            resources.set_limits(self.config.resources);
+            resources.set_limits(self.config.service.resources.limits());
         }
 
         let Some(renderer) = &mut self.renderer else {
             return;
         };
 
-        renderer.configure(
-            &self.config.render,
-            &self.config.animations,
-            &self.config.terrain_streaming,
-        );
+        renderer.configure(&self.config);
         let skybox = self.world.as_ref().and_then(ClientWorld::skybox);
-        renderer.scene_mut().skybox = if self.config.render.stars { skybox } else { None };
+        renderer.scene_mut().skybox = if self.config.video.stars { skybox } else { None };
     }
 
     fn capture(&mut self) -> anyhow::Result<PendingCapture> {
@@ -525,21 +512,19 @@ impl CommandExecutor for App {
                 .as_ref()
                 .map(ClientWorld::body_candidates)
                 .unwrap_or_default(),
-            CompletionKind::ConfigKey => ConfigKey::all()
-                .into_iter()
-                .map(|key| CompletionCandidate::new(key.path))
-                .collect(),
-            CompletionKind::ConfigValue => ConfigKey::all()
-                .into_iter()
-                .flat_map(|key| {
-                    key.kind.values().into_iter().map(|value| CompletionCandidate {
-                        value: value.to_string(),
-                        display: None,
-                        description: None,
-                        scope: Some(key.path.to_string()),
-                    })
-                })
-                .collect(),
+            CompletionKind::ConfigKey | CompletionKind::ConfigValue => {
+                CompletionCandidate::config(kind, self.config_store.keys())
+            }
+        }
+    }
+
+    fn run_local(&mut self, command: LocalCommand) -> Output {
+        let result = command.run(&mut self.config_store);
+        self.reconfigure();
+
+        match result {
+            Ok(text) => Output::success(text),
+            Err(err) => Output::failure(format!("{err:#}")),
         }
     }
 
@@ -551,11 +536,6 @@ impl CommandExecutor for App {
             ClientCommand::CameraLookAt(command) => command.start(self),
             ClientCommand::CameraSpeed(command) => command.start(self),
             ClientCommand::CameraSnap(command) => command.start(self),
-            ClientCommand::ConfigGet(command) => command.start(self),
-            ClientCommand::ConfigSet(command) => command.start(self),
-            ClientCommand::ConfigToggle(command) => command.start(self),
-            ClientCommand::ConfigSave(command) => command.start(self),
-            ClientCommand::ConfigReload(command) => command.start(self),
             ClientCommand::InterfacePush(command) => command.start(self),
             ClientCommand::InterfacePop(command) => command.start(self),
             ClientCommand::InterfaceSet(command) => command.start(self),

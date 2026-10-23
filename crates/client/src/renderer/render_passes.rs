@@ -9,7 +9,7 @@ use super::passes::{
     BloomPass, CaptureInputs, CapturePass, ForwardPass, HistogramInputs, HistogramPass, LensInputs, LensPass,
     SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass,
 };
-use crate::config::{AntialiasingKind, RenderConfig};
+use crate::config::{AntialiasingKind, Config};
 
 // Every pass of the renderer, and the order a frame runs them in.
 pub(super) struct RenderPasses {
@@ -45,19 +45,19 @@ impl RenderPasses {
         })
     }
 
-    // Builds what the next frame draws with under `render`, before its recording starts.
-    pub fn ensure_pipelines(&mut self, gpu: &GpuContext, render: &RenderConfig) -> anyhow::Result<()> {
-        self.forward.ensure_pipelines(gpu, render)
+    // Builds what the next frame draws with under `config`, before its recording starts.
+    pub fn ensure_pipelines(&mut self, gpu: &GpuContext, config: &Config) -> anyhow::Result<()> {
+        self.forward.ensure_pipelines(gpu, &config.render)
     }
 
     pub fn add_to<'passes, 'frame>(
         &'passes mut self,
         graph: &mut GraphBuilder<'_, 'passes, FrameContext<'frame>>,
-        render: &RenderConfig,
+        config: &Config,
         inputs: FrameInputs,
     ) {
         let light_count = inputs.projected_light_count;
-        let lens = (render.lens.enabled && inputs.lens_loaded && light_count > 0)
+        let lens = (config.video.lens.enabled && inputs.lens_loaded && light_count > 0)
             .then(|| graph.add(&mut self.lens, LensInputs { light_count }).lens);
         let forward = graph.add(&mut self.forward, ());
         graph.add(
@@ -69,11 +69,12 @@ impl RenderPasses {
             },
         );
         let sky = graph.add(&mut self.skybox, forward);
-        let scene_color = match render.antialiasing.kind {
+        let scene_color = match config.video.antialiasing {
             Some(AntialiasingKind::Taa) => graph.add(&mut self.taa, sky).history.current,
             None => sky.hdr,
         };
-        let bloom = render
+        let bloom = config
+            .video
             .bloom
             .enabled
             .then(|| graph.add(&mut self.bloom, scene_color).bloom);
