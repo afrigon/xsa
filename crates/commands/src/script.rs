@@ -2,12 +2,14 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::thread;
+use std::time::Instant;
 
 use anyhow::{Context, anyhow};
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 use crate::router::{CommandExecution, CommandInvocation};
+use crate::shell::Transcript;
 use crate::words;
 
 pub struct Script {
@@ -42,17 +44,23 @@ impl Script {
         Ok(Script { path, lines })
     }
 
-    pub fn spawn(self, invocations: UnboundedSender<CommandInvocation>) -> io::Result<()> {
+    pub fn spawn(
+        self,
+        invocations: UnboundedSender<CommandInvocation>,
+        transcript: watch::Receiver<Transcript>,
+    ) -> io::Result<()> {
         thread::Builder::new()
             .name("script".into())
-            .spawn(move || self.run(invocations))?;
+            .spawn(move || self.run(invocations, transcript))?;
 
         Ok(())
     }
 
-    fn run(self, invocations: UnboundedSender<CommandInvocation>) {
+    fn run(self, invocations: UnboundedSender<CommandInvocation>, transcript: watch::Receiver<Transcript>) {
         for line in self.lines {
             let location = format!("{}:{}", self.path.display(), line.number);
+            transcript.borrow().print_request(&location, &line.words);
+            let started = Instant::now();
             let (reply, receiver) = oneshot::channel();
             let invocation = CommandInvocation::Execute(CommandExecution {
                 words: line.words,
@@ -64,8 +72,14 @@ impl Script {
                 return;
             }
 
-            match receiver.blocking_recv() {
-                Ok(output) if output.succeeded => tracing::info!("{location}: {}", output.text.trim_end()),
+            let output = receiver.blocking_recv();
+
+            if let Ok(output) = &output {
+                transcript.borrow().print_response(&location, output, started.elapsed());
+            }
+
+            match output {
+                Ok(output) if output.succeeded => {}
                 Ok(output) => {
                     tracing::error!(
                         "{location}: {}; skipping the rest of the script",
@@ -127,7 +141,11 @@ mod tests {
     fn each_line_waits_for_the_previous_reply_and_a_failure_stops_the_script() {
         let script = parse("first\nsecond\nthird\n");
         let (sender, mut invocations) = unbounded_channel();
-        let runner = thread::spawn(move || script.run(sender));
+        let (_, transcript) = watch::channel(Transcript {
+            enabled: false,
+            ..Transcript::default()
+        });
+        let runner = thread::spawn(move || script.run(sender, transcript));
         let mut received = Vec::new();
 
         while let Some(CommandInvocation::Execute(execution)) = invocations.blocking_recv() {

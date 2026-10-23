@@ -10,6 +10,8 @@ client = []
 anstream = "1.0.0"
 anstyle = "1.0.14"
 anyhow.workspace = true
+xsa-config.workspace = true
+xsa-logging.workspace = true
 bitcode.workspace = true
 rustyline = { version = "18.0.1", features = ["derive"] }
 shlex = "2.0.1"

@@ -1,6 +1,7 @@
 pub mod command;
 pub mod completion;
 pub mod ipc;
+pub mod logging;
 pub mod repl;
 pub mod router;
 pub mod script;
