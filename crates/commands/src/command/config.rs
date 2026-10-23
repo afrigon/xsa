@@ -3,6 +3,7 @@ mod get;
 mod load;
 mod save;
 mod set;
+mod settings;
 mod toggle;
 mod unset;
 
@@ -11,6 +12,7 @@ pub use get::ConfigGetCommand;
 pub use load::ConfigLoadCommand;
 pub use save::ConfigSaveCommand;
 pub use set::ConfigSetCommand;
+use settings::Settings;
 pub use toggle::ConfigToggleCommand;
 pub use unset::ConfigUnsetCommand;
 

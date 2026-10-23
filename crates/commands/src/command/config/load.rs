@@ -4,6 +4,7 @@ use anyhow::bail;
 use usage::Args;
 use xsa_config::{ConfigSection, ConfigStore};
 
+use super::Settings;
 use crate::command::{LocalCommand, Routable, Route};
 use crate::completion::complete_config_key;
 
@@ -31,7 +32,7 @@ impl ConfigLoadCommand {
         };
 
         let count = store.import(&path, key, self.save)?;
-        let mut description = format!("loaded {count} settings from {}", path.display());
+        let mut description = format!("loaded {} from {}", Settings(count), path.display());
 
         if self.save {
             description.push_str(&format!(" (saved to {})", store.path().display()));

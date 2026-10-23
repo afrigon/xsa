@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use usage::Args;
 use xsa_config::{ConfigSection, ConfigStore};
 
+use super::Settings;
 use crate::command::{LocalCommand, Routable, Route};
 use crate::completion::complete_config_key;
 
@@ -17,7 +18,7 @@ impl ConfigSaveCommand {
     pub fn run<T: ConfigSection + Default + Clone>(self, store: &ConfigStore<T>) -> anyhow::Result<String> {
         let count = store.export(&self.path, self.key.as_deref().unwrap_or_default())?;
 
-        Ok(format!("saved {count} settings to {}", self.path.display()))
+        Ok(format!("saved {} to {}", Settings(count), self.path.display()))
     }
 }
 
