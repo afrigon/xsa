@@ -263,7 +263,8 @@ Names in code, data and documents use these words in these meanings only:
 - Always start the game in a dedicated herdr pane with `herdr pane run`.
 - Reuse an existing pane found with `herdr pane list` when there is one; otherwise create it with
   `herdr pane split --direction down --ratio 0.8 --no-focus`.
-- The pane is named `xsa-agent`. Never use an existing pane that does not carry that name.
+- The pane is named `xsa-agent` (`herdr pane rename <pane_id> xsa-agent` after creating it). Never use an existing
+  pane that does not carry that name.
 - If the game is already running in the pane, send it `exit` and start a fresh instance.
 
 ### IPC
