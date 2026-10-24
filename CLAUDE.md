@@ -162,8 +162,8 @@ The `proto` crate defines it; `mise run docs -- --open` renders the reference fr
   each in its own file in `request/`, `event/` or `reply/`, which hold nothing else besides their dispatch enum
   (and `RequestType` in `request/`); refusals live in `error/`, ids in `frame/`. Requests say
   **Set** for an absolute value and **Step** for a change relative to the server's value.
-- **Documentation:** every public type and field in `request`, `reply`, `event`, `error`, `frame`, `world` and `user` has a
-  doc comment; their `missing_docs` lint makes `lint` fail otherwise.
+- **Documentation:** every public type and field in `request`, `reply`, `event`, `error`, `frame`, `world` and `user`
+  has a doc comment; their `missing_docs` lint makes `lint` fail otherwise.
 
 ## Terms
 
