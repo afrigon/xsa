@@ -1,19 +1,15 @@
 mod camera_action;
-mod camera_mode;
 mod look_at;
-mod mode;
 mod snap;
-mod speed;
 mod target;
+mod target_selection;
 mod teleport;
 
 pub use camera_action::CameraAction;
-pub use camera_mode::CameraMode;
 pub use look_at::CameraLookAtCommand;
-pub use mode::CameraModeCommand;
 pub use snap::CameraSnapCommand;
-pub use speed::CameraSpeedCommand;
 pub use target::CameraTargetCommand;
+pub use target_selection::TargetSelection;
 pub use teleport::CameraTeleportCommand;
 
 use usage::Args;

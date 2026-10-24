@@ -1,17 +1,17 @@
 use xsa_commands::command::{
     CameraTargetCommand, InterfacePopCommand, InterfacePushCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
 };
-use xsa_commands::value::Target;
 
 use super::App;
+use super::body_step::BodyStep;
 use super::client_command_handler::ClientCommandHandler;
 use crate::config::BindAction;
 
 impl App {
     pub(super) fn run_bind_action(&mut self, action: BindAction) {
         let progress = match action {
-            BindAction::CameraTargetNext => App::target(Target::Next).start(self),
-            BindAction::CameraTargetPrevious => App::target(Target::Previous).start(self),
+            BindAction::CameraTargetNext => App::target(BodyStep::Next).start(self),
+            BindAction::CameraTargetPrevious => App::target(BodyStep::Previous).start(self),
             BindAction::InterfacePauseMenu if self.is_game_active() => InterfacePushCommand {
                 view_controller: ViewControllerId::PauseMenu,
             }
@@ -30,9 +30,12 @@ impl App {
         self.follow(progress, None);
     }
 
-    fn target(target: Target) -> CameraTargetCommand {
+    fn target(step: BodyStep) -> CameraTargetCommand {
         CameraTargetCommand {
-            target,
+            body: None,
+            next: step == BodyStep::Next,
+            previous: step == BodyStep::Previous,
+            parent: false,
             category: None,
             altitude: None,
             pitch: None,

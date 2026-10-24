@@ -1,4 +1,4 @@
-use super::{BodyCategory, BodyId, BodyIndex, Star};
+use super::{Atmosphere, BodyCategory, BodyId, BodyIndex, Star};
 use crate::random::Seed;
 
 pub struct Body {
@@ -9,5 +9,6 @@ pub struct Body {
     pub radius: f64,
     pub gravitational_parameter: f64,
     pub star: Option<Star>,
+    pub atmosphere: Option<Atmosphere>,
     pub seed: Seed,
 }

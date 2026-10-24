@@ -10,6 +10,6 @@ impl ImmediateCommandHandler for CameraLookAtCommand {
 
         let cameras = app.cameras.as_mut().context("the cameras are not ready")?;
 
-        cameras.look_at(&self.target, world)
+        cameras.look_at(&self.body, world)
     }
 }

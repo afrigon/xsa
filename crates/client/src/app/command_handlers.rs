@@ -1,7 +1,5 @@
 mod camera_look_at;
-mod camera_mode;
 mod camera_snap;
-mod camera_speed;
 mod camera_target;
 mod camera_teleport;
 mod interface_hide;
@@ -10,3 +8,4 @@ mod interface_push;
 mod interface_set;
 mod interface_show;
 mod interface_toggle;
+mod time_warp;

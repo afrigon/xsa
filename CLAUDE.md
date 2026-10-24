@@ -72,10 +72,12 @@ that produce them. `resource-vulkan` depends on no xsa crate
 either, only on `memory-vulkan` and `resource-loader`: the client adds its own
 kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
 `config` depends on no xsa crate: `logging`, `commands`, `server` and `client`
-define their settings through it.
+define their settings through it. `animation` depends on no xsa crate either: the
+server's time warps and the client's camera transitions move through it.
 
 | Crate | Responsibility |
 | --- | --- |
+| `animation` | Values that move over time: easing curves (`Easing`, `CubicBezier`), eased progress over a duration (`EasedProgress`) and speed-limited motion (`LimitedMotion`) |
 | `units` | Plain value types shared by every crate: simulation time, time rate |
 | `core` | The pure simulation: orbits, coordinate frames, bodies and their state, terrain heights over the pages a side holds (`HeightPages`) |
 | `packs` | Pack loading (see `docs/packs.md`): reads KDL content into `core` types and plain definitions, and a terrain's height pages (`HeightPageReader`) |
@@ -99,6 +101,9 @@ define their settings through it.
 - **Content is data.** Every body, effect and rendering feature is configured
   by pack data; adding an atmosphere to the Moon is a few lines in its data
   file. Nothing is hard-coded per body or per system.
+- **Any star system.** Sol is one system among many: code, data, names and commands work for systems with several
+  stars, circumbinary planets and bodies unlike ours. Never assume one star, a body named after the Sun or Earth,
+  or a property of the solar system; "the star" of a body is a defined choice, never the root of the tree.
 - **One simulation runner.** Local play runs the same `Server` as the dedicated
   binary, on its own thread, over an in-process `Connection`; `--remote` swaps
   in QUIC. Client code is identical either way.
@@ -279,10 +284,16 @@ Names in code, data and documents use these words in these meanings only:
 ## Commands
 
 - Durations take `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
-  `Mm` or `Gm` (case-sensitive), a bare number is km; speeds take `m/s`, `km/s`, `Mm/s` or `Gm/s`, a bare number
-  is m/s; angles are degrees.
+  `Mm` or `Gm` (case-sensitive), a bare number is km; angles are degrees.
+- Time runs at most 2¹⁷× real time (`MAXIMUM_TIME_RATE` on the server): faster rates are refused, and `time faster`
+  there conflicts.
 - `time override <rate>` runs time at a rate without changing the configured one, until `time override none`; only
   singleplayer allows it (its request's `SESSION_ENVIRONMENTS`), and the pause menu stops time with one.
+- `time warp <time-of-day> [--star <id>] [--instant]` runs time ahead to the next dawn, sunrise, noon, sunset, dusk or
+  midnight where the camera's controls stand: the client finds the moment (`core::daylight`) and the server eases time
+  there (`SetTimeWarpRequest`) over `0.25 s × log₂(1 + span / 1 min)`, scaled by `animation.time`, never faster than
+  the maximum rate; at scale 0 or with `--instant` it jumps. An override holds a warp, any other change to time stops
+  it, `time warp --cancel` too. Singleplayer only.
 - Client commands may span frames: a handler returns `CommandProgress::Done`
   or a `CommandTask` that `App` polls after each update, replying when it
   finishes. Updates run with every frame the window draws, and at the tick
@@ -403,8 +414,11 @@ Always bring the game to a stable state first:
 ## Controls
 
 The game starts in the main menu. In game, right-drag orbits the target and
-scroll zooms; the debug camera (`camera mode debug`) flies with WASD,
-Space/Shift and mouse look (click to capture), and scroll sets its speed. The
+scroll zooms; the debug camera (entered with `camera tp`) flies with WASD,
+Space/Shift and mouse look (click to capture), and scroll sets its speed
+(`debug.camera.speed`). Each way of moving the camera is a `Controls`
+(`OrbitControls`, `DebugControls`) attached to an `Anchor`; switching replaces
+the controls, through a `CameraTransition` unless animations are off. The
 camera gets input only while the game view controller is on top; menus release the
 mouse. Debug toggles are commands (`config toggle video.stars`,
 `config set render.shader.override normals`, …), not binds. The default binds:

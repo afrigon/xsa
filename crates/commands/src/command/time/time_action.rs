@@ -1,5 +1,7 @@
 use usage::Subcommands;
 
+#[cfg(feature = "client")]
+use super::TimeWarpCommand;
 use super::{
     TimeFasterCommand, TimeOverrideCommand, TimePauseCommand, TimeRateCommand, TimeResumeCommand, TimeSetCommand,
     TimeSlowerCommand, TimeStepCommand,
@@ -24,6 +26,9 @@ pub enum TimeAction {
     Step(TimeStepCommand),
     /// Run time at a rate that replaces the configured one until cleared with none, in singleplayer only
     Override(TimeOverrideCommand),
+    #[cfg(feature = "client")]
+    /// Run time ahead to the next time of day under the camera, or stop a running warp with --cancel, in singleplayer only
+    Warp(TimeWarpCommand),
 }
 
 impl Routable for TimeAction {
@@ -37,6 +42,8 @@ impl Routable for TimeAction {
             TimeAction::Slower(command) => command.route(),
             TimeAction::Step(command) => command.route(),
             TimeAction::Override(command) => command.route(),
+            #[cfg(feature = "client")]
+            TimeAction::Warp(command) => command.route(),
         }
     }
 }

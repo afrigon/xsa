@@ -1,8 +1,8 @@
 use anyhow::{anyhow, ensure};
 use xsa_core::random::Seed;
-use xsa_core::simulation::{BodyCategory, BodyDescription, BodyId, Star};
+use xsa_core::simulation::{Atmosphere, BodyCategory, BodyDescription, BodyId, Star};
 
-use crate::{Document, NodeExtension, PackData, ParseContext};
+use crate::{Document, FromNode, NodeExtension, PackData, ParseContext};
 
 impl PackData for BodyDescription {
     const KIND: &'static str = "bodies";
@@ -14,6 +14,10 @@ impl PackData for BodyDescription {
             .parse()
             .map_err(|err: String| anyhow!(err))?;
         let star = parse_star(document)?;
+        let atmosphere = document
+            .optional_node("atmosphere")
+            .map(|node| Atmosphere::from_node(node, context))
+            .transpose()?;
         let id: BodyId = context.id.into();
         let seed = match document.optional_node("seed") {
             Some(node) => Seed {
@@ -30,6 +34,7 @@ impl PackData for BodyDescription {
             rotation_period: document.node("rotation-period")?.number_argument()?,
             axial_tilt: document.node("axial-tilt")?.number_argument()?.to_radians(),
             star,
+            atmosphere,
             seed,
         })
     }

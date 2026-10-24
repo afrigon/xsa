@@ -15,8 +15,9 @@ use xsa_proto::reply::Reply;
 use xsa_proto::request::Request;
 use xsa_proto::session::SessionEnvironment;
 use xsa_proto::user::{Actor, User};
-use xsa_units::{SimulationDuration, TICK_RATE_HERTZ};
+use xsa_units::{SimulationDuration, TICK_RATE_HERTZ, TimeRate};
 
+use crate::world::MAXIMUM_TIME_RATE;
 use crate::{LocalServer, Peer, ServerHandle, World};
 use client::Client;
 use request_handler::RequestHandler;
@@ -82,12 +83,18 @@ impl Server {
 
         while self.stop.try_recv() == Err(oneshot::error::TryRecvError::Empty) {
             self.accept_peers();
-            self.world.advance(SimulationDuration {
+            let advanced = self.world.advance(SimulationDuration {
                 seconds: tick.as_secs_f64(),
             });
+
+            if advanced.flow_changed {
+                self.broadcast_time();
+            }
+
             self.handle_frames();
             self.broadcast(&Event::Tick(TickEvent {
                 time: self.world.time(),
+                rate: advanced.rate,
             }));
             self.remove_disconnected();
 
@@ -156,6 +163,7 @@ impl Server {
             Request::SetTimeRate(request) => request.handle(self, client).map(Reply::from),
             Request::StepTimeRate(request) => request.handle(self, client).map(Reply::from),
             Request::SetTimeRateOverride(request) => request.handle(self, client).map(Reply::from),
+            Request::SetTimeWarp(request) => request.handle(self, client).map(Reply::from),
         }
     }
 
@@ -164,10 +172,29 @@ impl Server {
         self.send(client, ServerFrame::Snapshot(state));
     }
 
+    // A rate time can run at: finite, at least 0 and at most the maximum. `setting` names it in the refusal.
+    fn check_time_rate(rate: TimeRate, setting: &str) -> Result<(), RequestError> {
+        if !rate.is_valid() {
+            return Err(RequestError::invalid(format!(
+                "the {setting} must be a finite number of at least 0"
+            )));
+        }
+
+        if rate > MAXIMUM_TIME_RATE {
+            return Err(RequestError::invalid(format!(
+                "the {setting} is at most {}",
+                MAXIMUM_TIME_RATE.multiplier
+            )));
+        }
+
+        Ok(())
+    }
+
     fn broadcast_time(&mut self) {
         self.broadcast(&Event::TimeChanged(TimeChangedEvent {
             time: self.world.time(),
             time_flow: self.world.time_flow(),
+            rate: self.world.current_rate(),
         }));
     }
 
@@ -213,11 +240,11 @@ mod tests {
     use xsa_proto::frame::RequestId;
     use xsa_proto::reply::JoinReply;
     use xsa_proto::request::{
-        JoinRequest, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest,
-        StepTimeRequest,
+        JoinRequest, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest, SetTimeWarpRequest,
+        StepTimeRateRequest, StepTimeRequest,
     };
     use xsa_proto::user::UserId;
-    use xsa_units::{SimulationTime, TimeFlow, TimeRate, TimeRateStep};
+    use xsa_units::{SimulationTime, TimeFlow, TimeRate, TimeRateStep, TimeWarp, WarpPace};
 
     use super::*;
     use crate::WorldOptions;
@@ -374,7 +401,9 @@ mod tests {
             time_flow: TimeFlow {
                 rate,
                 time_override: None,
+                warp: None,
             },
+            rate,
         }));
         assert_eq!(drain(&mut operator), vec![changed.clone(), accepted(id)]);
         assert_eq!(drain(&mut observer), vec![changed]);
@@ -398,6 +427,162 @@ mod tests {
             harness.send(&connection, Request::StepTimeRate(StepTimeRateRequest { step }));
             assert_eq!(harness.server.world.time_flow().rate, TimeRate { multiplier });
         }
+    }
+
+    fn refusal(frames: &[ServerFrame], id: RequestId) -> Option<RequestError> {
+        frames.iter().find_map(|frame| match frame {
+            ServerFrame::Reply {
+                id: replied,
+                result: Err(error),
+            } if *replied == id => Some(error.clone()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn rates_above_the_maximum_are_refused() {
+        let mut harness = Harness::new();
+        let mut connection = harness.connect_operator();
+        let before = harness.server.world.time_flow();
+        let rate = TimeRate {
+            multiplier: MAXIMUM_TIME_RATE.multiplier * 2.0,
+        };
+        let set = harness.send(&connection, Request::SetTimeRate(SetTimeRateRequest { rate }));
+        let set_override = harness.send(
+            &connection,
+            Request::SetTimeRateOverride(SetTimeRateOverrideRequest { rate: Some(rate) }),
+        );
+        let frames = drain(&mut connection);
+        assert!(
+            matches!(refusal(&frames, set), Some(RequestError::Invalid { .. })),
+            "{frames:?}"
+        );
+        assert!(
+            matches!(refusal(&frames, set_override), Some(RequestError::Invalid { .. })),
+            "{frames:?}"
+        );
+        assert_eq!(harness.server.world.time_flow(), before);
+    }
+
+    #[test]
+    fn faster_at_the_maximum_conflicts() {
+        let mut harness = Harness::new();
+        let mut connection = harness.connect_operator();
+        let rate = MAXIMUM_TIME_RATE;
+        harness.send(&connection, Request::SetTimeRate(SetTimeRateRequest { rate }));
+        let step = TimeRateStep::Faster;
+        let faster = harness.send(&connection, Request::StepTimeRate(StepTimeRateRequest { step }));
+        let frames = drain(&mut connection);
+        assert!(
+            matches!(refusal(&frames, faster), Some(RequestError::Conflict { .. })),
+            "{frames:?}"
+        );
+        assert_eq!(harness.server.world.time_flow().rate, MAXIMUM_TIME_RATE);
+    }
+
+    const DAY_SECONDS: f64 = 86_400.0;
+    const WARP_SECONDS: f64 = 2.0;
+
+    fn warp_a_day(harness: &mut Harness, connection: &Connection, pace: WarpPace) -> SimulationTime {
+        let until = harness
+            .server
+            .world
+            .time()
+            .advanced_by(SimulationDuration { seconds: DAY_SECONDS });
+        let warp = Some(TimeWarp { until, pace });
+        harness.send(connection, Request::SetTimeWarp(SetTimeWarpRequest { warp }));
+
+        until
+    }
+
+    // Advances the world tick by tick for up to `seconds`, stopping at the tick its flow changes; returns whether it
+    // did.
+    fn run(harness: &mut Harness, seconds: f64) -> bool {
+        let tick = SimulationDuration {
+            seconds: 1.0 / TICK_RATE_HERTZ,
+        };
+
+        (0..(seconds * TICK_RATE_HERTZ).ceil() as usize).any(|_| harness.server.world.advance(tick).flow_changed)
+    }
+
+    #[test]
+    fn an_eased_warp_lands_on_its_end_and_ends() {
+        let mut harness = Harness::new();
+        let connection = harness.connect_operator();
+        let pace = WarpPace::Eased { seconds: WARP_SECONDS };
+        let until = warp_a_day(&mut harness, &connection, pace);
+        assert!(harness.server.world.time_flow().warp.is_some());
+
+        run(&mut harness, WARP_SECONDS / 2.0);
+        assert!(harness.server.world.time() < until);
+        assert!(harness.server.world.current_rate() > TimeRate::REAL_TIME);
+
+        assert!(run(&mut harness, WARP_SECONDS));
+        assert_eq!(harness.server.world.time(), until);
+        assert_eq!(harness.server.world.time_flow().warp, None);
+        assert_eq!(harness.server.world.current_rate(), TimeRate::REAL_TIME);
+    }
+
+    #[test]
+    fn an_instant_warp_jumps_to_its_end() {
+        let mut harness = Harness::new();
+        let connection = harness.connect_operator();
+        let until = warp_a_day(&mut harness, &connection, WarpPace::Instant);
+        assert_eq!(harness.server.world.time(), until);
+        assert_eq!(harness.server.world.time_flow().warp, None);
+    }
+
+    #[test]
+    fn an_override_holds_a_warp_until_cleared() {
+        let mut harness = Harness::new();
+        let connection = harness.connect_operator();
+        let pace = WarpPace::Eased { seconds: WARP_SECONDS };
+        let until = warp_a_day(&mut harness, &connection, pace);
+        run(&mut harness, WARP_SECONDS / 4.0);
+        let rate = Some(TimeRate::PAUSED);
+        harness.send(
+            &connection,
+            Request::SetTimeRateOverride(SetTimeRateOverrideRequest { rate }),
+        );
+        let held = harness.server.world.time();
+        run(&mut harness, WARP_SECONDS * 2.0);
+        assert_eq!(harness.server.world.time(), held);
+        assert!(harness.server.world.time_flow().warp.is_some());
+
+        harness.send(
+            &connection,
+            Request::SetTimeRateOverride(SetTimeRateOverrideRequest { rate: None }),
+        );
+        assert!(run(&mut harness, WARP_SECONDS * 2.0));
+        assert_eq!(harness.server.world.time(), until);
+    }
+
+    #[test]
+    fn other_changes_to_time_stop_a_warp() {
+        let mut harness = Harness::new();
+        let connection = harness.connect_operator();
+        let pace = WarpPace::Eased { seconds: WARP_SECONDS };
+        warp_a_day(&mut harness, &connection, pace);
+        let rate = TimeRate::REAL_TIME;
+        harness.send(&connection, Request::SetTimeRate(SetTimeRateRequest { rate }));
+        assert_eq!(harness.server.world.time_flow().warp, None);
+    }
+
+    #[test]
+    fn a_warp_into_the_past_is_refused() {
+        let mut harness = Harness::new();
+        let mut connection = harness.connect_operator();
+        let until = harness.server.world.time();
+        let warp = Some(TimeWarp {
+            until,
+            pace: WarpPace::Instant,
+        });
+        let id = harness.send(&connection, Request::SetTimeWarp(SetTimeWarpRequest { warp }));
+        let frames = drain(&mut connection);
+        assert!(
+            matches!(refusal(&frames, id), Some(RequestError::Invalid { .. })),
+            "{frames:?}"
+        );
     }
 
     #[test]
@@ -449,6 +634,7 @@ mod tests {
             TimeFlow {
                 rate,
                 time_override: None,
+                warp: None,
             }
         );
     }

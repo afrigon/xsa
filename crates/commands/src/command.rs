@@ -16,8 +16,8 @@ mod ui;
 
 #[cfg(feature = "client")]
 pub use camera::{
-    CameraAction, CameraCommand, CameraLookAtCommand, CameraMode, CameraModeCommand, CameraSnapCommand,
-    CameraSpeedCommand, CameraTargetCommand, CameraTeleportCommand,
+    CameraAction, CameraCommand, CameraLookAtCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand,
+    TargetSelection,
 };
 #[cfg(feature = "client")]
 pub use client_command::ClientCommand;
@@ -36,6 +36,8 @@ pub use time::{
     TimeAction, TimeCommand, TimeFasterCommand, TimeOverrideCommand, TimePauseCommand, TimeRateCommand,
     TimeResumeCommand, TimeSetCommand, TimeSlowerCommand, TimeStepCommand,
 };
+#[cfg(feature = "client")]
+pub use time::{TimeWarpCommand, TimeWarpRequestCommand};
 #[cfg(feature = "client")]
 pub use ui::{
     InterfaceAction, InterfaceCommand, InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand,

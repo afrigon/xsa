@@ -7,7 +7,6 @@ use crate::app::client_command_handler::ClientCommandHandler;
 use crate::app::command_progress::CommandProgress;
 use crate::app::command_task::CommandTask;
 use crate::app::task_status::TaskStatus;
-use crate::camera::CameraMode;
 
 // Tiles drawn around the new position request their pages in the frame after it is placed, and the streamer counts
 // them as loading in the frame after that.
@@ -33,13 +32,8 @@ struct TeleportTask {
 impl TeleportTask {
     fn start(command: &CameraTeleportCommand, app: &mut App) -> anyhow::Result<TeleportTask> {
         let world = app.world.as_ref().context("not joined to a simulation yet")?;
-        let cameras = app.cameras.as_ref().context("the cameras are not ready")?;
-        // Read before the switch: in orbit mode the camera is around the body it orbits, not the nearest one.
-        let around = cameras.reference_body(world);
-        app.set_camera_mode(CameraMode::Debug);
-        let world = app.world.as_ref().context("not joined to a simulation yet")?;
         let cameras = app.cameras.as_mut().context("the cameras are not ready")?;
-        let (target, reply) = cameras.teleport(command, around, world)?;
+        let (target, reply) = cameras.teleport(command, world)?;
         let renderer = app.renderer.as_ref().context("the renderer is not ready")?;
 
         Ok(TeleportTask {
@@ -56,7 +50,10 @@ impl CommandTask for TeleportTask {
         else {
             return TaskStatus::Done(Err(anyhow::anyhow!("left the simulation while teleporting")));
         };
-        cameras.stand(self.target, world);
+        if let Err(err) = cameras.stand(self.target, world) {
+            return TaskStatus::Done(Err(err));
+        }
+
         let frames = renderer.frames_rendered() - self.first_frame;
 
         if frames > FRAMES_BEFORE_REQUESTS_SHOW && world.is_ground_settled(self.target.body, self.target.direction) {

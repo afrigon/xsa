@@ -72,6 +72,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc7eb209b1518d6bb87b283c20095f5228ecda460da70b44f0802523dea6da04"
 
 [[package]]
+name = "animation"
+version = "0.0.1"
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3267,6 +3271,7 @@ dependencies = [
 name = "xsa-client"
 version = "0.0.1"
 dependencies = [
+ "animation",
  "anyhow",
  "ash",
  "glam",
@@ -3392,6 +3397,7 @@ dependencies = [
 name = "xsa-server"
 version = "0.0.1"
 dependencies = [
+ "animation",
  "anyhow",
  "tokio",
  "tracing",

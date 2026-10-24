@@ -6,6 +6,7 @@ mod client_world;
 mod command_handlers;
 mod command_progress;
 mod command_task;
+mod forwarded_command;
 mod frame_timing;
 mod immediate_command_handler;
 mod pointer_input;
@@ -46,7 +47,7 @@ use xui::{
 };
 
 use crate::BuildIdentity;
-use crate::camera::CameraMode;
+use crate::camera::CameraSwitch;
 use crate::config::Config;
 use crate::input::Input;
 use crate::renderer::{FrameTarget, Renderer, ShaderBinaries};
@@ -56,8 +57,9 @@ use crate::ui::{
 };
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
-use client_world::ClientWorld;
+pub(crate) use client_world::ClientWorld;
 use command_progress::CommandProgress;
+use forwarded_command::ForwardedCommand;
 use frame_timing::FrameTiming;
 use running_task::RunningTask;
 use task_status::TaskStatus;
@@ -80,6 +82,7 @@ pub struct App {
     shell_outputs: ShellOutputs,
     exit_requested: bool,
     tasks: Vec<RunningTask>,
+    forwarded: Vec<ForwardedCommand>,
     packs_directory: PathBuf,
     input: Input,
     cameras: Option<CameraController>,
@@ -128,6 +131,7 @@ impl App {
             shell_outputs,
             exit_requested: false,
             tasks: Vec::new(),
+            forwarded: Vec::new(),
             packs_directory,
             input: Input::default(),
             cameras: None,
@@ -164,7 +168,7 @@ impl App {
         self.resources = Some(renderer.create_resources());
         self.renderer = Some(renderer);
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
-        self.cameras = Some(CameraController::new(window.inner_size()));
+        self.cameras = Some(CameraController::new(window.inner_size(), &self.config.debug.camera));
         window.request_redraw();
         self.apply_config();
 
@@ -221,6 +225,7 @@ impl App {
         self.poll_input();
         self.run_game_commands();
         let idle = Input::default();
+        let mut scrolled_speed = None;
         let input = if self.is_game_active() && self.config.input.enabled {
             &self.input
         } else {
@@ -233,7 +238,19 @@ impl App {
             }
 
             if let Some(cameras) = &mut self.cameras {
-                cameras.update(world, input, delta_seconds);
+                scrolled_speed = cameras.update(world, input, delta_seconds);
+            }
+        }
+
+        self.follow_camera_switch();
+
+        if let Some(meters_per_second) = scrolled_speed {
+            let speed = meters_per_second as f32;
+            let result = self.config_store.update(|config| config.debug.camera.speed = speed);
+            self.reconfigure();
+
+            if let Err(err) = result {
+                tracing::warn!("{err:#}");
             }
         }
 
@@ -275,6 +292,14 @@ impl App {
 
         while let Ok(invocation) = self.invocations.try_recv() {
             router.handle(invocation, self);
+        }
+
+        for forwarded in std::mem::take(&mut self.forwarded) {
+            // Nothing waits for the reply of a command a bind ran; it is dropped.
+            let reply = forwarded
+                .reply
+                .unwrap_or_else(|| CommandReply::new(oneshot::channel().0));
+            router.forward(forwarded.command, reply, self);
         }
 
         self.router = router;
@@ -331,6 +356,7 @@ impl App {
 
         if let Some(cameras) = &mut self.cameras {
             cameras.set_animation_duration_scale(f64::from(self.config.animation.camera_duration_scale()));
+            cameras.set_debug_camera_config(&self.config.debug.camera);
         }
 
         if let Some(resources) = &self.resources {
@@ -414,8 +440,8 @@ impl App {
             .and_then(|(world, cameras)| {
                 let camera = cameras.camera();
                 cameras
-                    .reference_body(world)
-                    .map(|body| world.position_reading(body, camera.position, camera.orientation))
+                    .anchor()
+                    .map(|anchor| world.position_reading(anchor.body(), camera.position, camera.orientation))
             });
         let debug_overlay = self.overlays.contains(&Overlay::DebugOverlay).then(|| {
             DebugOverlayView {
@@ -423,11 +449,12 @@ impl App {
                 gpu_milliseconds: self.frame_timing.gpu_milliseconds(),
                 build: self.build.clone(),
                 statistics: renderer.statistics(),
-                camera: self.cameras.as_ref().map(CameraController::reading),
+                camera: self.cameras.as_ref().and_then(CameraController::reading),
                 position,
                 clock: self.session.state().map(|state| ClockReading {
                     time: state.time(),
                     time_flow: state.time_flow(),
+                    rate: state.rate(),
                 }),
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
@@ -462,14 +489,16 @@ impl App {
         self.mouse_captured = captured;
     }
 
-    fn set_camera_mode(&mut self, mode: CameraMode) {
-        if !self.cameras.as_mut().is_some_and(|cameras| cameras.set_mode(mode)) {
+    fn follow_camera_switch(&mut self) {
+        let Some(switch) = self.cameras.as_mut().and_then(CameraController::take_switch) else {
             return;
-        }
+        };
 
         self.set_mouse_captured(false);
 
-        if let Some(renderer) = &mut self.renderer {
+        if switch == CameraSwitch::Cut
+            && let Some(renderer) = &mut self.renderer
+        {
             renderer.reset_history();
         }
     }
@@ -478,6 +507,7 @@ impl App {
         match progress {
             CommandProgress::Done(result) => App::finish(result, reply),
             CommandProgress::Running(task) => self.tasks.push(RunningTask { task, reply }),
+            CommandProgress::Forward(command) => self.forwarded.push(ForwardedCommand { command, reply }),
         }
     }
 
@@ -573,11 +603,9 @@ impl CommandExecutor for App {
 
     fn run_client(&mut self, command: ClientCommand, reply: CommandReply) {
         let progress = match command {
-            ClientCommand::CameraMode(command) => command.start(self),
             ClientCommand::CameraTarget(command) => command.start(self),
             ClientCommand::CameraTeleport(command) => command.start(self),
             ClientCommand::CameraLookAt(command) => command.start(self),
-            ClientCommand::CameraSpeed(command) => command.start(self),
             ClientCommand::CameraSnap(command) => command.start(self),
             ClientCommand::InterfacePush(command) => command.start(self),
             ClientCommand::InterfacePop(command) => command.start(self),
@@ -585,6 +613,7 @@ impl CommandExecutor for App {
             ClientCommand::InterfaceShow(command) => command.start(self),
             ClientCommand::InterfaceHide(command) => command.start(self),
             ClientCommand::InterfaceToggle(command) => command.start(self),
+            ClientCommand::TimeWarp(command) => command.start(self),
         };
 
         self.follow(progress, Some(reply));

@@ -157,6 +157,7 @@ impl Builder {
             radius: body.radius,
             gravitational_parameter: body.gravitational_parameter,
             star: body.star,
+            atmosphere: body.atmosphere,
             seed: body.seed,
         });
 

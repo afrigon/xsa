@@ -3,7 +3,6 @@ use xui::{Context, EdgeInsets, Text, View};
 
 use super::{CameraReading, ClockReading, PositionReading};
 use crate::BuildIdentity;
-use crate::camera::CameraMode;
 use crate::renderer::{FrameStatistics, TerrainLayer};
 use crate::ui::ThemedView;
 
@@ -74,9 +73,9 @@ impl DebugOverlayView {
         let Some(camera) = &self.camera else {
             return format!("camera: {MISSING}");
         };
-        let mode = match camera.mode {
-            CameraMode::Orbit => "orbit".to_string(),
-            CameraMode::Debug => format!("debug · {}/s", distance(camera.speed.unwrap_or_default())),
+        let mode = match camera.speed {
+            Some(speed) => format!("{} · {}/s", camera.controls, distance(speed)),
+            None => camera.controls.to_string(),
         };
         format!(
             "camera: {mode}\nrotation: yaw {} · pitch {} · roll {}",
@@ -116,9 +115,12 @@ impl DebugOverlayView {
             .time_flow
             .time_override
             .map_or_else(String::new, |rate| format!(" (override: {})", Self::rate(rate)));
+        let warp = clock.time_flow.warp.map_or_else(String::new, |warp| {
+            format!(" (warp: {:.0}× to {})", clock.rate.multiplier, warp.until)
+        });
 
         format!(
-            "date: {date}\ntime: {} UTC\nrate: {}{time_override}",
+            "date: {date}\ntime: {} UTC\nrate: {}{time_override}{warp}",
             time.trim_end_matches('Z'),
             Self::rate(clock.time_flow.rate)
         )

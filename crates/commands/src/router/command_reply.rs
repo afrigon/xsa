@@ -19,4 +19,8 @@ impl CommandReply {
         };
         let _ = self.sender.send(output);
     }
+
+    pub(crate) fn into_sender(self) -> oneshot::Sender<Output> {
+        self.sender
+    }
 }

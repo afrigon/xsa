@@ -5,9 +5,9 @@ use winit::keyboard::KeyCode;
 use xsa_commands::logging::LoggingConfig;
 
 use super::{
-    AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, DebugConfig,
-    InputConfig, KeyChord, LensConfig, RenderConfig, ResourcesConfig, ServiceConfig, TerrainConfig, TerrainLodConfig,
-    TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
+    AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
+    DebugCameraConfig, DebugConfig, InputConfig, KeyChord, LensConfig, RenderConfig, ResourcesConfig, ServiceConfig,
+    TerrainConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
@@ -19,6 +19,7 @@ const RUNNING_ANIMATIONS: AnimationGroupConfig = AnimationGroupConfig {
     duration_scale: 1.0,
 };
 const INPUT_ENABLED: bool = true;
+const DEBUG_CAMERA_SPEED: f32 = 2_000_000.0;
 // A starting point to tune from, not a measured optimum.
 const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
 
@@ -101,6 +102,7 @@ impl Default for Config {
                 all: RUNNING_ANIMATIONS,
                 camera: RUNNING_ANIMATIONS,
                 ui: RUNNING_ANIMATIONS,
+                time: RUNNING_ANIMATIONS,
             },
             service: ServiceConfig {
                 resources: ResourcesConfig::from_limits(ResourceLimits::default()),
@@ -110,7 +112,12 @@ impl Default for Config {
                 terrain_shader_override: None,
                 surface_shader_override: None,
             },
-            debug: DebugConfig { wireframe: false },
+            debug: DebugConfig {
+                wireframe: false,
+                camera: DebugCameraConfig {
+                    speed: DEBUG_CAMERA_SPEED,
+                },
+            },
             logging: LoggingConfig::default(),
         }
     }

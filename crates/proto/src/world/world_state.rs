@@ -1,5 +1,5 @@
 use bitcode::{Decode, Encode};
-use xsa_units::{SimulationTime, TimeFlow};
+use xsa_units::{SimulationTime, TimeFlow, TimeRate};
 
 use super::PackReference;
 use crate::session::SessionEnvironment;
@@ -16,6 +16,8 @@ pub struct WorldState {
     pub time: SimulationTime,
     /// How time runs.
     pub time_flow: TimeFlow,
+    /// The rate time runs at when the snapshot was taken: the configured one, or a warp's.
+    pub rate: TimeRate,
     /// The kind of session, which decides the requests available in it.
     pub environment: SessionEnvironment,
     /// The users in the session.
