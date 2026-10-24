@@ -36,6 +36,7 @@ use xsa_commands::command::{ClientCommand, LocalCommand, Overlay, ViewController
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
+use xsa_commands::script::Script;
 use xsa_config::ConfigStore;
 use xsa_input::{InputEvent, InputEventKind, InputSource};
 use xsa_packs::PackStack;
@@ -304,7 +305,13 @@ impl App {
             router.forward(forwarded.command, reply, self);
         }
 
+        let transcript = self.config.logging.script_transcript();
+        router.advance(self, transcript);
         self.router = router;
+    }
+
+    pub fn start_script(&mut self, script: Script) {
+        self.router.start_script(script);
     }
 
     fn join(&mut self, state: &WorldState) -> anyhow::Result<()> {

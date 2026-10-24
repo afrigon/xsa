@@ -290,7 +290,7 @@ Names in code, data and documents use these words in these meanings only:
 
 ## Commands
 
-- Durations take `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
+- Durations take `ms`, `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
   `Mm` or `Gm` (case-sensitive), a bare number is km; angles are degrees.
 - Time runs at most 2¹⁷× real time (`MAXIMUM_TIME_RATE` on the server): faster rates are refused, and `time faster`
   there conflicts.
@@ -320,12 +320,18 @@ Names in code, data and documents use these words in these meanings only:
   starts a comment), each waiting for the previous one's reply; each command and its reply are printed to the shell
   under `<script file name>:<line>`, and the first failure skips the rest. `init.xsa` is the repository's development
   setup: `mise run client -- --script init.xsa`.
+- `script <path>` and `script --text "<commands>"` (separated by `;` or newlines, labelled `script:<n>`) run a script
+  in the process that receives them, replying once it finishes. The process loop runs scripts itself: each frame or
+  wake it sends lines back to back for as long as their replies are already there, so commands that finish at once
+  (`input` commands) land in the same frame, in order. `wait <duration>` replies once that much real time has passed,
+  on the first frame after it in the client; use it to time input (`script --text "input down w; wait 500ms; input up
+  w"`), since separate IPC calls land on frames the caller does not control.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
 - Commands received over IPC and their replies are printed to the shell, each pair under one `ipc #<sequence>` label;
   `logging.shell.ipc.enabled`, `.input.enabled` and `.output.enabled` choose which (`logging.shell.script.*` for
-  startup scripts), and `logging.shell.enabled false` silences them with the log.
+  scripts), and `logging.shell.enabled false` silences them with the log.
 
 ## Testing
 

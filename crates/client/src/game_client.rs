@@ -55,10 +55,6 @@ impl GameClient {
             shell_outputs.ipc_transcript(),
         )?;
 
-        if let Some(script) = script {
-            script.spawn(invocation_sender.clone(), shell_outputs.script_transcript())?;
-        }
-
         let _repl = Repl::spawn(invocation_sender)?;
         let event_loop = EventLoop::new()?;
         let mut app = App::new(
@@ -69,6 +65,11 @@ impl GameClient {
             config,
             self.options.build,
         );
+
+        if let Some(script) = script {
+            app.start_script(script);
+        }
+
         event_loop.run_app(&mut app)?;
         let result = app.into_result();
 

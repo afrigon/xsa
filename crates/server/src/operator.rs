@@ -1,7 +1,11 @@
+use std::time::Instant;
+
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::time;
 use xsa_commands::command::LocalCommand;
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter, Output};
+use xsa_commands::script::Script;
 use xsa_config::ConfigStore;
 use xsa_proto::network::Connection;
 use xsa_proto::session::ServerSession;
@@ -47,6 +51,7 @@ impl Operator {
         mut invocations: UnboundedReceiver<CommandInvocation>,
         config: ConfigStore<DedicatedConfig>,
         apply_config: ApplyConfig,
+        script: Option<Script>,
     ) -> anyhow::Result<()> {
         let mut operator = Operator {
             session: ServerSession::operator(connection),
@@ -57,7 +62,15 @@ impl Operator {
         let mut router = CommandRouter::default();
         let mut invocations_open = true;
 
+        if let Some(script) = script {
+            router.start_script(script);
+        }
+
         while !operator.exit_requested {
+            let transcript = operator.config.config().logging.script_transcript();
+            router.advance(&mut operator, transcript);
+            let deadline = router.next_deadline();
+
             tokio::select! {
                 frame = operator.session.receive() => {
                     router.handle_frame(&frame?, &operator.session);
@@ -67,6 +80,7 @@ impl Operator {
                     Some(invocation) => router.handle(invocation, &mut operator),
                     None => invocations_open = false,
                 },
+                () = time::sleep_until(deadline.unwrap_or_else(Instant::now).into()), if deadline.is_some() => {}
             }
         }
 
@@ -120,7 +134,13 @@ mod tests {
         let (invocations, receiver) = unbounded_channel();
         let config_path = std::env::temp_dir().join(format!("xsa-server-operator-{}.kdl", std::process::id()));
         let config = ConfigStore::<DedicatedConfig>::load(config_path).unwrap();
-        let operator = tokio::spawn(Operator::run(local.connection, receiver, config, Box::new(|_| {})));
+        let operator = tokio::spawn(Operator::run(
+            local.connection,
+            receiver,
+            config,
+            Box::new(|_| {}),
+            None,
+        ));
 
         let rate = invoke(&invocations, "time rate 5").await;
         assert!(rate.succeeded && rate.text.contains("rate 5×"), "{rate:?}");

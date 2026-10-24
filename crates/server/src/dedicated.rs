@@ -66,16 +66,13 @@ impl DedicatedServer {
             shell_outputs.ipc_transcript(),
         )?;
 
-        if let Some(script) = script {
-            script.spawn(invocation_sender.clone(), shell_outputs.script_transcript())?;
-        }
-
         let _repl = Repl::spawn(invocation_sender)?;
         let mut operator = tokio::spawn(Operator::run(
             operator_connection.connection,
             invocations,
             config,
             Box::new(move |config: &DedicatedConfig| shell_outputs.apply(&config.logging)),
+            script,
         ));
 
         let stopped = loop {
