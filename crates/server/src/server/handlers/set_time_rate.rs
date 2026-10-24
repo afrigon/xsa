@@ -1,20 +1,20 @@
-use xsa_proto::event::Outcome;
-use xsa_proto::message::SetTimeRate;
+use xsa_proto::error::RequestError;
+use xsa_proto::request::SetTimeRateRequest;
 
 use crate::server::Server;
-use crate::server::message_handler::MessageHandler;
+use crate::server::request_handler::RequestHandler;
 
-impl MessageHandler for SetTimeRate {
-    fn handle(self, server: &mut Server, _client: usize) -> Outcome {
-        let rate = self.change.apply(server.world.time_flow().rate);
-
-        if !rate.is_valid() {
-            return Outcome::denied("the time rate must be a finite number of at least 0");
+impl RequestHandler for SetTimeRateRequest {
+    fn handle(self, server: &mut Server, _client: usize) -> Result<(), RequestError> {
+        if !self.rate.is_valid() {
+            return Err(RequestError::invalid(
+                "the time rate must be a finite number of at least 0",
+            ));
         }
 
-        server.world.set_rate(rate);
+        server.world.set_rate(self.rate);
         server.broadcast_time();
 
-        Outcome::Accepted
+        Ok(())
     }
 }

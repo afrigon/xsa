@@ -14,13 +14,6 @@ pub struct ClientArguments {
     pub name: Option<String>,
     #[usage(
         long,
-        env_fallback("USER", "USERNAME"),
-        default = "player",
-        help = "Player name shown to other players"
-    )]
-    pub player: String,
-    #[usage(
-        long,
         requires("--fingerprint"),
         help = "Connect to a remote server at <host>:<port>; IPv6 hosts go in brackets, e.g. [::1]:1969"
     )]
@@ -57,7 +50,6 @@ impl ClientArguments {
         GameClient::new(ClientOptions {
             build: current_build(),
             name: self.name,
-            player: self.player,
             remote,
             world: self.world.into_options(),
             script: self.script,

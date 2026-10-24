@@ -30,7 +30,7 @@ impl fmt::Display for SequenceNumber {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let style = self.style();
 
-        write!(formatter, "{style}#{}{style:#}", self.value)
+        write!(formatter, "ipc {style}#{}{style:#}", self.value)
     }
 }
 

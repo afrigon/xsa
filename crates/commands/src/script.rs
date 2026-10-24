@@ -56,9 +56,18 @@ impl Script {
         Ok(())
     }
 
+    fn name(&self) -> String {
+        self.path.file_name().map_or_else(
+            || self.path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        )
+    }
+
     fn run(self, invocations: UnboundedSender<CommandInvocation>, transcript: watch::Receiver<Transcript>) {
+        let name = self.name();
+
         for line in self.lines {
-            let location = format!("{}:{}", self.path.display(), line.number);
+            let location = format!("{name}:{}", line.number);
             transcript.borrow().print_request(&location, &line.words);
             let started = Instant::now();
             let (reply, receiver) = oneshot::channel();

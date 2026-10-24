@@ -11,7 +11,7 @@ use xsa_packs::{
     BiomeSurfacesDefinition, Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition,
     SurfaceDefinition, TerrainDefinition,
 };
-use xsa_proto::event::WorldState;
+use xsa_proto::world::WorldState;
 use xsa_units::SimulationTime;
 
 use super::body_step::BodyStep;

@@ -3384,6 +3384,7 @@ dependencies = [
  "ring",
  "rustls",
  "tokio",
+ "tracing",
  "xsa-units",
 ]
 

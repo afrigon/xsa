@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use glam::DVec2;
 use resource_vulkan::Resources;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -36,9 +36,10 @@ use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
 use xsa_config::ConfigStore;
 use xsa_packs::PackStack;
-use xsa_proto::event::{ServerEvent, WorldState};
-use xsa_proto::message::{ClientMessage, Leave};
+use xsa_proto::frame::ServerFrame;
+use xsa_proto::network::DisconnectReason;
 use xsa_proto::session::{ServerSession, SessionState};
+use xsa_proto::world::WorldState;
 use xui::{
     Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, NavigationController, Point,
     ScaleFactorKey, Size, View, ZStack,
@@ -254,19 +255,14 @@ impl App {
     }
 
     fn poll_connection(&mut self) -> anyhow::Result<()> {
-        while let Some(event) = self.session.poll()? {
-            self.router.handle_event(&event, &self.session);
+        while let Some(frame) = self.session.poll()? {
+            self.router.handle_frame(&frame, &self.session);
 
-            match event {
-                ServerEvent::JoinAccepted(accepted) => self
-                    .join(&accepted.state)
-                    .with_context(|| format!("joining simulation {}", accepted.state.simulation))?,
-                ServerEvent::JoinDenied(denied) => bail!("the server refused to let us join: {}", denied.reason),
-                ServerEvent::PlayerJoined(_)
-                | ServerEvent::PlayerLeft(_)
-                | ServerEvent::TimeChanged(_)
-                | ServerEvent::Tick(_)
-                | ServerEvent::Reply(_) => {}
+            match frame {
+                ServerFrame::Snapshot(state) => self
+                    .join(&state)
+                    .with_context(|| format!("joining simulation {}", state.simulation))?,
+                ServerFrame::Event(_) | ServerFrame::Reply { .. } => {}
             }
         }
 
@@ -517,7 +513,7 @@ impl App {
             App::finish(Err(anyhow::anyhow!("the game is exiting")), running.reply);
         }
 
-        let _ = self.session.send(ClientMessage::Leave(Leave));
+        self.session.close(DisconnectReason::Left);
         event_loop.exit();
     }
 
