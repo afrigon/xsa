@@ -5,9 +5,6 @@ mod duration;
 mod length_unit;
 #[cfg(feature = "client")]
 mod region;
-#[cfg(feature = "client")]
-#[cfg(feature = "client")]
-mod target;
 mod time_override;
 mod timestamp;
 
@@ -16,8 +13,5 @@ pub use altitude::Altitude;
 pub use duration::Duration;
 #[cfg(feature = "client")]
 pub use region::Region;
-#[cfg(feature = "client")]
-#[cfg(feature = "client")]
-pub use target::Target;
 pub use time_override::TimeOverride;
 pub use timestamp::Timestamp;

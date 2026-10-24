@@ -2,12 +2,14 @@ mod camera_action;
 mod look_at;
 mod snap;
 mod target;
+mod target_selection;
 mod teleport;
 
 pub use camera_action::CameraAction;
 pub use look_at::CameraLookAtCommand;
 pub use snap::CameraSnapCommand;
 pub use target::CameraTargetCommand;
+pub use target_selection::TargetSelection;
 pub use teleport::CameraTeleportCommand;
 
 use usage::Args;

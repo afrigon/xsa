@@ -5,7 +5,7 @@ use crate::command::{Routable, Route};
 
 #[derive(Subcommands)]
 pub enum CameraAction {
-    /// Orbit a body: a body id, next, previous or parent
+    /// Orbit a body by id, or the next, previous or parent one with --next, --previous or --parent
     Target(CameraTargetCommand),
     /// Stand the debug camera on a body at a latitude and longitude
     Tp(CameraTeleportCommand),

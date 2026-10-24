@@ -3,8 +3,7 @@ use std::f64::consts::FRAC_PI_2;
 use anyhow::{Context, bail, ensure};
 use glam::{DMat3, DQuat, DVec3};
 use winit::dpi::PhysicalSize;
-use xsa_commands::command::{CameraTargetCommand, CameraTeleportCommand};
-use xsa_commands::value::Target;
+use xsa_commands::command::{CameraTargetCommand, CameraTeleportCommand, TargetSelection};
 use xsa_core::simulation::BodyIndex;
 
 use super::body_step::BodyStep;
@@ -139,20 +138,14 @@ impl CameraController {
 
     pub fn target(&mut self, command: &CameraTargetCommand, world: &ClientWorld) -> anyhow::Result<String> {
         let current = self.anchor().context("the simulation has no bodies")?.body();
-        let steps = matches!(command.target, Target::Next | Target::Previous);
-        ensure!(
-            steps || command.category.is_none(),
-            "a category only applies to next and previous"
-        );
-
-        let target = match &command.target {
-            Target::Next => world.step_body(current, BodyStep::Next, command.category)?,
-            Target::Previous => world.step_body(current, BodyStep::Previous, command.category)?,
-            Target::Parent => world
+        let target = match command.selection()? {
+            TargetSelection::Body { id } => world.find_body(&id)?,
+            TargetSelection::Next { category } => world.step_body(current, BodyStep::Next, category)?,
+            TargetSelection::Previous { category } => world.step_body(current, BodyStep::Previous, category)?,
+            TargetSelection::Parent => world
                 .body(current)
                 .parent
                 .with_context(|| format!("{} orbits nothing", world.body(current).id))?,
-            Target::Body { id } => world.find_body(id)?,
         };
         let body = world.body(target);
 
@@ -289,12 +282,9 @@ impl CameraController {
         Ok(())
     }
 
-    pub fn look_at(&mut self, target: &Target, world: &ClientWorld) -> anyhow::Result<String> {
+    pub fn look_at(&mut self, id: &str, world: &ClientWorld) -> anyhow::Result<String> {
         let Some(AnyControls::Debug(debug)) = &mut self.controls else {
             bail!("look-at turns the debug camera; stand somewhere with `camera tp` first");
-        };
-        let Target::Body { id } = target else {
-            bail!("look-at needs a body id");
         };
         let body = world.find_body(id)?;
         let direction = (world.body_state(body).position - self.camera.position).normalize_or_zero();
