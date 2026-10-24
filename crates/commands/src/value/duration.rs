@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use anyhow::Context;
+
 use xsa_units::SimulationDuration;
 
 struct TimeUnit {
@@ -39,6 +41,13 @@ impl Duration {
             Duration::Seconds { seconds } => SimulationDuration { seconds },
             Duration::Ticks { ticks } => SimulationDuration::from_ticks(ticks),
         }
+    }
+
+    // The same span of wall-clock time, for waits and injected motion.
+    pub fn real_time(self) -> anyhow::Result<std::time::Duration> {
+        std::time::Duration::try_from_secs_f64(self.duration().seconds)
+            .ok()
+            .context("a duration of real time cannot be negative")
     }
 }
 

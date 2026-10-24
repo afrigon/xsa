@@ -54,6 +54,16 @@ impl App {
         self.inject([InputEventKind::CursorMoved { position }])
     }
 
+    pub(super) fn cursor_offset_to(&self, logical: DVec2) -> anyhow::Result<DVec2> {
+        ensure!(
+            !self.mouse_captured,
+            "the mouse is captured and has no cursor; move it with input cursor move"
+        );
+        let cursor = DVec2::new(f64::from(self.cursor.x), f64::from(self.cursor.y));
+
+        Ok(logical - cursor / self.scale_factor()?)
+    }
+
     // Mouse look reads device counts, not pixels: one logical pixel of offset is one count.
     pub(super) fn inject_mouse_offset(&mut self, logical: DVec2) -> anyhow::Result<()> {
         let kind = if self.mouse_captured {

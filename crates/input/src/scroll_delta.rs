@@ -23,6 +23,19 @@ impl From<winit::event::MouseScrollDelta> for ScrollDelta {
     }
 }
 
+impl ScrollDelta {
+    pub fn scaled(self, factor: f64) -> ScrollDelta {
+        match self {
+            ScrollDelta::Notches { vertical } => ScrollDelta::Notches {
+                vertical: vertical * factor,
+            },
+            ScrollDelta::Pixels { vertical } => ScrollDelta::Pixels {
+                vertical: vertical * factor,
+            },
+        }
+    }
+}
+
 // A bare number is notches: `3`, `-1.5`, `120px`.
 impl FromStr for ScrollDelta {
     type Err = anyhow::Error;

@@ -2,6 +2,7 @@ use usage::Args;
 use xsa_input::ScrollDelta;
 
 use crate::command::{ClientCommand, Routable, Route};
+use crate::value::{Duration, EasingName};
 
 #[derive(Args)]
 pub struct InputScrollCommand {
@@ -10,6 +11,13 @@ pub struct InputScrollCommand {
         help = "How far, positive away from the user: wheel notches (3) or touchpad pixels (120px)"
     )]
     pub amount: ScrollDelta,
+    #[usage(
+        long,
+        help = "Spread the motion over this long, e.g. 500ms or 2s; at once without it"
+    )]
+    pub duration: Option<Duration>,
+    #[usage(long, value_enum, default_value_t = EasingName::Linear, default = "linear", help = "How the motion is spread over its duration")]
+    pub easing: EasingName,
 }
 
 impl Routable for InputScrollCommand {

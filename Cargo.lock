@@ -3300,6 +3300,7 @@ dependencies = [
 name = "xsa-commands"
 version = "0.0.1"
 dependencies = [
+ "animation",
  "anstream",
  "anstyle",
  "anyhow",

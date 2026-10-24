@@ -371,6 +371,9 @@ Always bring the game to a stable state first:
 - The `input` commands (`input --help`) act as the player's keyboard and mouse: `input press shift+tab`,
   `input down w`, `input cursor set 400 300`, `input press mouse-left`. Chords hold every button but the last;
   `shift` matches either side.
+- `input cursor move`, `cursor set` and `scroll` take `--duration <duration>` and `--easing` (`linear`, `ease-in`,
+  `ease-out`, `ease-in-out`) to glide instead of jump: `input cursor move 300 0 --duration 2s --easing ease-in-out`
+  turns the view smoothly while the mouse is captured.
 - Send a timed sequence as one script, so it runs in order without frame gaps: `script --text "input down w; wait
   500ms; input up w"`.
 - `input.raw.enabled false` (see Before testing) keeps the player's devices out while the commands still work.

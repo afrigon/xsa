@@ -194,7 +194,7 @@ impl CommandRouter {
                 }
                 Err(err) => Output::failure(format!("{err:#}")),
             },
-            Route::Wait(command) => match command.wait() {
+            Route::Wait(command) => match command.duration.real_time() {
                 Ok(duration) => {
                     let deadline = Instant::now() + duration;
                     self.waits.push(PendingWait { deadline, reply });

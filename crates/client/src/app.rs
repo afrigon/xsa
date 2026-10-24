@@ -8,8 +8,10 @@ mod command_progress;
 mod command_task;
 mod forwarded_command;
 mod frame_timing;
+mod glide_motion;
 mod immediate_command_handler;
 mod input_events;
+mod input_glide;
 mod pointer_input;
 mod running_task;
 mod snapshot;
@@ -88,6 +90,8 @@ pub struct App {
     forwarded: Vec<ForwardedCommand>,
     packs_directory: PathBuf,
     input: Input,
+    // Counts input resets; a glide started before the latest one stops.
+    input_resets: u64,
     cameras: Option<CameraController>,
     config_store: ConfigStore<Config>,
     config: Config,
@@ -137,6 +141,7 @@ impl App {
             forwarded: Vec::new(),
             packs_directory,
             input: Input::default(),
+            input_resets: 0,
             cameras: None,
             config: config_store.config().clone(),
             config_store,
@@ -257,12 +262,14 @@ impl App {
             }
         }
 
+        // Input arriving from here on, from tasks or the window, belongs to the next update.
+        self.input.end_frame();
+
         Ok(())
     }
 
     fn finish_update(&mut self) {
         self.poll_tasks();
-        self.input.end_frame();
     }
 
     fn conclude(&mut self, event_loop: &ActiveEventLoop, result: anyhow::Result<()>) {
