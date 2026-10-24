@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 use xsa_packs::Id;
 use xui::{ColorSchemeKey, Context, EdgeInsets, ForegroundStyleKey, Text, View};
 
+use crate::input::InputSource;
 use crate::theme::ThemeKey;
 use crate::ui::ThemedView;
 
@@ -11,7 +12,9 @@ const PADDING: f32 = 8.0;
 static WARNING_ROLE: LazyLock<Id> =
     LazyLock::new(|| Id::parse("critical", "base").expect("the critical role id is valid"));
 
-pub struct InputDisabledView;
+pub struct InputDisabledView {
+    pub sources: Vec<InputSource>,
+}
 
 impl View for InputDisabledView {
     fn body(&self, context: &Context) -> impl View {
@@ -24,7 +27,13 @@ impl View for InputDisabledView {
             })
             .unwrap_or_else(|| environment.get::<ForegroundStyleKey>());
 
-        Text::new("input disabled")
+        let label = match self.sources.as_slice() {
+            [InputSource::Raw] => "player input disabled",
+            [InputSource::Command] => "command input disabled",
+            _ => "input disabled",
+        };
+
+        Text::new(label)
             .text_style("telemetry")
             .foreground_style(color)
             .padding(EdgeInsets::all(PADDING))

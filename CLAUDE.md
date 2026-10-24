@@ -135,6 +135,10 @@ server's time warps and the client's camera transitions move through it.
 - **Networking:** QUIC on UDP 1969. The dedicated server generates a
   self-signed identity in `.xsa/server/` and prints its fingerprint; clients
   pin it with `--fingerprint` (the SSH model).
+- **One path for real and injected input.** The player's devices and the `input` commands produce the same
+  `InputEvent`s, tagged with their source; binds, the interface and the camera never tell them apart. An event
+  passes when `input.enabled` and its source's key (`input.raw.enabled`, `input.commands.enabled`) are on; releases
+  always pass, so nothing stays held.
 - **Logging:** diagnostics go through `tracing`, filtered by `logging.filter`: WARN by default, a level or per-crate
   directives (`warn,xsa_client=debug`). `-v` / `-vv` / `-vvv` / `-q` or `RUST_LOG` set it for the session only, a
   flag winning over the variable.
@@ -350,7 +354,7 @@ Always bring the game to a stable state first:
 - Pause time with `time pause`.
 - Set a specific time with `time set <datetime>`.
 - Disable animations with `config set animation.duration-scale 0`.
-- Disable player input, so it cannot interfere, with `config set input.enabled false`.
+- Disable player input, so it cannot interfere, with `config set input.raw.enabled false`.
 - Show the debug overlay with `ui show debug-overlay` when needed.
 
 ### Recording
@@ -365,7 +369,7 @@ Always bring the game to a stable state first:
 ### After testing
 
 - Inside herdr, leave the game running so I can try the implementation by hand; outside herdr, close it with `exit`.
-- Re-enable player input with `config set input.enabled true`.
+- Re-enable player input with `config set input.raw.enabled true`.
 
 ## Dependencies and assets
 

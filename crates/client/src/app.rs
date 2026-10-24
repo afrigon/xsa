@@ -9,6 +9,7 @@ mod command_task;
 mod forwarded_command;
 mod frame_timing;
 mod immediate_command_handler;
+mod input_events;
 mod pointer_input;
 mod running_task;
 mod snapshot;
@@ -49,7 +50,7 @@ use xui::{
 use crate::BuildIdentity;
 use crate::camera::CameraSwitch;
 use crate::config::Config;
-use crate::input::Input;
+use crate::input::{Input, InputEvent, InputEventKind, InputSource};
 use crate::renderer::{FrameTarget, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
 use crate::ui::{
@@ -459,8 +460,13 @@ impl App {
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
         });
-        let input_disabled =
-            (!self.config.input.enabled).then(|| InputDisabledView.max_frame(fill, fill, Alignment::TOP));
+        let disabled_sources = self.config.input.disabled_sources();
+        let input_disabled = (!disabled_sources.is_empty()).then(|| {
+            InputDisabledView {
+                sources: disabled_sources,
+            }
+            .max_frame(fill, fill, Alignment::TOP)
+        });
         let root = ZStack::new((self.navigation.view(), debug_overlay, input_disabled));
         let draw_list = self.interface.render(&root, viewport, &environment)?;
         renderer.set_user_interface(draw_list);
@@ -645,17 +651,19 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::Focused(false) => self.input.clear(),
-            WindowEvent::KeyboardInput { event, .. } => self.input.handle_key(&event),
-            WindowEvent::MouseInput { state, button, .. } => self.handle_mouse_button(button, state),
-            WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(position),
-            WindowEvent::CursorLeft { .. } => self.handle_cursor_left(),
-            WindowEvent::MouseWheel { delta, .. } => self.input.handle_scroll(delta),
             WindowEvent::Occluded(occluded) => self.set_window_visibility(occluded),
             WindowEvent::RedrawRequested if self.schedule.visibility() == WindowVisibility::Visible => {
                 let result = self.redraw();
                 self.conclude(event_loop, result);
             }
-            _ => {}
+            event => {
+                if let Some(kind) = InputEventKind::from_window_event(&event) {
+                    self.handle_input(InputEvent {
+                        source: InputSource::Raw,
+                        kind,
+                    });
+                }
+            }
         }
     }
 
@@ -678,7 +686,12 @@ impl ApplicationHandler for App {
         if let DeviceEvent::MouseMotion { delta } = event
             && self.mouse_captured
         {
-            self.input.handle_mouse_motion(DVec2::from(delta));
+            self.handle_input(InputEvent {
+                source: InputSource::Raw,
+                kind: InputEventKind::Moved {
+                    delta: DVec2::from(delta),
+                },
+            });
         }
     }
 }

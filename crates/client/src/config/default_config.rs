@@ -6,8 +6,8 @@ use xsa_commands::logging::LoggingConfig;
 
 use super::{
     AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
-    DebugCameraConfig, DebugConfig, InputConfig, LensConfig, RenderConfig, ResourcesConfig, ServiceConfig,
-    TerrainConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
+    DebugCameraConfig, DebugConfig, InputConfig, InputSourceConfig, LensConfig, RenderConfig, ResourcesConfig,
+    ServiceConfig, TerrainConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
 };
 
 use crate::input::{InputChord, Modifier};
@@ -87,6 +87,8 @@ impl Default for Config {
             },
             input: InputConfig {
                 enabled: INPUT_ENABLED,
+                raw: InputSourceConfig { enabled: INPUT_ENABLED },
+                commands: InputSourceConfig { enabled: INPUT_ENABLED },
                 bind: BindConfig {
                     keys: DefaultBind::keys(),
                 },

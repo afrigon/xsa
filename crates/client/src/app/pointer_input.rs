@@ -3,6 +3,7 @@ use winit::event::{ElementState, MouseButton};
 use xui::{Point, PointerButton, PointerEvent, PointerEventKind};
 
 use super::App;
+use crate::input::InputButton;
 
 // The interface sees the pointer first: what it uses never reaches the camera or the binds. While the camera holds
 // the mouse captured, the interface sees nothing.
@@ -40,7 +41,10 @@ impl App {
         };
 
         if !used {
-            self.input.handle_mouse_button(button, state);
+            match state {
+                ElementState::Pressed => self.input.press(InputButton::Mouse(button)),
+                ElementState::Released => self.input.release(InputButton::Mouse(button)),
+            }
         }
     }
 

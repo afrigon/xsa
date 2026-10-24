@@ -2,19 +2,25 @@ mod button_press;
 mod chord_button;
 mod input_button;
 mod input_chord;
+mod input_event;
+mod input_event_kind;
+mod input_source;
 mod modifier;
 
 pub use button_press::ButtonPress;
 pub use chord_button::ChordButton;
 pub use input_button::InputButton;
 pub use input_chord::InputChord;
+pub use input_event::InputEvent;
+pub use input_event_kind::InputEventKind;
+pub use input_source::InputSource;
 pub use modifier::Modifier;
 
 use std::collections::HashSet;
 
 use glam::DVec2;
-use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::event::{MouseButton, MouseScrollDelta};
+use winit::keyboard::KeyCode;
 
 const PIXELS_PER_SCROLL_STEP: f64 = 50.0;
 
@@ -28,25 +34,6 @@ pub struct Input {
 }
 
 impl Input {
-    pub fn handle_key(&mut self, event: &KeyEvent) {
-        let PhysicalKey::Code(key) = event.physical_key else {
-            return;
-        };
-
-        match event.state {
-            ElementState::Pressed if event.repeat => {}
-            ElementState::Pressed => self.press(InputButton::Key(key)),
-            ElementState::Released => self.release(InputButton::Key(key)),
-        }
-    }
-
-    pub fn handle_mouse_button(&mut self, button: MouseButton, state: ElementState) {
-        match state {
-            ElementState::Pressed => self.press(InputButton::Mouse(button)),
-            ElementState::Released => self.release(InputButton::Mouse(button)),
-        }
-    }
-
     pub fn handle_mouse_motion(&mut self, delta: DVec2) {
         self.mouse_delta += delta;
     }
@@ -106,7 +93,7 @@ impl Input {
         self.end_frame();
     }
 
-    fn press(&mut self, button: InputButton) {
+    pub fn press(&mut self, button: InputButton) {
         let held = self.held.iter().copied().filter(|held| *held != button).collect();
         self.presses.push(ButtonPress { button, held });
 
@@ -115,7 +102,7 @@ impl Input {
         }
     }
 
-    fn release(&mut self, button: InputButton) {
+    pub fn release(&mut self, button: InputButton) {
         self.held.retain(|held| *held != button);
         self.released.insert(button);
     }
