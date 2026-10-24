@@ -239,7 +239,9 @@ mod tests {
                 time_flow: TimeFlow {
                     rate: TimeRate::PAUSED,
                     time_override: None,
+                    warp: None,
                 },
+                rate: TimeRate::PAUSED,
                 environment,
                 users: Vec::new(),
             }
@@ -296,7 +298,9 @@ mod tests {
             time_flow: TimeFlow {
                 rate,
                 time_override: None,
+                warp: None,
             },
+            rate,
         })));
         harness.deliver(ServerFrame::Reply {
             id: frame.id,

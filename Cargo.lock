@@ -3397,6 +3397,7 @@ dependencies = [
 name = "xsa-server"
 version = "0.0.1"
 dependencies = [
+ "animation",
  "anyhow",
  "tokio",
  "tracing",

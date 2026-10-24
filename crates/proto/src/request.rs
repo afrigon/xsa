@@ -16,6 +16,7 @@ mod request_type;
 mod set_time_rate_override_request;
 mod set_time_rate_request;
 mod set_time_request;
+mod set_time_warp_request;
 mod step_time_rate_request;
 mod step_time_request;
 
@@ -24,6 +25,7 @@ pub use request_type::RequestType;
 pub use set_time_rate_override_request::SetTimeRateOverrideRequest;
 pub use set_time_rate_request::SetTimeRateRequest;
 pub use set_time_request::SetTimeRequest;
+pub use set_time_warp_request::SetTimeWarpRequest;
 pub use step_time_rate_request::StepTimeRateRequest;
 pub use step_time_request::StepTimeRequest;
 
@@ -64,6 +66,8 @@ requests! {
     StepTimeRate(StepTimeRateRequest),
     /// See [`SetTimeRateOverrideRequest`].
     SetTimeRateOverride(SetTimeRateOverrideRequest),
+    /// See [`SetTimeWarpRequest`].
+    SetTimeWarp(SetTimeWarpRequest),
 }
 
 impl Request {
