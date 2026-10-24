@@ -368,21 +368,12 @@ Always bring the game to a stable state first:
 
 ### Driving input
 
-- The `input` commands press keys and buttons, move the mouse and scroll as the player would: binds, the interface,
-  mouse capture and the camera handle them exactly like real input. `input --help` lists them.
-- Keys and buttons are chords: `w`, `shift+tab`, `x+w` (hold X, press W), `ctrl+mouse-left`, `mouse-back`. `shift`,
-  `ctrl`, `alt` and `super` match either side and press the left key; `left-shift`, `right-ctrl` name one side.
-- `input down <chord>` holds, `input up <chord>` releases, `input press <chord>` taps, `input reset` releases
-  everything held.
-- `input cursor set <x> <y>` puts the cursor at logical pixels from the window's top left (refused while the mouse is
-  captured). `input cursor move <dx> <dy>` moves it by an offset, or turns the view while the mouse is captured.
-  `input scroll <amount>` scrolls wheel notches (`3`) or touchpad pixels (`120px`); a negative pixel amount needs `--`
-  (`input scroll -- -120px`).
-- Separate IPC calls land on frames the caller does not control. Send a timed sequence as one script, where commands
-  that finish at once run in the same frame and `wait` times the rest:
-  `script --text "input down w; wait 500ms; input up w"`.
-- With `input.raw.enabled false` (see Before testing) the player's devices are ignored while the `input` commands
-  still work; with `input.commands.enabled false` or `input.enabled false` the commands are refused.
+- The `input` commands (`input --help`) act as the player's keyboard and mouse: `input press shift+tab`,
+  `input down w`, `input cursor set 400 300`, `input press mouse-left`. Chords hold every button but the last;
+  `shift` matches either side.
+- Send a timed sequence as one script, so it runs in order without frame gaps: `script --text "input down w; wait
+  500ms; input up w"`.
+- `input.raw.enabled false` (see Before testing) keeps the player's devices out while the commands still work.
 
 ### Recording
 
