@@ -1,8 +1,8 @@
-use render_graph_vulkan::{ImportedBufferHandle, ImportedImageHandle};
+use render_graph_vulkan::{ImportedBufferHandle, Subresource};
 
 #[derive(Clone, Copy)]
 pub(super) struct FrameInputs {
-    pub output: ImportedImageHandle,
+    pub output: Subresource,
     pub histogram: ImportedBufferHandle,
     pub capture: Option<ImportedBufferHandle>,
     pub projected_light_count: u32,
