@@ -348,7 +348,7 @@ impl App {
         self.shell_outputs.apply(&self.config.logging);
 
         for chord in self.config.input.bind.shared_chords() {
-            tracing::warn!("{} is bound to more than one action", chord.config_name());
+            tracing::warn!("{} is bound to more than one action", chord.name());
         }
 
         self.navigation

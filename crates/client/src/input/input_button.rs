@@ -1,20 +1,25 @@
-use anyhow::Context;
+use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
-use xsa_config::{ConfigValue, KdlValue};
 
-use crate::config::KeyChord;
+const MOUSE_PREFIX: &str = "mouse-";
+const MOUSE_LEFT: &str = "left";
+const MOUSE_RIGHT: &str = "right";
+const MOUSE_MIDDLE: &str = "middle";
+const MOUSE_BACK: &str = "back";
+const MOUSE_FORWARD: &str = "forward";
 
-const MODIFIER_SEPARATOR: char = '+';
-const SHIFT: &str = "shift";
-const CONTROL: &str = "ctrl";
-const ALT: &str = "alt";
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InputButton {
+    Key(KeyCode),
+    Mouse(MouseButton),
+}
 
 struct KeyName {
     name: &'static str,
     key: KeyCode,
 }
 
-const KEY_NAMES: [KeyName; 74] = [
+const KEY_NAMES: [KeyName; 82] = [
     KeyName {
         name: "a",
         key: KeyCode::KeyA,
@@ -311,98 +316,84 @@ const KEY_NAMES: [KeyName; 74] = [
         name: "right",
         key: KeyCode::ArrowRight,
     },
+    KeyName {
+        name: "left-shift",
+        key: KeyCode::ShiftLeft,
+    },
+    KeyName {
+        name: "right-shift",
+        key: KeyCode::ShiftRight,
+    },
+    KeyName {
+        name: "left-ctrl",
+        key: KeyCode::ControlLeft,
+    },
+    KeyName {
+        name: "right-ctrl",
+        key: KeyCode::ControlRight,
+    },
+    KeyName {
+        name: "left-alt",
+        key: KeyCode::AltLeft,
+    },
+    KeyName {
+        name: "right-alt",
+        key: KeyCode::AltRight,
+    },
+    KeyName {
+        name: "left-super",
+        key: KeyCode::SuperLeft,
+    },
+    KeyName {
+        name: "right-super",
+        key: KeyCode::SuperRight,
+    },
 ];
 
-impl KeyChord {
-    pub fn key_names() -> Vec<&'static str> {
-        KEY_NAMES.iter().map(|key| key.name).collect()
+impl InputButton {
+    pub fn names() -> Vec<String> {
+        let mouse = [MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE, MOUSE_BACK, MOUSE_FORWARD]
+            .into_iter()
+            .map(|name| format!("{MOUSE_PREFIX}{name}"));
+
+        KEY_NAMES.iter().map(|key| key.name.to_string()).chain(mouse).collect()
     }
 
-    // Modifiers come first: `shift+tab`, `ctrl+alt+f1`.
-    pub fn from_config_name(text: &str) -> Option<KeyChord> {
-        let text = text.to_lowercase();
-        let mut parts: Vec<&str> = text.split(MODIFIER_SEPARATOR).collect();
-        let key_name = parts.pop()?;
-        let key = KEY_NAMES.iter().find(|key| key.name == key_name)?.key;
-        let mut chord = KeyChord::key(key);
+    pub fn from_name(name: &str) -> Option<InputButton> {
+        if let Some(key) = KEY_NAMES.iter().find(|key| key.name == name) {
+            return Some(InputButton::Key(key.key));
+        }
 
-        for modifier in parts {
-            match modifier {
-                SHIFT => chord.shift = true,
-                CONTROL => chord.control = true,
-                ALT => chord.alt = true,
-                _ => return None,
+        let button = match name.strip_prefix(MOUSE_PREFIX)? {
+            MOUSE_LEFT => MouseButton::Left,
+            MOUSE_RIGHT => MouseButton::Right,
+            MOUSE_MIDDLE => MouseButton::Middle,
+            MOUSE_BACK => MouseButton::Back,
+            MOUSE_FORWARD => MouseButton::Forward,
+            number => MouseButton::Other(number.parse().ok()?),
+        };
+
+        Some(InputButton::Mouse(button))
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            InputButton::Key(key) => KEY_NAMES
+                .iter()
+                .find(|name| name.key == *key)
+                .map_or_else(|| format!("{key:?}"), |name| name.name.to_string()),
+            InputButton::Mouse(button) => {
+                let name = match button {
+                    MouseButton::Left => MOUSE_LEFT.to_string(),
+                    MouseButton::Right => MOUSE_RIGHT.to_string(),
+                    MouseButton::Middle => MOUSE_MIDDLE.to_string(),
+                    MouseButton::Back => MOUSE_BACK.to_string(),
+                    MouseButton::Forward => MOUSE_FORWARD.to_string(),
+                    MouseButton::Other(number) => number.to_string(),
+                };
+
+                format!("{MOUSE_PREFIX}{name}")
             }
         }
-
-        Some(chord)
-    }
-
-    pub fn config_name(&self) -> String {
-        let key = KEY_NAMES
-            .iter()
-            .find(|key| key.key == self.key)
-            .map_or("unknown", |key| key.name);
-        let mut parts = Vec::new();
-
-        if self.control {
-            parts.push(CONTROL);
-        }
-
-        if self.alt {
-            parts.push(ALT);
-        }
-
-        if self.shift {
-            parts.push(SHIFT);
-        }
-
-        parts.push(key);
-
-        parts.join(&MODIFIER_SEPARATOR.to_string())
-    }
-}
-
-impl ConfigValue for KeyChord {
-    fn from_kdl(value: &KdlValue) -> Option<KeyChord> {
-        value.as_string().and_then(KeyChord::from_config_name)
-    }
-
-    fn to_kdl(&self) -> KdlValue {
-        KdlValue::String(self.config_name())
-    }
-
-    fn parse(text: &str) -> anyhow::Result<KeyChord> {
-        KeyChord::from_config_name(text).with_context(|| format!("{text:?} is not a key like f4, tab, shift+tab or `"))
-    }
-
-    fn type_name() -> String {
-        "key-chord".to_string()
-    }
-
-    fn completions() -> Vec<String> {
-        KeyChord::key_names().into_iter().map(str::to_string).collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn names_round_trip() {
-        for name in ["f4", "tab", "shift+tab", "`", "ctrl+alt+delete", "1"] {
-            assert_eq!(KeyChord::from_config_name(name).unwrap().config_name(), name);
-        }
-    }
-
-    #[test]
-    fn names_ignore_case_and_reject_unknown_keys() {
-        assert_eq!(
-            KeyChord::from_config_name("Shift+Tab"),
-            Some(KeyChord::shift(KeyCode::Tab))
-        );
-        assert!(KeyChord::from_config_name("hyper+a").is_none());
-        assert!(KeyChord::from_config_name("f99").is_none());
     }
 }
