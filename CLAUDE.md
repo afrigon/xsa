@@ -320,12 +320,8 @@ Names in code, data and documents use these words in these meanings only:
   starts a comment), each waiting for the previous one's reply; each command and its reply are printed to the shell
   under `<script file name>:<line>`, and the first failure skips the rest. `init.xsa` is the repository's development
   setup: `mise run client -- --script init.xsa`.
-- `script <path>` and `script --text "<commands>"` (separated by `;` or newlines, labelled `script:<n>`) run a script
-  in the process that receives them, replying once it finishes. The process loop runs scripts itself: each frame or
-  wake it sends lines back to back for as long as their replies are already there, so commands that finish at once
-  (`input` commands) land in the same frame, in order. `wait <duration>` replies once that much real time has passed,
-  on the first frame after it in the client; use it to time input (`script --text "input down w; wait 500ms; input up
-  w"`), since separate IPC calls land on frames the caller does not control.
+- `script` runs a file or `--text` of commands in the process that receives it. The process loop runs scripts
+  itself, so commands that finish at once run back to back in the same frame; `wait` times the rest.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
