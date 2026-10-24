@@ -6,28 +6,48 @@ pub use session_environment::SessionEnvironment;
 pub use session_environments::SessionEnvironments;
 pub use session_state::SessionState;
 
-use crate::event::Event;
-use crate::frame::ClientFrame;
+use anyhow::bail;
+
+use crate::frame::{ClientFrame, ServerFrame};
 use crate::network::Connection;
-use crate::request::{Request, RequestId};
+use crate::reply::Reply;
+use crate::request::{JoinRequest, Request, RequestId};
+use crate::user::Actor;
 
 pub struct ServerSession {
     connection: Connection,
     next_id: u64,
+    join: Option<RequestId>,
+    actor: Option<Actor>,
     state: Option<SessionState>,
 }
 
 impl ServerSession {
-    pub fn new(connection: Connection) -> Self {
-        Self {
+    pub fn join(connection: Connection) -> anyhow::Result<ServerSession> {
+        let mut session = ServerSession::new(connection, None);
+        let id = session.send(Request::Join(JoinRequest))?;
+        session.join = Some(id);
+
+        Ok(session)
+    }
+
+    pub fn operator(connection: Connection) -> ServerSession {
+        ServerSession::new(connection, Some(Actor::Operator))
+    }
+
+    fn new(connection: Connection, actor: Option<Actor>) -> ServerSession {
+        ServerSession {
             connection,
             next_id: 0,
+            join: None,
+            actor,
             state: None,
         }
     }
 
+    // The session is established once both the snapshot and the actor it acts as have arrived.
     pub fn state(&self) -> Option<&SessionState> {
-        self.state.as_ref()
+        self.actor.and(self.state.as_ref())
     }
 
     pub fn send(&mut self, request: Request) -> anyhow::Result<RequestId> {
@@ -38,28 +58,43 @@ impl ServerSession {
         Ok(id)
     }
 
-    pub fn poll(&mut self) -> anyhow::Result<Option<Event>> {
-        let event = self.connection.poll()?;
+    pub fn poll(&mut self) -> anyhow::Result<Option<ServerFrame>> {
+        let frame = self.connection.poll()?;
 
-        if let Some(event) = &event {
-            self.apply(event);
+        if let Some(frame) = &frame {
+            self.apply(frame)?;
         }
 
-        Ok(event)
+        Ok(frame)
     }
 
-    pub async fn receive(&mut self) -> anyhow::Result<Event> {
-        let event = self.connection.receive().await?;
-        self.apply(&event);
+    pub async fn receive(&mut self) -> anyhow::Result<ServerFrame> {
+        let frame = self.connection.receive().await?;
+        self.apply(&frame)?;
 
-        Ok(event)
+        Ok(frame)
     }
 
-    fn apply(&mut self, event: &Event) {
-        if let Event::JoinAccepted(accepted) = event {
-            self.state = Some(SessionState::new(&accepted.state));
-        } else if let Some(state) = &mut self.state {
-            state.apply(event);
+    fn apply(&mut self, frame: &ServerFrame) -> anyhow::Result<()> {
+        match frame {
+            ServerFrame::Snapshot(state) => self.state = Some(SessionState::new(state)),
+            ServerFrame::Event(event) => {
+                if let Some(state) = &mut self.state {
+                    state.apply(event);
+                }
+            }
+            ServerFrame::Reply { id, result } if self.join == Some(*id) => {
+                self.join = None;
+
+                match result {
+                    Ok(Reply::Join(reply)) => self.actor = Some(Actor::User(reply.user)),
+                    Ok(reply) => bail!("the server answered the join with {reply:?}"),
+                    Err(error) => bail!("the server refused to let us join: {error}"),
+                }
+            }
+            ServerFrame::Reply { .. } => {}
         }
+
+        Ok(())
     }
 }

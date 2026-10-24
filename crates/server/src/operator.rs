@@ -4,21 +4,20 @@ use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter, Output};
 use xsa_config::ConfigStore;
 use xsa_proto::network::Connection;
-use xsa_proto::request::{JoinRequest, Request, Role};
 use xsa_proto::session::ServerSession;
 
 use crate::DedicatedConfig;
 
 pub(crate) type ApplyConfig = Box<dyn Fn(&DedicatedConfig) + Send>;
 
-pub(crate) struct ServerUser {
+pub(crate) struct Operator {
     session: ServerSession,
     exit_requested: bool,
     config: ConfigStore<DedicatedConfig>,
     apply_config: ApplyConfig,
 }
 
-impl CommandExecutor for ServerUser {
+impl CommandExecutor for Operator {
     fn session(&mut self) -> &mut ServerSession {
         &mut self.session
     }
@@ -42,31 +41,30 @@ impl CommandExecutor for ServerUser {
     }
 }
 
-impl ServerUser {
+impl Operator {
     pub async fn run(
         connection: Connection,
         mut invocations: UnboundedReceiver<CommandInvocation>,
         config: ConfigStore<DedicatedConfig>,
         apply_config: ApplyConfig,
     ) -> anyhow::Result<()> {
-        let mut user = ServerUser {
-            session: ServerSession::new(connection),
+        let mut operator = Operator {
+            session: ServerSession::operator(connection),
             exit_requested: false,
             config,
             apply_config,
         };
-        user.session.send(Request::Join(JoinRequest { role: Role::Server }))?;
         let mut router = CommandRouter::default();
         let mut invocations_open = true;
 
-        while !user.exit_requested {
+        while !operator.exit_requested {
             tokio::select! {
-                event = user.session.receive() => {
-                    router.handle_event(&event?, &user.session);
-                    router.resume(&mut user);
+                frame = operator.session.receive() => {
+                    router.handle_frame(&frame?, &operator.session);
+                    router.resume(&mut operator);
                 }
                 invocation = invocations.recv(), if invocations_open => match invocation {
-                    Some(invocation) => router.handle(invocation, &mut user),
+                    Some(invocation) => router.handle(invocation, &mut operator),
                     None => invocations_open = false,
                 },
             }
@@ -85,7 +83,12 @@ mod tests {
     use xsa_commands::router::{CommandExecution, Output};
 
     use super::*;
-    use crate::{Server, World, WorldOptions};
+    use std::thread;
+
+    use xsa_proto::network::Connection;
+    use xsa_proto::session::SessionEnvironment;
+
+    use crate::{Peer, Server, World, WorldOptions};
 
     async fn invoke(invocations: &UnboundedSender<CommandInvocation>, line: &str) -> Output {
         let (reply, receiver) = oneshot::channel();
@@ -101,7 +104,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn server_user_commands_reach_the_server_and_report_back() {
+    async fn operator_commands_reach_the_server_and_report_back() {
         let world = World::load(&WorldOptions {
             packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")),
             packs: vec![
@@ -112,11 +115,14 @@ mod tests {
             simulation: None,
         })
         .unwrap();
-        let connection = Server::start_local(world).unwrap();
+        let local = Connection::local();
+        let (peers, peer_receiver) = unbounded_channel();
+        peers.send(Peer::Operator(local.link)).unwrap();
+        thread::spawn(move || Server::new(world, peer_receiver, SessionEnvironment::Dedicated).run());
         let (invocations, receiver) = unbounded_channel();
-        let config_path = std::env::temp_dir().join(format!("xsa-server-user-{}.kdl", std::process::id()));
+        let config_path = std::env::temp_dir().join(format!("xsa-server-operator-{}.kdl", std::process::id()));
         let config = ConfigStore::<DedicatedConfig>::load(config_path).unwrap();
-        let server_user = tokio::spawn(ServerUser::run(connection, receiver, config, Box::new(|_| {})));
+        let operator = tokio::spawn(Operator::run(local.connection, receiver, config, Box::new(|_| {})));
 
         let rate = invoke(&invocations, "time rate 5").await;
         assert!(rate.succeeded && rate.text.contains("rate 5×"), "{rate:?}");
@@ -130,6 +136,6 @@ mod tests {
         assert!(!camera.succeeded, "{camera:?}");
 
         invoke(&invocations, "exit").await;
-        server_user.await.unwrap().unwrap();
+        operator.await.unwrap().unwrap();
     }
 }

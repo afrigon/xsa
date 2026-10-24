@@ -21,7 +21,7 @@ impl PendingClient {
         tokio::spawn(async move {
             let _connection = connection;
             let _ = StreamPump::new(send, receive)
-                .run(server_end.events, server_end.requests)
+                .run(server_end.server_frames, server_end.client_frames)
                 .await;
         });
 

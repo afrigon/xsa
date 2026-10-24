@@ -1,13 +1,12 @@
-use xsa_proto::event::Outcome;
-use xsa_proto::request::LeaveRequest;
+use xsa_proto::request::{LeaveRequest, RequestError};
 
 use crate::server::Server;
-use crate::server::message_handler::MessageHandler;
+use crate::server::request_handler::RequestHandler;
 
-impl MessageHandler for LeaveRequest {
-    fn handle(self, server: &mut Server, client: usize) -> Outcome {
+impl RequestHandler for LeaveRequest {
+    fn handle(self, server: &mut Server, client: usize) -> Result<(), RequestError> {
         server.clients[client].connected = false;
 
-        Outcome::Accepted
+        Ok(())
     }
 }

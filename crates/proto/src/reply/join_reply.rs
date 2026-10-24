@@ -1,6 +1,8 @@
 use bitcode::{Decode, Encode};
 
+use crate::user::UserId;
+
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
-pub struct JoinDenied {
-    pub reason: String,
+pub struct JoinReply {
+    pub user: UserId,
 }

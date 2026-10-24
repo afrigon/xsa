@@ -6,7 +6,6 @@ use xsa_commands::repl::Repl;
 use xsa_commands::script::Script;
 use xsa_config::ConfigStore;
 use xsa_proto::network::Connection;
-use xsa_proto::request::{JoinRequest, Request, Role};
 use xsa_proto::session::ServerSession;
 use xsa_server::{Server, World};
 
@@ -41,12 +40,7 @@ impl GameClient {
             Some(remote) => Connection::remote(&remote.address, &remote.fingerprint)?,
             None => Server::start_local(World::load(&self.options.world)?)?,
         };
-        let mut session = ServerSession::new(connection);
-        session.send(Request::Join(JoinRequest {
-            role: Role::Player {
-                name: self.options.player,
-            },
-        }))?;
+        let session = ServerSession::join(connection)?;
 
         let (invocation_sender, invocations) = unbounded_channel();
         let _endpoint = IpcEndpoint::spawn(

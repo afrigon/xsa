@@ -1,50 +1,51 @@
 mod client;
 mod handlers;
-mod membership;
-mod message_handler;
+mod request_handler;
 
 use std::thread;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-use xsa_proto::event::{Event, Outcome, Reply, TickEvent, TimeChangedEvent, UserLeftEvent};
-use xsa_proto::frame::ClientFrame;
-use xsa_proto::network::{ClientLink, Connection};
-use xsa_proto::request::Request;
+use xsa_proto::event::{Event, TickEvent, TimeChangedEvent, UserLeftEvent};
+use xsa_proto::frame::{ClientFrame, ServerFrame};
+use xsa_proto::network::Connection;
+use xsa_proto::reply::Reply;
+use xsa_proto::request::{ForbiddenCause, Request, RequestError};
 use xsa_proto::session::SessionEnvironment;
-use xsa_proto::user::User;
+use xsa_proto::user::{Actor, User};
 use xsa_units::{SimulationDuration, TICK_RATE_HERTZ};
 
-use crate::World;
+use crate::{Peer, World};
 use client::Client;
-use membership::Membership;
-use message_handler::MessageHandler;
+use request_handler::RequestHandler;
 
 pub struct Server {
     world: World,
     environment: SessionEnvironment,
-    new_clients: UnboundedReceiver<ClientLink>,
+    peers: UnboundedReceiver<Peer>,
     clients: Vec<Client>,
+    users: Vec<User>,
     next_user: u32,
 }
 
 impl Server {
-    pub fn new(world: World, new_clients: UnboundedReceiver<ClientLink>, environment: SessionEnvironment) -> Self {
+    pub fn new(world: World, peers: UnboundedReceiver<Peer>, environment: SessionEnvironment) -> Self {
         Self {
             world,
             environment,
-            new_clients,
+            peers,
             clients: Vec::new(),
+            users: Vec::new(),
             next_user: 0,
         }
     }
 
     pub fn start_local(world: World) -> anyhow::Result<Connection> {
         let local = Connection::local();
-        let (new_clients, receiver) = unbounded_channel();
-        new_clients
-            .send(local.link)
+        let (peers, receiver) = unbounded_channel();
+        peers
+            .send(Peer::Client(local.link))
             .expect("the receiver is alive until the server starts");
         thread::Builder::new()
             .name("integrated server".into())
@@ -57,7 +58,7 @@ impl Server {
         let tick = Duration::from_secs_f64(1.0 / TICK_RATE_HERTZ);
         let mut next_tick = Instant::now();
 
-        while self.accept_clients() {
+        while self.accept_peers() {
             self.world.advance(SimulationDuration {
                 seconds: tick.as_secs_f64(),
             });
@@ -78,12 +79,22 @@ impl Server {
         }
     }
 
-    fn accept_clients(&mut self) -> bool {
+    fn accept_peers(&mut self) -> bool {
         loop {
-            match self.new_clients.try_recv() {
-                Ok(link) => self.clients.push(Client::new(link)),
+            match self.peers.try_recv() {
+                Ok(peer) => self.admit(peer),
                 Err(TryRecvError::Empty) => return true,
                 Err(TryRecvError::Disconnected) => return !self.clients.is_empty(),
+            }
+        }
+    }
+
+    fn admit(&mut self, peer: Peer) {
+        match peer {
+            Peer::Client(link) => self.clients.push(Client::new(link, None)),
+            Peer::Operator(link) => {
+                self.clients.push(Client::new(link, Some(Actor::Operator)));
+                self.send_snapshot(self.clients.len() - 1);
             }
         }
     }
@@ -91,8 +102,8 @@ impl Server {
     fn handle_frames(&mut self) {
         for client in 0..self.clients.len() {
             while let Some(frame) = self.receive(client) {
-                let outcome = self.handle(client, frame.request);
-                self.send(client, Event::Reply(Reply { id: frame.id, outcome }));
+                let result = self.handle(client, frame.request);
+                self.send(client, ServerFrame::Reply { id: frame.id, result });
             }
         }
     }
@@ -104,7 +115,7 @@ impl Server {
             return None;
         }
 
-        match client.link.requests.try_recv() {
+        match client.link.client_frames.try_recv() {
             Ok(frame) => Some(frame),
             Err(TryRecvError::Empty) => None,
             Err(TryRecvError::Disconnected) => {
@@ -114,36 +125,31 @@ impl Server {
         }
     }
 
-    fn handle(&mut self, client: usize, request: Request) -> Outcome {
-        let needs_membership = !matches!(request, Request::Join(_) | Request::Leave(_));
+    fn handle(&mut self, client: usize, request: Request) -> Result<Reply, RequestError> {
+        let needs_actor = !matches!(request, Request::Join(_) | Request::Leave(_));
 
-        if needs_membership && self.clients[client].membership.is_none() {
-            return Outcome::denied("join the simulation first");
+        if needs_actor && self.clients[client].actor.is_none() {
+            return Err(RequestError::Forbidden {
+                cause: ForbiddenCause::NotJoined,
+            });
         }
 
-        if let Err(reason) = request.check_session_environment(self.environment) {
-            return Outcome::denied(reason);
-        }
+        request.check_session_environment(self.environment)?;
 
         match request {
-            Request::Join(request) => request.handle(self, client),
-            Request::Leave(request) => request.handle(self, client),
-            Request::SetTime(request) => request.handle(self, client),
-            Request::StepTime(request) => request.handle(self, client),
-            Request::SetTimeRate(request) => request.handle(self, client),
-            Request::StepTimeRate(request) => request.handle(self, client),
-            Request::SetTimeRateOverride(request) => request.handle(self, client),
+            Request::Join(request) => request.handle(self, client).map(Reply::from),
+            Request::Leave(request) => request.handle(self, client).map(Reply::from),
+            Request::SetTime(request) => request.handle(self, client).map(Reply::from),
+            Request::StepTime(request) => request.handle(self, client).map(Reply::from),
+            Request::SetTimeRate(request) => request.handle(self, client).map(Reply::from),
+            Request::StepTimeRate(request) => request.handle(self, client).map(Reply::from),
+            Request::SetTimeRateOverride(request) => request.handle(self, client).map(Reply::from),
         }
     }
 
-    fn users(&self) -> Vec<User> {
-        self.clients
-            .iter()
-            .filter_map(|client| match &client.membership {
-                Some(Membership::User { user }) => Some(user.clone()),
-                _ => None,
-            })
-            .collect()
+    fn send_snapshot(&mut self, client: usize) {
+        let state = self.world.state(self.users.clone(), self.environment);
+        self.send(client, ServerFrame::Snapshot(state));
     }
 
     fn broadcast_time(&mut self) {
@@ -153,24 +159,23 @@ impl Server {
         }));
     }
 
-    fn send(&mut self, client: usize, event: Event) {
+    fn send(&mut self, client: usize, frame: ServerFrame) {
         let client = &mut self.clients[client];
 
-        if client.connected && client.link.events.send(event).is_err() {
+        if client.connected && client.link.server_frames.send(frame).is_err() {
             client.connected = false;
         }
     }
 
     fn broadcast(&mut self, event: &Event) {
-        self.broadcast_except(None, event);
-    }
-
-    fn broadcast_except(&mut self, excluded: Option<usize>, event: &Event) {
-        for (index, client) in self.clients.iter_mut().enumerate() {
-            if Some(index) != excluded
-                && client.connected
-                && client.membership.is_some()
-                && client.link.events.send(event.clone()).is_err()
+        for client in &mut self.clients {
+            if client.connected
+                && client.actor.is_some()
+                && client
+                    .link
+                    .server_frames
+                    .send(ServerFrame::Event(event.clone()))
+                    .is_err()
             {
                 client.connected = false;
             }
@@ -181,8 +186,9 @@ impl Server {
         while let Some(index) = self.clients.iter().position(|client| !client.connected) {
             let client = self.clients.remove(index);
 
-            if let Some(Membership::User { user }) = client.membership {
-                self.broadcast(&Event::UserLeft(UserLeftEvent { user: user.id }));
+            if let Some(Actor::User(user)) = client.actor {
+                self.users.retain(|joined| joined.id != user);
+                self.broadcast(&Event::UserLeft(UserLeftEvent { user }));
             }
         }
     }
@@ -192,10 +198,13 @@ impl Server {
 mod tests {
     use std::path::PathBuf;
 
+    use xsa_proto::event::UserJoinedEvent;
+    use xsa_proto::reply::JoinReply;
     use xsa_proto::request::{
-        JoinRequest, LeaveRequest, RequestId, Role, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest,
+        JoinRequest, LeaveRequest, RequestId, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest,
         StepTimeRateRequest, StepTimeRequest,
     };
+    use xsa_proto::user::UserId;
     use xsa_units::{SimulationTime, TimeFlow, TimeRate, TimeRateStep};
 
     use super::*;
@@ -222,7 +231,7 @@ mod tests {
                 simulation: None,
             })
             .unwrap();
-            let (_new_clients, receiver) = unbounded_channel();
+            let (_peers, receiver) = unbounded_channel();
 
             Self {
                 server: Server::new(world, receiver, environment),
@@ -232,7 +241,14 @@ mod tests {
 
         fn connect(&mut self) -> Connection {
             let local = Connection::local();
-            self.server.clients.push(Client::new(local.link));
+            self.server.admit(Peer::Client(local.link));
+
+            local.connection
+        }
+
+        fn connect_operator(&mut self) -> Connection {
+            let local = Connection::local();
+            self.server.admit(Peer::Operator(local.link));
 
             local.connection
         }
@@ -248,85 +264,109 @@ mod tests {
         }
     }
 
-    fn drain(connection: &mut Connection) -> Vec<Event> {
-        let mut events = Vec::new();
+    fn drain(connection: &mut Connection) -> Vec<ServerFrame> {
+        let mut frames = Vec::new();
 
-        while let Ok(Some(event)) = connection.poll() {
-            events.push(event);
+        while let Ok(Some(frame)) = connection.poll() {
+            frames.push(frame);
         }
 
-        events
+        frames
     }
 
-    fn user(name: &str) -> Request {
-        Request::Join(JoinRequest {
-            role: Role::Player { name: name.to_string() },
-        })
+    fn join() -> Request {
+        Request::Join(JoinRequest)
     }
 
-    fn server_role() -> Request {
-        Request::Join(JoinRequest { role: Role::Server })
+    fn event(event: Event) -> ServerFrame {
+        ServerFrame::Event(event)
     }
 
-    fn accepted(id: RequestId) -> Event {
-        Event::Reply(Reply {
+    fn accepted(id: RequestId) -> ServerFrame {
+        ServerFrame::Reply {
             id,
-            outcome: Outcome::Accepted,
-        })
+            result: Ok(Reply::Empty),
+        }
     }
 
-    fn is_denied(events: &[Event]) -> bool {
-        matches!(
-            events,
-            [Event::Reply(Reply {
-                outcome: Outcome::Denied { .. },
-                ..
-            })]
-        )
+    fn is_refused(frames: &[ServerFrame]) -> bool {
+        matches!(frames, [ServerFrame::Reply { result: Err(_), .. }])
     }
 
     #[test]
-    fn join_is_answered_with_the_state_then_a_reply() {
+    fn join_is_answered_with_a_snapshot_the_announcement_then_the_user() {
         let mut harness = Harness::new();
         let mut connection = harness.connect();
-        let id = harness.send(&connection, user("ada"));
-        let events = drain(&mut connection);
+        let id = harness.send(&connection, join());
+        let frames = drain(&mut connection);
+        let user = UserId { value: 0 };
         assert!(matches!(
-            &events[0],
-            Event::JoinAccepted(accepted)
-                if accepted.state.time_flow == TimeFlow::REAL_TIME && accepted.state.users.len() == 1
+            &frames[0],
+            ServerFrame::Snapshot(state) if state.time_flow == TimeFlow::REAL_TIME && state.users.is_empty()
         ));
-        assert_eq!(events[1], accepted(id));
+        assert_eq!(
+            frames[1..],
+            [
+                event(Event::UserJoined(UserJoinedEvent {
+                    user: User { id: user }
+                })),
+                ServerFrame::Reply {
+                    id,
+                    result: Ok(Reply::Join(JoinReply { user })),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn the_operator_gets_a_snapshot_without_joining() {
+        let mut harness = Harness::new();
+        let mut operator = harness.connect_operator();
+        assert!(matches!(drain(&mut operator).as_slice(), [ServerFrame::Snapshot(_)]));
+    }
+
+    #[test]
+    fn joining_twice_is_a_conflict() {
+        let mut harness = Harness::new();
+        let mut connection = harness.connect();
+        harness.send(&connection, join());
+        drain(&mut connection);
+        harness.send(&connection, join());
+        assert!(matches!(
+            drain(&mut connection).as_slice(),
+            [ServerFrame::Reply {
+                result: Err(RequestError::Conflict { .. }),
+                ..
+            }]
+        ));
     }
 
     #[test]
     fn a_time_change_is_broadcast_before_the_reply() {
         let mut harness = Harness::new();
-        let mut server_user = harness.connect();
+        let mut operator = harness.connect_operator();
         let mut observer = harness.connect();
-        harness.send(&server_user, server_role());
-        harness.send(&observer, user("ada"));
-        drain(&mut server_user);
+        harness.send(&observer, join());
+        drain(&mut operator);
         drain(&mut observer);
 
         let rate = TimeRate { multiplier: 100.0 };
-        let id = harness.send(&server_user, Request::SetTimeRate(SetTimeRateRequest { rate }));
-        let changed = Event::TimeChanged(TimeChangedEvent {
+        let id = harness.send(&operator, Request::SetTimeRate(SetTimeRateRequest { rate }));
+        let changed = event(Event::TimeChanged(TimeChangedEvent {
             time: harness.server.world.time(),
             time_flow: TimeFlow {
                 rate,
                 time_override: None,
             },
-        });
-        assert_eq!(drain(&mut server_user), vec![changed.clone(), accepted(id)]);
+        }));
+        assert_eq!(drain(&mut operator), vec![changed.clone(), accepted(id)]);
         assert_eq!(drain(&mut observer), vec![changed]);
     }
 
     #[test]
     fn faster_and_slower_change_the_world_rate() {
         let mut harness = Harness::new();
-        let connection = harness.connect();
-        harness.send(&connection, server_role());
+        let connection = harness.connect_operator();
 
         for (step, multiplier) in [
             (TimeRateStep::Faster, 2.0),
@@ -346,8 +386,7 @@ mod tests {
     #[test]
     fn stepping_advances_time_by_the_step() {
         let mut harness = Harness::new();
-        let connection = harness.connect();
-        harness.send(&connection, server_role());
+        let connection = harness.connect_operator();
         let before = harness.server.world.time();
         let duration = SimulationDuration { seconds: 10.0 };
         harness.send(&connection, Request::StepTime(StepTimeRequest { duration }));
@@ -357,8 +396,7 @@ mod tests {
     #[test]
     fn a_paused_world_does_not_advance() {
         let mut harness = Harness::new();
-        let connection = harness.connect();
-        harness.send(&connection, server_role());
+        let connection = harness.connect_operator();
         harness.send(
             &connection,
             Request::SetTimeRate(SetTimeRateRequest { rate: TimeRate::PAUSED }),
@@ -371,8 +409,7 @@ mod tests {
     #[test]
     fn an_override_stops_time_and_keeps_the_rate() {
         let mut harness = Harness::new();
-        let connection = harness.connect();
-        harness.send(&connection, server_role());
+        let connection = harness.connect_operator();
         let rate = TimeRate { multiplier: 4.0 };
         harness.send(&connection, Request::SetTimeRate(SetTimeRateRequest { rate }));
         harness.send(
@@ -402,8 +439,7 @@ mod tests {
     #[test]
     fn a_dedicated_server_denies_a_time_override() {
         let mut harness = Harness::in_environment(SessionEnvironment::Dedicated);
-        let mut connection = harness.connect();
-        harness.send(&connection, server_role());
+        let mut connection = harness.connect_operator();
         drain(&mut connection);
 
         harness.send(
@@ -412,15 +448,14 @@ mod tests {
                 rate: Some(TimeRate::PAUSED),
             }),
         );
-        assert!(is_denied(&drain(&mut connection)));
+        assert!(is_refused(&drain(&mut connection)));
         assert_eq!(harness.server.world.time_flow(), TimeFlow::REAL_TIME);
     }
 
     #[test]
     fn invalid_values_are_denied_without_changing_the_world() {
         let mut harness = Harness::new();
-        let mut connection = harness.connect();
-        harness.send(&connection, server_role());
+        let mut connection = harness.connect_operator();
         drain(&mut connection);
 
         for request in [
@@ -441,15 +476,15 @@ mod tests {
             }),
         ] {
             harness.send(&connection, request);
-            let events = drain(&mut connection);
-            assert!(is_denied(&events), "{events:?}");
+            let frames = drain(&mut connection);
+            assert!(is_refused(&frames), "{frames:?}");
         }
 
         assert_eq!(harness.server.world.time_flow(), TimeFlow::REAL_TIME);
     }
 
     #[test]
-    fn requests_before_joining_are_denied() {
+    fn requests_before_joining_are_forbidden() {
         let mut harness = Harness::new();
         let mut connection = harness.connect();
         harness.send(
@@ -458,30 +493,38 @@ mod tests {
                 rate: TimeRate { multiplier: 2.0 },
             }),
         );
-        assert!(is_denied(&drain(&mut connection)));
+        assert!(matches!(
+            drain(&mut connection).as_slice(),
+            [ServerFrame::Reply {
+                result: Err(RequestError::Forbidden {
+                    cause: ForbiddenCause::NotJoined
+                }),
+                ..
+            }]
+        ));
     }
 
     #[test]
-    fn users_joining_and_leaving_are_announced_to_others() {
+    fn users_joining_and_leaving_are_announced_to_everyone() {
         let mut harness = Harness::new();
         let mut first = harness.connect();
         let second = harness.connect();
-        let server_user = harness.connect();
-        harness.send(&first, user("ada"));
+        let mut operator = harness.connect_operator();
+        harness.send(&first, join());
         drain(&mut first);
+        drain(&mut operator);
 
-        harness.send(&server_user, server_role());
-        assert!(drain(&mut first).is_empty());
-
-        harness.send(&second, user("grace"));
-        let joined = drain(&mut first);
-        let [Event::UserJoined(joined)] = joined.as_slice() else {
-            panic!("{joined:?}");
+        harness.send(&second, join());
+        let grace = User {
+            id: UserId { value: 1 },
         };
-        assert_eq!(joined.user.name, "grace");
+        let joined = vec![event(Event::UserJoined(UserJoinedEvent { user: grace.clone() }))];
+        assert_eq!(drain(&mut first), joined);
+        assert_eq!(drain(&mut operator), joined);
 
-        let grace = joined.user.id;
         harness.send(&second, Request::Leave(LeaveRequest));
-        assert_eq!(drain(&mut first), vec![Event::UserLeft(UserLeftEvent { user: grace })]);
+        let left = vec![event(Event::UserLeft(UserLeftEvent { user: grace.id }))];
+        assert_eq!(drain(&mut first), left);
+        assert_eq!(drain(&mut operator), left);
     }
 }

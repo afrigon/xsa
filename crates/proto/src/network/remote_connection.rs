@@ -50,7 +50,7 @@ impl RemoteConnection {
                             let _endpoint = remote.endpoint;
                             let _connection = remote.connection;
                             let _ = StreamPump::new(remote.send, remote.receive)
-                                .run(link.requests, link.events)
+                                .run(link.client_frames, link.server_frames)
                                 .await;
                         }
                         Err(err) => {

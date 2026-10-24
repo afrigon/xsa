@@ -55,7 +55,6 @@ impl SessionState {
                 self.time_flow = changed.time_flow;
             }
             Event::Tick(tick) => self.set_time(tick.time),
-            Event::JoinAccepted(_) | Event::JoinDenied(_) | Event::Reply(_) => {}
         }
     }
 

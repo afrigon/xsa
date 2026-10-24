@@ -1,9 +1,8 @@
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-use crate::event::Event;
-use crate::frame::ClientFrame;
+use crate::frame::{ClientFrame, ServerFrame};
 
 pub struct ClientLink {
-    pub requests: UnboundedReceiver<ClientFrame>,
-    pub events: UnboundedSender<Event>,
+    pub client_frames: UnboundedReceiver<ClientFrame>,
+    pub server_frames: UnboundedSender<ServerFrame>,
 }

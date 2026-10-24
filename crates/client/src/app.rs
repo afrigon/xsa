@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use glam::DVec2;
 use resource_vulkan::Resources;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -34,7 +34,7 @@ use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
 use xsa_config::ConfigStore;
 use xsa_packs::PackStack;
-use xsa_proto::event::Event;
+use xsa_proto::frame::ServerFrame;
 use xsa_proto::request::{LeaveRequest, Request};
 use xsa_proto::session::{ServerSession, SessionState};
 use xsa_proto::world::WorldState;
@@ -224,19 +224,14 @@ impl App {
     }
 
     fn poll_connection(&mut self) -> anyhow::Result<()> {
-        while let Some(event) = self.session.poll()? {
-            self.router.handle_event(&event, &self.session);
+        while let Some(frame) = self.session.poll()? {
+            self.router.handle_frame(&frame, &self.session);
 
-            match event {
-                Event::JoinAccepted(accepted) => self
-                    .join(&accepted.state)
-                    .with_context(|| format!("joining simulation {}", accepted.state.simulation))?,
-                Event::JoinDenied(denied) => bail!("the server refused to let us join: {}", denied.reason),
-                Event::UserJoined(_)
-                | Event::UserLeft(_)
-                | Event::TimeChanged(_)
-                | Event::Tick(_)
-                | Event::Reply(_) => {}
+            match frame {
+                ServerFrame::Snapshot(state) => self
+                    .join(&state)
+                    .with_context(|| format!("joining simulation {}", state.simulation))?,
+                ServerFrame::Event(_) | ServerFrame::Reply { .. } => {}
             }
         }
 

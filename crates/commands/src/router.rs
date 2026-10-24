@@ -17,7 +17,7 @@ use std::ffi::OsStr;
 
 use tokio::sync::oneshot;
 use usage::help::Style;
-use xsa_proto::event::{Event, Outcome};
+use xsa_proto::frame::ServerFrame;
 use xsa_proto::request::RequestId;
 use xsa_proto::session::ServerSession;
 
@@ -107,8 +107,8 @@ impl CommandRouter {
                     .state()
                     .and_then(|state| request.check_session_environment(state.environment()).err());
 
-                if let Some(reason) = refusal {
-                    Output::failure(reason)
+                if let Some(error) = refusal {
+                    Output::failure(error.to_string())
                 } else {
                     match executor.session().send(request) {
                         Ok(id) => {
@@ -131,16 +131,16 @@ impl CommandRouter {
         let _ = reply.send(output);
     }
 
-    pub fn handle_event(&mut self, event: &Event, session: &ServerSession) {
-        let Event::Reply(reply) = event else {
+    pub fn handle_frame(&mut self, frame: &ServerFrame, session: &ServerSession) {
+        let ServerFrame::Reply { id, result } = frame else {
             return;
         };
-        let Some(pending) = self.pending.remove(&reply.id) else {
+        let Some(pending) = self.pending.remove(id) else {
             return;
         };
-        let output = match &reply.outcome {
-            Outcome::Accepted => pending.command.describe(session.state()),
-            Outcome::Denied { reason } => Output::failure(reason.clone()),
+        let output = match result {
+            Ok(_) => pending.command.describe(session.state()),
+            Err(error) => Output::failure(error.to_string()),
         };
 
         let _ = pending.reply.send(output);
@@ -161,13 +161,15 @@ impl CommandRouter {
 
 #[cfg(test)]
 mod tests {
-    use xsa_proto::event::{JoinAccepted, Reply, TimeChangedEvent};
+    use xsa_proto::event::{Event, TimeChangedEvent};
     use xsa_proto::frame::ClientFrame;
     use xsa_proto::network::{ClientLink, Connection};
+    use xsa_proto::reply::{JoinReply, Reply};
     use xsa_proto::request::{
-        JoinRequest, Request, Role, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest, StepTimeRequest,
+        JoinRequest, Request, RequestError, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest, StepTimeRequest,
     };
     use xsa_proto::session::SessionEnvironment;
+    use xsa_proto::user::UserId;
     use xsa_proto::world::WorldState;
     use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateStep};
 
@@ -200,11 +202,11 @@ mod tests {
     }
 
     impl Harness {
-        fn unjoined() -> Self {
+        fn with(session: impl FnOnce(Connection) -> ServerSession) -> Self {
             let local = Connection::local();
             Self {
                 executor: FakeExecutor {
-                    session: ServerSession::new(local.connection),
+                    session: session(local.connection),
                     exited: false,
                 },
                 link: local.link,
@@ -212,39 +214,41 @@ mod tests {
             }
         }
 
+        fn joining() -> Self {
+            let mut harness = Harness::with(|connection| ServerSession::join(connection).unwrap());
+            assert_eq!(harness.sent().request, Request::Join(JoinRequest));
+            harness
+        }
+
         fn joined() -> Self {
             Harness::joined_in(SessionEnvironment::Singleplayer)
         }
 
         fn joined_in(environment: SessionEnvironment) -> Self {
-            let mut harness = Harness::unjoined();
-            harness
-                .executor
-                .session
-                .send(Request::Join(JoinRequest { role: Role::Server }))
-                .unwrap();
-            harness.link.requests.try_recv().unwrap();
-            harness.deliver(Event::JoinAccepted(JoinAccepted {
-                state: WorldState {
-                    simulation: "system-solar:sol".to_string(),
-                    packs: Vec::new(),
-                    time: SimulationTime::J2000,
-                    time_flow: TimeFlow {
-                        rate: TimeRate::PAUSED,
-                        time_override: None,
-                    },
-                    environment,
-                    users: Vec::new(),
-                },
-            }));
+            let mut harness = Harness::with(ServerSession::operator);
+            harness.deliver(ServerFrame::Snapshot(Harness::state(environment)));
             harness
         }
 
-        fn deliver(&mut self, event: Event) {
-            self.link.events.send(event).unwrap();
+        fn state(environment: SessionEnvironment) -> WorldState {
+            WorldState {
+                simulation: "system-solar:sol".to_string(),
+                packs: Vec::new(),
+                time: SimulationTime::J2000,
+                time_flow: TimeFlow {
+                    rate: TimeRate::PAUSED,
+                    time_override: None,
+                },
+                environment,
+                users: Vec::new(),
+            }
+        }
 
-            while let Some(event) = self.executor.session.poll().unwrap() {
-                self.router.handle_event(&event, &self.executor.session);
+        fn deliver(&mut self, frame: ServerFrame) {
+            self.link.server_frames.send(frame).unwrap();
+
+            while let Some(frame) = self.executor.session.poll().unwrap() {
+                self.router.handle_frame(&frame, &self.executor.session);
             }
         }
 
@@ -263,7 +267,7 @@ mod tests {
         }
 
         fn sent(&mut self) -> ClientFrame {
-            self.link.requests.try_recv().unwrap()
+            self.link.client_frames.try_recv().unwrap()
         }
     }
 
@@ -283,17 +287,17 @@ mod tests {
         assert_eq!(frame.request, Request::SetTimeRate(SetTimeRateRequest { rate }));
         assert!(receiver.try_recv().is_err());
 
-        harness.deliver(Event::TimeChanged(TimeChangedEvent {
+        harness.deliver(ServerFrame::Event(Event::TimeChanged(TimeChangedEvent {
             time: SimulationTime::J2000,
             time_flow: TimeFlow {
                 rate,
                 time_override: None,
             },
-        }));
-        harness.deliver(Event::Reply(Reply {
+        })));
+        harness.deliver(ServerFrame::Reply {
             id: frame.id,
-            outcome: Outcome::Accepted,
-        }));
+            result: Ok(Reply::Empty),
+        });
         let output = receiver.try_recv().unwrap();
         assert!(output.succeeded && output.text.contains("rate 100×"), "{output:?}");
     }
@@ -306,7 +310,7 @@ mod tests {
             !output.succeeded && output.text.contains("dedicated server"),
             "{output:?}"
         );
-        assert!(harness.link.requests.try_recv().is_err());
+        assert!(harness.link.client_frames.try_recv().is_err());
     }
 
     #[test]
@@ -314,10 +318,10 @@ mod tests {
         let mut harness = Harness::joined();
         let mut receiver = harness.invoke("time rate 5");
         let frame = harness.sent();
-        harness.deliver(Event::Reply(Reply {
+        harness.deliver(ServerFrame::Reply {
             id: frame.id,
-            outcome: Outcome::denied("no"),
-        }));
+            result: Err(RequestError::invalid("no")),
+        });
         assert_eq!(receiver.try_recv().unwrap(), Output::failure("no"));
     }
 
@@ -383,26 +387,23 @@ mod tests {
 
     #[test]
     fn commands_wait_for_the_join_but_exit_does_not() {
-        let mut harness = Harness::unjoined();
+        let mut harness = Harness::joining();
         let mut time = harness.invoke("time");
         assert!(time.try_recv().is_err());
 
         harness.invoke("exit");
         assert!(harness.executor.exited);
 
-        harness.deliver(Event::JoinAccepted(JoinAccepted {
-            state: WorldState {
-                simulation: "system-solar:sol".to_string(),
-                packs: Vec::new(),
-                time: SimulationTime::J2000,
-                time_flow: TimeFlow {
-                    rate: TimeRate::PAUSED,
-                    time_override: None,
-                },
-                environment: SessionEnvironment::Singleplayer,
-                users: Vec::new(),
-            },
-        }));
+        harness.deliver(ServerFrame::Snapshot(Harness::state(SessionEnvironment::Singleplayer)));
+        harness.router.resume(&mut harness.executor);
+        assert!(time.try_recv().is_err());
+
+        harness.deliver(ServerFrame::Reply {
+            id: RequestId { value: 0 },
+            result: Ok(Reply::Join(JoinReply {
+                user: UserId { value: 0 },
+            })),
+        });
         harness.router.resume(&mut harness.executor);
         assert!(time.try_recv().unwrap().succeeded);
     }

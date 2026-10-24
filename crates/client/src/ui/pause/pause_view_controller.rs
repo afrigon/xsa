@@ -1,5 +1,5 @@
 use xsa_commands::command::ViewControllerId;
-use xsa_proto::request::SetTimeRateOverrideRequest;
+use xsa_proto::request::{RequestType, SetTimeRateOverrideRequest};
 use xsa_units::TimeRate;
 use xui::{Controller, Environment, Navigation, Presentation, View, ViewController};
 
@@ -44,7 +44,7 @@ impl PauseViewController {
     fn stops_time(environment: &Environment) -> bool {
         environment
             .get::<SessionEnvironmentKey>()
-            .is_some_and(|session| SetTimeRateOverrideRequest::SESSION_ENVIRONMENT.contains(session))
+            .is_some_and(|session| SetTimeRateOverrideRequest::SESSION_ENVIRONMENTS.contains(session))
     }
 
     fn show_options(&mut self) {

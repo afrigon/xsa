@@ -18,8 +18,8 @@ use xsa_proto::network::Connection;
 use xsa_proto::network::{Identity, Listener};
 use xsa_proto::session::SessionEnvironment;
 
-use crate::server_user::ServerUser;
-use crate::{Server, World};
+use crate::operator::Operator;
+use crate::{Peer, Server, World};
 
 pub struct DedicatedServer {
     options: DedicatedOptions,
@@ -52,14 +52,14 @@ impl DedicatedServer {
         println!("listening on {address}");
         println!("fingerprint {}", identity.fingerprint());
 
-        let (new_clients, receiver) = unbounded_channel();
+        let (peers, receiver) = unbounded_channel();
         thread::Builder::new()
             .name("simulation".into())
             .spawn(move || Server::new(world, receiver, SessionEnvironment::Dedicated).run())?;
 
-        let server_user_connection = Connection::local();
-        new_clients
-            .send(server_user_connection.link)
+        let operator_connection = Connection::local();
+        peers
+            .send(Peer::Operator(operator_connection.link))
             .map_err(|_| anyhow!("the simulation thread stopped"))?;
         let (invocation_sender, invocations) = unbounded_channel();
         let _endpoint = IpcEndpoint::spawn(
@@ -74,8 +74,8 @@ impl DedicatedServer {
         }
 
         let _repl = Repl::spawn(invocation_sender)?;
-        let mut server_user = tokio::spawn(ServerUser::run(
-            server_user_connection.connection,
+        let mut operator = tokio::spawn(Operator::run(
+            operator_connection.connection,
             invocations,
             config,
             Box::new(move |config: &DedicatedConfig| shell_outputs.apply(&config.logging)),
@@ -87,7 +87,7 @@ impl DedicatedServer {
                     let Some(pending) = pending else {
                         break;
                     };
-                    let new_clients = new_clients.clone();
+                    let peers = peers.clone();
 
                     tokio::spawn(async move {
                         let remote = pending.remote_address();
@@ -95,7 +95,7 @@ impl DedicatedServer {
                         match pending.establish().await {
                             Ok(link) => {
                                 tracing::info!("{remote} connected");
-                                let _ = new_clients.send(link);
+                                let _ = peers.send(Peer::Client(link));
                             }
                             Err(err) => tracing::warn!("{remote} failed to connect: {err:#}"),
                         }
@@ -105,7 +105,7 @@ impl DedicatedServer {
                     tracing::info!("shutting down");
                     break;
                 }
-                result = &mut server_user => {
+                result = &mut operator => {
                     result??;
                     tracing::info!("shutting down");
                     break;
