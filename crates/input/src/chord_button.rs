@@ -20,6 +20,14 @@ impl ChordButton {
         }
     }
 
+    // Injected input presses the left key of a side-less modifier.
+    pub fn button(&self) -> InputButton {
+        match self {
+            ChordButton::Modifier(modifier) => InputButton::Key(modifier.left()),
+            ChordButton::Button(button) => *button,
+        }
+    }
+
     pub fn matches(&self, button: InputButton) -> bool {
         match self {
             ChordButton::Modifier(modifier) => modifier.matches(button),

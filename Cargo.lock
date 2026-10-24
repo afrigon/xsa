@@ -3313,6 +3313,7 @@ dependencies = [
  "windows-sys 0.61.2",
  "xsa-config",
  "xsa-core",
+ "xsa-input",
  "xsa-logging",
  "xsa-packs",
  "xsa-proto",

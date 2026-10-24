@@ -5,6 +5,8 @@ mod client_command;
 mod command_line;
 mod config;
 mod exit;
+#[cfg(feature = "client")]
+mod input;
 mod local_command;
 mod routable;
 mod route;
@@ -27,6 +29,11 @@ pub use config::{
     ConfigToggleCommand, ConfigUnsetCommand,
 };
 pub use exit::ExitCommand;
+#[cfg(feature = "client")]
+pub use input::{
+    InputAction, InputCommand, InputCursorAction, InputCursorCommand, InputCursorMoveCommand, InputCursorSetCommand,
+    InputDownCommand, InputPressCommand, InputResetCommand, InputScrollCommand, InputUpCommand,
+};
 pub use local_command::LocalCommand;
 pub use routable::Routable;
 pub use route::Route;
@@ -58,6 +65,9 @@ pub enum Command {
     #[cfg(feature = "client")]
     /// Change the interface's view controllers and overlays
     Ui(InterfaceCommand),
+    #[cfg(feature = "client")]
+    /// Inject keyboard and mouse input as if it came from the player's devices
+    Input(InputCommand),
     /// Exit
     Exit(ExitCommand),
 }
@@ -71,6 +81,8 @@ impl Routable for Command {
             Command::Config(command) => command.route(),
             #[cfg(feature = "client")]
             Command::Ui(command) => command.route(),
+            #[cfg(feature = "client")]
+            Command::Input(command) => command.route(),
             Command::Exit(command) => command.route(),
         }
     }

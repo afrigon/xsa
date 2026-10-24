@@ -25,16 +25,25 @@ impl Modifier {
         }
     }
 
-    pub fn keys(self) -> [Key; 2] {
+    pub fn left(self) -> Key {
         match self {
-            Modifier::Control => [Key::ControlLeft, Key::ControlRight],
-            Modifier::Alt => [Key::AltLeft, Key::AltRight],
-            Modifier::Shift => [Key::ShiftLeft, Key::ShiftRight],
-            Modifier::Super => [Key::SuperLeft, Key::SuperRight],
+            Modifier::Control => Key::ControlLeft,
+            Modifier::Alt => Key::AltLeft,
+            Modifier::Shift => Key::ShiftLeft,
+            Modifier::Super => Key::SuperLeft,
+        }
+    }
+
+    pub fn right(self) -> Key {
+        match self {
+            Modifier::Control => Key::ControlRight,
+            Modifier::Alt => Key::AltRight,
+            Modifier::Shift => Key::ShiftRight,
+            Modifier::Super => Key::SuperRight,
         }
     }
 
     pub fn matches(self, button: InputButton) -> bool {
-        self.keys().into_iter().any(|key| button == InputButton::Key(key))
+        button == InputButton::Key(self.left()) || button == InputButton::Key(self.right())
     }
 }

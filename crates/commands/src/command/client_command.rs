@@ -1,7 +1,8 @@
 use super::{
-    CameraLookAtCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand, InterfaceHideCommand,
-    InterfacePopCommand, InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand,
-    TimeWarpCommand,
+    CameraLookAtCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand, InputCursorMoveCommand,
+    InputCursorSetCommand, InputDownCommand, InputPressCommand, InputResetCommand, InputScrollCommand, InputUpCommand,
+    InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand,
+    InterfaceToggleCommand, TimeWarpCommand,
 };
 
 pub enum ClientCommand {
@@ -16,4 +17,11 @@ pub enum ClientCommand {
     InterfaceHide(InterfaceHideCommand),
     InterfaceToggle(InterfaceToggleCommand),
     TimeWarp(TimeWarpCommand),
+    InputDown(InputDownCommand),
+    InputUp(InputUpCommand),
+    InputPress(InputPressCommand),
+    InputReset(InputResetCommand),
+    InputCursorSet(InputCursorSetCommand),
+    InputCursorMove(InputCursorMoveCommand),
+    InputScroll(InputScrollCommand),
 }

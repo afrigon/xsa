@@ -621,6 +621,13 @@ impl CommandExecutor for App {
             ClientCommand::InterfaceHide(command) => command.start(self),
             ClientCommand::InterfaceToggle(command) => command.start(self),
             ClientCommand::TimeWarp(command) => command.start(self),
+            ClientCommand::InputDown(command) => command.start(self),
+            ClientCommand::InputUp(command) => command.start(self),
+            ClientCommand::InputPress(command) => command.start(self),
+            ClientCommand::InputReset(command) => command.start(self),
+            ClientCommand::InputCursorSet(command) => command.start(self),
+            ClientCommand::InputCursorMove(command) => command.start(self),
+            ClientCommand::InputScroll(command) => command.start(self),
         };
 
         self.follow(progress, Some(reply));

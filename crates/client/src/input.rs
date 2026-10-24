@@ -40,6 +40,10 @@ impl Input {
         self.held.contains(&InputButton::Mouse(button))
     }
 
+    pub fn held(&self) -> &[InputButton] {
+        &self.held
+    }
+
     pub fn presses(&self) -> &[ButtonPress] {
         &self.presses
     }
