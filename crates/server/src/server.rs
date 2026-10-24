@@ -5,8 +5,8 @@ mod request_handler;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use tokio::sync::oneshot;
 use xsa_proto::error::{ForbiddenCause, RequestError};
 use xsa_proto::event::{Event, TickEvent, TimeChangedEvent, UserLeftEvent};
 use xsa_proto::frame::ServerFrame;
@@ -17,7 +17,7 @@ use xsa_proto::session::SessionEnvironment;
 use xsa_proto::user::{Actor, User};
 use xsa_units::{SimulationDuration, TICK_RATE_HERTZ};
 
-use crate::{Peer, World};
+use crate::{LocalServer, Peer, ServerHandle, World};
 use client::Client;
 use request_handler::RequestHandler;
 
@@ -25,41 +25,63 @@ pub struct Server {
     world: World,
     environment: SessionEnvironment,
     peers: UnboundedReceiver<Peer>,
+    stop: oneshot::Receiver<()>,
     clients: Vec<Client>,
     users: Vec<User>,
     next_user: u32,
 }
 
 impl Server {
-    pub fn new(world: World, peers: UnboundedReceiver<Peer>, environment: SessionEnvironment) -> Self {
+    pub fn spawn(
+        world: World,
+        peers: UnboundedReceiver<Peer>,
+        environment: SessionEnvironment,
+    ) -> anyhow::Result<ServerHandle> {
+        let (stop, stop_receiver) = oneshot::channel();
+        let thread = thread::Builder::new()
+            .name("simulation".into())
+            .spawn(move || Server::new(world, peers, stop_receiver, environment).run())?;
+
+        Ok(ServerHandle { stop, thread })
+    }
+
+    pub fn start_local(world: World) -> anyhow::Result<LocalServer> {
+        let local = Connection::local();
+        let (peers, receiver) = unbounded_channel();
+        peers
+            .send(Peer::Client(local.link))
+            .expect("the receiver is alive until the server starts");
+        let handle = Server::spawn(world, receiver, SessionEnvironment::Singleplayer)?;
+
+        Ok(LocalServer {
+            connection: local.connection,
+            handle,
+        })
+    }
+
+    fn new(
+        world: World,
+        peers: UnboundedReceiver<Peer>,
+        stop: oneshot::Receiver<()>,
+        environment: SessionEnvironment,
+    ) -> Self {
         Self {
             world,
             environment,
             peers,
+            stop,
             clients: Vec::new(),
             users: Vec::new(),
             next_user: 0,
         }
     }
 
-    pub fn start_local(world: World) -> anyhow::Result<Connection> {
-        let local = Connection::local();
-        let (peers, receiver) = unbounded_channel();
-        peers
-            .send(Peer::Client(local.link))
-            .expect("the receiver is alive until the server starts");
-        thread::Builder::new()
-            .name("integrated server".into())
-            .spawn(move || Server::new(world, receiver, SessionEnvironment::Singleplayer).run())?;
-
-        Ok(local.connection)
-    }
-
-    pub fn run(mut self) {
+    fn run(mut self) {
         let tick = Duration::from_secs_f64(1.0 / TICK_RATE_HERTZ);
         let mut next_tick = Instant::now();
 
-        while self.accept_peers() {
+        while self.stop.try_recv() == Err(oneshot::error::TryRecvError::Empty) {
+            self.accept_peers();
             self.world.advance(SimulationDuration {
                 seconds: tick.as_secs_f64(),
             });
@@ -78,16 +100,23 @@ impl Server {
                 next_tick = now;
             }
         }
+
+        self.accept_peers();
+        self.close_all(DisconnectReason::ServerStopped);
     }
 
-    fn accept_peers(&mut self) -> bool {
-        loop {
-            match self.peers.try_recv() {
-                Ok(peer) => self.admit(peer),
-                Err(TryRecvError::Empty) => return true,
-                Err(TryRecvError::Disconnected) => return !self.clients.is_empty(),
-            }
+    fn accept_peers(&mut self) {
+        while let Ok(peer) = self.peers.try_recv() {
+            self.admit(peer);
         }
+    }
+
+    fn close_all(&mut self, reason: DisconnectReason) {
+        for client in &mut self.clients {
+            client.close(reason.clone());
+        }
+
+        self.remove_disconnected();
     }
 
     fn admit(&mut self, peer: Peer) {
@@ -204,20 +233,12 @@ mod tests {
         }
 
         fn in_environment(environment: SessionEnvironment) -> Self {
-            let world = World::load(&WorldOptions {
-                packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")),
-                packs: vec![
-                    "base".to_string(),
-                    "base-surfaces".to_string(),
-                    "system-solar".to_string(),
-                ],
-                simulation: None,
-            })
-            .unwrap();
+            let world = world();
             let (_peers, receiver) = unbounded_channel();
+            let (_stop, stop_receiver) = oneshot::channel();
 
             Self {
-                server: Server::new(world, receiver, environment),
+                server: Server::new(world, receiver, stop_receiver, environment),
                 next_id: 0,
             }
         }
@@ -245,6 +266,19 @@ mod tests {
 
             id
         }
+    }
+
+    fn world() -> World {
+        World::load(&WorldOptions {
+            packs_directory: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")),
+            packs: vec![
+                "base".to_string(),
+                "base-surfaces".to_string(),
+                "system-solar".to_string(),
+            ],
+            simulation: None,
+        })
+        .unwrap()
     }
 
     fn drain(connection: &mut Connection) -> Vec<ServerFrame> {
@@ -511,5 +545,19 @@ mod tests {
         let left = vec![event(Event::UserLeft(UserLeftEvent { user: grace.id }))];
         assert_eq!(drain(&mut first), left);
         assert_eq!(drain(&mut operator), left);
+    }
+
+    #[test]
+    fn stopping_closes_every_connection_with_server_stopped() {
+        let LocalServer { mut connection, handle } = Server::start_local(world()).unwrap();
+        handle.stop().unwrap();
+
+        let reason = loop {
+            match connection.poll() {
+                Ok(_) => continue,
+                Err(reason) => break reason,
+            }
+        };
+        assert_eq!(reason, DisconnectReason::ServerStopped);
     }
 }

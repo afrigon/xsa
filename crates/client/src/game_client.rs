@@ -36,9 +36,14 @@ impl GameClient {
 
         let shell_outputs = ShellOutputs::new(self.options.log_filter, &config.config().logging);
         let script = self.options.script.as_deref().map(Script::load).transpose()?;
+        let mut integrated_server = None;
         let connection = match self.options.remote {
             Some(remote) => Connection::remote(&remote.address, &remote.fingerprint)?,
-            None => Server::start_local(World::load(&self.options.world)?)?,
+            None => {
+                let local = Server::start_local(World::load(&self.options.world)?)?;
+                integrated_server = Some(local.handle);
+                local.connection
+            }
         };
         let session = ServerSession::join(connection)?;
 
@@ -65,7 +70,12 @@ impl GameClient {
             self.options.build,
         );
         event_loop.run_app(&mut app)?;
+        let result = app.into_result();
 
-        app.into_result()
+        if let Some(server) = integrated_server {
+            server.stop()?;
+        }
+
+        result
     }
 }

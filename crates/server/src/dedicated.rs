@@ -5,7 +5,6 @@ pub use dedicated_config::DedicatedConfig;
 pub use dedicated_options::DedicatedOptions;
 
 use std::net::SocketAddr;
-use std::thread;
 
 use anyhow::anyhow;
 use tokio::sync::mpsc::unbounded_channel;
@@ -53,9 +52,7 @@ impl DedicatedServer {
         println!("fingerprint {}", identity.fingerprint());
 
         let (peers, receiver) = unbounded_channel();
-        thread::Builder::new()
-            .name("simulation".into())
-            .spawn(move || Server::new(world, receiver, SessionEnvironment::Dedicated).run())?;
+        let server = Server::spawn(world, receiver, SessionEnvironment::Dedicated)?;
 
         let operator_connection = Connection::local();
         peers
@@ -107,6 +104,7 @@ impl DedicatedServer {
         };
 
         tracing::info!("shutting down");
+        tokio::task::spawn_blocking(move || server.stop()).await??;
         listener.close(DisconnectReason::ServerStopped).await;
 
         stopped

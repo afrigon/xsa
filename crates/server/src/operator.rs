@@ -83,8 +83,6 @@ mod tests {
     use xsa_commands::router::{CommandExecution, Output};
 
     use super::*;
-    use std::thread;
-
     use xsa_proto::network::Connection;
     use xsa_proto::session::SessionEnvironment;
 
@@ -118,7 +116,7 @@ mod tests {
         let local = Connection::local();
         let (peers, peer_receiver) = unbounded_channel();
         peers.send(Peer::Operator(local.link)).unwrap();
-        thread::spawn(move || Server::new(world, peer_receiver, SessionEnvironment::Dedicated).run());
+        let server = Server::spawn(world, peer_receiver, SessionEnvironment::Dedicated).unwrap();
         let (invocations, receiver) = unbounded_channel();
         let config_path = std::env::temp_dir().join(format!("xsa-server-operator-{}.kdl", std::process::id()));
         let config = ConfigStore::<DedicatedConfig>::load(config_path).unwrap();
@@ -137,5 +135,6 @@ mod tests {
 
         invoke(&invocations, "exit").await;
         operator.await.unwrap().unwrap();
+        server.stop().unwrap();
     }
 }

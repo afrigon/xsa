@@ -155,7 +155,8 @@ The `proto` crate defines it; `mise run docs -- --open` renders the reference fr
 - **The operator never joins.** The dedicated server admits its own connection as `Peer::Operator` when it creates
   it and sends it a snapshot. A client never claims who it is.
 - **Disconnecting:** either side closes a connection with a `DisconnectReason` (`Connection::close`,
-  `Listener::close`), carried as a QUIC close code; a connection that ends without one is `Lost`. A frame that fails
+  `ClientLink::close`), carried as a QUIC close code; a connection that ends without one is `Lost`. A server stops
+  only through its `ServerHandle`, which closes every connection with `ServerStopped`. A frame that fails
   to decode closes the connection as a `ProtocolViolation`, logged at WARN. The server handles every disconnect
   alike: it removes the user and broadcasts `UserLeftEvent`.
 - **Naming:** a request is a `<Name>Request`, an event a `<Name>Event` in the past tense and a reply a `<Name>Reply`,

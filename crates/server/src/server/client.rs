@@ -42,4 +42,11 @@ impl Client {
             self.disconnected = Some(DisconnectReason::Lost);
         }
     }
+
+    pub fn close(&mut self, reason: DisconnectReason) {
+        if self.disconnected.is_none() {
+            self.link.close(reason.clone());
+            self.disconnected = Some(reason);
+        }
+    }
 }
