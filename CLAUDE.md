@@ -237,14 +237,16 @@ Names in code, data and documents use these words in these meanings only:
 - `time override <rate>` runs time at a rate without changing the configured one, until `time override none`; only
   singleplayer allows it (a message's `session_environment`), and the pause menu stops time with one.
 - Client commands may span frames: a handler returns `CommandProgress::Done`
-  or a `CommandTask` that `App` polls once per frame after drawing, replying
-  when it finishes. Commands that finish at once implement
+  or a `CommandTask` that `App` polls after each update, replying when it
+  finishes. Updates run with every frame the window draws, and at the tick
+  rate while it draws none (hidden), rendering frames off-screen for tasks
+  that need them (`CommandTask::needs_frames`). Commands that finish at once implement
   `ImmediateCommandHandler`; binds start tasks too, logging their result.
 - `camera tp` stands the debug camera at an altitude above the ground and holds it there while the heights at that
   spot stream in, replying once the ground there is as fine as it will get.
 - `camera snap [--output <path>] [--region x,y:widthxheight]` keeps rendering
   until temporal effects (exposure metering, anti-aliasing history) reflect the
-  scene, then renders a frame, copies the presented image back from the GPU and
+  scene, then renders a frame of its own, copies it back from the GPU and
   writes a PNG before it replies (the game pauses while it encodes). Without
   `--output` it goes to `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. It
   does not wait for animations: set `animation.duration-scale 0` first so
@@ -394,4 +396,4 @@ mouse. Debug toggles are commands (`config toggle video.stars`,
   window means presentation is broken.
 - Screenshots of the game window taken from outside the game are unreliable
   (Hyprland retiles it, it may be on another workspace). Use `camera snap`,
-  which reads the presented image back from the GPU.
+  which renders its own frame and reads it back from the GPU, even while the window is hidden.

@@ -12,7 +12,9 @@ mod pointer_input;
 mod running_task;
 mod snapshot;
 mod task_status;
+mod update_schedule;
 mod view_controllers;
+mod window_visibility;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -26,7 +28,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
-use winit::event_loop::ActiveEventLoop;
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
 use xsa_commands::command::{ClientCommand, LocalCommand, Overlay, ViewControllerId};
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
@@ -46,7 +48,7 @@ use crate::BuildIdentity;
 use crate::camera::CameraMode;
 use crate::config::Config;
 use crate::input::Input;
-use crate::renderer::{PendingCapture, Renderer, ShaderBinaries};
+use crate::renderer::{FrameTarget, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
 use crate::ui::{
     ClockReading, DebugOverlayView, GameCommands, InputDisabledView, SessionEnvironmentKey, ViewControllerFactory,
@@ -58,6 +60,8 @@ use command_progress::CommandProgress;
 use frame_timing::FrameTiming;
 use running_task::RunningTask;
 use task_status::TaskStatus;
+use update_schedule::UpdateSchedule;
+use window_visibility::WindowVisibility;
 
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
@@ -83,7 +87,7 @@ pub struct App {
     mouse_captured: bool,
     cursor: Point,
     pointer_moved: bool,
-    last_frame: Option<Instant>,
+    schedule: UpdateSchedule,
     interface: Interface,
     theme: Option<Rc<Theme>>,
     frame_timing: FrameTiming,
@@ -131,7 +135,7 @@ impl App {
             mouse_captured: false,
             cursor: Point::default(),
             pointer_moved: false,
-            last_frame: None,
+            schedule: UpdateSchedule::new(),
             interface: Interface::new(),
             theme: None,
             frame_timing: FrameTiming::new(),
@@ -168,21 +172,18 @@ impl App {
 
     fn redraw(&mut self) -> anyhow::Result<()> {
         let now = Instant::now();
-        let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
-        self.last_frame = Some(now);
         let gpu_milliseconds = self
             .renderer
             .as_ref()
             .and_then(|renderer| renderer.statistics().gpu_milliseconds);
-        self.frame_timing.record(delta_seconds, gpu_milliseconds);
-        self.offer_pointer_move();
-        let environment = self.environment();
-        self.navigation.advance(delta_seconds as f32, &environment);
 
-        self.update(delta_seconds)?;
-        self.draw()?;
-        self.poll_tasks();
-        self.input.end_frame();
+        if let Some(delta_seconds) = self.schedule.record_frame(now) {
+            self.frame_timing.record(delta_seconds, gpu_milliseconds);
+        }
+
+        self.update(now)?;
+        self.draw_window()?;
+        self.finish_update();
 
         if let Some(window) = &self.window {
             window.request_redraw();
@@ -191,7 +192,23 @@ impl App {
         Ok(())
     }
 
-    fn update(&mut self, delta_seconds: f64) -> anyhow::Result<()> {
+    fn update_without_window(&mut self, now: Instant) -> anyhow::Result<()> {
+        self.update(now)?;
+
+        if self.tasks.iter().any(|running| running.task.needs_frames()) {
+            self.draw_offscreen()?;
+        }
+
+        self.finish_update();
+
+        Ok(())
+    }
+
+    fn update(&mut self, now: Instant) -> anyhow::Result<()> {
+        let delta_seconds = self.schedule.record_update(now);
+        self.offer_pointer_move();
+        let environment = self.environment();
+        self.navigation.advance(delta_seconds as f32, &environment);
         self.poll_connection()?;
 
         if let Some(resources) = &self.resources {
@@ -220,6 +237,20 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn finish_update(&mut self) {
+        self.poll_tasks();
+        self.input.end_frame();
+    }
+
+    fn conclude(&mut self, event_loop: &ActiveEventLoop, result: anyhow::Result<()>) {
+        if let Err(err) = result {
+            self.error = Some(err);
+            self.shut_down(event_loop);
+        } else if self.exit_requested {
+            self.shut_down(event_loop);
+        }
     }
 
     fn poll_connection(&mut self) -> anyhow::Result<()> {
@@ -319,31 +350,34 @@ impl App {
         renderer.scene_mut().skybox = if self.config.video.stars { skybox } else { None };
     }
 
-    fn capture(&mut self) -> anyhow::Result<PendingCapture> {
-        self.update_user_interface()?;
-        let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
-        let cameras = self.cameras.as_ref().context("the cameras are not ready")?;
+    fn draw_window(&mut self) -> anyhow::Result<()> {
+        self.prepare_frame()?;
+        let (Some(renderer), Some(cameras), Some(window)) = (&mut self.renderer, &self.cameras, &self.window) else {
+            return Ok(());
+        };
 
-        if let Some(world) = &self.world {
-            world.sync(renderer);
-            renderer.set_illuminance(world.illuminance_at(cameras.camera().position) as f32);
-        }
-
-        renderer.capture(cameras.camera())
+        renderer.draw(cameras.camera(), FrameTarget::Window { window })
     }
 
-    fn draw(&mut self) -> anyhow::Result<()> {
-        self.update_user_interface()?;
+    fn draw_offscreen(&mut self) -> anyhow::Result<()> {
+        self.prepare_frame()?;
         let (Some(renderer), Some(cameras)) = (&mut self.renderer, &self.cameras) else {
             return Ok(());
         };
 
-        if let Some(world) = &self.world {
-            world.sync(renderer);
-            renderer.set_illuminance(world.illuminance_at(cameras.camera().position) as f32);
-        }
+        renderer.draw(cameras.camera(), FrameTarget::Offscreen)
+    }
 
-        renderer.draw(cameras.camera())
+    fn prepare_frame(&mut self) -> anyhow::Result<()> {
+        self.update_user_interface()?;
+        let (Some(renderer), Some(cameras), Some(world)) = (&mut self.renderer, &self.cameras, &self.world) else {
+            return Ok(());
+        };
+
+        world.sync(renderer);
+        renderer.set_illuminance(world.illuminance_at(cameras.camera().position) as f32);
+
+        Ok(())
     }
 
     // Keys whose source does not exist yet, such as the theme before the window opens, keep their default.
@@ -487,6 +521,19 @@ impl App {
         event_loop.exit();
     }
 
+    fn set_window_visibility(&mut self, occluded: bool) {
+        let visibility = if occluded {
+            WindowVisibility::Occluded
+        } else {
+            WindowVisibility::Visible
+        };
+        self.schedule.set_visibility(visibility);
+
+        if let (WindowVisibility::Visible, Some(window)) = (visibility, &self.window) {
+            window.request_redraw();
+        }
+    }
+
     fn window_attributes() -> WindowAttributes {
         let attributes = Window::default_attributes().with_title(APP_ID);
         #[cfg(all(unix, not(target_vendor = "apple")))]
@@ -578,16 +625,28 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(position),
             WindowEvent::CursorLeft { .. } => self.handle_cursor_left(),
             WindowEvent::MouseWheel { delta, .. } => self.input.handle_scroll(delta),
-            WindowEvent::RedrawRequested => {
-                if let Err(err) = self.redraw() {
-                    self.error = Some(err);
-                    self.shut_down(event_loop);
-                } else if self.exit_requested {
-                    self.shut_down(event_loop);
-                }
+            WindowEvent::Occluded(occluded) => self.set_window_visibility(occluded),
+            WindowEvent::RedrawRequested if self.schedule.visibility() == WindowVisibility::Visible => {
+                let result = self.redraw();
+                self.conclude(event_loop, result);
             }
             _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_none() || event_loop.exiting() {
+            return;
+        }
+
+        let now = Instant::now();
+
+        if self.schedule.is_due(now) {
+            let result = self.update_without_window(now);
+            self.conclude(event_loop, result);
+        }
+
+        event_loop.set_control_flow(ControlFlow::WaitUntil(self.schedule.next_wake(Instant::now())));
     }
 
     fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: DeviceId, event: DeviceEvent) {

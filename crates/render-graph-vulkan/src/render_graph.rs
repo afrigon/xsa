@@ -15,8 +15,8 @@ use crate::recorded_pass::RecordedPass;
 use crate::resolved_buffer::ResolvedBuffer;
 use crate::resolved_image::ResolvedImage;
 use crate::{
-    GraphBuilder, GraphImageDescription, HistoryId, ImageId, ImportedBuffer, ImportedBufferHandle, ImportedImage,
-    ImportedImageHandle, PassContext, PassDeclaration, RenderGraphError, RenderPass,
+    GraphBuilder, GraphImageDescription, HistoryId, ImageHandle, ImageId, ImportedBuffer, ImportedBufferHandle,
+    ImportedImage, ImportedImageHandle, PassContext, PassDeclaration, RenderGraphError, RenderPass,
 };
 
 const COMPILED_GRAPH_CAPACITY: usize = 16;
@@ -132,6 +132,10 @@ impl RenderGraph {
             initial: buffer.initial,
             final_state: buffer.final_state,
         })
+    }
+
+    pub(crate) fn create_image(&mut self, description: GraphImageDescription) -> ImageHandle {
+        self.frame.add_image(DeclaredImage::Transient(description))
     }
 
     pub(crate) fn declare<Context, Pass: RenderPass<Context>>(

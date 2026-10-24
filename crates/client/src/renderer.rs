@@ -1,4 +1,5 @@
 mod auto_exposure;
+mod capture_readback;
 mod captured_image;
 mod command_recorder;
 mod culler;
@@ -7,7 +8,9 @@ mod forward_pipeline;
 mod frame;
 mod frame_context;
 mod frame_inputs;
+mod frame_output;
 mod frame_statistics;
+mod frame_target;
 mod frustum;
 mod gpu_context;
 mod gpu_data;
@@ -24,6 +27,7 @@ mod object_pose;
 mod passes;
 mod pending_capture;
 mod quad_sphere;
+mod queued_capture;
 mod render_passes;
 mod scene;
 mod shader_binaries;
@@ -44,6 +48,7 @@ pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
 pub use debug_view::DebugView;
 pub use frame_statistics::FrameStatistics;
+pub use frame_target::FrameTarget;
 pub use lens_lights::LensLights;
 pub use material::{EmissiveMaterial, HapkeMaterial, LambertMaterial, Material, Shader, SkyboxMaterial};
 pub use pending_capture::PendingCapture;
@@ -57,11 +62,15 @@ pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
+use std::time::Duration;
 
 use ash::vk;
 use glam::{DVec3, Mat4, Vec2};
-use memory_vulkan::{Buffer, MemoryError, MemoryLocation, Recording, TimelineValue, TransferPriority};
-use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
+use memory_vulkan::{Buffer, MemoryError, MemoryLocation, Recording, TransferPriority};
+use render_graph_vulkan::{
+    BufferState, GraphImageDescription, ImageSize, ImageState, ImportedBuffer, ImportedImage, RenderGraph, Subresource,
+};
+use tokio::sync::oneshot;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;
@@ -74,11 +83,13 @@ use crate::camera::Camera;
 use crate::config::{AntialiasingKind, Config};
 use crate::resource_kinds::{LensGhost, LensStarburst};
 use crate::vulkan::Swapchain;
+use capture_readback::{BYTES_PER_PIXEL, CaptureReadback};
 use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
+use frame_output::FrameOutput;
 use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TileData, TilePages};
 use graph_textures::GraphTextures;
@@ -89,8 +100,8 @@ use material::MaterialBuffer;
 use noise_volume::NoiseVolume;
 use object_pose::ObjectPose;
 use passes::TaaPass;
-use pending_capture::BYTES_PER_PIXEL;
 use quad_sphere::{DetailRanges, QuadSphere, SelectedTile, TileHeightBounds};
+use queued_capture::QueuedCapture;
 use render_passes::RenderPasses;
 use shading_range::ShadingRange;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
@@ -108,6 +119,9 @@ const INITIAL_TILE_CAPACITY: usize = 4096;
 const INITIAL_STAR_CAPACITY: usize = 4;
 const INITIAL_SURFACE_ANCHOR_CAPACITY: usize = 4;
 const INITIAL_LIGHT_CAPACITY: usize = 4;
+// Far longer than any frame the compositor asks for. Some drivers never return an image while the window is hidden
+// (NVIDIA on Wayland); the frame is skipped rather than the event loop stalled.
+const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
 // Presentation waits on the acquire semaphore at the color attachment output stage.
 const SWAPCHAIN_ACQUIRED: ImageState = ImageState {
     stages: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
@@ -136,6 +150,8 @@ pub struct Renderer {
     white_balance: WhiteBalance,
     illuminance: Option<f32>,
     star_visibility: StarVisibility,
+    captures: Vec<QueuedCapture>,
+    // The buffer the frame being recorded copies its output into, on capture frames.
     capture: Option<Buffer>,
     user_interface: DrawList,
     statistics: FrameStatistics,
@@ -171,6 +187,7 @@ pub struct Renderer {
     temporal: TemporalHistory,
     frames: Vec<Frame>,
     frame_index: usize,
+    frames_rendered: u64,
     swapchain: Swapchain,
     swapchain_outdated: bool,
     window_extent: vk::Extent2D,
@@ -212,6 +229,7 @@ impl Renderer {
             white_balance: WhiteBalance::new(),
             illuminance: None,
             star_visibility: StarVisibility::new(),
+            captures: Vec::new(),
             capture: None,
             user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
@@ -245,6 +263,7 @@ impl Renderer {
             temporal: TemporalHistory::default(),
             frames,
             frame_index: 0,
+            frames_rendered: 0,
             swapchain,
             swapchain_outdated: false,
             window_extent,
@@ -297,7 +316,7 @@ impl Renderer {
     }
 
     // Frames to render after a change before the image reflects it: temporal effects carry earlier frames forward.
-    pub fn settling_frames(&self) -> u32 {
+    fn settling_frames(&self) -> u32 {
         let antialiasing = match self.config.video.antialiasing {
             Some(AntialiasingKind::Taa) => TaaPass::settling_frames(),
             _ => 0,
@@ -361,7 +380,7 @@ impl Renderer {
         self.swapchain_outdated = true;
     }
 
-    pub fn draw(&mut self, camera: &Camera) -> anyhow::Result<()> {
+    pub fn draw(&mut self, camera: &Camera, target: FrameTarget) -> anyhow::Result<()> {
         if self.window_extent.width == 0 || self.window_extent.height == 0 {
             return Ok(());
         }
@@ -375,11 +394,42 @@ impl Renderer {
         self.ensure_object_capacity()?;
         self.ensure_star_capacity()?;
         self.ensure_light_capacity()?;
+        self.wait_for_frame_slot()?;
 
-        let Some(image_index) = self.acquire_image()? else {
-            return Ok(());
+        let output = match target {
+            FrameTarget::Window { window } => {
+                let Some(image_index) = self.acquire_image()? else {
+                    return Ok(());
+                };
+
+                FrameOutput::Window { window, image_index }
+            }
+            FrameTarget::Offscreen => FrameOutput::Offscreen,
         };
 
+        self.render_frame(camera, output)?;
+        self.render_settled_captures(camera);
+
+        Ok(())
+    }
+
+    // Captures a frame once temporal effects reflect the scene. It is rendered off screen, so it is taken whether the
+    // window shows or not.
+    pub fn request_capture(&mut self) -> PendingCapture {
+        let (sender, receiver) = oneshot::channel();
+        self.captures.push(QueuedCapture {
+            settling_frames: self.settling_frames(),
+            sender,
+        });
+
+        PendingCapture::new(receiver)
+    }
+
+    pub fn frames_rendered(&self) -> u64 {
+        self.frames_rendered
+    }
+
+    fn render_frame(&mut self, camera: &Camera, output: FrameOutput) -> anyhow::Result<()> {
         if self.config.video.antialiasing != Some(AntialiasingKind::Taa) {
             self.temporal.reset();
         }
@@ -389,24 +439,36 @@ impl Renderer {
         self.update_star_visibility()?;
         self.update_gpu_time()?;
         self.write_frame_data(camera)?;
-        let recording = self.record_frame(image_index)?;
-        self.submit_and_present(image_index, recording)?;
+        let recording = self.record_frame(output)?;
+
+        match output {
+            FrameOutput::Window { window, image_index } => self.submit_and_present(window, image_index, recording)?,
+            FrameOutput::Offscreen => self.submit_offscreen(recording)?,
+        }
+
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
+        self.frames_rendered += 1;
+
+        for capture in &mut self.captures {
+            capture.settling_frames = capture.settling_frames.saturating_sub(1);
+        }
 
         Ok(())
     }
 
-    // Renders one frame now and starts copying its pixels back to the CPU.
-    pub fn capture(&mut self, camera: &Camera) -> anyhow::Result<PendingCapture> {
-        anyhow::ensure!(
-            self.swapchain.supports_capture(),
-            "this display does not allow copying the rendered image"
-        );
+    fn render_settled_captures(&mut self, camera: &Camera) {
+        let (settled, settling): (Vec<_>, Vec<_>) = std::mem::take(&mut self.captures)
+            .into_iter()
+            .partition(|capture| capture.settling_frames == 0);
+        self.captures = settling;
 
-        if self.swapchain_outdated {
-            self.recreate_swapchain()?;
+        for capture in settled {
+            let readback = self.render_capture(camera);
+            let _ = capture.sender.send(readback);
         }
+    }
 
+    fn render_capture(&mut self, camera: &Camera) -> anyhow::Result<CaptureReadback> {
         let extent = self.swapchain.extent();
         let size = u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL as u64;
         let buffer = Buffer::new(
@@ -417,41 +479,22 @@ impl Renderer {
             MemoryLocation::GpuOnly,
             &self.gpu.transfer.sharing(),
         )?;
+        self.wait_for_frame_slot()?;
+        let frame = self.frame_index;
         self.capture = Some(buffer);
-        let rendered = self.render_capture(camera, extent);
+        let rendered = self.render_frame(camera, FrameOutput::Offscreen);
         let buffer = self.capture.take().expect("the capture buffer is set while capturing");
+        rendered?;
+        let submitted = self.frames[frame]
+            .submitted
+            .clone()
+            .expect("a frame was submitted from the slot rendered above");
         let readback = self
             .gpu
             .transfer
-            .read_buffer(buffer, Some(rendered?), TransferPriority::High);
+            .read_buffer(buffer, Some(submitted), TransferPriority::High);
 
-        Ok(PendingCapture::new(extent, self.swapchain.format(), readback))
-    }
-
-    // The point the graphics timeline reaches once the captured frame is rendered.
-    fn render_capture(&mut self, camera: &Camera, extent: vk::Extent2D) -> anyhow::Result<TimelineValue> {
-        let frame = self.frame_index;
-        self.draw(camera)?;
-
-        // No image was acquired because the swapchain went out of date: recreate it and try once more.
-        if self.frame_index == frame && self.swapchain_outdated {
-            self.recreate_swapchain()?;
-            anyhow::ensure!(
-                self.swapchain.extent() == extent,
-                "the window changed size while capturing"
-            );
-            self.draw(camera)?;
-        }
-
-        anyhow::ensure!(
-            self.frame_index != frame,
-            "the window is not visible, nothing was rendered"
-        );
-
-        Ok(self.frames[frame]
-            .submitted
-            .clone()
-            .expect("a frame was submitted from the slot drawn above"))
+        Ok(CaptureReadback::new(extent, self.swapchain.format(), readback))
     }
 
     fn update_exposure(&mut self) {
@@ -506,19 +549,23 @@ impl Renderer {
         Ok(())
     }
 
-    fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
-        let frame = &self.frames[self.frame_index];
-
-        if let Some(submitted) = &frame.submitted {
+    // Once the slot's previous frame is done, its buffers may be rewritten and its read-backs hold that frame's results.
+    fn wait_for_frame_slot(&mut self) -> anyhow::Result<()> {
+        if let Some(submitted) = &self.frames[self.frame_index].submitted {
             self.gpu.graphics.wait(submitted.value)?;
         }
 
         self.gpu.memory.collect()?;
+
+        Ok(())
+    }
+
+    fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
         let acquired = unsafe {
             self.gpu.memory.swapchain_loader().acquire_next_image(
                 self.swapchain.handle(),
-                u64::MAX,
-                frame.image_acquired.handle(),
+                ACQUIRE_TIMEOUT.as_nanos() as u64,
+                self.frames[self.frame_index].image_acquired.handle(),
                 vk::Fence::null(),
             )
         };
@@ -529,6 +576,10 @@ impl Renderer {
             }
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                 self.swapchain_outdated = true;
+                return Ok(None);
+            }
+            Err(vk::Result::TIMEOUT) => {
+                tracing::debug!("no swapchain image became available within {ACQUIRE_TIMEOUT:?}, skipping the frame");
                 return Ok(None);
             }
             Err(err) => return Err(err.into()),
@@ -819,7 +870,7 @@ impl Renderer {
         }
     }
 
-    fn record_frame(&mut self, image_index: u32) -> anyhow::Result<Recording> {
+    fn record_frame(&mut self, output: FrameOutput) -> anyhow::Result<Recording> {
         let GpuContext {
             bindless,
             device,
@@ -841,16 +892,29 @@ impl Renderer {
         }
 
         let mut graph = self.graph.begin_frame();
+        let output: Subresource = match output {
+            FrameOutput::Window { image_index, .. } => graph
+                .import_image(ImportedImage {
+                    name: "swapchain",
+                    image: self.swapchain.image(image_index),
+                    view: self.swapchain.image_view(image_index),
+                    extent: self.swapchain.extent(),
+                    aspect: vk::ImageAspectFlags::COLOR,
+                    initial: SWAPCHAIN_ACQUIRED,
+                    final_state: SWAPCHAIN_PRESENTABLE,
+                })
+                .into(),
+            FrameOutput::Offscreen => graph
+                .create_image(GraphImageDescription {
+                    name: "offscreen output",
+                    format: self.swapchain.format(),
+                    size: ImageSize::Output,
+                    mip_levels: 1,
+                })
+                .into(),
+        };
         let inputs = FrameInputs {
-            output: graph.import_image(ImportedImage {
-                name: "swapchain",
-                image: self.swapchain.image(image_index),
-                view: self.swapchain.image_view(image_index),
-                extent: self.swapchain.extent(),
-                aspect: vk::ImageAspectFlags::COLOR,
-                initial: SWAPCHAIN_ACQUIRED,
-                final_state: SWAPCHAIN_PRESENTABLE,
-            }),
+            output,
             histogram: graph.import_buffer(ImportedBuffer {
                 name: "luminance histogram",
                 buffer: frame.histogram.handle(),
@@ -918,7 +982,14 @@ impl Renderer {
         Ok(recording)
     }
 
-    fn submit_and_present(&mut self, image_index: u32, recording: Recording) -> anyhow::Result<()> {
+    fn submit_offscreen(&mut self, recording: Recording) -> anyhow::Result<()> {
+        let submitted = recording.submit(&[self.gpu.transfer.visibility_wait()], &[])?;
+        self.frames[self.frame_index].submitted = Some(submitted);
+
+        Ok(())
+    }
+
+    fn submit_and_present(&mut self, window: &Window, image_index: u32, recording: Recording) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
         let render_finished = self.swapchain.render_finished(image_index);
         let wait_semaphores = [
@@ -940,6 +1011,9 @@ impl Renderer {
             .wait_semaphores(&present_wait)
             .swapchains(&swapchains)
             .image_indices(&image_indices);
+        // On Wayland, winit then holds `RedrawRequested` until the compositor asks for another frame, so a hidden
+        // window stops drawing instead of blocking in the next present.
+        window.pre_present_notify();
 
         match self.gpu.graphics.present(present_info) {
             Ok(suboptimal) => self.swapchain_outdated |= suboptimal,

@@ -1,8 +1,8 @@
 use crate::pass_recording::PassRecording;
 use crate::recorded_pass::RecordedPass;
 use crate::{
-    CompiledFrame, ImportedBuffer, ImportedBufferHandle, ImportedImage, ImportedImageHandle, RenderGraph,
-    RenderGraphError, RenderPass,
+    CompiledFrame, GraphImageDescription, ImageHandle, ImportedBuffer, ImportedBufferHandle, ImportedImage,
+    ImportedImageHandle, RenderGraph, RenderGraphError, RenderPass,
 };
 
 /// Collects one frame's passes, in the order they run.
@@ -27,6 +27,12 @@ impl<'graph, 'passes, Context> GraphBuilder<'graph, 'passes, Context> {
 
     pub fn import_buffer(&mut self, buffer: ImportedBuffer) -> ImportedBufferHandle {
         self.graph.import_buffer(buffer)
+    }
+
+    /// Creates an image the frame owns rather than one of its passes, such as an output rendered without a window.
+    /// Like any graph image, it is allocated only when a pass that survives culling uses it.
+    pub fn create_image(&mut self, description: GraphImageDescription) -> ImageHandle {
+        self.graph.create_image(description)
     }
 
     /// Adds a pass after the ones already added and returns the handles it declared, to wire later passes.
