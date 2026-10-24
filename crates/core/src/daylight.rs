@@ -1,9 +1,9 @@
 mod daylight_error;
-mod star_sky;
+mod sky_position;
 mod time_of_day;
 
 pub use daylight_error::DaylightError;
-pub use star_sky::StarSky;
+pub use sky_position::SkyPosition;
 pub use time_of_day::TimeOfDay;
 
 use std::f64::consts::{PI, TAU};
@@ -32,8 +32,8 @@ impl<'a> Daylight<'a> {
         Daylight { simulation, body, star }
     }
 
-    pub fn sky(&self, time: SimulationTime) -> StarSky {
-        StarSky::at(self.simulation, self.body, self.star, time)
+    pub fn sky(&self, time: SimulationTime) -> SkyPosition {
+        SkyPosition::at(self.simulation, self.body, self.star, time)
     }
 
     // Radians east of the prime meridian where `time_of_day` falls at `latitude` at `time`.
@@ -42,7 +42,7 @@ impl<'a> Daylight<'a> {
         let sky = self.sky(time);
         let hour_angle = self.hour_angle_of(time_of_day, latitude, &sky, rate)?;
 
-        Ok(Daylight::wrapped(sky.substellar_longitude + hour_angle))
+        Ok(Daylight::wrapped(sky.overhead_longitude + hour_angle))
     }
 
     // The first time after `after` that `time_of_day` falls at `latitude` and `longitude`.
@@ -55,7 +55,7 @@ impl<'a> Daylight<'a> {
     ) -> Result<SimulationTime, DaylightError> {
         let rate = self.hour_angle_rate(after)?;
         let sky = self.sky(after);
-        let hour_angle = longitude - sky.substellar_longitude;
+        let hour_angle = longitude - sky.overhead_longitude;
         let target = self.hour_angle_of(time_of_day, latitude, &sky, rate)?;
         let wait = ((target - hour_angle) * rate.signum()).rem_euclid(TAU) / rate.abs();
         let time = self.refine(time_of_day, latitude, longitude, after.advanced_by(seconds(wait)), rate)?;
@@ -85,7 +85,7 @@ impl<'a> Daylight<'a> {
     ) -> Result<SimulationTime, DaylightError> {
         for _ in 0..MAXIMUM_REFINEMENTS {
             let sky = self.sky(time);
-            let hour_angle = longitude - sky.substellar_longitude;
+            let hour_angle = longitude - sky.overhead_longitude;
             let target = self.hour_angle_of(time_of_day, latitude, &sky, rate)?;
             let correction = Daylight::wrapped(target - hour_angle) / rate;
             time = time.advanced_by(seconds(correction));
@@ -100,10 +100,10 @@ impl<'a> Daylight<'a> {
 
     // Radians per second the star's hour angle advances: negative on a body spinning against its orbit (Venus).
     fn hour_angle_rate(&self, time: SimulationTime) -> Result<f64, DaylightError> {
-        let before = self.sky(time).substellar_longitude;
+        let before = self.sky(time).overhead_longitude;
         let after = self
             .sky(time.advanced_by(seconds(RATE_SAMPLE_SECONDS)))
-            .substellar_longitude;
+            .overhead_longitude;
         let rate = -Daylight::wrapped(after - before) / RATE_SAMPLE_SECONDS;
 
         if rate == 0.0 || !rate.is_finite() {
@@ -118,7 +118,7 @@ impl<'a> Daylight<'a> {
         &self,
         time_of_day: TimeOfDay,
         latitude: f64,
-        sky: &StarSky,
+        sky: &SkyPosition,
         rate: f64,
     ) -> Result<f64, DaylightError> {
         let (elevation, rising) = match time_of_day {
@@ -143,7 +143,7 @@ impl<'a> Daylight<'a> {
     }
 
     // Below the horizon where twilight ends; without an atmosphere's twilight, where the star's edge sets.
-    fn twilight_depression(&self, sky: &StarSky) -> f64 {
+    fn twilight_depression(&self, sky: &SkyPosition) -> f64 {
         self.simulation
             .body(self.body)
             .atmosphere

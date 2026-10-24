@@ -5,6 +5,7 @@ use anyhow::{Context, bail, ensure};
 use glam::{DQuat, DVec3, Vec3};
 use resource_vulkan::{GroupProgress, LoadPriority, LoadRequest, ResourceGroup, Resources};
 use xsa_commands::completion::CompletionCandidate;
+use xsa_core::daylight::{Daylight, SkyPosition};
 use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
 use xsa_packs::{
@@ -32,6 +33,8 @@ pub(crate) struct ClientWorld {
     simulation_id: Id,
     simulation: Simulation,
     state: SimulationState,
+    // The simulation time `state` is at.
+    time: SimulationTime,
     illumination: Illumination,
     body_objects: Vec<ObjectHandle>,
     // One per body; None for a smooth body without layers. Its ground is the sea until its heights load.
@@ -152,6 +155,7 @@ impl ClientWorld {
             simulation_id,
             simulation,
             state,
+            time: world.time,
             illumination,
             body_objects,
             terrains,
@@ -321,6 +325,25 @@ impl ClientWorld {
 
     pub fn advance(&mut self, time: SimulationTime) {
         self.simulation.state_at(time, &mut self.state);
+        self.time = time;
+    }
+
+    pub fn time(&self) -> SimulationTime {
+        self.time
+    }
+
+    pub fn daylight(&self, body: BodyIndex, star: BodyIndex) -> Daylight<'_> {
+        Daylight::new(&self.simulation, body, star)
+    }
+
+    // Where `other` stands in `body`'s sky now.
+    pub fn sky_position(&self, body: BodyIndex, other: BodyIndex) -> SkyPosition {
+        SkyPosition::at(&self.simulation, body, other, self.time)
+    }
+
+    // The star that lights `position` most.
+    pub fn brightest_star(&self, position: DVec3) -> Option<BodyIndex> {
+        self.illumination.brightest_star(&self.state.bodies, position)
     }
 
     pub fn sync(&self, renderer: &mut Renderer) {

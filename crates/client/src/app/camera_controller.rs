@@ -1,9 +1,10 @@
-use std::f64::consts::FRAC_PI_2;
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use anyhow::{Context, bail, ensure};
 use glam::{DMat3, DQuat, DVec3};
 use winit::dpi::PhysicalSize;
 use xsa_commands::command::{CameraTargetCommand, CameraTeleportCommand, TargetSelection};
+use xsa_commands::value::{Latitude, Longitude};
 use xsa_core::simulation::BodyIndex;
 
 use super::body_step::BodyStep;
@@ -223,14 +224,14 @@ impl CameraController {
             None => self.anchor().context("the camera is around no body; name one")?.body(),
         };
         let current = world.position_reading(index, self.camera.position, self.camera.orientation);
-        let latitude = command.latitude.map_or(current.latitude, f64::to_radians);
-        ensure!(
-            latitude.abs() <= FRAC_PI_2,
-            "a latitude lies between -90 and 90 degrees, not {}",
-            latitude.to_degrees()
-        );
-
-        let longitude = command.longitude.map_or(current.longitude, f64::to_radians);
+        let latitude = match command.latitude {
+            Some(latitude) => CameraController::latitude(latitude, index, command, world)?,
+            None => current.latitude,
+        };
+        let longitude = match command.longitude {
+            Some(longitude) => CameraController::longitude(longitude, latitude, index, command, world)?,
+            None => current.longitude,
+        };
         let altitude = command.altitude.map_or_else(
             || current.above_ground.unwrap_or(current.above_sea),
             |altitude| altitude.meters,
@@ -269,6 +270,79 @@ impl CameraController {
         );
 
         Ok((target, reply))
+    }
+
+    fn latitude(
+        latitude: Latitude,
+        body: BodyIndex,
+        command: &CameraTeleportCommand,
+        world: &ClientWorld,
+    ) -> anyhow::Result<f64> {
+        let declination = |other| world.sky_position(body, other).declination;
+
+        match latitude {
+            Latitude::Degrees { degrees } => {
+                ensure!(
+                    degrees.abs() <= FRAC_PI_2.to_degrees(),
+                    "a latitude lies between -90 and 90 degrees, not {degrees}"
+                );
+
+                Ok(degrees.to_radians())
+            }
+            Latitude::Substellar => Ok(declination(CameraController::star(body, command, world)?)),
+            Latitude::Antistellar => Ok(-declination(CameraController::star(body, command, world)?)),
+            Latitude::NearSide => Ok(declination(CameraController::parent(body, world)?)),
+            Latitude::FarSide => Ok(-declination(CameraController::parent(body, world)?)),
+        }
+    }
+
+    fn longitude(
+        longitude: Longitude,
+        latitude: f64,
+        body: BodyIndex,
+        command: &CameraTeleportCommand,
+        world: &ClientWorld,
+    ) -> anyhow::Result<f64> {
+        let overhead = |other| world.sky_position(body, other).overhead_longitude;
+
+        match longitude {
+            Longitude::Degrees { degrees } => Ok(degrees.to_radians()),
+            Longitude::TimeOfDay { time_of_day } => {
+                let star = CameraController::star(body, command, world)?;
+
+                Ok(world
+                    .daylight(body, star)
+                    .longitude(time_of_day, latitude, world.time())?)
+            }
+            Longitude::NearSide => Ok(overhead(CameraController::parent(body, world)?)),
+            Longitude::FarSide => {
+                let opposite = overhead(CameraController::parent(body, world)?) + PI;
+
+                Ok((opposite + PI).rem_euclid(TAU) - PI)
+            }
+        }
+    }
+
+    // The star `--star` names, else the one lighting the body most.
+    fn star(body: BodyIndex, command: &CameraTeleportCommand, world: &ClientWorld) -> anyhow::Result<BodyIndex> {
+        let Some(id) = &command.star else {
+            let position = world.body_state(body).position;
+
+            return world
+                .brightest_star(position)
+                .with_context(|| format!("no star lights {}", world.body(body).id));
+        };
+        let star = world.find_body(id)?;
+        ensure!(world.body(star).star.is_some(), "{id} is not a star");
+
+        Ok(star)
+    }
+
+    fn parent(body: BodyIndex, world: &ClientWorld) -> anyhow::Result<BodyIndex> {
+        world
+            .body(body)
+            .parent
+            .with_context(|| format!("{} orbits nothing, so it has no near or far side", world.body(body).id))
     }
 
     // Places the debug camera at `target` against the ground loaded there so far.
