@@ -5,7 +5,7 @@ use std::time::Instant;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{oneshot, watch};
-use xsa_proto::frame_stream::FrameStream;
+use xsa_proto::network::FrameStream;
 
 use super::ipc_request::IpcRequest;
 use super::ipc_response::IpcResponse;

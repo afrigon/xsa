@@ -1,8 +1,7 @@
 use bitcode::{Decode, Encode};
-
-use super::Role;
+use xsa_units::SimulationTime;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
-pub struct Join {
-    pub role: Role,
+pub struct TickEvent {
+    pub time: SimulationTime,
 }

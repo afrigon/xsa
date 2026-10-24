@@ -17,8 +17,8 @@ use std::ffi::OsStr;
 
 use tokio::sync::oneshot;
 use usage::help::Style;
-use xsa_proto::event::{Outcome, ServerEvent};
-use xsa_proto::message::MessageId;
+use xsa_proto::event::{Event, Outcome};
+use xsa_proto::request::RequestId;
 use xsa_proto::session::ServerSession;
 
 use crate::command::{Command, CommandLine, Routable, Route, ServerCommand};
@@ -26,7 +26,7 @@ use crate::completion::Completions;
 
 #[derive(Default)]
 pub struct CommandRouter {
-    pending: HashMap<MessageId, Pending>,
+    pending: HashMap<RequestId, Pending>,
     waiting_for_join: Vec<Waiting>,
 }
 
@@ -101,16 +101,16 @@ impl CommandRouter {
             }
             Route::Local(command) => executor.run_local(command),
             Route::Server(command) => {
-                let message = command.message();
+                let request = command.request();
                 let refusal = executor
                     .session()
                     .state()
-                    .and_then(|state| message.check_session_environment(state.environment()).err());
+                    .and_then(|state| request.check_session_environment(state.environment()).err());
 
                 if let Some(reason) = refusal {
                     Output::failure(reason)
                 } else {
-                    match executor.session().send(message) {
+                    match executor.session().send(request) {
                         Ok(id) => {
                             let pending = Pending { command, reply };
                             self.pending.insert(id, pending);
@@ -131,8 +131,8 @@ impl CommandRouter {
         let _ = reply.send(output);
     }
 
-    pub fn handle_event(&mut self, event: &ServerEvent, session: &ServerSession) {
-        let ServerEvent::Reply(reply) = event else {
+    pub fn handle_event(&mut self, event: &Event, session: &ServerSession) {
+        let Event::Reply(reply) = event else {
             return;
         };
         let Some(pending) = self.pending.remove(&reply.id) else {
@@ -161,10 +161,12 @@ impl CommandRouter {
 
 #[cfg(test)]
 mod tests {
-    use xsa_proto::connection::{ClientLink, Connection};
-    use xsa_proto::event::{JoinAccepted, Reply, TimeChanged, WorldState};
-    use xsa_proto::message::{ClientFrame, ClientMessage, Join, Role, SetTime, SetTimeRate, StepTime};
+    use xsa_proto::event::{JoinAccepted, Reply, TimeChangedEvent};
+    use xsa_proto::frame::ClientFrame;
+    use xsa_proto::network::{ClientLink, Connection};
+    use xsa_proto::request::{JoinRequest, Request, Role, SetTimeRateRequest, SetTimeRequest, StepTimeRequest};
     use xsa_proto::session::SessionEnvironment;
+    use xsa_proto::world::WorldState;
     use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateChange};
 
     use super::*;
@@ -217,10 +219,10 @@ mod tests {
             harness
                 .executor
                 .session
-                .send(ClientMessage::Join(Join { role: Role::Server }))
+                .send(Request::Join(JoinRequest { role: Role::Server }))
                 .unwrap();
-            harness.link.messages.try_recv().unwrap();
-            harness.deliver(ServerEvent::JoinAccepted(JoinAccepted {
+            harness.link.requests.try_recv().unwrap();
+            harness.deliver(Event::JoinAccepted(JoinAccepted {
                 state: WorldState {
                     simulation: "system-solar:sol".to_string(),
                     packs: Vec::new(),
@@ -230,13 +232,13 @@ mod tests {
                         time_override: None,
                     },
                     environment,
-                    players: Vec::new(),
+                    users: Vec::new(),
                 },
             }));
             harness
         }
 
-        fn deliver(&mut self, event: ServerEvent) {
+        fn deliver(&mut self, event: Event) {
             self.link.events.send(event).unwrap();
 
             while let Some(event) = self.executor.session.poll().unwrap() {
@@ -259,7 +261,7 @@ mod tests {
         }
 
         fn sent(&mut self) -> ClientFrame {
-            self.link.messages.try_recv().unwrap()
+            self.link.requests.try_recv().unwrap()
         }
     }
 
@@ -271,27 +273,27 @@ mod tests {
     }
 
     #[test]
-    fn server_commands_become_messages_answered_by_the_reply() {
+    fn server_commands_become_requests_answered_by_the_reply() {
         let mut harness = Harness::joined();
         let mut receiver = harness.invoke("time rate 100");
         let frame = harness.sent();
         let rate = TimeRate { multiplier: 100.0 };
         assert_eq!(
-            frame.message,
-            ClientMessage::SetTimeRate(SetTimeRate {
+            frame.request,
+            Request::SetTimeRate(SetTimeRateRequest {
                 change: TimeRateChange::To(rate)
             })
         );
         assert!(receiver.try_recv().is_err());
 
-        harness.deliver(ServerEvent::TimeChanged(TimeChanged {
+        harness.deliver(Event::TimeChanged(TimeChangedEvent {
             time: SimulationTime::J2000,
             time_flow: TimeFlow {
                 rate,
                 time_override: None,
             },
         }));
-        harness.deliver(ServerEvent::Reply(Reply {
+        harness.deliver(Event::Reply(Reply {
             id: frame.id,
             outcome: Outcome::Accepted,
         }));
@@ -300,14 +302,14 @@ mod tests {
     }
 
     #[test]
-    fn a_message_outside_its_session_environment_is_refused_without_sending() {
+    fn a_request_outside_its_session_environment_is_refused_without_sending() {
         let mut harness = Harness::joined_in(SessionEnvironment::Dedicated);
         let output = harness.invoke("time override 0").try_recv().unwrap();
         assert!(
             !output.succeeded && output.text.contains("dedicated server"),
             "{output:?}"
         );
-        assert!(harness.link.messages.try_recv().is_err());
+        assert!(harness.link.requests.try_recv().is_err());
     }
 
     #[test]
@@ -315,7 +317,7 @@ mod tests {
         let mut harness = Harness::joined();
         let mut receiver = harness.invoke("time rate 5");
         let frame = harness.sent();
-        harness.deliver(ServerEvent::Reply(Reply {
+        harness.deliver(Event::Reply(Reply {
             id: frame.id,
             outcome: Outcome::denied("no"),
         }));
@@ -324,46 +326,46 @@ mod tests {
 
     struct Case {
         line: &'static str,
-        message: ClientMessage,
+        request: Request,
     }
 
     #[test]
-    fn aliases_and_durations_map_to_their_messages() {
+    fn aliases_and_durations_map_to_their_requests() {
         let mut harness = Harness::joined();
         let cases = [
             Case {
                 line: "time pause",
-                message: ClientMessage::SetTimeRate(SetTimeRate {
+                request: Request::SetTimeRate(SetTimeRateRequest {
                     change: TimeRateChange::To(TimeRate::PAUSED),
                 }),
             },
             Case {
                 line: "time resume",
-                message: ClientMessage::SetTimeRate(SetTimeRate {
+                request: Request::SetTimeRate(SetTimeRateRequest {
                     change: TimeRateChange::To(TimeRate::REAL_TIME),
                 }),
             },
             Case {
                 line: "time faster",
-                message: ClientMessage::SetTimeRate(SetTimeRate {
+                request: Request::SetTimeRate(SetTimeRateRequest {
                     change: TimeRateChange::Faster,
                 }),
             },
             Case {
                 line: "time slower",
-                message: ClientMessage::SetTimeRate(SetTimeRate {
+                request: Request::SetTimeRate(SetTimeRateRequest {
                     change: TimeRateChange::Slower,
                 }),
             },
             Case {
                 line: "time step 2min",
-                message: ClientMessage::StepTime(StepTime {
+                request: Request::StepTime(StepTimeRequest {
                     duration: SimulationDuration { seconds: 120.0 },
                 }),
             },
             Case {
                 line: "time set 2000-01-01T12:00:10Z",
-                message: ClientMessage::SetTime(SetTime {
+                request: Request::SetTime(SetTimeRequest {
                     time: SimulationTime { seconds: 10.0 },
                 }),
             },
@@ -371,7 +373,7 @@ mod tests {
 
         for case in cases {
             harness.invoke(case.line);
-            assert_eq!(harness.sent().message, case.message, "{}", case.line);
+            assert_eq!(harness.sent().request, case.request, "{}", case.line);
         }
     }
 
@@ -393,7 +395,7 @@ mod tests {
         harness.invoke("exit");
         assert!(harness.executor.exited);
 
-        harness.deliver(ServerEvent::JoinAccepted(JoinAccepted {
+        harness.deliver(Event::JoinAccepted(JoinAccepted {
             state: WorldState {
                 simulation: "system-solar:sol".to_string(),
                 packs: Vec::new(),
@@ -403,7 +405,7 @@ mod tests {
                     time_override: None,
                 },
                 environment: SessionEnvironment::Singleplayer,
-                players: Vec::new(),
+                users: Vec::new(),
             },
         }));
         harness.router.resume(&mut harness.executor);

@@ -3,8 +3,8 @@ use xsa_commands::command::LocalCommand;
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandRouter, Output};
 use xsa_config::ConfigStore;
-use xsa_proto::connection::Connection;
-use xsa_proto::message::{ClientMessage, Join, Role};
+use xsa_proto::network::Connection;
+use xsa_proto::request::{JoinRequest, Request, Role};
 use xsa_proto::session::ServerSession;
 
 use crate::DedicatedConfig;
@@ -55,7 +55,7 @@ impl ServerUser {
             config,
             apply_config,
         };
-        user.session.send(ClientMessage::Join(Join { role: Role::Server }))?;
+        user.session.send(Request::Join(JoinRequest { role: Role::Server }))?;
         let mut router = CommandRouter::default();
         let mut invocations_open = true;
 

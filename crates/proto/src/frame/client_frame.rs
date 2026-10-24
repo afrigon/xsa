@@ -1,9 +1,9 @@
 use bitcode::{Decode, Encode};
 
-use super::{ClientMessage, MessageId};
+use crate::request::{Request, RequestId};
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
 pub struct ClientFrame {
-    pub id: MessageId,
-    pub message: ClientMessage,
+    pub id: RequestId,
+    pub request: Request,
 }

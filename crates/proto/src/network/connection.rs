@@ -1,34 +1,28 @@
-mod client_link;
-mod local_connection;
-
-pub use client_link::ClientLink;
-pub use local_connection::LocalConnection;
-
 use anyhow::{anyhow, bail};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
-use crate::event::ServerEvent;
-use crate::message::ClientFrame;
-use crate::network::RemoteConnection;
+use super::{ClientLink, LocalConnection, RemoteConnection};
+use crate::event::Event;
+use crate::frame::ClientFrame;
 
 pub struct Connection {
-    pub(crate) messages: UnboundedSender<ClientFrame>,
-    pub(crate) events: UnboundedReceiver<ServerEvent>,
+    pub(crate) requests: UnboundedSender<ClientFrame>,
+    pub(crate) events: UnboundedReceiver<Event>,
 }
 
 impl Connection {
     pub fn local() -> LocalConnection {
-        let (message_sender, message_receiver) = unbounded_channel();
+        let (request_sender, request_receiver) = unbounded_channel();
         let (event_sender, event_receiver) = unbounded_channel();
 
         LocalConnection {
             connection: Connection {
-                messages: message_sender,
+                requests: request_sender,
                 events: event_receiver,
             },
             link: ClientLink {
-                messages: message_receiver,
+                requests: request_receiver,
                 events: event_sender,
             },
         }
@@ -39,19 +33,19 @@ impl Connection {
     }
 
     pub fn send(&self, frame: ClientFrame) -> anyhow::Result<()> {
-        self.messages
+        self.requests
             .send(frame)
             .map_err(|_| anyhow!("the server has disconnected"))
     }
 
-    pub async fn receive(&mut self) -> anyhow::Result<ServerEvent> {
+    pub async fn receive(&mut self) -> anyhow::Result<Event> {
         self.events
             .recv()
             .await
             .ok_or_else(|| anyhow!("the server has disconnected"))
     }
 
-    pub fn poll(&mut self) -> anyhow::Result<Option<ServerEvent>> {
+    pub fn poll(&mut self) -> anyhow::Result<Option<Event>> {
         match self.events.try_recv() {
             Ok(event) => Ok(Some(event)),
             Err(TryRecvError::Empty) => Ok(None),

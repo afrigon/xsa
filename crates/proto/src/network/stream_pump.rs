@@ -2,7 +2,7 @@ use bitcode::{DecodeOwned, Encode};
 use quinn::{RecvStream, SendStream};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-use crate::frame_stream::FrameStream;
+use super::FrameStream;
 
 pub(super) struct StreamPump {
     send: FrameStream<SendStream>,

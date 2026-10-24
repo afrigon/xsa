@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use super::stream_pump::StreamPump;
-use crate::connection::{ClientLink, Connection};
+use super::{ClientLink, Connection};
 
 pub struct PendingClient {
     pub(super) incoming: quinn::Incoming,
@@ -21,7 +21,7 @@ impl PendingClient {
         tokio::spawn(async move {
             let _connection = connection;
             let _ = StreamPump::new(send, receive)
-                .run(server_end.events, server_end.messages)
+                .run(server_end.events, server_end.requests)
                 .await;
         });
 

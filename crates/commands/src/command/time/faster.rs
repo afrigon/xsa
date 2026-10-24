@@ -1,5 +1,5 @@
 use usage::Args;
-use xsa_proto::message::{ClientMessage, SetTimeRate};
+use xsa_proto::request::{Request, SetTimeRateRequest};
 use xsa_proto::session::SessionState;
 use xsa_units::TimeRateChange;
 
@@ -17,8 +17,8 @@ impl Routable for TimeFasterCommand {
 }
 
 impl ServerCommand for TimeFasterCommand {
-    fn message(&self) -> ClientMessage {
-        ClientMessage::SetTimeRate(SetTimeRate {
+    fn request(&self) -> Request {
+        Request::SetTimeRate(SetTimeRateRequest {
             change: TimeRateChange::Faster,
         })
     }

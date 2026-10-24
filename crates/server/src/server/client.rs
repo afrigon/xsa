@@ -1,4 +1,4 @@
-use xsa_proto::connection::ClientLink;
+use xsa_proto::network::ClientLink;
 
 use super::membership::Membership;
 

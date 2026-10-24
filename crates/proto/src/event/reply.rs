@@ -1,10 +1,10 @@
 use bitcode::{Decode, Encode};
 
 use super::Outcome;
-use crate::message::MessageId;
+use crate::request::RequestId;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
 pub struct Reply {
-    pub id: MessageId,
+    pub id: RequestId,
     pub outcome: Outcome,
 }

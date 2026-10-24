@@ -1,10 +1,10 @@
 use xsa_proto::event::Outcome;
-use xsa_proto::message::SetTimeOverride;
+use xsa_proto::request::SetTimeOverrideRequest;
 
 use crate::server::Server;
 use crate::server::message_handler::MessageHandler;
 
-impl MessageHandler for SetTimeOverride {
+impl MessageHandler for SetTimeOverrideRequest {
     fn handle(self, server: &mut Server, _client: usize) -> Outcome {
         if self.rate.is_some_and(|rate| !rate.is_valid()) {
             return Outcome::denied("the time override must be a finite number of at least 0");

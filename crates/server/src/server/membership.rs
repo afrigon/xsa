@@ -1,6 +1,6 @@
-use xsa_proto::event::Player;
+use xsa_proto::user::User;
 
 pub(super) enum Membership {
-    Player { player: Player },
+    User { user: User },
     Server,
 }

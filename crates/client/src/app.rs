@@ -34,9 +34,10 @@ use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
 use xsa_config::ConfigStore;
 use xsa_packs::PackStack;
-use xsa_proto::event::{ServerEvent, WorldState};
-use xsa_proto::message::{ClientMessage, Leave};
+use xsa_proto::event::Event;
+use xsa_proto::request::{LeaveRequest, Request};
 use xsa_proto::session::{ServerSession, SessionState};
+use xsa_proto::world::WorldState;
 use xui::{
     Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, NavigationController, Point,
     ScaleFactorKey, Size, View, ZStack,
@@ -227,15 +228,15 @@ impl App {
             self.router.handle_event(&event, &self.session);
 
             match event {
-                ServerEvent::JoinAccepted(accepted) => self
+                Event::JoinAccepted(accepted) => self
                     .join(&accepted.state)
                     .with_context(|| format!("joining simulation {}", accepted.state.simulation))?,
-                ServerEvent::JoinDenied(denied) => bail!("the server refused to let us join: {}", denied.reason),
-                ServerEvent::PlayerJoined(_)
-                | ServerEvent::PlayerLeft(_)
-                | ServerEvent::TimeChanged(_)
-                | ServerEvent::Tick(_)
-                | ServerEvent::Reply(_) => {}
+                Event::JoinDenied(denied) => bail!("the server refused to let us join: {}", denied.reason),
+                Event::UserJoined(_)
+                | Event::UserLeft(_)
+                | Event::TimeChanged(_)
+                | Event::Tick(_)
+                | Event::Reply(_) => {}
             }
         }
 
@@ -483,7 +484,7 @@ impl App {
             App::finish(Err(anyhow::anyhow!("the game is exiting")), running.reply);
         }
 
-        let _ = self.session.send(ClientMessage::Leave(Leave));
+        let _ = self.session.send(Request::Leave(LeaveRequest));
         event_loop.exit();
     }
 

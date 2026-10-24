@@ -14,7 +14,7 @@ use xsa_commands::logging::{LoggingConfig, ShellOutputs};
 use xsa_commands::repl::Repl;
 use xsa_commands::script::Script;
 use xsa_config::ConfigStore;
-use xsa_proto::connection::Connection;
+use xsa_proto::network::Connection;
 use xsa_proto::network::{Identity, Listener};
 use xsa_proto::session::SessionEnvironment;
 

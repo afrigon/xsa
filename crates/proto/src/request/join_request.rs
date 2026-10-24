@@ -1,8 +1,8 @@
 use bitcode::{Decode, Encode};
 
-use super::Player;
+use super::Role;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
-pub struct PlayerJoined {
-    pub player: Player,
+pub struct JoinRequest {
+    pub role: Role,
 }

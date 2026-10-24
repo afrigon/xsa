@@ -6,10 +6,10 @@ use anyhow::Context;
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::{Endpoint, RecvStream, SendStream};
 
+use super::Connection;
 use super::fingerprint_verifier::FingerprintVerifier;
 use super::stream_pump::StreamPump;
 use super::{APPLICATION_PROTOCOL, Fingerprint, SERVER_NAME};
-use crate::connection::Connection;
 
 const IPV4_ANY_ADDRESS: &str = "0.0.0.0:0";
 const IPV6_ANY_ADDRESS: &str = "[::]:0";
@@ -50,7 +50,7 @@ impl RemoteConnection {
                             let _endpoint = remote.endpoint;
                             let _connection = remote.connection;
                             let _ = StreamPump::new(remote.send, remote.receive)
-                                .run(link.messages, link.events)
+                                .run(link.requests, link.events)
                                 .await;
                         }
                         Err(err) => {

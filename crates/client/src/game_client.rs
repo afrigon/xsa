@@ -5,8 +5,8 @@ use xsa_commands::logging::{LoggingConfig, ShellOutputs};
 use xsa_commands::repl::Repl;
 use xsa_commands::script::Script;
 use xsa_config::ConfigStore;
-use xsa_proto::connection::Connection;
-use xsa_proto::message::{ClientMessage, Join, Role};
+use xsa_proto::network::Connection;
+use xsa_proto::request::{JoinRequest, Request, Role};
 use xsa_proto::session::ServerSession;
 use xsa_server::{Server, World};
 
@@ -42,7 +42,7 @@ impl GameClient {
             None => Server::start_local(World::load(&self.options.world)?)?,
         };
         let mut session = ServerSession::new(connection);
-        session.send(ClientMessage::Join(Join {
+        session.send(Request::Join(JoinRequest {
             role: Role::Player {
                 name: self.options.player,
             },

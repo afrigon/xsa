@@ -6,9 +6,10 @@ pub use session_environment::SessionEnvironment;
 pub use session_environments::SessionEnvironments;
 pub use session_state::SessionState;
 
-use crate::connection::Connection;
-use crate::event::ServerEvent;
-use crate::message::{ClientFrame, ClientMessage, MessageId};
+use crate::event::Event;
+use crate::frame::ClientFrame;
+use crate::network::Connection;
+use crate::request::{Request, RequestId};
 
 pub struct ServerSession {
     connection: Connection,
@@ -29,15 +30,15 @@ impl ServerSession {
         self.state.as_ref()
     }
 
-    pub fn send(&mut self, message: ClientMessage) -> anyhow::Result<MessageId> {
-        let id = MessageId { value: self.next_id };
+    pub fn send(&mut self, request: Request) -> anyhow::Result<RequestId> {
+        let id = RequestId { value: self.next_id };
         self.next_id += 1;
-        self.connection.send(ClientFrame { id, message })?;
+        self.connection.send(ClientFrame { id, request })?;
 
         Ok(id)
     }
 
-    pub fn poll(&mut self) -> anyhow::Result<Option<ServerEvent>> {
+    pub fn poll(&mut self) -> anyhow::Result<Option<Event>> {
         let event = self.connection.poll()?;
 
         if let Some(event) = &event {
@@ -47,15 +48,15 @@ impl ServerSession {
         Ok(event)
     }
 
-    pub async fn receive(&mut self) -> anyhow::Result<ServerEvent> {
+    pub async fn receive(&mut self) -> anyhow::Result<Event> {
         let event = self.connection.receive().await?;
         self.apply(&event);
 
         Ok(event)
     }
 
-    fn apply(&mut self, event: &ServerEvent) {
-        if let ServerEvent::JoinAccepted(accepted) = event {
+    fn apply(&mut self, event: &Event) {
+        if let Event::JoinAccepted(accepted) = event {
             self.state = Some(SessionState::new(&accepted.state));
         } else if let Some(state) = &mut self.state {
             state.apply(event);

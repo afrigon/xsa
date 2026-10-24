@@ -1,14 +1,22 @@
+mod client_link;
+mod connection;
 mod fingerprint;
 mod fingerprint_verifier;
+mod frame_stream;
 mod identity;
 mod listener;
+mod local_connection;
 mod pending_client;
 mod remote_connection;
 mod stream_pump;
 
+pub use client_link::ClientLink;
+pub use connection::Connection;
 pub use fingerprint::Fingerprint;
+pub use frame_stream::FrameStream;
 pub use identity::Identity;
 pub use listener::Listener;
+pub use local_connection::LocalConnection;
 pub use pending_client::PendingClient;
 
 pub(crate) use remote_connection::RemoteConnection;

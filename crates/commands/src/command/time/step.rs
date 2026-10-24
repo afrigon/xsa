@@ -1,5 +1,5 @@
 use usage::Args;
-use xsa_proto::message::{ClientMessage, StepTime};
+use xsa_proto::request::{Request, StepTimeRequest};
 use xsa_proto::session::SessionState;
 
 use super::TimeCommand;
@@ -19,8 +19,8 @@ impl Routable for TimeStepCommand {
 }
 
 impl ServerCommand for TimeStepCommand {
-    fn message(&self) -> ClientMessage {
-        ClientMessage::StepTime(StepTime {
+    fn request(&self) -> Request {
+        Request::StepTime(StepTimeRequest {
             duration: self.duration.duration(),
         })
     }

@@ -1,8 +1,9 @@
 use bitcode::{Decode, Encode};
 use xsa_units::{SimulationTime, TimeFlow};
 
-use super::{PackReference, Player};
+use super::PackReference;
 use crate::session::SessionEnvironment;
+use crate::user::User;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
 pub struct WorldState {
@@ -11,5 +12,5 @@ pub struct WorldState {
     pub time: SimulationTime,
     pub time_flow: TimeFlow,
     pub environment: SessionEnvironment,
-    pub players: Vec<Player>,
+    pub users: Vec<User>,
 }

@@ -1,10 +1,10 @@
 use xsa_proto::event::Outcome;
-use xsa_proto::message::SetTimeRate;
+use xsa_proto::request::SetTimeRateRequest;
 
 use crate::server::Server;
 use crate::server::message_handler::MessageHandler;
 
-impl MessageHandler for SetTimeRate {
+impl MessageHandler for SetTimeRateRequest {
     fn handle(self, server: &mut Server, _client: usize) -> Outcome {
         let rate = self.change.apply(server.world.time_flow().rate);
 

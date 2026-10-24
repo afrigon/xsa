@@ -5,8 +5,9 @@ pub use world_options::WorldOptions;
 use anyhow::{Context, bail};
 use xsa_core::simulation::Simulation;
 use xsa_packs::{Id, PackData, PackStack, SimulationDefinition};
-use xsa_proto::event::{PackReference, Player, WorldState};
 use xsa_proto::session::SessionEnvironment;
+use xsa_proto::user::User;
+use xsa_proto::world::{PackReference, WorldState};
 use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate};
 
 const DEFAULT_NAMESPACE: &str = "base";
@@ -64,14 +65,14 @@ impl World {
         self.time_flow
     }
 
-    pub fn state(&self, players: Vec<Player>, environment: SessionEnvironment) -> WorldState {
+    pub fn state(&self, users: Vec<User>, environment: SessionEnvironment) -> WorldState {
         WorldState {
             simulation: self.simulation_id.to_string(),
             packs: self.packs.clone(),
             time: self.time,
             time_flow: self.time_flow,
             environment,
-            players,
+            users,
         }
     }
 

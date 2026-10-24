@@ -1,6 +1,6 @@
 use bitcode::{Decode, Encode};
 
-use super::WorldState;
+use crate::world::WorldState;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
 pub struct JoinAccepted {
