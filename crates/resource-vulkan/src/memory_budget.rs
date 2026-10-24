@@ -2,9 +2,9 @@ mod budget_reading;
 
 pub(crate) use budget_reading::BudgetReading;
 
-use crate::{MemoryUsage, ResourceLimits};
+use crate::{MemoryRoom, MemoryUsage, ResourceLimits};
 
-// Decides how far usage is over budget and which soft usage goes. Resources and streamed pages fill memory up to what
+// Decides how far usage is over budget and how much room is left. Resources and streamed pages fill memory up to what
 // the system reports; the limits only lower that.
 #[derive(Default)]
 pub(crate) struct MemoryBudget {
@@ -24,43 +24,28 @@ impl MemoryBudget {
         }
     }
 
-    // The video memory that can be taken without going over budget once `reclaimable` bytes of soft usage go.
-    pub fn video_room(&self, reading: &BudgetReading, reclaimable: u64) -> u64 {
-        let in_use = self.video_in_use(reading).saturating_sub(reclaimable);
-
-        self.video_budget(reading).saturating_sub(in_use)
-    }
-
-    // `soft` lists what may go, in the order it should; picks from it until `overage` is covered.
-    pub fn evictions<T>(overage: MemoryUsage, soft: impl IntoIterator<Item = (T, MemoryUsage)>) -> Vec<T> {
-        let mut video_over = overage.video;
-        let mut ram_over = overage.ram;
-        let mut evicted = Vec::new();
-
-        for (owner, memory) in soft {
-            if video_over == 0 && ram_over == 0 {
-                break;
-            }
-
-            let frees_video = video_over > 0 && memory.video > 0;
-            let frees_ram = ram_over > 0 && memory.ram > 0;
-
-            if frees_video || frees_ram {
-                video_over = video_over.saturating_sub(memory.video);
-                ram_over = ram_over.saturating_sub(memory.ram);
-                evicted.push(owner);
-            }
+    // What can be taken without going over budget.
+    pub fn room(&self, reading: &BudgetReading) -> MemoryRoom {
+        MemoryRoom {
+            video: self.video_budget(reading).saturating_sub(self.video_in_use(reading)),
+            ram: self
+                .ram_budget(reading)
+                .map(|budget| budget.saturating_sub(reading.held_ram)),
         }
-
-        evicted
     }
 
     fn video_budget(&self, reading: &BudgetReading) -> u64 {
         MemoryBudget::capped(reading.video.budget, self.limits.max_video_memory_usage)
     }
 
+    // What objects occupy: the driver counts whole allocator blocks, though freed space in them is free for new
+    // objects.
     fn video_in_use(&self, reading: &BudgetReading) -> u64 {
-        reading.video.usage.saturating_sub(reading.evicting_video)
+        reading
+            .video
+            .usage
+            .saturating_sub(reading.video.unallocated)
+            .saturating_sub(reading.evicting_video)
     }
 
     fn ram_budget(&self, reading: &BudgetReading) -> Option<u64> {
@@ -85,15 +70,12 @@ mod tests {
 
     const MIB: u64 = 1024 * 1024;
 
-    fn entry(value: u64, video: u64, ram: u64) -> (u64, MemoryUsage) {
-        (value, MemoryUsage { video, ram })
-    }
-
     fn reading(video_budget: u64, video_usage: u64) -> BudgetReading {
         BudgetReading {
             video: HeapUsage {
                 budget: video_budget,
                 usage: video_usage,
+                unallocated: 0,
             },
             evicting_video: 0,
             held_ram: 0,
@@ -101,25 +83,13 @@ mod tests {
         }
     }
 
-    fn evicted(budget: &MemoryBudget, reading: &BudgetReading, soft: Vec<(u64, MemoryUsage)>) -> Vec<u64> {
-        MemoryBudget::evictions(budget.overage(reading), soft)
+    fn video_over(budget: &MemoryBudget, reading: &BudgetReading) -> u64 {
+        budget.overage(reading).video
     }
 
     #[test]
-    fn nothing_goes_within_budget() {
-        let soft = vec![entry(0, 100 * MIB, 0)];
-
-        assert!(evicted(&MemoryBudget::default(), &reading(1000 * MIB, 900 * MIB), soft).is_empty());
-    }
-
-    #[test]
-    fn least_recently_used_go_first_until_within_budget() {
-        let soft = vec![entry(0, 60 * MIB, 0), entry(1, 60 * MIB, 0), entry(2, 60 * MIB, 0)];
-
-        assert_eq!(
-            evicted(&MemoryBudget::default(), &reading(1000 * MIB, 1100 * MIB), soft),
-            vec![0, 1]
-        );
+    fn nothing_is_over_within_budget() {
+        assert_eq!(video_over(&MemoryBudget::default(), &reading(1000 * MIB, 900 * MIB)), 0);
     }
 
     #[test]
@@ -130,9 +100,8 @@ mod tests {
                 ..ResourceLimits::default()
             },
         };
-        let soft = vec![entry(0, 100 * MIB, 0), entry(1, 100 * MIB, 0)];
 
-        assert_eq!(evicted(&budget, &reading(1000 * MIB, 600 * MIB), soft), vec![0]);
+        assert_eq!(video_over(&budget, &reading(1000 * MIB, 600 * MIB)), 100 * MIB);
     }
 
     #[test]
@@ -140,21 +109,20 @@ mod tests {
         let mut over = reading(1000 * MIB, 1100 * MIB);
         over.evicting_video = 100 * MIB;
 
-        assert!(evicted(&MemoryBudget::default(), &over, vec![entry(0, 100 * MIB, 0)]).is_empty());
+        assert_eq!(video_over(&MemoryBudget::default(), &over), 0);
     }
 
     #[test]
-    fn only_resources_holding_the_scarce_memory_go() {
-        let soft = vec![entry(0, 0, 50 * MIB), entry(1, 100 * MIB, 0)];
+    fn space_no_object_occupies_in_allocator_blocks_counts_as_free() {
+        let mut over = reading(1000 * MIB, 1100 * MIB);
+        over.video.unallocated = 150 * MIB;
 
-        assert_eq!(
-            evicted(&MemoryBudget::default(), &reading(1000 * MIB, 1050 * MIB), soft),
-            vec![1]
-        );
+        assert_eq!(video_over(&MemoryBudget::default(), &over), 0);
+        assert_eq!(MemoryBudget::default().room(&over).video, 50 * MIB);
     }
 
     #[test]
-    fn a_ram_limit_evicts_ram() {
+    fn a_ram_limit_puts_ram_over() {
         let budget = MemoryBudget {
             limits: ResourceLimits {
                 max_memory_usage: Some(100 * MIB),
@@ -163,26 +131,18 @@ mod tests {
         };
         let mut over = reading(1000 * MIB, 0);
         over.held_ram = 150 * MIB;
-        let soft = vec![entry(0, 10 * MIB, 0), entry(1, 0, 80 * MIB)];
 
-        assert_eq!(evicted(&budget, &over, soft), vec![1]);
+        assert_eq!(budget.overage(&over).ram, 50 * MIB);
+        assert_eq!(budget.room(&over).ram, Some(0));
     }
 
     #[test]
-    fn unreadable_ram_is_kept_within_its_limit_only() {
+    fn unreadable_ram_without_a_limit_has_no_budget() {
         let mut over = reading(1000 * MIB, 0);
         over.available_ram = None;
         over.held_ram = 150 * MIB;
 
-        assert!(evicted(&MemoryBudget::default(), &over, vec![entry(0, 0, 80 * MIB)]).is_empty());
-    }
-
-    #[test]
-    fn room_counts_reclaimable_usage_as_free() {
-        let budget = MemoryBudget::default();
-        let full = reading(1000 * MIB, 1000 * MIB);
-
-        assert_eq!(budget.video_room(&full, 0), 0);
-        assert_eq!(budget.video_room(&full, 64 * MIB), 64 * MIB);
+        assert_eq!(MemoryBudget::default().overage(&over).ram, 0);
+        assert_eq!(MemoryBudget::default().room(&over).ram, None);
     }
 }

@@ -1,7 +1,8 @@
 use ash::{khr, vk};
-use gpu_allocator::vulkan::{Allocation, Allocator};
+use gpu_allocator::vulkan::Allocation;
 
 use crate::MemoryError;
+use crate::memory_context::CountedAllocator;
 
 /// One piece of deferred work: an object to destroy, memory to free, or an action to run.
 pub enum Deletion {
@@ -27,7 +28,7 @@ impl Deletion {
         self,
         device: &ash::Device,
         swapchain: &khr::swapchain::Device,
-        allocator: &mut Allocator,
+        allocator: &mut CountedAllocator,
     ) -> Result<(), MemoryError> {
         unsafe {
             match self {

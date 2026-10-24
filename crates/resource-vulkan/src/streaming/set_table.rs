@@ -2,11 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use ash::vk;
 
 use crate::streaming::{
-    ByteUse, CancelledUpload, CellAddress, CellUse, ChunkId, MissingPage, PageId, PageNeed, PagePlacement, PageRecord,
+    ByteUse, CancelledUpload, CellAddress, CellUse, MissingPage, PageId, PageNeed, PagePlacement, PageRecord,
     PageRequest, PageRetention, PageState, ReadOutcome, ReadResult, Residency, SetStatistics,
 };
 
@@ -174,10 +175,11 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
                 self.forget_if_empty(page);
                 ReadOutcome::Cancelled
             }
-            ReadResult::Bytes(bytes) => {
+            ReadResult::Bytes { bytes, read_time } => {
                 self.ram_bytes += bytes.len() as u64;
                 self.loads += 1;
                 record.bytes = Some(bytes);
+                record.read_time = read_time;
                 record.state = PageState::Cached;
                 ReadOutcome::Cached
             }
@@ -212,10 +214,17 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         }
     }
 
-    // Takes `page` out of its cell; it stays cached while its bytes are in RAM. Returns the cell it held.
-    pub fn evict_cell(&mut self, page: PageId) -> Option<CellAddress> {
-        let record = self.records.get_mut(&page)?;
-        let cell = record.state.cell()?;
+    // Takes `page` out of its cells; it stays cached while its bytes are in RAM. Returns the cells it held.
+    pub fn evict_cell(&mut self, page: PageId) -> Vec<CellAddress> {
+        let Some(record) = self.records.get_mut(&page) else {
+            return Vec::new();
+        };
+        let cells = record.state.cells();
+
+        if cells.is_empty() {
+            return cells;
+        }
+
         record.state = match record.bytes {
             Some(_) => PageState::Cached,
             None => PageState::Unloaded,
@@ -223,27 +232,39 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         self.evictions += 1;
         self.forget_if_empty(page);
 
+        cells
+    }
+
+    // Starts copying resident `page` into `destination`; returns the cell it is in.
+    pub fn start_move(&mut self, page: PageId, destination: CellAddress) -> Option<CellAddress> {
+        let record = self.records.get_mut(&page)?;
+        let PageState::Resident { cell, slot, offset } = record.state else {
+            return None;
+        };
+        record.state = PageState::Moving {
+            cell,
+            slot,
+            offset,
+            destination,
+        };
+
         Some(cell)
     }
 
-    // Takes every page out of `chunk`, which is being released.
-    pub fn evict_chunk(&mut self, chunk: ChunkId) -> Vec<CancelledUpload> {
-        let pages: Vec<_> = self
-            .records
-            .iter()
-            .filter(|(_, record)| record.state.cell().is_some_and(|cell| cell.chunk == chunk))
-            .map(|(&page, _)| page)
-            .collect();
-
-        pages
-            .into_iter()
-            .filter_map(|page| {
-                Some(CancelledUpload {
-                    page,
-                    cell: self.evict_cell(page)?,
-                })
-            })
-            .collect()
+    // Shaders read `page` from the cell it moved into from now on.
+    pub fn finish_move(&mut self, page: PageId, destination: CellAddress, slot: u32, offset: vk::Offset2D) {
+        if let Some(record) = self.records.get_mut(&page)
+            && let PageState::Moving {
+                destination: moving_to, ..
+            } = record.state
+            && moving_to == destination
+        {
+            record.state = PageState::Resident {
+                cell: destination,
+                slot,
+                offset,
+            };
+        }
     }
 
     // Drops `page`'s bytes from RAM; a page in a cell keeps it.
@@ -268,12 +289,12 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
         let cells = self
             .records
             .values()
-            .filter_map(|record| {
+            .flat_map(|record| {
                 if let PageState::Reading { cancel } = &record.state {
                     cancel.store(true, Ordering::Release);
                 }
 
-                record.state.cell()
+                record.state.cells()
             })
             .collect();
         *self = SetTable::new();
@@ -287,7 +308,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
 
         while let Some(key) = current {
             if let Some(record) = self.ids.get(&key).and_then(|page| self.records.get(page))
-                && let PageState::Resident { slot, offset, .. } = record.state
+                && let PageState::Resident { slot, offset, .. } | PageState::Moving { slot, offset, .. } = record.state
             {
                 return Some(PagePlacement {
                     page: key,
@@ -322,15 +343,13 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
     }
 
     pub fn cell_uses(&self) -> impl Iterator<Item = CellUse> + '_ {
-        self.records.iter().filter_map(|(&page, record)| {
-            Some(CellUse {
-                page,
-                cell: record.state.cell()?,
-                last_use: record.last_use,
-                score: record.score,
-                retention: self.retention(record.key),
-            })
-        })
+        self.records
+            .iter()
+            .filter_map(|(&page, record)| self.cell_use_of(page, record))
+    }
+
+    pub fn cell_use(&self, page: PageId) -> Option<CellUse> {
+        self.cell_use_of(page, self.records.get(&page)?)
     }
 
     pub fn byte_uses(&self) -> impl Iterator<Item = ByteUse> + '_ {
@@ -340,6 +359,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
                 bytes: record.bytes.as_ref()?.len() as u64,
                 last_use: record.last_use,
                 score: record.score,
+                read_time: record.read_time,
             })
         })
     }
@@ -353,13 +373,26 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
             resident: self
                 .records
                 .values()
-                .filter(|record| matches!(record.state, PageState::Resident { .. }))
+                .filter(|record| matches!(record.state, PageState::Resident { .. } | PageState::Moving { .. }))
                 .count(),
             pending: self.missing().len(),
             ram_bytes: self.ram_bytes,
             loads: self.loads,
             evictions: self.evictions,
         }
+    }
+
+    fn cell_use_of(&self, page: PageId, record: &PageRecord<K>) -> Option<CellUse> {
+        Some(CellUse {
+            page,
+            cell: record.state.cell()?,
+            content: record.state.content()?,
+            last_use: record.last_use,
+            score: record.score,
+            retention: self.retention(record.key),
+            read_time: record.read_time,
+            cached: record.bytes.is_some(),
+        })
     }
 
     fn retention(&self, key: K) -> PageRetention {
@@ -384,6 +417,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
                 key,
                 state: PageState::Unloaded,
                 bytes: None,
+                read_time: Duration::ZERO,
                 last_use: 0,
                 score: None,
             },
@@ -407,6 +441,7 @@ impl<K: Copy + Eq + Hash> SetTable<K> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::streaming::ChunkId;
 
     // A quadtree page: its four children at the next level are `index * 4` to `index * 4 + 3`.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -428,7 +463,10 @@ mod tests {
     }
 
     fn bytes() -> ReadResult {
-        ReadResult::Bytes(Arc::from(vec![0u8; 16]))
+        ReadResult::Bytes {
+            bytes: Arc::from(vec![0u8; 16]),
+            read_time: Duration::ZERO,
+        }
     }
 
     fn cell(cell: u32) -> CellAddress {
@@ -575,7 +613,7 @@ mod tests {
         make_resident(&mut table, key(0, 0), cell(0));
         let page = page_of(&table, key(0, 0));
 
-        assert_eq!(table.evict_cell(page), Some(cell(0)));
+        assert_eq!(table.evict_cell(page), vec![cell(0)]);
         assert_eq!(table.missing()[0].need, PageNeed::Cell);
     }
 
@@ -636,21 +674,40 @@ mod tests {
     }
 
     #[test]
-    fn releasing_a_chunk_evicts_only_its_pages() {
+    fn a_moving_page_is_read_from_its_old_cell_until_its_copy_completes() {
         let mut table = SetTable::new();
-        table.request([wanted(key(1, 0), 1.0), wanted(key(1, 1), 1.0)]);
+        table.request([wanted(key(1, 0), 1.0)]);
         table.apply(1);
-        let other = CellAddress {
-            chunk: ChunkId { value: 2 },
-            cell: 0,
-        };
         make_resident(&mut table, key(1, 0), cell(0));
-        make_resident(&mut table, key(1, 1), other);
+        let page = page_of(&table, key(1, 0));
+        let destination = CellAddress {
+            chunk: ChunkId { value: 2 },
+            cell: 3,
+        };
 
-        assert_eq!(table.evict_chunk(ChunkId { value: 1 }).len(), 1);
+        assert_eq!(table.start_move(page, destination), Some(cell(0)));
         assert_eq!(
-            table.placement(key(1, 1), coarser).map(|placement| placement.page),
-            Some(key(1, 1))
+            table.placement(key(1, 0), coarser).map(|placement| placement.slot),
+            Some(7)
         );
+
+        table.finish_move(page, destination, 9, vk::Offset2D::default());
+
+        assert_eq!(
+            table.placement(key(1, 0), coarser).map(|placement| placement.slot),
+            Some(9)
+        );
+    }
+
+    #[test]
+    fn evicting_a_moving_page_gives_back_both_its_cells() {
+        let mut table = SetTable::new();
+        table.request([wanted(key(1, 0), 1.0)]);
+        table.apply(1);
+        make_resident(&mut table, key(1, 0), cell(0));
+        let page = page_of(&table, key(1, 0));
+        table.start_move(page, cell(1));
+
+        assert_eq!(table.evict_cell(page), vec![cell(0), cell(1)]);
     }
 }

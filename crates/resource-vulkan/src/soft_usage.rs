@@ -1,18 +1,15 @@
-use crate::{MemoryUsage, SoftOwner};
+use crate::{EvictionRank, MemoryUsage, SoftOwner};
 
-// Memory eviction may free, ordered least recently used first, then least important first.
+// Memory eviction may free, and how much keeping it is worth.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SoftUsage {
     pub owner: SoftOwner,
     pub memory: MemoryUsage,
-    // The update it was last used in.
-    pub last_use: u64,
-    // The score of the streamed pages it holds that are wanted now.
-    pub score: f32,
+    pub rank: EvictionRank,
 }
 
 impl SoftUsage {
     pub fn eviction_order(a: &SoftUsage, b: &SoftUsage) -> std::cmp::Ordering {
-        a.last_use.cmp(&b.last_use).then(a.score.total_cmp(&b.score))
+        EvictionRank::eviction_order(&a.rank, &b.rank)
     }
 }

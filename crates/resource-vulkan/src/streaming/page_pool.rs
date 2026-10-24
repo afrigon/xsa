@@ -1,7 +1,9 @@
 use memory_vulkan::BindlessTable;
 
 use crate::LoadEnvironment;
-use crate::streaming::{CellAddress, CellAllocator, Chunk, ChunkGrid, ChunkId, PageFormat, PageRetention};
+use crate::streaming::{
+    CellAddress, CellAllocator, Chunk, ChunkGrid, ChunkId, PageFormat, PageOwner, PageRetention, PoolCapacity,
+};
 
 const CHUNK_TARGET_SIZE: u64 = 32 * 1024 * 1024;
 // The baseline GPU's maxImageDimension2D.
@@ -13,6 +15,8 @@ pub(crate) struct PagePool {
     pub format: PageFormat,
     chunks: Vec<Chunk>,
     pub allocator: CellAllocator,
+    // Pages left in draining chunks that have not started moving out, each with a cell reserved for it.
+    pub survivors: Vec<PageOwner>,
 }
 
 impl PagePool {
@@ -21,6 +25,7 @@ impl PagePool {
             format,
             chunks: Vec::new(),
             allocator: CellAllocator::new(),
+            survivors: Vec::new(),
         }
     }
 
@@ -47,8 +52,8 @@ impl PagePool {
         )
     }
 
-    pub fn add_chunk(&mut self, environment: &LoadEnvironment, id: ChunkId, now: u64) -> anyhow::Result<()> {
-        let chunk = Chunk::new(environment, &self.format, self.grid(), id, now)?;
+    pub fn add_chunk(&mut self, environment: &LoadEnvironment, id: ChunkId) -> anyhow::Result<()> {
+        let chunk = Chunk::new(environment, &self.format, self.grid(), id)?;
         tracing::debug!(
             "a chunk of {} {:?} pages takes {} bytes for {} bytes of pages",
             chunk.grid.cells(),
@@ -91,6 +96,31 @@ impl PagePool {
         self.allocator.remove_chunk(id);
 
         Some(self.chunks.remove(index))
+    }
+
+    // The pool as eviction sees it, unless it is already shrinking or holds no ready chunk.
+    pub fn capacity(&self) -> Option<PoolCapacity> {
+        let ready = self.chunks.iter().filter(|chunk| chunk.ready().is_some()).count();
+
+        if ready == 0 || self.is_draining() {
+            return None;
+        }
+
+        Some(PoolCapacity {
+            format: self.format,
+            cells_per_chunk: self.grid().cells() as usize,
+            chunk_size: self.chunk_size(),
+            free_cells: self.allocator.available() + self.allocator.returning(),
+        })
+    }
+
+    // The video memory one cell takes.
+    pub fn cell_size(&self) -> u64 {
+        self.chunk_size() / self.grid().cells() as u64
+    }
+
+    pub fn is_draining(&self) -> bool {
+        self.allocator.draining().next().is_some()
     }
 
     pub fn is_growing(&self) -> bool {

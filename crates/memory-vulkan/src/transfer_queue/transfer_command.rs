@@ -13,6 +13,12 @@ pub(crate) enum TransferCommand {
         destination: vk::Buffer,
         region: vk::BufferCopy,
     },
+    // Both images stay in `GENERAL` layout.
+    ImageToImage {
+        source: vk::Image,
+        destination: vk::Image,
+        region: vk::ImageCopy,
+    },
 }
 
 impl TransferCommand {
@@ -36,6 +42,18 @@ impl TransferCommand {
                     destination,
                     region,
                 } => device.cmd_copy_buffer(command_buffer, *source, *destination, std::slice::from_ref(region)),
+                TransferCommand::ImageToImage {
+                    source,
+                    destination,
+                    region,
+                } => device.cmd_copy_image(
+                    command_buffer,
+                    *source,
+                    vk::ImageLayout::GENERAL,
+                    *destination,
+                    vk::ImageLayout::GENERAL,
+                    std::slice::from_ref(region),
+                ),
             }
         }
     }

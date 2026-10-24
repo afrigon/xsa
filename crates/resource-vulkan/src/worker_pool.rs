@@ -10,7 +10,7 @@ pub(crate) use pool_state::PoolState;
 
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::{EntryId, LoadPriority};
 
@@ -74,11 +74,13 @@ impl WorkerPool {
 impl PoolShared {
     fn work(&self, index: usize) {
         while let Some((job, read_delay)) = self.next_job(index) {
+            let taken = Instant::now();
+
             if let Some(delay) = read_delay {
                 std::thread::sleep(delay);
             }
 
-            (job.run)();
+            (job.run)(taken);
         }
     }
 

@@ -11,6 +11,7 @@ mod piece;
 mod piece_copy;
 mod readback_completion;
 mod readback_ticket;
+mod region_copy;
 mod request_id;
 mod staged_readback;
 mod staging_block;
@@ -35,6 +36,7 @@ pub use gpu_upload::GpuUpload;
 pub use image_copy::ImageCopy;
 pub use image_upload::ImageUpload;
 pub use readback_ticket::ReadbackTicket;
+pub use region_copy::RegionCopy;
 pub use texel_block::TexelBlock;
 pub use transfer_priority::TransferPriority;
 pub use transfer_status::TransferStatus;
@@ -68,6 +70,7 @@ pub(crate) use upload_target::UploadTarget;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use ash::vk;
 
@@ -177,6 +180,27 @@ impl TransferQueue {
         self.upload(image, UploadDestination::Region(target), upload.data, pieces, priority)
     }
 
+    /// Copies regions of `source` into `destination` on the GPU. Both stay in `GENERAL` layout, where frames may sample
+    /// the parts not being written, and the copy sees every copy this queue submitted before it. The request keeps
+    /// `source` alive until its copies are recorded, and the ticket hands `destination` back.
+    pub fn copy_regions(
+        &self,
+        source: Arc<Image>,
+        destination: Arc<Image>,
+        copies: &[RegionCopy],
+        texel_block: TexelBlock,
+        priority: TransferPriority,
+    ) -> UploadTicket<Arc<Image>> {
+        let pieces = Piece::split_regions(copies, texel_block);
+        let work = TransferWork::ImageToImage {
+            destination: destination.handle(),
+            aspect: source.subresource_range().aspect_mask,
+            source,
+        };
+
+        self.submit(destination, work, Ok(pieces), priority)
+    }
+
     /// Writes `data` at the start of `buffer`.
     pub fn upload_buffer(&self, buffer: Buffer, data: Vec<u8>, priority: TransferPriority) -> UploadTicket<Buffer> {
         let target = UploadTarget::Buffer(buffer.handle());
@@ -228,6 +252,11 @@ impl TransferQueue {
         ReadbackTicket::new(TransferTicket::new(slot, id, self.clone()))
     }
 
+    /// How long the queue takes to copy `bytes`, at the rate it last measured; zero until a batch completed.
+    pub fn copy_duration(&self, bytes: u64) -> Duration {
+        self.shared().copy_rate().duration_of(bytes)
+    }
+
     /// A wait for every copy whose ticket was seen complete, for the submissions that use their results. Its value
     /// is already signalled, so it never delays the GPU.
     pub fn visibility_wait(&self) -> vk::SemaphoreSubmitInfo<'static> {
@@ -247,6 +276,16 @@ impl TransferQueue {
         pieces: Result<VecDeque<Piece>, MemoryError>,
         priority: TransferPriority,
     ) -> UploadTicket<T> {
+        self.submit(resource, TransferWork::Upload { data, destination }, pieces, priority)
+    }
+
+    fn submit<T: Send + 'static>(
+        &self,
+        resource: T,
+        work: TransferWork,
+        pieces: Result<VecDeque<Piece>, MemoryError>,
+        priority: TransferPriority,
+    ) -> UploadTicket<T> {
         let slot = Arc::new(TicketSlot::pending());
         let completion = Box::new(OwnedUploadCompletion::new(resource, Arc::downgrade(&slot)));
         let id = self.shared().next_request_id();
@@ -255,7 +294,7 @@ impl TransferQueue {
             Ok(pieces) => self.shared().enqueue(TransferRequest {
                 id,
                 priority,
-                work: TransferWork::Upload { data, destination },
+                work,
                 pieces,
                 started: false,
                 completion,

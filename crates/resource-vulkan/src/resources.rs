@@ -9,9 +9,9 @@ use memory_vulkan::{BindlessTable, MemoryContext, TransferQueue};
 
 use crate::streaming::{PageFormat, PageSource, StreamedSet, Streamer};
 use crate::{
-    AnyEntry, AvailableMemory, BudgetReading, Entry, EntryId, Events, Job, JobOwner, LoadEnvironment, LoadPriority,
-    LoadRequest, MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKey, ResourceKind, ResourceLimits,
-    ResourceState, SoftOwner, SoftUsage, Unavailable, WorkerPool,
+    Admission, AnyEntry, AvailableMemory, BudgetReading, Entry, EntryId, Events, EvictionPlan, Job, JobOwner,
+    LoadEnvironment, LoadPriority, LoadRequest, MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKey,
+    ResourceKind, ResourceLimits, ResourceState, SoftUsage, Unavailable, WorkerPool,
 };
 
 // Page reads queued ahead per worker: enough to keep every worker busy, few enough that the order follows each frame's
@@ -133,12 +133,16 @@ impl Resources {
         }
 
         registry.compact();
+        let idle_entries = registry.unreferenced_usage(now, &shared.environment.transfer);
         drop(registry);
         self.finish_uploads();
+        let room = shared.budget().room(&self.budget_reading());
+        let mut admission = Admission::new(room, idle_entries);
         let max_reads = Resources::worker_count(shared.budget().limits) * READS_PER_WORKER;
-        shared
+        let released = shared
             .streamer()
-            .update(now, &shared.environment, &shared.pool, max_reads);
+            .update(now, &shared.environment, &shared.pool, max_reads, &mut admission);
+        self.finish_evicting(released);
         self.keep_within_budget(now);
 
         if !required_failures.is_empty() {
@@ -188,7 +192,7 @@ impl Resources {
                     priority,
                     Job {
                         owner: JobOwner::Entry(id),
-                        run: Box::new(move || entry.load(&environment, &uploading)),
+                        run: Box::new(move |taken| entry.load(taken, &environment, &uploading)),
                     },
                 );
             }
@@ -227,68 +231,44 @@ impl Resources {
         self.shared.uploading().extend(uploading);
     }
 
+    // Grows the pools admitted to, then evicts what is least worth keeping until usage is within budget.
     fn keep_within_budget(&self, now: u64) {
         let shared = &self.shared;
-        let mut reading = self.budget_reading();
-        let budget = shared.budget();
+        let environment = &shared.environment;
         let mut streamer = shared.streamer();
-
-        if streamer.is_starved() {
-            let registry = shared.registry();
-            let unreferenced_video: u64 = registry.unreferenced_usage().map(|usage| usage.memory.video).sum();
-            drop(registry);
-            let idle_chunks: u64 = streamer
-                .chunk_usage()
-                .iter()
-                .filter(|usage| usage.last_use < now)
-                .map(|usage| usage.memory.video)
-                .sum();
-            let room = budget.video_room(&reading, unreferenced_video + idle_chunks);
-
-            if streamer.grow(room, now, &shared.environment) {
-                reading.video = shared.environment.memory.video_memory();
-            }
-        }
-
-        let overage = budget.overage(&reading);
-        drop(budget);
+        streamer.grow(environment);
+        drop(streamer);
+        let overage = shared.budget().overage(&self.budget_reading());
 
         if overage.video == 0 && overage.ram == 0 {
             return;
         }
 
         let mut registry = shared.registry();
-        let mut soft: Vec<SoftUsage> = registry.unreferenced_usage().collect();
-
-        if overage.video > 0 {
-            soft.extend(streamer.chunk_usage());
-        }
-
-        if overage.ram > 0 {
-            soft.extend(streamer.page_bytes_usage());
-        }
-
+        let mut streamer = shared.streamer();
+        let mut soft = registry.unreferenced_usage(now, &environment.transfer);
+        soft.extend(streamer.soft_usage(now, &environment.transfer));
         soft.sort_by(SoftUsage::eviction_order);
-        let evictions = MemoryBudget::evictions(overage, soft.into_iter().map(|usage| (usage.owner, usage.memory)));
+        let plan = EvictionPlan::new(overage, &soft, &streamer.pool_capacities());
 
-        for owner in evictions {
-            match owner {
-                SoftOwner::Entry(id) => {
-                    let Some(entry) = registry.entries.get(&id).cloned() else {
-                        continue;
-                    };
-                    let video = entry.memory().video;
-                    registry.forget(entry.as_ref());
-                    drop(entry);
-                    self.count_evicting(video);
-                }
-                SoftOwner::Chunk(chunk) => {
-                    if let Some(chunk) = streamer.release_chunk(chunk) {
-                        self.count_evicting(chunk.size);
-                    }
-                }
-                SoftOwner::PageBytes(page) => streamer.evict_page_bytes(page),
-            }
+        for id in plan.entries {
+            let Some(entry) = registry.entries.get(&id).cloned() else {
+                continue;
+            };
+            let video = entry.memory().video;
+            registry.forget(entry.as_ref());
+            drop(entry);
+            self.start_evicting(video);
+            self.finish_evicting(video);
+        }
+
+        for page in plan.page_bytes {
+            streamer.evict_page_bytes(page);
+        }
+
+        for shrink in &plan.shrinks {
+            let releasing = streamer.shrink(shrink, &environment.memory);
+            self.start_evicting(releasing);
         }
     }
 
@@ -321,12 +301,20 @@ impl Resources {
         }
     }
 
-    // Counts `video` bytes as freed until the deletion queue frees them.
-    fn count_evicting(&self, video: u64) {
-        let shared = &self.shared;
-        shared.evicting_video.fetch_add(video, Ordering::AcqRel);
-        let evicting_video = Arc::clone(&shared.evicting_video);
-        shared.environment.memory.defer_action(move |_| {
+    // Counts `video` bytes as freed from now, until `finish_evicting` for them.
+    fn start_evicting(&self, video: u64) {
+        self.shared.evicting_video.fetch_add(video, Ordering::AcqRel);
+    }
+
+    // The objects holding `video` bytes evicting were dropped: they stop counting as freed once the deletion queue
+    // frees them, after everything queued before.
+    fn finish_evicting(&self, video: u64) {
+        if video == 0 {
+            return;
+        }
+
+        let evicting_video = Arc::clone(&self.shared.evicting_video);
+        self.shared.environment.memory.defer_action(move |_| {
             evicting_video.fetch_sub(video, Ordering::AcqRel);
         });
     }
@@ -364,16 +352,19 @@ impl SharedResources {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::num::NonZeroUsize;
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, Instant};
 
     use ash::vk;
-    use memory_vulkan::{TestDevice, TexelBlock};
+    use memory_vulkan::{Buffer, MemoryLocation, TestDevice, TexelBlock, TransferPriority};
 
     use super::*;
     use crate::streaming::PagePool;
-    use crate::{PageRequest, Residency};
+    use crate::{LoadContext, MemoryUsage, PageRequest, PendingResource, Residency};
+
+    const MIB: u64 = 1024 * 1024;
 
     const PAGE_EXTENT: u32 = 64;
     const TEXEL_SIZE: u32 = 4;
@@ -425,6 +416,69 @@ mod tests {
             let texels = (PAGE_EXTENT * PAGE_EXTENT) as usize;
 
             Ok(Some(key.texel().to_le_bytes().repeat(texels)))
+        }
+    }
+
+    // A resource of `size_mib` MiB of video memory in shared blocks, as costly to load as `load_millis` says.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    struct BlockOptions {
+        size_mib: u64,
+        load_millis: u64,
+        name: u32,
+    }
+
+    struct Block {
+        buffer: Buffer,
+    }
+
+    struct PendingBlock {
+        block: Option<Block>,
+    }
+
+    impl ResourceKind for Block {
+        type Options = BlockOptions;
+
+        fn load(
+            context: &LoadContext,
+            _: &std::path::Path,
+            options: &BlockOptions,
+        ) -> anyhow::Result<Box<dyn PendingResource<Block>>> {
+            std::thread::sleep(Duration::from_millis(options.load_millis));
+            let buffer = Buffer::new(
+                context.memory,
+                context.name,
+                options.size_mib * MIB,
+                vk::BufferUsageFlags::STORAGE_BUFFER,
+                MemoryLocation::GpuOnly,
+                &context.transfer.sharing(),
+            )?;
+
+            Ok(Box::new(PendingBlock {
+                block: Some(Block { buffer }),
+            }))
+        }
+
+        fn memory(&self) -> MemoryUsage {
+            MemoryUsage {
+                video: self.buffer.size(),
+                ram: 0,
+            }
+        }
+    }
+
+    impl PendingResource<Block> for PendingBlock {
+        fn poll(&mut self, _: &BindlessTable) -> anyhow::Result<Option<Block>> {
+            Ok(self.block.take())
+        }
+
+        fn set_priority(&self, _: TransferPriority) {}
+    }
+
+    fn block(name: u32, size_mib: u64, load_millis: u64) -> BlockOptions {
+        BlockOptions {
+            size_mib,
+            load_millis,
+            name,
         }
     }
 
@@ -521,8 +575,11 @@ mod tests {
             pages.iter().all(|request| self.is_resident(request.key))
         }
 
+        // Video memory objects occupy, as the budget counts it.
         fn video_usage(&self) -> u64 {
-            self.device.memory().video_memory().usage
+            let video = self.device.memory().video_memory();
+
+            video.usage - video.unallocated
         }
 
         fn chunk_count(&self) -> usize {
@@ -542,6 +599,64 @@ mod tests {
             });
 
             limit
+        }
+
+        // Loads every block, waits until all are ready, and returns their handles.
+        fn load_blocks(&mut self, blocks: &[BlockOptions]) -> Vec<ResourceHandle<Block>> {
+            let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+            let handles: Vec<_> = blocks
+                .iter()
+                .map(|&options| {
+                    self.resources
+                        .load::<Block>(LoadRequest::new(manifest, format!("block {}", options.name)), options)
+                })
+                .collect();
+            self.run_until(&[], |_| handles.iter().all(|handle| handle.get().is_some()));
+
+            handles
+        }
+
+        fn is_cached(&self, options: BlockOptions) -> bool {
+            let key = ResourceKey::<Block> {
+                path: concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml").into(),
+                options,
+            };
+
+            self.resources.shared.registry().kind::<Block>().contains_key(&key)
+        }
+
+        // Lowers the video memory limit to `below` bytes under what objects occupy now.
+        fn limit_below_usage(&self, below: u64) {
+            self.resources.set_limits(ResourceLimits {
+                max_video_memory_usage: Some(self.video_usage() - below),
+                ..ResourceLimits::default()
+            });
+        }
+
+        fn resident_pages(&self, pages: &[PageRequest<QuadKey>]) -> Vec<PageRequest<QuadKey>> {
+            pages
+                .iter()
+                .copied()
+                .filter(|request| self.is_resident(request.key))
+                .collect()
+        }
+
+        fn assert_holds_its_own_content(&self, key: QuadKey) {
+            let placement = self.set.page(key).unwrap();
+            let image = self.resources.shared.streamer().chunk_image(placement.slot).unwrap();
+            let bytes = self
+                .device
+                .read_region(
+                    &image,
+                    vk::ImageLayout::GENERAL,
+                    placement.offset,
+                    Harness::format().extent,
+                    Harness::format().page_size(),
+                )
+                .unwrap();
+            let texels = (PAGE_EXTENT * PAGE_EXTENT) as usize;
+
+            assert_eq!(bytes, key.texel().to_le_bytes().repeat(texels), "{key:?}");
         }
 
         fn assert_clean(&self) {
@@ -717,6 +832,153 @@ mod tests {
 
         harness.set.set_residency(Residency::Live);
         harness.run_until(&levels(3..=3), |harness| harness.all_resident(&levels(3..=3)));
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn of_cached_resources_the_cheapest_to_reload_goes_first_and_only_what_is_needed() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let cheap = block(1, 16, 0);
+        let costly = block(2, 16, 300);
+        let other_cheap = block(3, 16, 0);
+        drop(harness.load_blocks(&[cheap, costly, other_cheap]));
+        harness.run_frames(&[], 2);
+        harness.limit_below_usage(8 * MIB);
+        harness.run_frames(&[], 30);
+
+        assert!(harness.is_cached(costly));
+        assert_eq!(
+            [cheap, other_cheap]
+                .into_iter()
+                .filter(|&options| harness.is_cached(options))
+                .count(),
+            1,
+            "exactly one cheap block goes"
+        );
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn of_cached_resources_as_costly_to_reload_the_larger_goes_first() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let large = block(1, 64, 100);
+        let small = block(2, 8, 100);
+        drop(harness.load_blocks(&[large, small]));
+        harness.run_frames(&[], 2);
+        harness.limit_below_usage(4 * MIB);
+        harness.run_frames(&[], 30);
+
+        assert!(!harness.is_cached(large));
+        assert!(harness.is_cached(small));
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn of_cached_resources_the_one_unused_longest_goes_first() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let stale = block(1, 16, 50);
+        let recent = block(2, 16, 50);
+        let mut handles = harness.load_blocks(&[stale, recent]);
+        drop(handles.remove(0));
+        harness.run_frames(&[], 60);
+        drop(handles);
+        harness.run_frames(&[], 2);
+        harness.limit_below_usage(8 * MIB);
+        harness.run_frames(&[], 30);
+
+        assert!(!harness.is_cached(stale));
+        assert!(harness.is_cached(recent));
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn an_unused_cached_resource_goes_before_wanted_pages() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let cached = block(1, 16, 1000);
+        drop(harness.load_blocks(&[cached]));
+        let pages = levels(4..=5);
+        harness.run_until(&pages, |harness| harness.all_resident(&pages));
+        harness.limit_below_usage(8 * MIB);
+        harness.run_frames(&pages, 30);
+
+        assert!(!harness.is_cached(cached));
+        assert!(harness.all_resident(&pages));
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn a_shrinking_pool_keeps_its_most_important_pages_and_moves_them_intact() {
+        let mut harness = Harness::new(ResourceLimits::default(), 8);
+        let loading = level(6, |index| 8192.0 - index as f32);
+        harness.run_until(&loading, |harness| harness.all_resident(&loading));
+        let chunks = harness.chunk_count();
+
+        assert!(chunks >= 2);
+
+        // Scores no longer follow the order pages were placed in, so the least important are spread across chunks.
+        let pages = level(6, |index| ((index * 7919) % 4096) as f32 + 1.0);
+        let before: HashMap<QuadKey, (u32, vk::Offset2D)> = pages
+            .iter()
+            .map(|request| {
+                let placement = harness.set.page(request.key).unwrap();
+                (request.key, (placement.slot, placement.offset))
+            })
+            .collect();
+        harness.run_frames(&pages, 2);
+        harness.limit_below_usage(Harness::chunk_size() / 2);
+        harness.run_until(&pages, |harness| harness.chunk_count() < chunks);
+        harness.run_frames(&pages, 30);
+        let resident = harness.resident_pages(&pages);
+        let lowest_resident = resident
+            .iter()
+            .map(|request| request.score)
+            .fold(f32::INFINITY, f32::min);
+        let highest_dropped = pages
+            .iter()
+            .filter(|request| !harness.is_resident(request.key))
+            .map(|request| request.score)
+            .fold(0.0, f32::max);
+
+        assert_eq!(harness.chunk_count(), chunks - 1);
+        assert!(
+            lowest_resident > highest_dropped,
+            "a page of score {highest_dropped} fell back while one of {lowest_resident} stayed"
+        );
+
+        let moved: Vec<_> = resident
+            .iter()
+            .filter(|request| {
+                let placement = harness.set.page(request.key).unwrap();
+                before[&request.key] != (placement.slot, placement.offset)
+            })
+            .collect();
+
+        assert!(!moved.is_empty());
+
+        for request in moved {
+            harness.assert_holds_its_own_content(request.key);
+        }
+
+        harness.assert_clean();
+    }
+
+    #[test]
+    fn pages_that_do_not_fit_in_ram_are_not_read_again_and_again() {
+        let mut harness = Harness::new(
+            ResourceLimits {
+                max_memory_usage: Some(4 * MIB),
+                ..ResourceLimits::default()
+            },
+            8,
+        );
+        let pages = level(6, |index| 4096.0 - index as f32);
+        harness.run_frames(&pages, 120);
+        let reads = harness.reads.load(Ordering::Acquire);
+        harness.run_frames(&pages, 60);
+
+        assert_eq!(harness.reads.load(Ordering::Acquire), reads, "pages are read again");
+        assert!(harness.resources.shared.streamer().ram_bytes() <= 4 * MIB);
+        assert!(harness.is_resident(pages[0].key));
         harness.assert_clean();
     }
 }

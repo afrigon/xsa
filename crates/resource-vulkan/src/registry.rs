@@ -2,7 +2,11 @@ use std::any::{Any, TypeId};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use crate::{AnyEntry, Entry, EntryId, ResourceKey, ResourceKind, SoftOwner, SoftUsage, UnreferencedEntry};
+use memory_vulkan::TransferQueue;
+
+use crate::{
+    AnyEntry, Entry, EntryId, EvictionRank, ResourceKey, ResourceKind, SoftOwner, SoftUsage, UnreferencedEntry,
+};
 
 type KindEntries<K> = HashMap<ResourceKey<K>, Arc<Entry<K>>>;
 
@@ -46,18 +50,26 @@ impl Registry {
         });
     }
 
-    // The unreferenced entries' memory, least recently released first.
-    pub fn unreferenced_usage(&self) -> impl Iterator<Item = SoftUsage> + '_ {
-        self.unreferenced.iter().filter_map(|unreferenced| {
-            let entry = self.current(unreferenced)?;
+    // The unreferenced entries' memory, and what keeping each is worth in update `now`: bringing one back reads and
+    // decodes its file again, and uploads its video memory.
+    pub fn unreferenced_usage(&self, now: u64, transfer: &TransferQueue) -> Vec<SoftUsage> {
+        self.unreferenced
+            .iter()
+            .filter_map(|unreferenced| {
+                let entry = self.current(unreferenced)?;
+                let memory = entry.memory();
 
-            Some(SoftUsage {
-                owner: SoftOwner::Entry(entry.id()),
-                memory: entry.memory(),
-                last_use: unreferenced.released_in,
-                score: 0.0,
+                Some(SoftUsage {
+                    owner: SoftOwner::Entry(entry.id()),
+                    memory,
+                    rank: EvictionRank::Idle {
+                        reload_time: entry.read_time() + transfer.copy_duration(memory.video),
+                        bytes: memory.video + memory.ram,
+                        idle_updates: now.saturating_sub(unreferenced.released_in),
+                    },
+                })
             })
-        })
+            .collect()
     }
 
     pub fn forget(&mut self, entry: &dyn AnyEntry) {

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::streaming::PageState;
 
@@ -8,6 +9,8 @@ pub(crate) struct PageRecord<K> {
     pub state: PageState,
     // The decoded page, kept in RAM while the budget allows, whether or not a cell holds it.
     pub bytes: Option<Arc<[u8]>>,
+    // How long its last read took.
+    pub read_time: Duration,
     // The update it was last wanted or pinned in.
     pub last_use: u64,
     // Its score while it is wanted.

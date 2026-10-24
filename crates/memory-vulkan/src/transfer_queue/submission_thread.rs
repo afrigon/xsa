@@ -6,8 +6,8 @@ use ash::vk;
 use gpu_allocator::MemoryLocation;
 
 use crate::transfer_queue::{
-    Batch, BatchBuilder, CopyRate, CopyRegion, PieceCopy, StagedReadback, StagingRing, TransferCommand,
-    TransferRequest, TransferShared, TransferWork, UploadDestination, UploadTarget,
+    Batch, BatchBuilder, CopyRegion, PieceCopy, StagedReadback, StagingRing, TransferCommand, TransferRequest,
+    TransferShared, TransferWork, UploadDestination, UploadTarget,
 };
 use crate::{DeviceObject, MemoryError};
 
@@ -27,7 +27,6 @@ pub(crate) struct SubmissionThread {
     readbacks: StagingRing,
     started: Vec<TransferRequest>,
     in_flight: VecDeque<Batch>,
-    copy_rate: CopyRate,
     seen_wake: u64,
 }
 
@@ -61,7 +60,6 @@ impl SubmissionThread {
             readbacks,
             started: Vec::new(),
             in_flight: VecDeque::new(),
-            copy_rate: CopyRate::default(),
             seen_wake: 0,
         })
     }
@@ -131,7 +129,7 @@ impl SubmissionThread {
         };
 
         let bytes = finished.iter().map(|batch| batch.bytes).sum();
-        self.copy_rate.measure(bytes, first.submitted_at, completed_at);
+        self.shared.copy_rate().measure(bytes, first.submitted_at, completed_at);
         self.shared.observe(last.value);
 
         for batch in finished {
@@ -163,7 +161,7 @@ impl SubmissionThread {
 
     // Builds and submits one batch; false when there was nothing to submit.
     fn submit_batch(&mut self) -> bool {
-        let budget = self.copy_rate.bytes_in(LATENCY_BUDGET);
+        let budget = self.shared.copy_rate().bytes_in(LATENCY_BUDGET);
         let in_flight: u64 = self.in_flight.iter().map(|batch| batch.bytes).sum();
         let mut builder = BatchBuilder::default();
 
@@ -254,6 +252,44 @@ impl SubmissionThread {
                         staging.write_at(slice.offset, bytes)?;
                         let command =
                             SubmissionThread::upload_command(staging.handle(), slice.offset, destination, copy);
+                        builder.copy(command, copy.size);
+                    }
+                }
+                TransferWork::ImageToImage {
+                    source,
+                    destination,
+                    aspect,
+                } => {
+                    for copy in &piece.copies {
+                        let CopyRegion::ImageToImage {
+                            source_offset,
+                            destination_offset,
+                            extent,
+                        } = copy.region
+                        else {
+                            unreachable!("a copy between images copies image regions");
+                        };
+                        let subresource = vk::ImageSubresourceLayers::default()
+                            .aspect_mask(*aspect)
+                            .layer_count(1);
+                        let command = TransferCommand::ImageToImage {
+                            source: source.handle(),
+                            destination: *destination,
+                            region: vk::ImageCopy::default()
+                                .src_subresource(subresource)
+                                .src_offset(vk::Offset3D {
+                                    x: source_offset.x,
+                                    y: source_offset.y,
+                                    z: 0,
+                                })
+                                .dst_subresource(subresource)
+                                .dst_offset(vk::Offset3D {
+                                    x: destination_offset.x,
+                                    y: destination_offset.y,
+                                    z: 0,
+                                })
+                                .extent(extent.into()),
+                        };
                         builder.copy(command, copy.size);
                     }
                 }
