@@ -1,5 +1,6 @@
 use glam::DVec2;
 use xsa_commands::command::InputCursorMoveCommand;
+use xsa_input::InputChord;
 
 use crate::app::App;
 use crate::app::client_command_handler::ClientCommandHandler;
@@ -12,15 +13,16 @@ impl ClientCommandHandler for InputCursorMoveCommand {
         let offset = DVec2::new(self.dx, self.dy);
         let summary = format!("input: moved the mouse by {}, {}", self.dx, self.dy);
 
-        match self.duration {
-            Some(duration) => InputGlide::start(
-                app,
-                GlideMotion::Mouse { offset },
-                duration,
-                self.easing.easing(),
-                summary,
-            ),
-            None => CommandProgress::Done(app.inject_mouse_offset(offset).map(|()| summary)),
-        }
+        let held = self.hold.as_ref().map(InputChord::pressed_buttons).unwrap_or_default();
+        let summary = InputGlide::summary(summary, self.hold.as_ref());
+
+        InputGlide::start(
+            app,
+            GlideMotion::Mouse { offset },
+            held,
+            self.duration,
+            self.easing.easing(),
+            summary,
+        )
     }
 }

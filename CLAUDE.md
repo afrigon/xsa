@@ -373,9 +373,11 @@ Always bring the game to a stable state first:
   `shift` matches either side.
 - `input cursor move`, `cursor set` and `scroll` take `--duration <duration>` and `--easing` (`linear`, `ease-in`,
   `ease-out`, `ease-in-out`) to glide instead of jump: `input cursor move 300 0 --duration 2s --easing ease-in-out`
-  turns the view smoothly while the mouse is captured.
-- Send a timed sequence as one script, so it runs in order without frame gaps: `script --text "input down w; wait
-  500ms; input up w"`.
+  turns the view smoothly while the mouse is captured. They also take `--hold <chord>`, held for the motion:
+  `input cursor set 500 300 --hold mouse-left --duration 300ms` drags.
+- `input press <chord> --duration 500ms` holds the chord that long before releasing it.
+- Send a longer timed sequence as one script, so it runs in order without frame gaps:
+  `script --text "input down w; input cursor move 300 0 --duration 2s; input up w"`.
 - `input.raw.enabled false` (see Before testing) keeps the player's devices out while the commands still work.
 
 ### Recording

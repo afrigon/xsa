@@ -44,16 +44,6 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn inject_cursor_position(&mut self, logical: DVec2) -> anyhow::Result<()> {
-        ensure!(
-            !self.mouse_captured,
-            "the mouse is captured and has no cursor; move it with input cursor move"
-        );
-        let position = logical * self.scale_factor()?;
-
-        self.inject([InputEventKind::CursorMoved { position }])
-    }
-
     pub(super) fn cursor_offset_to(&self, logical: DVec2) -> anyhow::Result<DVec2> {
         ensure!(
             !self.mouse_captured,

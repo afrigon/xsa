@@ -6,10 +6,8 @@ use crate::app::immediate_command_handler::ImmediateCommandHandler;
 
 impl ImmediateCommandHandler for InputUpCommand {
     fn run(self, app: &mut App) -> anyhow::Result<String> {
-        let buttons: Vec<_> = self.chord.buttons().collect();
-        app.inject(buttons.into_iter().rev().map(|button| InputEventKind::Released {
-            button: button.button(),
-        }))?;
+        let released = self.chord.pressed_buttons().into_iter().rev();
+        app.inject(released.map(|button| InputEventKind::Released { button }))?;
 
         Ok(format!("input: released {}", self.chord.name()))
     }

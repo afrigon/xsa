@@ -1,19 +1,17 @@
+use animation::Easing;
 use xsa_commands::command::InputPressCommand;
-use xsa_input::InputEventKind;
 
 use crate::app::App;
-use crate::app::immediate_command_handler::ImmediateCommandHandler;
+use crate::app::client_command_handler::ClientCommandHandler;
+use crate::app::command_progress::CommandProgress;
+use crate::app::glide_motion::GlideMotion;
+use crate::app::input_glide::InputGlide;
 
-impl ImmediateCommandHandler for InputPressCommand {
-    fn run(self, app: &mut App) -> anyhow::Result<String> {
-        let buttons: Vec<_> = self.chord.buttons().map(|button| button.button()).collect();
-        let presses = buttons.iter().map(|button| InputEventKind::Pressed { button: *button });
-        let releases = buttons
-            .iter()
-            .rev()
-            .map(|button| InputEventKind::Released { button: *button });
-        app.inject(presses.chain(releases))?;
+impl ClientCommandHandler for InputPressCommand {
+    fn start(self, app: &mut App) -> CommandProgress {
+        let held = self.chord.pressed_buttons();
+        let summary = format!("input: pressed {}", self.chord.name());
 
-        Ok(format!("input: pressed {}", self.chord.name()))
+        InputGlide::start(app, GlideMotion::Hold, held, self.duration, Easing::Linear, summary)
     }
 }

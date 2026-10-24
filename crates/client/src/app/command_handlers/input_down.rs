@@ -6,9 +6,8 @@ use crate::app::immediate_command_handler::ImmediateCommandHandler;
 
 impl ImmediateCommandHandler for InputDownCommand {
     fn run(self, app: &mut App) -> anyhow::Result<String> {
-        app.inject(self.chord.buttons().map(|button| InputEventKind::Pressed {
-            button: button.button(),
-        }))?;
+        let pressed = self.chord.pressed_buttons().into_iter();
+        app.inject(pressed.map(|button| InputEventKind::Pressed { button }))?;
 
         Ok(format!("input: holding {}", self.chord.name()))
     }

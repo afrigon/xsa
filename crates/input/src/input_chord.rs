@@ -55,6 +55,11 @@ impl InputChord {
         self.held.iter().chain([&self.trigger])
     }
 
+    // What injecting the chord presses, in order: a side-less modifier presses its left key.
+    pub fn pressed_buttons(&self) -> Vec<InputButton> {
+        self.buttons().map(ChordButton::button).collect()
+    }
+
     // How many buttons the chord names: among the chords a press matches, only the longest fire.
     pub fn specificity(&self) -> usize {
         self.held.len() + 1
