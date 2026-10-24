@@ -18,7 +18,7 @@ impl ConfigSaveCommand {
     pub fn run<T: ConfigSection + Default + Clone>(self, store: &ConfigStore<T>) -> anyhow::Result<String> {
         let count = store.export(&self.path, self.key.as_deref().unwrap_or_default())?;
 
-        Ok(format!("saved {} to {}", Settings(count), self.path.display()))
+        Ok(format!("saved {} to {}", Settings { count }, self.path.display()))
     }
 }
 

@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
@@ -7,14 +6,13 @@ use kdl::KdlValue;
 
 use crate::config_layer::ConfigLayer;
 use crate::edit_visitor::{Edit, EditVisitor};
-use crate::key_path::{KeyPath, PATH_SEPARATOR};
+use crate::key_path::KeyPath;
 use crate::key_visitor::KeyVisitor;
+use crate::nested_writer::NestedWriter;
 use crate::read_visitor::ReadVisitor;
 use crate::session_layer::{SessionLayer, SessionValue};
 use crate::value_origin::ValueOrigin;
 use crate::{ConfigKey, ConfigSection};
-
-const DUMP_INDENT: &str = "    ";
 
 // A value is its session value, else its saved value, else its default. The saved layer is the file in effect.
 pub struct ConfigStore<T> {
@@ -55,54 +53,39 @@ impl<T: ConfigSection + Default + Clone> ConfigStore<T> {
         &self.keys
     }
 
+    // A key holding a value prints the value; a node prints the tree below it, each value marked with its origin.
     pub fn get(&self, path: &str) -> anyhow::Result<String> {
         if let Some(key) = self.key(path) {
             return Ok(key.text.clone());
         }
 
-        self.check_known(path)?;
-        bail!("{path} holds several settings: show them with config get --dump {path}")
-    }
-
-    // The keys below a path as nested KDL, each value marked with where it comes from.
-    pub fn dump(&self, path: &str) -> anyhow::Result<String> {
-        let mut text = String::new();
-        let mut open: Vec<&str> = Vec::new();
+        let mut writer = NestedWriter::default();
 
         for key in self.keys_within(path)? {
-            let segments: Vec<&str> = key.path.split(PATH_SEPARATOR).collect();
-            let (leaf, parents) = segments.split_last().expect("a key path has at least one segment");
-            let shared = open
-                .iter()
-                .zip(parents)
-                .take_while(|(open, parent)| open == parent)
-                .count();
-
-            while open.len() > shared {
-                open.pop();
-                let _ = writeln!(text, "{}}}", DUMP_INDENT.repeat(open.len()));
-            }
-
-            for parent in &parents[shared..] {
-                let _ = writeln!(text, "{}{parent} {{", DUMP_INDENT.repeat(open.len()));
-                open.push(parent);
-            }
-
-            let origin = self.origin(&key.path);
-            let _ = writeln!(
-                text,
-                "{}{leaf} {} // {origin}",
-                DUMP_INDENT.repeat(open.len()),
-                key.value
-            );
+            writer.key(&key.path, &key.value.to_string(), &self.origin(&key.path).to_string());
         }
 
-        while !open.is_empty() {
-            open.pop();
-            let _ = writeln!(text, "{}}}", DUMP_INDENT.repeat(open.len()));
+        Ok(writer.finish())
+    }
+
+    // The keys below a path with their types, what they accept and their defaults.
+    pub fn schema(&self, path: &str) -> anyhow::Result<String> {
+        self.check_known(path)?;
+        let mut keys = KeyVisitor::default();
+        T::default().visit(&mut keys);
+        let mut writer = NestedWriter::default();
+
+        for key in keys.into_keys() {
+            if !KeyPath::contains(path, &key.path) {
+                continue;
+            }
+
+            let mut notes = key.qualifiers.clone();
+            notes.push(format!("default: {}", key.value));
+            writer.key(&key.path, &format!("<{}>", key.type_name), &notes.join(", "));
         }
 
-        Ok(text.trim_end().to_string())
+        Ok(writer.finish())
     }
 
     pub fn set(&mut self, path: &str, text: &str, save: bool) -> anyhow::Result<()> {
@@ -472,10 +455,7 @@ mod tests {
         store.set("video.stars", "false", false).unwrap();
         store.set("video.stars", "true", true).unwrap();
         assert!(store.config().stars);
-        assert_eq!(
-            store.dump("video.stars").unwrap(),
-            "video {\n    stars #true // saved\n}"
-        );
+        assert!(store.get("video").unwrap().contains("stars #true // saved"));
     }
 
     #[test]
@@ -516,15 +496,33 @@ mod tests {
     }
 
     #[test]
-    fn get_shows_one_value_and_dump_a_subtree_with_origins() {
-        let directory = TestDirectory::new("dump");
+    fn get_shows_a_value_or_the_tree_below_a_node_with_origins() {
+        let directory = TestDirectory::new("get");
         let mut store = store(&directory, Some("video { stars #false }\n"));
         store.set("video.glow.strength", "0.5", false).unwrap();
         assert_eq!(store.get("video.shade").unwrap(), "warm");
-        assert!(store.get("video").is_err());
         assert_eq!(
-            store.dump("video").unwrap(),
+            store.get("video").unwrap(),
             "video {\n    shade warm // default\n    stars #false // saved\n    glow {\n        enabled #true // default\n        strength 0.5 // session\n    }\n}"
+        );
+        assert!(store.get("").unwrap().ends_with("delay none // default"));
+        assert!(store.get("video.nothing").is_err());
+    }
+
+    #[test]
+    fn the_schema_shows_types_what_they_accept_and_defaults() {
+        let directory = TestDirectory::new("schema");
+        let mut store = store(&directory, None);
+        store.set("video.stars", "false", false).unwrap();
+        assert_eq!(
+            store.schema("").unwrap(),
+            "video {\n    shade <warm|cold> // optional, default: warm\n    stars <bool> // default: #true\n    glow {\n        enabled <bool> // default: #true\n        strength <number> // 0 or more, default: 0.02\n    }\n}\ndelay <duration> // optional, default: none"
+        );
+        assert!(
+            store
+                .schema("video.glow.strength")
+                .unwrap()
+                .contains("strength <number>")
         );
     }
 

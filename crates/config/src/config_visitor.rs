@@ -1,11 +1,12 @@
-use crate::{ConfigSection, ConfigValue, NumberRange};
+use crate::unconstrained::Unconstrained;
+use crate::{ConfigConstraint, ConfigSection, ConfigValue, NumberRange};
 
 pub trait ConfigVisitor: Sized {
     fn enter(&mut self, name: &str);
 
     fn leave(&mut self);
 
-    fn checked<T: ConfigValue>(&mut self, name: &str, value: &mut T, check: &dyn Fn(&T) -> anyhow::Result<()>);
+    fn constrained<T: ConfigValue>(&mut self, name: &str, value: &mut T, constraint: &dyn ConfigConstraint<T>);
 
     fn group(&mut self, name: &str, visit: impl FnOnce(&mut Self)) {
         self.enter(name);
@@ -18,10 +19,10 @@ pub trait ConfigVisitor: Sized {
     }
 
     fn value<T: ConfigValue>(&mut self, name: &str, value: &mut T) {
-        self.checked(name, value, &|_| Ok(()));
+        self.constrained(name, value, &Unconstrained);
     }
 
     fn number(&mut self, name: &str, value: &mut f32, range: NumberRange) {
-        self.checked(name, value, &|number| range.check(*number));
+        self.constrained(name, value, &range);
     }
 }

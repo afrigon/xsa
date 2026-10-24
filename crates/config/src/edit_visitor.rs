@@ -2,7 +2,7 @@ use anyhow::Context;
 use kdl::KdlValue;
 
 use crate::key_path::KeyPath;
-use crate::{ConfigValue, ConfigVisitor};
+use crate::{ConfigConstraint, ConfigValue, ConfigVisitor};
 
 pub(crate) enum Edit<'a> {
     Parse(&'a str),
@@ -42,7 +42,7 @@ impl ConfigVisitor for EditVisitor<'_> {
         self.path.leave();
     }
 
-    fn checked<T: ConfigValue>(&mut self, name: &str, value: &mut T, check: &dyn Fn(&T) -> anyhow::Result<()>) {
+    fn constrained<T: ConfigValue>(&mut self, name: &str, value: &mut T, constraint: &dyn ConfigConstraint<T>) {
         if self.path.child(name) != self.target {
             return;
         }
@@ -52,6 +52,6 @@ impl ConfigVisitor for EditVisitor<'_> {
             Edit::Toggle => value.toggled(),
             Edit::Assign(raw) => T::from_kdl(raw).with_context(|| format!("{raw} is not valid")),
         };
-        self.result = Some(edited.and_then(|edited| check(&edited).map(|()| edited.to_kdl())));
+        self.result = Some(edited.and_then(|edited| constraint.check(&edited).map(|()| edited.to_kdl())));
     }
 }

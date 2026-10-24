@@ -338,8 +338,9 @@ Always bring the game to a stable state first:
   and `unset` change the session value; with `--save` they change the saved value and write the file in effect
   instead, keeping its comments and layout. A file holds every key that was saved, defaults included; `unset`
   returns a key, or every key below it, to its default.
-- `config get <key>` shows a value, `config get --dump [<key>]` the tree below a key, each value marked session,
-  saved or default. `config save <path> [--key <key>]` exports the saved values; `config load [--save] [<path>]
+- `config get [<key>]` shows a value, or the tree below a node (the whole tree without a key) with each value marked
+  session, saved or default; `--schema` shows each key's type (`<bool>`), whether it is optional and its default
+  instead. `config save <path> [--key <key>]` exports the saved values; `config load [--save] [<path>]
   [--key <key>]` overlays a file onto the session (or saved) values, or reads the file in effect again without a
   path. Exported and loaded files are relative to `--key`.
 - Config commands run in the process that receives them (`Route::Local`), through its `ConfigStore`.

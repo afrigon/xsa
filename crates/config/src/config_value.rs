@@ -14,6 +14,12 @@ pub trait ConfigValue: Clone + PartialEq {
 
     fn parse(text: &str) -> anyhow::Result<Self>;
 
+    fn type_name() -> String;
+
+    fn qualifiers() -> Vec<String> {
+        Vec::new()
+    }
+
     // The values toggling steps through, in order; empty when the type does not toggle.
     fn cycle() -> Vec<Self> {
         Vec::new()
@@ -65,6 +71,10 @@ impl ConfigValue for bool {
         }
     }
 
+    fn type_name() -> String {
+        "bool".to_string()
+    }
+
     fn cycle() -> Vec<bool> {
         vec![true, false]
     }
@@ -90,6 +100,10 @@ impl ConfigValue for f32 {
             .filter(|number: &f32| number.is_finite())
             .with_context(|| format!("{text:?} is not a number"))
     }
+
+    fn type_name() -> String {
+        "number".to_string()
+    }
 }
 
 impl ConfigValue for NonZeroUsize {
@@ -108,6 +122,10 @@ impl ConfigValue for NonZeroUsize {
         text.parse()
             .ok()
             .with_context(|| format!("{text:?} is not a whole number of 1 or more"))
+    }
+
+    fn type_name() -> String {
+        "count".to_string()
     }
 }
 
@@ -131,6 +149,14 @@ impl<T: ConfigValue> ConfigValue for Option<T> {
             NONE_WORD => Ok(None),
             text => T::parse(text).map(Some),
         }
+    }
+
+    fn type_name() -> String {
+        T::type_name()
+    }
+
+    fn qualifiers() -> Vec<String> {
+        ["optional".to_string()].into_iter().chain(T::qualifiers()).collect()
     }
 
     fn cycle() -> Vec<Option<T>> {

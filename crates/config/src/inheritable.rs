@@ -41,6 +41,14 @@ impl<T: ConfigValue> ConfigValue for Inheritable<T> {
         }
     }
 
+    fn type_name() -> String {
+        T::type_name()
+    }
+
+    fn qualifiers() -> Vec<String> {
+        ["inheritable".to_string()].into_iter().chain(T::qualifiers()).collect()
+    }
+
     fn completions() -> Vec<String> {
         [INHERIT_WORD.to_string()].into_iter().chain(T::completions()).collect()
     }

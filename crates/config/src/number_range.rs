@@ -2,6 +2,8 @@ use std::fmt;
 
 use anyhow::bail;
 
+use crate::ConfigConstraint;
+
 // Inclusive; an unbounded side is infinite.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NumberRange {
@@ -36,6 +38,16 @@ impl NumberRange {
         }
 
         Ok(())
+    }
+}
+
+impl ConfigConstraint<f32> for NumberRange {
+    fn check(&self, value: &f32) -> anyhow::Result<()> {
+        NumberRange::check(*self, *value)
+    }
+
+    fn description(&self) -> Option<String> {
+        Some(self.to_string())
     }
 }
 

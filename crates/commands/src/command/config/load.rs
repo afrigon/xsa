@@ -32,7 +32,7 @@ impl ConfigLoadCommand {
         };
 
         let count = store.import(&path, key, self.save)?;
-        let mut description = format!("loaded {} from {}", Settings(count), path.display());
+        let mut description = format!("loaded {} from {}", Settings { count }, path.display());
 
         if self.save {
             description.push_str(&format!(" (saved to {})", store.path().display()));

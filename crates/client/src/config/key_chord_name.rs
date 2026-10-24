@@ -376,6 +376,10 @@ impl ConfigValue for KeyChord {
         KeyChord::from_config_name(text).with_context(|| format!("{text:?} is not a key like f4, tab, shift+tab or `"))
     }
 
+    fn type_name() -> String {
+        "key-chord".to_string()
+    }
+
     fn completions() -> Vec<String> {
         KeyChord::key_names().into_iter().map(str::to_string).collect()
     }

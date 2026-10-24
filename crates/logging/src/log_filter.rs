@@ -69,6 +69,10 @@ impl ConfigValue for LogFilter {
         })
     }
 
+    fn type_name() -> String {
+        "log-filter".to_string()
+    }
+
     fn completions() -> Vec<String> {
         LEVELS.iter().map(|level| level.to_string()).collect()
     }

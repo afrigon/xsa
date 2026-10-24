@@ -80,6 +80,10 @@ impl ConfigValue for ByteSize {
     fn parse(text: &str) -> anyhow::Result<ByteSize> {
         ByteSize::from_config_name(text).with_context(|| format!("{text:?} is not a size like 512MiB, 2GB or 1024B"))
     }
+
+    fn type_name() -> String {
+        "byte-size".to_string()
+    }
 }
 
 #[cfg(test)]

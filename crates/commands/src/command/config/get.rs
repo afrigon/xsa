@@ -1,4 +1,3 @@
-use anyhow::bail;
 use usage::Args;
 use xsa_config::{ConfigSection, ConfigStore};
 
@@ -11,18 +10,16 @@ pub struct ConfigGetCommand {
     pub key: Option<String>,
     #[usage(
         long,
-        help = "Show every setting below the key as KDL, each marked session, saved or default"
+        help = "Show the keys below the key with their types and defaults instead of their values"
     )]
-    pub dump: bool,
+    pub schema: bool,
 }
 
 impl ConfigGetCommand {
     pub fn run<T: ConfigSection + Default + Clone>(self, store: &ConfigStore<T>) -> anyhow::Result<String> {
-        match (self.key, self.dump) {
-            (key, true) => store.dump(key.as_deref().unwrap_or_default()),
-            (Some(key), false) => store.get(&key),
-            (None, false) => bail!("name a key, or show every setting with config get --dump"),
-        }
+        let key = self.key.as_deref().unwrap_or_default();
+
+        if self.schema { store.schema(key) } else { store.get(key) }
     }
 }
 

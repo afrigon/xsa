@@ -1,5 +1,5 @@
 use crate::key_path::KeyPath;
-use crate::{ConfigKey, ConfigValue, ConfigVisitor};
+use crate::{ConfigConstraint, ConfigKey, ConfigValue, ConfigVisitor};
 
 #[derive(Default)]
 pub(crate) struct KeyVisitor {
@@ -22,12 +22,17 @@ impl ConfigVisitor for KeyVisitor {
         self.path.leave();
     }
 
-    fn checked<T: ConfigValue>(&mut self, name: &str, value: &mut T, _check: &dyn Fn(&T) -> anyhow::Result<()>) {
+    fn constrained<T: ConfigValue>(&mut self, name: &str, value: &mut T, constraint: &dyn ConfigConstraint<T>) {
+        let mut qualifiers = T::qualifiers();
+        qualifiers.extend(constraint.description());
+
         self.keys.push(ConfigKey {
             path: self.path.child(name),
             value: value.to_kdl(),
             text: value.text(),
             completions: T::completions(),
+            type_name: T::type_name(),
+            qualifiers,
         });
     }
 }

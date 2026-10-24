@@ -7,7 +7,7 @@ use crate::command::{Routable, Route};
 
 #[derive(Subcommands)]
 pub enum ConfigAction {
-    /// Show a setting, or every setting below a key with --dump
+    /// Show a setting, or every setting below a key, or their types and defaults with --schema
     Get(ConfigGetCommand),
     /// Change a setting for the session, e.g. config set video.bloom.strength 0.05
     Set(ConfigSetCommand),

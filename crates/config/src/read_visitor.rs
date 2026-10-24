@@ -1,7 +1,7 @@
 use crate::config_layer::ConfigLayer;
 use crate::key_path::KeyPath;
 use crate::session_layer::{SessionLayer, SessionValue};
-use crate::{ConfigValue, ConfigVisitor};
+use crate::{ConfigConstraint, ConfigValue, ConfigVisitor};
 
 // The section starts out holding its defaults; an invalid value keeps the default.
 pub(crate) struct ReadVisitor<'a> {
@@ -29,7 +29,7 @@ impl ConfigVisitor for ReadVisitor<'_> {
         self.path.leave();
     }
 
-    fn checked<T: ConfigValue>(&mut self, name: &str, value: &mut T, check: &dyn Fn(&T) -> anyhow::Result<()>) {
+    fn constrained<T: ConfigValue>(&mut self, name: &str, value: &mut T, constraint: &dyn ConfigConstraint<T>) {
         let path = self.path.child(name);
         let raw = match self.session.get(&path) {
             Some(SessionValue::Unset) => return,
@@ -40,7 +40,7 @@ impl ConfigVisitor for ReadVisitor<'_> {
             },
         };
 
-        match T::from_kdl(raw).filter(|parsed| check(parsed).is_ok()) {
+        match T::from_kdl(raw).filter(|parsed| constraint.check(parsed).is_ok()) {
             Some(parsed) => *value = parsed,
             None => tracing::warn!("config {path}: {raw} is not valid, using the default"),
         }

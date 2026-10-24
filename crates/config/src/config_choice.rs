@@ -30,6 +30,12 @@ impl<T: ConfigChoice> ConfigValue for T {
         }
     }
 
+    fn type_name() -> String {
+        let names: Vec<&str> = T::ALL.iter().map(|choice| choice.config_name()).collect();
+
+        names.join("|")
+    }
+
     fn cycle() -> Vec<T> {
         T::ALL.to_vec()
     }

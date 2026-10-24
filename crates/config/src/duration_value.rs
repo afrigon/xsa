@@ -39,6 +39,10 @@ impl ConfigValue for Duration {
     fn parse(text: &str) -> anyhow::Result<Duration> {
         duration_from_name(text).with_context(|| format!("{text:?} is not a duration like 50ms, 0.2s or 1min"))
     }
+
+    fn type_name() -> String {
+        "duration".to_string()
+    }
 }
 
 fn duration_from_name(name: &str) -> Option<Duration> {
