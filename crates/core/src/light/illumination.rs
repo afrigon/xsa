@@ -21,6 +21,21 @@ impl Illumination {
         self.star_lights[index.value].as_ref()
     }
 
+    // The star that lights `point` most, before any shadowing by bodies.
+    pub fn brightest_star(&self, states: &[BodyState], point: DVec3) -> Option<BodyIndex> {
+        self.star_lights
+            .iter()
+            .zip(states)
+            .enumerate()
+            .filter_map(|(value, (light, state))| {
+                let light = light.as_ref()?;
+
+                Some((value, light.luminous_intensity / state.position.distance_squared(point)))
+            })
+            .max_by(|first, second| first.1.total_cmp(&second.1))
+            .map(|(value, _)| BodyIndex { value })
+    }
+
     // Lux on a surface facing each star, before any shadowing by bodies.
     pub fn illuminance_at(&self, bodies: &[Body], states: &[BodyState], point: DVec3) -> f64 {
         let starlight: f64 = self

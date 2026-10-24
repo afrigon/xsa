@@ -1,3 +1,4 @@
+pub mod daylight;
 pub mod frames;
 pub mod light;
 pub mod orbit;
