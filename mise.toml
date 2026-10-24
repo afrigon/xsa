@@ -76,7 +76,7 @@ done
 """
 
 [tasks.client]
-description = "Run the game with an integrated server, running init.xsa unless --script names another; --release first for an optimized build, then xsa arguments after --, e.g. -- --remote [::1]:1969 --fingerprint <hash>"
+description = "Run the game with an integrated server; --release first for an optimized build, then xsa arguments after --, e.g. -- --remote [::1]:1969 --fingerprint <hash>"
 depends = ["shaders"]
 # No usage spec: mise would take --help meant for xsa as a request for this task's help.
 run = """
@@ -84,9 +84,7 @@ run = """
 set -euo pipefail
 release=()
 if [[ "${1:-}" == "--release" ]]; then release=(--release); shift; fi
-script=()
-if [[ -f init.xsa && " $* " != *" --script "* ]]; then script=(--script init.xsa); fi
-cargo run -p xsa "${release[@]}" -- client "${script[@]}" "$@"
+cargo run -p xsa "${release[@]}" -- client "$@"
 """
 
 [tasks.ipc]

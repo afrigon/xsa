@@ -37,7 +37,7 @@ Everything runs through mise; tools are pinned in `mise.toml`.
 
 | Task | Does |
 | --- | --- |
-| `mise run client [--release]` | Compile shaders, run the game with an integrated server and the startup script `init.xsa` (debug builds enable validation layers) |
+| `mise run client [--release]` | Compile shaders, run the game with an integrated server (debug builds enable validation layers) |
 | `mise run client -- --remote <host>:<port> --fingerprint <hash>` | Run the game against a dedicated server |
 | `mise run server [--release]` | Run a dedicated server (`-- --host <address> --port <port>`) |
 | `mise run ipc -- <command>` | Send a command to a running game or server (`--name <name>` when several run) |
@@ -143,8 +143,12 @@ Names in code, data and documents use these words in these meanings only:
 - **Surface:** the materials (textures) of the ground up close.
 - **Biome:** a region's kind of ground.
 - **Scatter:** props placed on the ground: rocks, trees, bushes.
+- **Vehicle:** an assembled vessel.
+- **Part:** a component of a vehicle.
+- **Site:** a point of interest on a body: a launch site, a building, a base, a landing site.
 - **Console:** the in-game console.
 - **Shell:** the terminal output of a process (the game, the dedicated server, `launchpad`).
+- **Launchpad:** the instance and pack manager for xsa.
 
 ## Coordinates, units and precision
 
@@ -245,35 +249,63 @@ Names in code, data and documents use these words in these meanings only:
   `--output` it goes to `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. It
   does not wait for animations: set `animation.duration-scale 0` first so
   camera transitions, eye adaptation and interface transitions finish at once.
-- Agents always send `mise run ipc --name agent-<workspace> config set
-  input.enabled false` before testing in the game, so mouse and keyboard input
-  on its window cannot move the camera mid-test, and always send
-  `mise run ipc --name agent-<workspace> config set input.enabled true`
-  once the test is done. The key stops camera input and mouse capture (key binds still
-  work), and a red "input disabled" label shows while it is off.
 - `xsa client --script <path>` and `xsa server --script <path>` run a file of commands at startup, one per line (`#`
   starts a comment), each waiting for the previous one's reply; each command and its reply are printed to the shell
-  under its `path:line`, and the first failure skips the rest. `mise run client` passes `--script init.xsa`, the
-  repository's development setup, unless the arguments name another script.
+  under its `path:line`, and the first failure skips the rest. `init.xsa` is the repository's development setup:
+  `mise run client -- --script init.xsa`.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
 - Commands received over IPC and their replies are printed to the shell, each pair under one sequence number;
   `logging.shell.ipc.enabled`, `.input.enabled` and `.output.enabled` choose which (`logging.shell.script.*` for
   startup scripts), and `logging.shell.enabled false` silences them with the log.
-- Agents driving the game inside herdr use one pane per workspace, labelled
-  `xsa-game` and found by that label in `herdr pane list`; if missing, they
-  create it as a sibling in the bottom 20% of the workspace
-  (`herdr pane split --direction down --ratio 0.8 --no-focus`, where the ratio
-  is the share kept by the split pane, then `herdr pane rename`). The pane only hosts the game: they launch it there with
-  `herdr pane run` (`mise run client -- --name agent-<workspace>`), and
-  every command, inside herdr or not, goes through
-  `mise run ipc --name agent-<workspace>`, never typed into the game's
-  stdin. The game stays running between tests: they restart it (`exit` over
-  IPC, then launch it again in the same pane) only to run an updated build,
-  and launch it when the pane has no game running. Outside herdr they launch
-  it themselves and stop it with `exit` when done. Other running games may be the
-  user's: never send them commands.
+
+## Testing
+
+### Launching
+
+- Launch the game with `mise run client [--release] -- --name agent-<workspace>`. Always name the instance, so IPC
+  can reach it.
+
+#### Inside herdr
+
+- Always start the game in a dedicated herdr pane with `herdr pane run`.
+- Reuse an existing pane found with `herdr pane list` when there is one; otherwise create it with
+  `herdr pane split --direction down --ratio 0.8 --no-focus`.
+- The pane is named `xsa-agent` (`herdr pane rename <pane_id> xsa-agent` after creating it). Never use an existing
+  pane that does not carry that name.
+- If the game is already running in the pane, send it `exit` and start a fresh instance.
+
+### IPC
+
+- Always interact with the game through the `mise run ipc` task, never through stdin.
+- Always pass `--name agent-<workspace>` so commands reach your own instance: other game instances may be running at
+  the same time.
+
+### Before testing
+
+Always bring the game to a stable state first:
+
+- A fresh instance starts on the main menu: enter the game with `ui push game`.
+- Pause time with `time pause`.
+- Set a specific time with `time set <datetime>`.
+- Disable animations with `config set animation.duration-scale 0`.
+- Disable player input, so it cannot interfere, with `config set input.enabled false`.
+- Show the debug overlay with `ui show debug-overlay` when needed.
+
+### Recording
+
+- `camera tp --help` explains how to move the camera.
+- Make the game window fullscreen before taking a snapshot, unless the test is about window sizing.
+- Capture the game with `camera snap`:
+  - `--output <path>` saves the snapshot to your scratchpad.
+  - `--region <region>` captures only part of the screen; leave it out to capture the entire screen.
+- When asked for a comparison, build a simple A/B comparison HTML page and open it automatically.
+
+### After testing
+
+- Inside herdr, leave the game running so I can try the implementation by hand; outside herdr, close it with `exit`.
+- Re-enable player input with `config set input.enabled true`.
 
 ## Dependencies and assets
 
