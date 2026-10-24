@@ -236,9 +236,19 @@ impl CameraController {
             || current.above_ground.unwrap_or(current.above_sea),
             |altitude| altitude.meters,
         );
-        // The overlay's yaw is counterclockwise; `--yaw` is a compass heading.
-        let yaw = command.yaw.map_or(-current.attitude.yaw, f64::to_radians);
-        let pitch = command.pitch.map_or(current.attitude.pitch, f64::to_radians);
+        // The debug camera never rolls, so the current view is kept by its direction: a compass heading and the angle
+        // above the horizon.
+        let forward = self.camera.orientation * DVec3::Y;
+        let current_up = (self.camera.position - world.body_state(index).position).normalize();
+        let current_north = world.local_north(index, current.latitude, current.longitude);
+        let current_east = current_north.cross(current_up);
+        let yaw = command.yaw.map_or_else(
+            || forward.dot(current_east).atan2(forward.dot(current_north)),
+            f64::to_radians,
+        );
+        let pitch = command
+            .pitch
+            .map_or_else(|| forward.dot(current_up).clamp(-1.0, 1.0).asin(), f64::to_radians);
 
         let state = world.body_state(index);
         let direction = DVec3::new(
