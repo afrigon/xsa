@@ -118,8 +118,8 @@ axial-tilt 23.4392811
 - **`luminosity`** (W) and **`effective-temperature`** (K), together and only
   on stars: the star's total radiated power and the temperature of the
   blackbody that matches it. Lighting derives from them: illuminance at any
-  distance, the star's surface brightness and its color. The first star in a
-  simulation is its light source.
+  distance, the star's surface brightness and its color. Every star in a
+  simulation lights it.
 - **`atmosphere`** (block, optional): the body's air. **`twilight-depression`**
   (°, above 0, optional) is how far the star sinks below the horizon before its
   light leaves the sky: dawn and dusk are when the star sits that far below it.
