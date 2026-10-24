@@ -1,9 +1,9 @@
-use crate::camera::{Attitude, CameraMode};
+use crate::camera::Attitude;
 
 // The camera's attitude against the ecliptic.
 pub struct CameraReading {
-    pub mode: CameraMode,
-    // Meters per second; the debug camera's only.
+    pub controls: &'static str,
+    // Meters per second, for controls that fly at a set speed.
     pub speed: Option<f64>,
     pub attitude: Attitude,
 }

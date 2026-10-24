@@ -1,15 +1,10 @@
 use usage::Subcommands;
 
-use super::{
-    CameraLookAtCommand, CameraModeCommand, CameraSnapCommand, CameraSpeedCommand, CameraTargetCommand,
-    CameraTeleportCommand,
-};
+use super::{CameraLookAtCommand, CameraSnapCommand, CameraSpeedCommand, CameraTargetCommand, CameraTeleportCommand};
 use crate::command::{Routable, Route};
 
 #[derive(Subcommands)]
 pub enum CameraAction {
-    /// Switch between the target camera and the debug fly camera
-    Mode(CameraModeCommand),
     /// Orbit a body: a body id, next, previous or parent
     Target(CameraTargetCommand),
     /// Stand the debug camera on a body at a latitude and longitude
@@ -25,7 +20,6 @@ pub enum CameraAction {
 impl Routable for CameraAction {
     fn route(self) -> Route {
         match self {
-            CameraAction::Mode(command) => command.route(),
             CameraAction::Target(command) => command.route(),
             CameraAction::Tp(command) => command.route(),
             CameraAction::LookAt(command) => command.route(),

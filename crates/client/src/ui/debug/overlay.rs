@@ -3,7 +3,6 @@ use xui::{Context, EdgeInsets, Text, View};
 
 use super::{CameraReading, ClockReading, PositionReading};
 use crate::BuildIdentity;
-use crate::camera::CameraMode;
 use crate::renderer::{FrameStatistics, TerrainLayer};
 use crate::ui::ThemedView;
 
@@ -74,9 +73,9 @@ impl DebugOverlayView {
         let Some(camera) = &self.camera else {
             return format!("camera: {MISSING}");
         };
-        let mode = match camera.mode {
-            CameraMode::Orbit => "orbit".to_string(),
-            CameraMode::Debug => format!("debug · {}/s", distance(camera.speed.unwrap_or_default())),
+        let mode = match camera.speed {
+            Some(speed) => format!("{} · {}/s", camera.controls, distance(speed)),
+            None => camera.controls.to_string(),
         };
         format!(
             "camera: {mode}\nrotation: yaw {} · pitch {} · roll {}",

@@ -1,5 +1,4 @@
 mod camera_look_at;
-mod camera_mode;
 mod camera_snap;
 mod camera_speed;
 mod camera_target;

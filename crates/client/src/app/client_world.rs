@@ -28,7 +28,7 @@ const MAIN_LENS: &str = "main";
 // Altitudes are read at the feet of a standing person, this far below the eyes.
 const EYE_HEIGHT_METERS: f64 = 1.8;
 
-pub(super) struct ClientWorld {
+pub(crate) struct ClientWorld {
     simulation_id: Id,
     simulation: Simulation,
     state: SimulationState,
@@ -295,7 +295,7 @@ impl ClientWorld {
     }
 
     // Wraps around the system; with a category, bodies of other categories are skipped.
-    pub fn step_body(
+    pub(super) fn step_body(
         &self,
         current: BodyIndex,
         step: BodyStep,

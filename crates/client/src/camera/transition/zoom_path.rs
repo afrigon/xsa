@@ -4,7 +4,7 @@ use super::view_point::ViewPoint;
 use super::zoom_path_shape::ZoomPathShape;
 
 // Smooth zoom-and-pan path from van Wijk & Nuij, "Smooth and efficient zooming and panning" (2003).
-pub(super) struct ZoomPath {
+pub struct ZoomPath {
     start: ViewPoint,
     offset: DVec3,
     curvature: f64,

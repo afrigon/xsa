@@ -16,8 +16,8 @@ mod ui;
 
 #[cfg(feature = "client")]
 pub use camera::{
-    CameraAction, CameraCommand, CameraLookAtCommand, CameraMode, CameraModeCommand, CameraSnapCommand,
-    CameraSpeedCommand, CameraTargetCommand, CameraTeleportCommand,
+    CameraAction, CameraCommand, CameraLookAtCommand, CameraSnapCommand, CameraSpeedCommand, CameraTargetCommand,
+    CameraTeleportCommand,
 };
 #[cfg(feature = "client")]
 pub use client_command::ClientCommand;
