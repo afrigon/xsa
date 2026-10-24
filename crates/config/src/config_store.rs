@@ -122,7 +122,30 @@ impl<T: ConfigSection + Default + Clone> ConfigStore<T> {
         Ok(())
     }
 
-    // Writes the saved values below the key into another file, relative to the key; the rest of that file is kept.
+    // Sets the session value of every key `change` changes in the typed config, each checked as `set` checks it.
+    pub fn update(&mut self, change: impl FnOnce(&mut T)) -> anyhow::Result<()> {
+        let mut changed = self.config.clone();
+        change(&mut changed);
+        let mut keys = KeyVisitor::default();
+        changed.visit(&mut keys);
+        let mut values = Vec::new();
+
+        for key in keys.into_keys() {
+            if self.key(&key.path).is_some_and(|current| current.value == key.value) {
+                continue;
+            }
+
+            let value = self.edit(&key.path, Edit::Assign(&key.value))?;
+            values.push((key.path, value));
+        }
+
+        if values.is_empty() {
+            return Ok(());
+        }
+
+        self.store(&values, false)
+    }
+
     pub fn export(&self, file: &Path, path: &str) -> anyhow::Result<usize> {
         let base = self.base(path);
         let mut target = ConfigLayer::read(file)?;
@@ -424,6 +447,35 @@ mod tests {
         store.set("video.stars", "off", false).unwrap();
         assert!(!store.config().stars);
         assert!(!store.path().exists());
+    }
+
+    #[test]
+    fn an_update_sets_the_session_value_of_the_keys_it_changes() {
+        let directory = TestDirectory::new("update");
+        let mut store = store(&directory, None);
+        store.update(|settings| settings.glow.strength = 0.5).unwrap();
+        assert_eq!(store.config().glow.strength, 0.5);
+
+        let tree = store.get("video").unwrap();
+        assert!(tree.contains("strength 0.5 // session"), "{tree}");
+        assert!(tree.contains("stars #true // default"), "{tree}");
+        assert!(!store.path().exists());
+    }
+
+    #[test]
+    fn an_update_out_of_range_changes_nothing() {
+        let directory = TestDirectory::new("update-range");
+        let mut store = store(&directory, None);
+        assert!(store.update(|settings| settings.glow.strength = -1.0).is_err());
+        assert_eq!(store.config(), &Settings::default());
+    }
+
+    #[test]
+    fn an_update_that_changes_nothing_stores_nothing() {
+        let directory = TestDirectory::new("update-none");
+        let mut store = store(&directory, None);
+        store.update(|_| {}).unwrap();
+        assert!(!store.get("video").unwrap().contains("session"));
     }
 
     #[test]
