@@ -1,3 +1,4 @@
+mod atmosphere;
 mod barycenter_node;
 mod body_description;
 mod body_node;

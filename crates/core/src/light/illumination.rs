@@ -85,6 +85,7 @@ mod tests {
                 radius,
                 gravitational_parameter: 0.0,
                 star,
+                atmosphere: None,
                 seed: Seed::from_id(id),
             });
             self.states.push(BodyState {

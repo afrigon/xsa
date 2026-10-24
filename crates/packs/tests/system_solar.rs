@@ -235,3 +235,19 @@ fn bodies_know_the_body_they_orbit() {
         assert_eq!(parent_path(&simulation, case.body), Some(expected), "{}", case.body);
     }
 }
+
+#[test]
+fn earth_has_civil_twilight_and_luna_no_atmosphere() {
+    let simulation = load();
+    let body = |id: &str| {
+        let id = BodyId {
+            value: format!("system-solar:{id}"),
+        };
+        simulation.body(simulation.find_body(&id).unwrap())
+    };
+    let twilight = body("earth")
+        .atmosphere
+        .and_then(|atmosphere| atmosphere.twilight_depression);
+    assert_eq!(twilight, Some(6.0_f64.to_radians()));
+    assert!(body("luna").atmosphere.is_none());
+}

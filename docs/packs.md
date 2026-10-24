@@ -120,6 +120,11 @@ axial-tilt 23.4392811
   blackbody that matches it. Lighting derives from them: illuminance at any
   distance, the star's surface brightness and its color. The first star in a
   simulation is its light source.
+- **`atmosphere`** (block, optional): the body's air. **`twilight-depression`**
+  (°, above 0, optional) is how far the star sinks below the horizon before its
+  light leaves the sky: dawn and dusk are when the star sits that far below it.
+  Without it, the sky goes dark at sunset, so dawn is sunrise and dusk is
+  sunset.
 - **`seed`** (integer, optional): where the body's seeded patterns start (its
   surfaces' tiling, the noise moving their handovers), so the same body looks the
   same on every run and every machine. Derived from the body's id when absent.

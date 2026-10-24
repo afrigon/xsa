@@ -3,3 +3,6 @@ radius 6371000
 gravitational-parameter 3.986004418e14
 rotation-period 86164.0905
 axial-tilt 23.4392811
+atmosphere {
+    twilight-depression 6
+}
