@@ -5,9 +5,15 @@ use bitcode::{Decode, Encode};
 use crate::session::SessionEnvironment;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
+/// Why a request was [`Forbidden`](super::RequestError::Forbidden): it is not open to this sender in this session.
 pub enum ForbiddenCause {
+    /// The sender has not joined the session, and only a [`JoinRequest`](super::JoinRequest) is open to it.
     NotJoined,
-    Unavailable { environment: SessionEnvironment },
+    /// The request is not available in this kind of session ([`RequestType::SESSION_ENVIRONMENTS`](super::RequestType::SESSION_ENVIRONMENTS)).
+    Unavailable {
+        /// The kind of session the request was sent to.
+        environment: SessionEnvironment,
+    },
 }
 
 impl fmt::Display for ForbiddenCause {

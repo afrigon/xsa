@@ -1,3 +1,5 @@
+//! The replicated state of the session's world.
+
 mod pack_reference;
 mod world_state;
 

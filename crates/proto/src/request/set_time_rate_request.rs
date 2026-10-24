@@ -5,7 +5,9 @@ use super::RequestType;
 use crate::session::SessionEnvironments;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
+/// Sets the configured rate simulation time runs at.
 pub struct SetTimeRateRequest {
+    /// The new rate: finite and at least 0.
     pub rate: TimeRate,
 }
 
