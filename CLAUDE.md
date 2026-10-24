@@ -45,6 +45,7 @@ Everything runs through mise; tools are pinned in `mise.toml`.
 | `mise run build [--release]` / `build-server` | Build everything / the server-only binary |
 | `mise run test` / `fmt` / `lint` | Unit tests / format (120 columns) / Clippy with warnings as errors, full and server-only builds |
 | `mise run shaders` | Compile the Slang shaders to SPIR-V and validate them |
+| `mise run docs [-- --open]` | Build (and open) the protocol reference from the `proto` crate's documentation |
 | `mise run generate -- <pack> [<argument> …]` | Generate a pack's assets and `LICENSE` from their sources with its `scripts/` (`system-solar [<recipe> …]`, `base-surfaces --density <texels per meter>`) |
 
 Before calling a change done: `fmt`, `lint` and `test` pass, and a run of the
@@ -78,7 +79,7 @@ define their settings through it.
 | `units` | Plain value types shared by every crate: simulation time, time rate |
 | `core` | The pure simulation: orbits, coordinate frames, bodies and their state, terrain heights over the pages a side holds (`HeightPages`) |
 | `packs` | Pack loading (see `docs/packs.md`): reads KDL content into `core` types and plain definitions, and a terrain's height pages (`HeightPageReader`) |
-| `proto` | Client ↔ server protocol: messages, events, connections, QUIC transport |
+| `proto` | Client ↔ server protocol (see Protocol): requests, replies, events, frames, the world state and users, connections and the QUIC transport, the client's session |
 | `commands` | Text commands: the command tree, routing, REPL, IPC, completion; the transcripts of IPC and startup scripts and the `logging` settings every process has |
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
 | `client` | The game: app, camera, input, config, renderer, Vulkan |
@@ -107,8 +108,8 @@ define their settings through it.
   client loads the same packs (refusing a version mismatch) and computes body
   positions from the orbits itself, so ticks carry only time.
 - **The server is the authority.** Every change to server state is a client
-  message; the server validates it, denies with a reason or applies it,
-  broadcasts the resulting event, then replies to the sender.
+  request; the server validates it, refuses it with a `RequestError` or applies it,
+  broadcasts the resulting events, then replies to the sender (see Protocol).
 - **One implementation per action.** Commands (REPL, IPC, in-game console, on
   client or server), UI and key bindings all invoke the same action, so
   behavior never depends on how it was triggered.
@@ -133,6 +134,37 @@ define their settings through it.
   directives (`warn,xsa_client=debug`). `-v` / `-vv` / `-vvv` / `-q` or `RUST_LOG` set it for the session only, a
   flag winning over the variable.
 
+## Protocol
+
+The `proto` crate defines it; `mise run docs -- --open` renders the reference from its documentation.
+
+- **Three kinds of traffic.** A client sends requests; the server sends snapshots, events and replies
+  (`ServerFrame`). A client changes its copy of the session (`SessionState`) only from snapshots and events, never
+  from replies.
+- **Every request gets one reply**, sent to its sender after the events the request caused, so the sender's state
+  already reflects the request when its reply arrives. A request with nothing to return replies `()`. A refusal is
+  a `RequestError` saying what the sender can do: `Invalid` (other arguments may succeed), `Forbidden` (the request
+  is not open to it in this session) or `Conflict` (the session's state refuses it).
+- **A request states its contract in its own file:** its `RequestType` names its reply type and the session
+  environments it is available in. `requests!` lists the requests and `Reply` lists the reply types; nothing else
+  pairs them.
+- **Events go to every connection that acts as an actor**, the one whose request caused them included. An event
+  never encodes who receives it: the server decides.
+- **Joining:** a client sends `JoinRequest` and receives a snapshot, the `UserJoinedEvent` announcing its user, then
+  a `JoinReply` naming that user. Until it joins, every other request is `Forbidden`.
+- **The operator never joins.** The dedicated server admits its own connection as `Peer::Operator` when it creates
+  it and sends it a snapshot. A client never claims who it is.
+- **Disconnecting:** either side closes a connection with a `DisconnectReason` (`Connection::close`,
+  `Listener::close`), carried as a QUIC close code; a connection that ends without one is `Lost`. A frame that fails
+  to decode closes the connection as a `ProtocolViolation`, logged at WARN. The server handles every disconnect
+  alike: it removes the user and broadcasts `UserLeftEvent`.
+- **Naming:** a request is a `<Name>Request`, an event a `<Name>Event` in the past tense and a reply a `<Name>Reply`,
+  each in its own file in `request/`, `event/` or `reply/`. Besides their dispatch enum, those modules hold only the
+  types of a request's contract (`RequestType`, `RequestId`, `RequestError`, `ForbiddenCause`). Requests say
+  **Set** for an absolute value and **Step** for a change relative to the server's value.
+- **Documentation:** every public type and field in `request`, `reply`, `event`, `frame`, `world` and `user` has a
+  doc comment; their `missing_docs` lint makes `lint` fail otherwise.
+
 ## Terms
 
 Names in code, data and documents use these words in these meanings only:
@@ -149,6 +181,20 @@ Names in code, data and documents use these words in these meanings only:
 - **Console:** the in-game console.
 - **Shell:** the terminal output of a process (the game, the dedicated server, `launchpad`).
 - **Launchpad:** the instance and pack manager for xsa.
+
+### Protocol
+
+- **Request:** what a client asks the server to do (`<Name>Request`).
+- **Reply:** the server's answer to one request, sent only to its sender: the request's typed reply, or a
+  `RequestError`.
+- **Event:** a fact the server announces, named in the past tense (`<Name>Event`).
+- **Snapshot:** the whole world state, sent to a client when it joins.
+- **Frame:** a value a connection carries: a `ClientFrame` (a request and its id) or a `ServerFrame` (a snapshot, an
+  event or a reply).
+- **User:** a person in a session.
+- **Actor:** who a connection acts as: a user, or the operator.
+- **Operator:** the dedicated server's own process, running the commands of its shell, IPC and startup scripts.
+- **Disconnect reason:** why a connection ended, whichever side ended it.
 
 ## Coordinates, units and precision
 
@@ -235,7 +281,7 @@ Names in code, data and documents use these words in these meanings only:
   `Mm` or `Gm` (case-sensitive), a bare number is km; speeds take `m/s`, `km/s`, `Mm/s` or `Gm/s`, a bare number
   is m/s; angles are degrees.
 - `time override <rate>` runs time at a rate without changing the configured one, until `time override none`; only
-  singleplayer allows it (a message's `session_environment`), and the pause menu stops time with one.
+  singleplayer allows it (its request's `SESSION_ENVIRONMENTS`), and the pause menu stops time with one.
 - Client commands may span frames: a handler returns `CommandProgress::Done`
   or a `CommandTask` that `App` polls once per frame after drawing, replying
   when it finishes. Commands that finish at once implement
