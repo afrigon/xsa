@@ -1,9 +1,10 @@
 use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::watch;
 use winit::event_loop::EventLoop;
 use xsa_commands::ipc::{IpcEndpoint, ProcessKind};
+use xsa_commands::logging::{LoggingConfig, ShellOutputs};
 use xsa_commands::repl::Repl;
 use xsa_commands::script::Script;
+use xsa_config::ConfigStore;
 use xsa_proto::connection::Connection;
 use xsa_proto::message::{ClientMessage, Join, Role};
 use xsa_proto::session::ServerSession;
@@ -11,7 +12,7 @@ use xsa_server::{Server, World};
 
 use crate::ClientOptions;
 use crate::app::App;
-use crate::document::ConfigDocument;
+use crate::config::Config;
 
 pub struct GameClient {
     options: ClientOptions,
@@ -24,7 +25,17 @@ impl GameClient {
 
     pub fn run(self) -> anyhow::Result<()> {
         let packs_directory = self.options.world.packs_directory.clone();
-        let config = ConfigDocument::load(ConfigDocument::default_path()?)?;
+        let config_path = match self.options.config {
+            Some(path) => path,
+            None => Config::default_path()?,
+        };
+        let mut config = ConfigStore::<Config>::load(config_path)?;
+
+        if let Some(filter) = &self.options.log_filter_override {
+            LoggingConfig::override_filter(&mut config, filter)?;
+        }
+
+        let shell_outputs = ShellOutputs::new(self.options.log_filter, &config.config().logging);
         let script = self.options.script.as_deref().map(Script::load).transpose()?;
         let connection = match self.options.remote {
             Some(remote) => Connection::remote(&remote.address, &remote.fingerprint)?,
@@ -38,16 +49,15 @@ impl GameClient {
         }))?;
 
         let (invocation_sender, invocations) = unbounded_channel();
-        let (ipc_transcript, ipc_transcript_receiver) = watch::channel(config.config().shell.ipc);
         let _endpoint = IpcEndpoint::spawn(
             self.options.name,
             ProcessKind::Client,
             invocation_sender.clone(),
-            ipc_transcript_receiver,
+            shell_outputs.ipc_transcript(),
         )?;
 
         if let Some(script) = script {
-            script.spawn(invocation_sender.clone())?;
+            script.spawn(invocation_sender.clone(), shell_outputs.script_transcript())?;
         }
 
         let _repl = Repl::spawn(invocation_sender)?;
@@ -55,7 +65,7 @@ impl GameClient {
         let mut app = App::new(
             session,
             invocations,
-            ipc_transcript,
+            shell_outputs,
             packs_directory,
             config,
             self.options.build,

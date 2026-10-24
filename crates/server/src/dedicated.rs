@@ -1,5 +1,7 @@
+mod dedicated_config;
 mod dedicated_options;
 
+pub use dedicated_config::DedicatedConfig;
 pub use dedicated_options::DedicatedOptions;
 
 use std::net::SocketAddr;
@@ -7,9 +9,11 @@ use std::thread;
 
 use anyhow::anyhow;
 use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::watch;
-use xsa_commands::ipc::{IpcEndpoint, IpcTranscript, ProcessKind};
+use xsa_commands::ipc::{IpcEndpoint, ProcessKind};
+use xsa_commands::logging::{LoggingConfig, ShellOutputs};
 use xsa_commands::repl::Repl;
+use xsa_commands::script::Script;
+use xsa_config::ConfigStore;
 use xsa_proto::connection::Connection;
 use xsa_proto::network::{Identity, Listener};
 use xsa_proto::session::SessionEnvironment;
@@ -32,6 +36,14 @@ impl DedicatedServer {
 
     async fn serve(self) -> anyhow::Result<()> {
         let options = self.options;
+        let mut config = ConfigStore::<DedicatedConfig>::load(options.config.clone())?;
+
+        if let Some(filter) = &options.log_filter_override {
+            LoggingConfig::override_filter(&mut config, filter)?;
+        }
+
+        let shell_outputs = ShellOutputs::new(options.log_filter.clone(), &config.config().logging);
+        let script = options.script.as_deref().map(Script::load).transpose()?;
         let world = World::load(&options.world)?;
         println!("simulation {}", world.simulation_id());
         let identity = Identity::load_or_generate(&options.identity)?;
@@ -50,15 +62,24 @@ impl DedicatedServer {
             .send(server_user_connection.link)
             .map_err(|_| anyhow!("the simulation thread stopped"))?;
         let (invocation_sender, invocations) = unbounded_channel();
-        let (_, ipc_transcript) = watch::channel(IpcTranscript::default());
         let _endpoint = IpcEndpoint::spawn(
             options.name,
             ProcessKind::Server,
             invocation_sender.clone(),
-            ipc_transcript,
+            shell_outputs.ipc_transcript(),
         )?;
+
+        if let Some(script) = script {
+            script.spawn(invocation_sender.clone(), shell_outputs.script_transcript())?;
+        }
+
         let _repl = Repl::spawn(invocation_sender)?;
-        let mut server_user = tokio::spawn(ServerUser::run(server_user_connection.connection, invocations));
+        let mut server_user = tokio::spawn(ServerUser::run(
+            server_user_connection.connection,
+            invocations,
+            config,
+            Box::new(move |config: &DedicatedConfig| shell_outputs.apply(&config.logging)),
+        ));
 
         loop {
             tokio::select! {

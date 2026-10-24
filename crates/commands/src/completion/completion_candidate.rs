@@ -1,8 +1,7 @@
 use bitcode::{Decode, Encode};
-#[cfg(feature = "client")]
 use usage::spec::Candidate;
+use xsa_config::ConfigKey;
 
-#[cfg(feature = "client")]
 use super::{CompletionKind, VALUES};
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq, Eq)]
@@ -24,12 +23,27 @@ impl CompletionCandidate {
         }
     }
 
-    #[cfg(feature = "client")]
+    // The keys of a config store and, scoped to each key, the values it completes.
+    pub fn config(kind: CompletionKind, keys: &[ConfigKey]) -> Vec<CompletionCandidate> {
+        match kind {
+            CompletionKind::ConfigKey => keys.iter().map(|key| CompletionCandidate::new(&key.path)).collect(),
+            CompletionKind::ConfigValue => keys
+                .iter()
+                .flat_map(|key| {
+                    key.completions.iter().map(|value| CompletionCandidate {
+                        scope: Some(key.path.clone()),
+                        ..CompletionCandidate::new(value)
+                    })
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
     pub(crate) fn known(kind: CompletionKind) -> Vec<CompletionCandidate> {
         VALUES.with_borrow(|known| known.get(&kind).cloned().unwrap_or_default())
     }
 
-    #[cfg(feature = "client")]
     pub(crate) fn to_candidate(&self) -> Candidate<'static> {
         let candidate = match &self.description {
             Some(description) => Candidate::described(self.value.clone(), description.clone()),

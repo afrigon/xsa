@@ -1,4 +1,5 @@
 use usage::Subcommands;
+use xsa_logging::{LogFilter, LogFilterHandle};
 
 #[cfg(feature = "client")]
 use crate::client_arguments::ClientArguments;
@@ -20,11 +21,11 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn run(self) -> anyhow::Result<()> {
+    pub fn run(self, log_filter: LogFilterHandle, log_filter_override: Option<LogFilter>) -> anyhow::Result<()> {
         match self {
             #[cfg(feature = "client")]
-            Command::Client(arguments) => arguments.run(),
-            Command::Server(arguments) => arguments.run(),
+            Command::Client(arguments) => arguments.run(log_filter, log_filter_override),
+            Command::Server(arguments) => arguments.run(log_filter, log_filter_override),
             Command::Ipc(arguments) => arguments.run(),
             Command::Completion(arguments) => arguments.run(),
         }

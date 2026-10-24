@@ -16,7 +16,7 @@ use xsa_logging::Logging;
 async fn main() -> ExitCode {
     let arguments = Arguments::parse();
     let verbosity = arguments.verbosity.verbosity();
-    Logging::new(verbosity).install(io::stderr);
+    Logging::new(arguments.verbosity.filter_override().unwrap_or_default()).install(io::stderr);
     let mut context = LaunchpadContext::new(Shell::new(verbosity));
 
     match arguments.command.handle(&mut context).await {

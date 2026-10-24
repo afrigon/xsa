@@ -107,13 +107,13 @@ impl ForwardPass {
 
     fn record_objects(&self, frame: &FrameContext) {
         let recorder = &frame.recorder;
-        recorder.set_wireframe(frame.render.wireframe);
+        recorder.set_wireframe(frame.config.debug.wireframe);
         recorder.bind_mesh(&self.vertex_buffer, &self.index_buffer);
 
         let drawn = self
             .pipelines
             .iter()
-            .filter(|(key, _)| ForwardPass::shows_views(key, frame.render));
+            .filter(|(key, _)| ForwardPass::shows_views(key, &frame.config.render));
 
         for (key, pipeline) in drawn {
             let mut bound = false;

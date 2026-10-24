@@ -2,18 +2,22 @@ use std::collections::HashMap;
 
 use resource_vulkan::ResourceLimits;
 use winit::keyboard::KeyCode;
-use xsa_commands::ipc::IpcTranscript;
+use xsa_commands::logging::LoggingConfig;
 
 use super::{
-    AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, InputConfig,
-    KeyChord, LensConfig, RenderConfig, ShellConfig, TerrainLodConfig, TerrainStreamingConfig, WhiteBalanceConfig,
+    AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, DebugConfig,
+    InputConfig, KeyChord, LensConfig, RenderConfig, ResourcesConfig, ServiceConfig, TerrainConfig, TerrainLodConfig,
+    TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
 
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
 const BLOOM_STRENGTH: f32 = 0.02;
-const ANIMATION_DURATION_SCALE: f32 = 1.0;
+const RUNNING_ANIMATIONS: AnimationGroupConfig = AnimationGroupConfig {
+    enabled: true,
+    duration_scale: 1.0,
+};
 const INPUT_ENABLED: bool = true;
 // A starting point to tune from, not a measured optimum.
 const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
@@ -69,39 +73,45 @@ const DEFAULT_BINDS: [DefaultBind; 7] = [
 impl Default for Config {
     fn default() -> Self {
         Config {
-            render: RenderConfig {
+            video: VideoConfig {
                 tonemapper: Some(Tonemapper::Agx),
                 stars: true,
+                antialiasing: Some(AntialiasingKind::Taa),
                 bloom: BloomConfig {
                     enabled: true,
                     strength: BLOOM_STRENGTH,
                 },
                 lens: LensConfig { enabled: true },
                 white_balance: WhiteBalanceConfig { enabled: true },
-                antialiasing: AntialiasingConfig {
-                    kind: Some(AntialiasingKind::Taa),
+            },
+            input: InputConfig {
+                enabled: INPUT_ENABLED,
+                bind: BindConfig {
+                    keys: DefaultBind::keys(),
                 },
-                wireframe: false,
-                shader_override: None,
-                terrain_shader_override: None,
-                surface_shader_override: None,
-                terrain_lod: TerrainLodConfig {
+            },
+            terrain: TerrainConfig {
+                lod: TerrainLodConfig {
                     vertex_spacing_pixels: TERRAIN_VERTEX_SPACING_PIXELS,
                     freeze: false,
                 },
+                streaming: TerrainStreamingConfig { freeze: false },
             },
-            bind: BindConfig {
-                keys: DefaultBind::keys(),
+            animation: AnimationConfig {
+                all: RUNNING_ANIMATIONS,
+                camera: RUNNING_ANIMATIONS,
+                ui: RUNNING_ANIMATIONS,
             },
-            animations: AnimationConfig {
-                duration_scale: ANIMATION_DURATION_SCALE,
+            service: ServiceConfig {
+                resources: ResourcesConfig::from_limits(ResourceLimits::default()),
             },
-            input: InputConfig { enabled: INPUT_ENABLED },
-            resources: ResourceLimits::default(),
-            terrain_streaming: TerrainStreamingConfig { freeze: false },
-            shell: ShellConfig {
-                ipc: IpcTranscript::default(),
+            render: RenderConfig {
+                shader_override: None,
+                terrain_shader_override: None,
+                surface_shader_override: None,
             },
+            debug: DebugConfig { wireframe: false },
+            logging: LoggingConfig::default(),
         }
     }
 }

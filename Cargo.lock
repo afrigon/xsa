@@ -3271,7 +3271,6 @@ dependencies = [
  "ash",
  "glam",
  "image",
- "kdl",
  "memory-vulkan",
  "render-graph-vulkan",
  "resource-loader",
@@ -3280,7 +3279,9 @@ dependencies = [
  "tracing",
  "winit",
  "xsa-commands",
+ "xsa-config",
  "xsa-core",
+ "xsa-logging",
  "xsa-packs",
  "xsa-proto",
  "xsa-server",
@@ -3304,10 +3305,21 @@ dependencies = [
  "tracing",
  "usage-rs",
  "windows-sys 0.61.2",
+ "xsa-config",
  "xsa-core",
+ "xsa-logging",
  "xsa-packs",
  "xsa-proto",
  "xsa-units",
+]
+
+[[package]]
+name = "xsa-config"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "kdl",
+ "tracing",
 ]
 
 [[package]]
@@ -3340,9 +3352,11 @@ dependencies = [
 name = "xsa-logging"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "tracing",
  "tracing-subscriber",
  "usage-rs",
+ "xsa-config",
 ]
 
 [[package]]
@@ -3381,7 +3395,9 @@ dependencies = [
  "tokio",
  "tracing",
  "xsa-commands",
+ "xsa-config",
  "xsa-core",
+ "xsa-logging",
  "xsa-packs",
  "xsa-proto",
  "xsa-units",

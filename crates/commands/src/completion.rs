@@ -6,7 +6,6 @@ mod command_completion;
 mod completion_candidate;
 mod completion_kind;
 mod completions;
-#[cfg(feature = "client")]
 mod config_completer;
 #[cfg(feature = "client")]
 mod target_completer;
@@ -19,7 +18,6 @@ pub use command_completion::CommandCompletion;
 pub use completion_candidate::CompletionCandidate;
 pub use completion_kind::CompletionKind;
 pub use completions::Completions;
-#[cfg(feature = "client")]
 pub(crate) use config_completer::{complete_config_key, complete_config_value};
 #[cfg(feature = "client")]
 pub(crate) use target_completer::complete_target;
