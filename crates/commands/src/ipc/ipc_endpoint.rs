@@ -9,8 +9,9 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::watch;
 
 use super::ipc_connection::IpcConnection;
-use super::{IpcTranscript, ProcessKind, platform};
+use super::{ProcessKind, platform};
 use crate::router::CommandInvocation;
+use crate::shell::Transcript;
 
 pub struct IpcEndpoint {
     #[cfg(unix)]
@@ -22,7 +23,7 @@ impl IpcEndpoint {
         name: Option<String>,
         kind: ProcessKind,
         invocations: UnboundedSender<CommandInvocation>,
-        transcript: watch::Receiver<IpcTranscript>,
+        transcript: watch::Receiver<Transcript>,
     ) -> anyhow::Result<IpcEndpoint> {
         let name = name.unwrap_or_else(|| kind.default_name());
         IpcEndpoint::validate_name(&name)?;

@@ -207,7 +207,7 @@ server's is `server`, and `--instance <name>` selects another.
 $HOME/xsa/instances/main/
   launchpad.kdl     the instance's manifest
   launchpad.lock    resolved releases
-  config.kdl        overrides of the global game config, optional
+  config.kdl        the instance's config file, optional
   packs/<pack>/     installed packs
   saves/
   identity/         the dedicated server's certificate and key
@@ -278,8 +278,12 @@ Once synced, an instance runs without a network connection.
 
 ## Config
 
-The game's config (`$XDG_CONFIG_HOME/xsa/config.kdl`) applies to every
-instance; an instance's `config.kdl` overrides individual keys.
+An instance's `config.kdl`, when it exists, is the config file in effect for
+that instance, for the game and the dedicated server alike. It replaces the
+user's config (`$XDG_CONFIG_HOME/xsa/config.kdl`) entirely, with no layering;
+an instance without one uses the user's. `--save` writes to the file in
+effect, and `config save <instance>/config.kdl` starts an instance's file from
+the user's saved settings.
 
 `launchpad`'s own settings live in `$XDG_CONFIG_HOME/xsa/launchpad.kdl` (falling
 back to `~/.config/xsa/launchpad.kdl`): the instances directory and repositories

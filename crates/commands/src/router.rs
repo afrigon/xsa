@@ -72,7 +72,7 @@ impl CommandRouter {
         let route = command.route();
         let joined = executor.session().state().is_some();
 
-        if !joined && !matches!(route, Route::Exit) {
+        if !joined && !matches!(route, Route::Exit | Route::Local(_)) {
             self.waiting_for_join.push(Waiting { route, reply });
 
             return;
@@ -99,6 +99,7 @@ impl CommandRouter {
 
                 return;
             }
+            Route::Local(command) => executor.run_local(command),
             Route::Server(command) => {
                 let message = command.message();
                 let refusal = executor
@@ -167,6 +168,7 @@ mod tests {
     use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateChange};
 
     use super::*;
+    use crate::command::LocalCommand;
 
     struct FakeExecutor {
         session: ServerSession,
@@ -180,6 +182,10 @@ mod tests {
 
         fn exit(&mut self) {
             self.exited = true;
+        }
+
+        fn run_local(&mut self, _command: LocalCommand) -> Output {
+            Output::failure("no config in this test")
         }
     }
 

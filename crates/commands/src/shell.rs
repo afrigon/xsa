@@ -1,6 +1,8 @@
 mod shell_log;
+mod transcript;
 
 pub use shell_log::ShellLog;
+pub use transcript::Transcript;
 
 use std::io::{self, Write};
 use std::sync::Mutex;

@@ -80,7 +80,7 @@ use resource_vulkan::{Residency, ResourceHandle, Resources};
 use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
-use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig, TerrainStreamingConfig};
+use crate::config::{AntialiasingKind, Config};
 use crate::resource_kinds::{LensGhost, LensStarburst};
 use crate::vulkan::Swapchain;
 use capture_readback::{BYTES_PER_PIXEL, CaptureReadback};
@@ -145,7 +145,7 @@ const HOST_READABLE: BufferState = BufferState {
 
 pub struct Renderer {
     scene: Scene,
-    render: RenderConfig,
+    config: Config,
     exposure: AutoExposure,
     white_balance: WhiteBalance,
     illuminance: Option<f32>,
@@ -224,7 +224,7 @@ impl Renderer {
 
         Ok(Self {
             scene: Scene::default(),
-            render: config.render.clone(),
+            config: config.clone(),
             exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
             white_balance: WhiteBalance::new(),
             illuminance: None,
@@ -292,25 +292,21 @@ impl Renderer {
         self.user_interface = draw_list;
     }
 
-    pub fn configure(
-        &mut self,
-        render: &RenderConfig,
-        animations: &AnimationConfig,
-        terrain_streaming: &TerrainStreamingConfig,
-    ) {
-        self.render = render.clone();
-        self.terrain_residency = if terrain_streaming.freeze {
+    pub fn configure(&mut self, config: &Config) {
+        self.config = config.clone();
+        self.terrain_residency = if config.terrain.streaming.freeze {
             Residency::Frozen
         } else {
             Residency::Live
         };
-        self.exposure.configure(animations.duration_scale);
-        self.white_balance.configure(animations.duration_scale);
-        self.star_visibility.configure(animations.duration_scale);
+        let adaptation_duration_scale = config.animation.camera_duration_scale();
+        self.exposure.configure(adaptation_duration_scale);
+        self.white_balance.configure(adaptation_duration_scale);
+        self.star_visibility.configure(adaptation_duration_scale);
 
-        if render.wireframe && !self.supports_wireframe() {
+        if config.debug.wireframe && !self.supports_wireframe() {
             tracing::warn!("wireframe is unsupported by this device");
-            self.render.wireframe = false;
+            self.config.debug.wireframe = false;
         }
     }
 
@@ -321,7 +317,7 @@ impl Renderer {
 
     // Frames to render after a change before the image reflects it: temporal effects carry earlier frames forward.
     fn settling_frames(&self) -> u32 {
-        let antialiasing = match self.render.antialiasing.kind {
+        let antialiasing = match self.config.video.antialiasing {
             Some(AntialiasingKind::Taa) => TaaPass::settling_frames(),
             _ => 0,
         };
@@ -394,7 +390,7 @@ impl Renderer {
         }
 
         self.poll_uploads()?;
-        self.passes.ensure_pipelines(&self.gpu, &self.render)?;
+        self.passes.ensure_pipelines(&self.gpu, &self.config)?;
         self.ensure_object_capacity()?;
         self.ensure_star_capacity()?;
         self.ensure_light_capacity()?;
@@ -434,7 +430,7 @@ impl Renderer {
     }
 
     fn render_frame(&mut self, camera: &Camera, output: FrameOutput) -> anyhow::Result<()> {
-        if self.render.antialiasing.kind != Some(AntialiasingKind::Taa) {
+        if self.config.video.antialiasing != Some(AntialiasingKind::Taa) {
             self.temporal.reset();
         }
 
@@ -599,7 +595,7 @@ impl Renderer {
         let unjittered_view_projection = clip_from_view * camera.view_rotation();
         self.temporal
             .begin_frame(unjittered_view_projection, self.exposure.exposure(), camera.position);
-        let jitter = if self.render.antialiasing.kind == Some(AntialiasingKind::Taa) {
+        let jitter = if self.config.video.antialiasing == Some(AntialiasingKind::Taa) {
             self.temporal.jitter(extent)
         } else {
             Vec2::ZERO
@@ -618,12 +614,16 @@ impl Renderer {
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             jitter,
             exposure: self.exposure.exposure(),
-            tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
+            tonemapper: self
+                .config
+                .video
+                .tonemapper
+                .map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
-            vertex_spacing_angle: self.render.terrain_lod.vertex_spacing_pixels / self.focal_length_pixels,
+            vertex_spacing_angle: self.config.terrain.lod.vertex_spacing_pixels / self.focal_length_pixels,
             pixel_angle: self.focal_length_pixels.recip(),
             padding: [0; 3],
-            white_balance: self.white_balance.rows(self.render.white_balance.enabled),
+            white_balance: self.white_balance.rows(self.config.video.white_balance.enabled),
         };
 
         self.object_data.clear();
@@ -692,7 +692,7 @@ impl Renderer {
             }
         }
 
-        if !self.render.terrain_lod.freeze {
+        if !self.config.terrain.lod.freeze {
             self.select_tiles(camera);
         }
 
@@ -715,7 +715,7 @@ impl Renderer {
         DetailRanges::new(
             radius,
             f64::from(self.focal_length_pixels),
-            f64::from(self.render.terrain_lod.vertex_spacing_pixels),
+            f64::from(self.config.terrain.lod.vertex_spacing_pixels),
         )
     }
 
@@ -932,7 +932,7 @@ impl Renderer {
             projected_light_count: self.projected_light_data.len() as u32,
             lens_loaded: self.lens.as_ref().and_then(Lens::flare).is_some(),
         };
-        self.passes.add_to(&mut graph, &self.render, inputs);
+        self.passes.add_to(&mut graph, &self.config, inputs);
         let compiled = graph.compile()?;
         self.graph_textures
             .register(bindless, compiled.graph(), compiled.created_images())?;
@@ -942,7 +942,7 @@ impl Renderer {
             frame_slot: self.frame_index,
             textures: &self.graph_textures,
             temporal: &self.temporal,
-            render: &self.render,
+            config: &self.config,
             scene: &self.scene,
             materials: &self.materials,
             lens: self.lens.as_ref().and_then(Lens::flare),

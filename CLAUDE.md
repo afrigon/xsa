@@ -70,6 +70,8 @@ enables only the kinds it reads, and `utils` holds the value types they share
 that produce them. `resource-vulkan` depends on no xsa crate
 either, only on `memory-vulkan` and `resource-loader`: the client adds its own
 kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
+`config` depends on no xsa crate: `logging`, `commands`, `server` and `client`
+define their settings through it.
 
 | Crate | Responsibility |
 | --- | --- |
@@ -77,12 +79,13 @@ kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
 | `core` | The pure simulation: orbits, coordinate frames, bodies and their state, terrain heights over the pages a side holds (`HeightPages`) |
 | `packs` | Pack loading (see `docs/packs.md`): reads KDL content into `core` types and plain definitions, and a terrain's height pages (`HeightPageReader`) |
 | `proto` | Client ↔ server protocol: messages, events, connections, QUIC transport |
-| `commands` | Text commands: the command tree, routing, REPL, IPC, completion |
+| `commands` | Text commands: the command tree, routing, REPL, IPC, completion; the transcripts of IPC and startup scripts and the `logging` settings every process has |
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
-| `client` | The game: app, camera, input, config, config documents, renderer, Vulkan |
+| `client` | The game: app, camera, input, config, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
 | `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), the converter of terrain layers into `.terrain` files (`terrain create`), their inspector (`terrain inspect`) and their extractor back to KTX2 (`terrain extract`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
-| `logging` | The verbosity flags (`-v`, `-q`) and the `tracing` subscriber shared by `xsa` and `launchpad` |
+| `logging` | The verbosity flags (`-v`, `-q`), the log filter (a config value) and the `tracing` subscriber shared by `xsa` and `launchpad`, whose filter can change while the process runs |
+| `config` | Config stores (see Config): the session and saved layers over a KDL file, sections that name each key once (`ConfigSection`), value types (`ConfigValue`, `ConfigChoice`) |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains; `terrain` defines the `.terrain` format (pages of a cube map at every level) and reads it |
@@ -126,9 +129,9 @@ kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
 - **Networking:** QUIC on UDP 1969. The dedicated server generates a
   self-signed identity in `.xsa/server/` and prints its fingerprint; clients
   pin it with `--fingerprint` (the SSH model).
-- **Logging:** diagnostics go through `tracing`: WARN by default, `-v` / `-vv` /
-  `-vvv` / `-q` to change it, `RUST_LOG` to filter per crate
-  (`RUST_LOG=xsa_client=debug`).
+- **Logging:** diagnostics go through `tracing`, filtered by `logging.filter`: WARN by default, a level or per-crate
+  directives (`warn,xsa_client=debug`). `-v` / `-vv` / `-vvv` / `-q` or `RUST_LOG` set it for the session only, a
+  flag winning over the variable.
 
 ## Terms
 
@@ -246,16 +249,18 @@ Names in code, data and documents use these words in these meanings only:
   scene, then renders a frame of its own, copies it back from the GPU and
   writes a PNG before it replies (the game pauses while it encodes). Without
   `--output` it goes to `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. It
-  does not wait for animations: set `animations.duration-scale 0` first so
+  does not wait for animations: set `animation.duration-scale 0` first so
   camera transitions, eye adaptation and interface transitions finish at once.
-- `xsa client --script <path>` runs a file of commands at startup, one per line (`#` starts a comment), each
-  waiting for the previous one's reply; results are logged, and the first failure skips the rest. `init.xsa` is the
-  repository's development setup: `mise run client -- --script init.xsa`.
+- `xsa client --script <path>` and `xsa server --script <path>` run a file of commands at startup, one per line (`#`
+  starts a comment), each waiting for the previous one's reply; each command and its reply are printed to the shell
+  under its `path:line`, and the first failure skips the rest. `init.xsa` is the repository's development setup:
+  `mise run client -- --script init.xsa`.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
 - Commands received over IPC and their replies are printed to the shell, each pair under one sequence number;
-  `shell.ipc.enabled`, `shell.ipc.input.enabled` and `shell.ipc.output.enabled` choose which.
+  `logging.shell.ipc.enabled`, `.input.enabled` and `.output.enabled` choose which (`logging.shell.script.*` for
+  startup scripts), and `logging.shell.enabled false` silences them with the log.
 
 ## Testing
 
@@ -286,7 +291,7 @@ Always bring the game to a stable state first:
 - A fresh instance starts on the main menu: enter the game with `ui push game`.
 - Pause time with `time pause`.
 - Set a specific time with `time set <datetime>`.
-- Disable animations with `config set animations.duration-scale 0`.
+- Disable animations with `config set animation.duration-scale 0`.
 - Disable player input, so it cannot interfere, with `config set input.enabled false`.
 - Show the debug overlay with `ui show debug-overlay` when needed.
 
@@ -324,20 +329,27 @@ Always bring the game to a stable state first:
 
 ## Config
 
-- The client's settings live in `$XDG_CONFIG_HOME/xsa/config.kdl` (falling back
-  to `~/.config/xsa/config.kdl`), read at startup and by `config reload`.
-  Dotted keys are nested nodes: `render.bloom.enabled` is
-  `render { bloom { enabled #false } }`. A repeated block is read last-wins.
-- Two models: `crates/client/src/document/config/` holds the document models (KDL,
-  key paths, text values, every `ConfigKey`), `crates/client/src/config/` the runtime
-  `Config` the renderer and input read. Converting a document into the runtime
-  model fills in the defaults, all of which live in `config/default_config.rs`.
-- `config set|toggle` edit the document and rebuild `Config`; `--save` and
-  `config save` write the file non-destructively (comments and layout kept,
-  defaults removed rather than written). Session keys (`ConfigKey::session`:
-  tuning and debug settings) last only for the session: never saved, and
-  ignored in the file so players cannot set them.
-- Binds are `bind.<category>.<action>` keys holding a key chord (`f4`,
+- Each process has one config tree and one file, `config.kdl`: the game's is `$XDG_CONFIG_HOME/xsa/config.kdl`
+  (falling back to `~/.config/xsa/config.kdl`), the dedicated server's `.xsa/server/config.kdl`; `--config <path>`
+  picks another. The file in effect is logged at INFO when the process starts. Dotted keys are nested nodes:
+  `video.bloom.enabled` is `video { bloom { enabled #false } }`. A repeated block is read last-wins.
+- Keys are grouped by topic, never by owner: the game has its own sections (`video`, `input`, `terrain`,
+  `animation`, `service`, `render`, `debug`) and, like every process, `logging`. No key is inherently saved or
+  temporary.
+- A value is its session value, else its saved value (the file in effect), else its default. `config set`, `toggle`
+  and `unset` change the session value; with `--save` they change the saved value and write the file in effect
+  instead, keeping its comments and layout. A file holds every key that was saved, defaults included; `unset`
+  returns a key, or every key below it, to its default.
+- `config get [<key>]` shows a value, or the tree below a node (the whole tree without a key) with each value marked
+  session, saved or default; `--schema` shows each key's type (`<bool>`), whether it is optional and its default
+  instead. `config save <path> [--key <key>]` exports the saved values; `config load [--save] [<path>]
+  [--key <key>]` overlays a file onto the session (or saved) values, or reads the file in effect again without a
+  path. Exported and loaded files are relative to `--key`.
+- Config commands run in the process that receives them (`Route::Local`), through its `ConfigStore`.
+- A section implements `ConfigSection`: one `visit` pairs each key with its field, which reads, writes, lists and
+  edits it, so adding a key touches only its section. The root (`crates/client/src/config.rs`,
+  `DedicatedConfig`) places each section in the tree; the game's defaults all live in `config/default_config.rs`.
+- Binds are `input.bind.<category>.<action>` keys holding a key chord (`f4`,
   `shift+tab`, `` ` ``). Each action runs a typed action directly (the same
   command structs the text commands parse into), never command text.
 
@@ -347,7 +359,7 @@ The game starts in the main menu. In game, right-drag orbits the target and
 scroll zooms; the debug camera (`camera mode debug`) flies with WASD,
 Space/Shift and mouse look (click to capture), and scroll sets its speed. The
 camera gets input only while the game view controller is on top; menus release the
-mouse. Debug toggles are commands (`config toggle render.stars`,
+mouse. Debug toggles are commands (`config toggle video.stars`,
 `config set render.shader.override normals`, …), not binds. The default binds:
 
 | Key | Bind | Action |

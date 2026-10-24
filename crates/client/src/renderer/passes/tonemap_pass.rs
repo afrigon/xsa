@@ -75,7 +75,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for TonemapPass {
         inputs: &TonemapInputs,
     ) -> Result<(), PassError> {
         let (bloom_texture, bloom_strength) = match inputs.bloom {
-            Some(bloom) => (frame.texture(pass, bloom), frame.render.bloom.strength),
+            Some(bloom) => (frame.texture(pass, bloom), frame.config.video.bloom.strength),
             None => (UNSAMPLED_BLOOM_TEXTURE, NO_BLOOM_STRENGTH),
         };
         let lens_texture = inputs.lens.map_or(NO_TEXTURE, |lens| frame.texture(pass, lens));

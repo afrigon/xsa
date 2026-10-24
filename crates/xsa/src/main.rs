@@ -18,7 +18,8 @@ use xsa_logging::Logging;
 
 fn main() -> anyhow::Result<()> {
     let arguments = Arguments::parse();
-    Logging::new(arguments.verbosity.verbosity()).install(ShellLog::writer);
+    let log_filter_override = arguments.verbosity.filter_override();
+    let log_filter = Logging::new(log_filter_override.clone().unwrap_or_default()).install(ShellLog::writer);
 
-    arguments.command.run()
+    arguments.command.run(log_filter, log_filter_override)
 }
