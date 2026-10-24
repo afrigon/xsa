@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use xsa_proto::event::{Event, TickEvent, TimeChangedEvent, UserLeftEvent};
-use xsa_proto::frame::{ClientFrame, ServerFrame};
-use xsa_proto::network::Connection;
+use xsa_proto::frame::ServerFrame;
+use xsa_proto::network::{Connection, DisconnectReason};
 use xsa_proto::reply::Reply;
 use xsa_proto::request::{ForbiddenCause, Request, RequestError};
 use xsa_proto::session::SessionEnvironment;
@@ -101,32 +101,15 @@ impl Server {
 
     fn handle_frames(&mut self) {
         for client in 0..self.clients.len() {
-            while let Some(frame) = self.receive(client) {
+            while let Some(frame) = self.clients[client].receive() {
                 let result = self.handle(client, frame.request);
                 self.send(client, ServerFrame::Reply { id: frame.id, result });
             }
         }
     }
 
-    fn receive(&mut self, client: usize) -> Option<ClientFrame> {
-        let client = &mut self.clients[client];
-
-        if !client.connected {
-            return None;
-        }
-
-        match client.link.client_frames.try_recv() {
-            Ok(frame) => Some(frame),
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                client.connected = false;
-                None
-            }
-        }
-    }
-
     fn handle(&mut self, client: usize, request: Request) -> Result<Reply, RequestError> {
-        let needs_actor = !matches!(request, Request::Join(_) | Request::Leave(_));
+        let needs_actor = !matches!(request, Request::Join(_));
 
         if needs_actor && self.clients[client].actor.is_none() {
             return Err(RequestError::Forbidden {
@@ -138,7 +121,6 @@ impl Server {
 
         match request {
             Request::Join(request) => request.handle(self, client).map(Reply::from),
-            Request::Leave(request) => request.handle(self, client).map(Reply::from),
             Request::SetTime(request) => request.handle(self, client).map(Reply::from),
             Request::StepTime(request) => request.handle(self, client).map(Reply::from),
             Request::SetTimeRate(request) => request.handle(self, client).map(Reply::from),
@@ -160,36 +142,34 @@ impl Server {
     }
 
     fn send(&mut self, client: usize, frame: ServerFrame) {
-        let client = &mut self.clients[client];
-
-        if client.connected && client.link.server_frames.send(frame).is_err() {
-            client.connected = false;
-        }
+        self.clients[client].send(frame);
     }
 
     fn broadcast(&mut self, event: &Event) {
-        for client in &mut self.clients {
-            if client.connected
-                && client.actor.is_some()
-                && client
-                    .link
-                    .server_frames
-                    .send(ServerFrame::Event(event.clone()))
-                    .is_err()
-            {
-                client.connected = false;
-            }
+        for client in self.clients.iter_mut().filter(|client| client.actor.is_some()) {
+            client.send(ServerFrame::Event(event.clone()));
         }
     }
 
     fn remove_disconnected(&mut self) {
-        while let Some(index) = self.clients.iter().position(|client| !client.connected) {
+        while let Some(index) = self.clients.iter().position(|client| client.disconnected.is_some()) {
             let client = self.clients.remove(index);
 
-            if let Some(Actor::User(user)) = client.actor {
+            if let Some(reason) = client.disconnected {
+                self.disconnect(client.actor, &reason);
+            }
+        }
+    }
+
+    fn disconnect(&mut self, actor: Option<Actor>, reason: &DisconnectReason) {
+        match actor {
+            Some(Actor::User(user)) => {
+                tracing::info!("user {} disconnected: {reason}", user.value);
                 self.users.retain(|joined| joined.id != user);
                 self.broadcast(&Event::UserLeft(UserLeftEvent { user }));
             }
+            Some(Actor::Operator) => tracing::info!("the operator disconnected: {reason}"),
+            None => tracing::info!("a client disconnected before joining: {reason}"),
         }
     }
 }
@@ -199,10 +179,11 @@ mod tests {
     use std::path::PathBuf;
 
     use xsa_proto::event::UserJoinedEvent;
+    use xsa_proto::frame::ClientFrame;
     use xsa_proto::reply::JoinReply;
     use xsa_proto::request::{
-        JoinRequest, LeaveRequest, RequestId, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest,
-        StepTimeRateRequest, StepTimeRequest,
+        JoinRequest, RequestId, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest,
+        StepTimeRequest,
     };
     use xsa_proto::user::UserId;
     use xsa_units::{SimulationTime, TimeFlow, TimeRate, TimeRateStep};
@@ -522,7 +503,9 @@ mod tests {
         assert_eq!(drain(&mut first), joined);
         assert_eq!(drain(&mut operator), joined);
 
-        harness.send(&second, Request::Leave(LeaveRequest));
+        drop(second);
+        harness.server.handle_frames();
+        harness.server.remove_disconnected();
         let left = vec![event(Event::UserLeft(UserLeftEvent { user: grace.id }))];
         assert_eq!(drain(&mut first), left);
         assert_eq!(drain(&mut operator), left);

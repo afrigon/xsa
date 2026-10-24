@@ -15,7 +15,7 @@ use xsa_commands::repl::Repl;
 use xsa_commands::script::Script;
 use xsa_config::ConfigStore;
 use xsa_proto::network::Connection;
-use xsa_proto::network::{Identity, Listener};
+use xsa_proto::network::{DisconnectReason, Identity, Listener};
 use xsa_proto::session::SessionEnvironment;
 
 use crate::operator::Operator;
@@ -81,11 +81,11 @@ impl DedicatedServer {
             Box::new(move |config: &DedicatedConfig| shell_outputs.apply(&config.logging)),
         ));
 
-        loop {
+        let stopped = loop {
             tokio::select! {
                 pending = listener.accept() => {
                     let Some(pending) = pending else {
-                        break;
+                        break Ok(());
                     };
                     let peers = peers.clone();
 
@@ -101,18 +101,14 @@ impl DedicatedServer {
                         }
                     });
                 }
-                _ = tokio::signal::ctrl_c() => {
-                    tracing::info!("shutting down");
-                    break;
-                }
-                result = &mut operator => {
-                    result??;
-                    tracing::info!("shutting down");
-                    break;
-                }
+                _ = tokio::signal::ctrl_c() => break Ok(()),
+                result = &mut operator => break result.map_err(anyhow::Error::from).and_then(|stopped| stopped),
             }
-        }
+        };
 
-        Ok(())
+        tracing::info!("shutting down");
+        listener.close(DisconnectReason::ServerStopped).await;
+
+        stopped
     }
 }

@@ -1,6 +1,5 @@
 mod forbidden_cause;
 mod join_request;
-mod leave_request;
 mod request_error;
 mod request_id;
 mod request_type;
@@ -12,7 +11,6 @@ mod step_time_request;
 
 pub use forbidden_cause::ForbiddenCause;
 pub use join_request::JoinRequest;
-pub use leave_request::LeaveRequest;
 pub use request_error::RequestError;
 pub use request_id::RequestId;
 pub use request_type::RequestType;
@@ -45,7 +43,6 @@ macro_rules! requests {
 
 requests! {
     Join(JoinRequest),
-    Leave(LeaveRequest),
     SetTime(SetTimeRequest),
     StepTime(StepTimeRequest),
     SetTimeRate(SetTimeRateRequest),

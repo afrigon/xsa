@@ -163,7 +163,7 @@ impl CommandRouter {
 mod tests {
     use xsa_proto::event::{Event, TimeChangedEvent};
     use xsa_proto::frame::ClientFrame;
-    use xsa_proto::network::{ClientLink, Connection};
+    use xsa_proto::network::{ClientLink, Connection, Received};
     use xsa_proto::reply::{JoinReply, Reply};
     use xsa_proto::request::{
         JoinRequest, Request, RequestError, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest, StepTimeRequest,
@@ -245,7 +245,7 @@ mod tests {
         }
 
         fn deliver(&mut self, frame: ServerFrame) {
-            self.link.server_frames.send(frame).unwrap();
+            self.link.server_frames.send(Received::Frame(frame)).unwrap();
 
             while let Some(frame) = self.executor.session.poll().unwrap() {
                 self.router.handle_frame(&frame, &self.executor.session);
@@ -267,7 +267,10 @@ mod tests {
         }
 
         fn sent(&mut self) -> ClientFrame {
-            self.link.client_frames.try_recv().unwrap()
+            let Ok(Received::Frame(frame)) = self.link.client_frames.try_recv() else {
+                panic!("no frame was sent");
+            };
+            frame
         }
     }
 

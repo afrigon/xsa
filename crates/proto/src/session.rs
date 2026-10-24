@@ -6,10 +6,10 @@ pub use session_environment::SessionEnvironment;
 pub use session_environments::SessionEnvironments;
 pub use session_state::SessionState;
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 
 use crate::frame::{ClientFrame, ServerFrame};
-use crate::network::Connection;
+use crate::network::{Connection, DisconnectReason};
 use crate::reply::Reply;
 use crate::request::{JoinRequest, Request, RequestId};
 use crate::user::Actor;
@@ -59,7 +59,7 @@ impl ServerSession {
     }
 
     pub fn poll(&mut self) -> anyhow::Result<Option<ServerFrame>> {
-        let frame = self.connection.poll()?;
+        let frame = self.connection.poll().context("disconnected from the server")?;
 
         if let Some(frame) = &frame {
             self.apply(frame)?;
@@ -68,8 +68,16 @@ impl ServerSession {
         Ok(frame)
     }
 
+    pub fn close(&mut self, reason: DisconnectReason) {
+        self.connection.close(reason);
+    }
+
     pub async fn receive(&mut self) -> anyhow::Result<ServerFrame> {
-        let frame = self.connection.receive().await?;
+        let frame = self
+            .connection
+            .receive()
+            .await
+            .context("disconnected from the server")?;
         self.apply(&frame)?;
 
         Ok(frame)

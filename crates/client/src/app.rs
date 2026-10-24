@@ -35,7 +35,7 @@ use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, Com
 use xsa_config::ConfigStore;
 use xsa_packs::PackStack;
 use xsa_proto::frame::ServerFrame;
-use xsa_proto::request::{LeaveRequest, Request};
+use xsa_proto::network::DisconnectReason;
 use xsa_proto::session::{ServerSession, SessionState};
 use xsa_proto::world::WorldState;
 use xui::{
@@ -479,7 +479,7 @@ impl App {
             App::finish(Err(anyhow::anyhow!("the game is exiting")), running.reply);
         }
 
-        let _ = self.session.send(Request::Leave(LeaveRequest));
+        self.session.close(DisconnectReason::Left);
         event_loop.exit();
     }
 

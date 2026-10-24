@@ -47,11 +47,13 @@ impl RemoteConnection {
                     match RemoteConnection::open(socket_address, expected).await {
                         Ok(remote) => {
                             let _ = ready_sender.send(Ok(()));
-                            let _endpoint = remote.endpoint;
-                            let _connection = remote.connection;
-                            let _ = StreamPump::new(remote.send, remote.receive)
+                            // Holding a sender keeps `Connection::close` waiting until the close is flushed.
+                            let close_pending = link.server_frames.clone();
+                            StreamPump::new(remote.connection, remote.send, remote.receive)
                                 .run(link.client_frames, link.server_frames)
                                 .await;
+                            remote.endpoint.wait_idle().await;
+                            drop(close_pending);
                         }
                         Err(err) => {
                             let _ = ready_sender.send(Err(err));
