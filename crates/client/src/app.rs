@@ -37,6 +37,7 @@ use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
 use xsa_config::ConfigStore;
+use xsa_input::{InputEvent, InputEventKind, InputSource};
 use xsa_packs::PackStack;
 use xsa_proto::frame::ServerFrame;
 use xsa_proto::network::DisconnectReason;
@@ -50,7 +51,7 @@ use xui::{
 use crate::BuildIdentity;
 use crate::camera::CameraSwitch;
 use crate::config::Config;
-use crate::input::{Input, InputEvent, InputEventKind, InputSource};
+use crate::input::Input;
 use crate::renderer::{FrameTarget, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
 use crate::ui::{

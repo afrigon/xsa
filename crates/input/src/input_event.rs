@@ -1,4 +1,4 @@
-use crate::input::{InputEventKind, InputSource};
+use crate::{InputEventKind, InputSource};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InputEvent {

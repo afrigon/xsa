@@ -1,7 +1,7 @@
 use xsa_config::{ConfigSection, ConfigVisitor};
+use xsa_input::{InputEvent, InputSource};
 
 use super::{BindConfig, InputSourceConfig};
-use crate::input::{InputEvent, InputSource};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InputConfig {
@@ -46,11 +46,9 @@ impl ConfigSection for InputConfig {
 
 #[cfg(test)]
 mod tests {
-    use winit::keyboard::KeyCode;
-
     use super::*;
     use crate::config::Config;
-    use crate::input::{InputButton, InputEventKind};
+    use xsa_input::{InputButton, InputEventKind, Key};
 
     fn event(source: InputSource, kind: InputEventKind) -> InputEvent {
         InputEvent { source, kind }
@@ -60,7 +58,7 @@ mod tests {
     fn a_disabled_source_holds_back_presses_but_not_releases() {
         let mut input = Config::default().input;
         input.raw.enabled = false;
-        let button = InputButton::Key(KeyCode::KeyW);
+        let button = InputButton::Key(Key::W);
 
         assert!(!input.accepts(&event(InputSource::Raw, InputEventKind::Pressed { button })));
         assert!(input.accepts(&event(InputSource::Raw, InputEventKind::Released { button })));

@@ -1,4 +1,4 @@
-use crate::input::{InputButton, Modifier};
+use crate::{InputButton, Modifier};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChordButton {

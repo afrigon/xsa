@@ -1,6 +1,4 @@
-use winit::keyboard::KeyCode;
-
-use crate::input::InputButton;
+use crate::{InputButton, Key};
 
 // Either key of a pair, so `shift` matches both shift keys. The order is the order chords print their held buttons.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -27,12 +25,12 @@ impl Modifier {
         }
     }
 
-    pub fn keys(self) -> [KeyCode; 2] {
+    pub fn keys(self) -> [Key; 2] {
         match self {
-            Modifier::Control => [KeyCode::ControlLeft, KeyCode::ControlRight],
-            Modifier::Alt => [KeyCode::AltLeft, KeyCode::AltRight],
-            Modifier::Shift => [KeyCode::ShiftLeft, KeyCode::ShiftRight],
-            Modifier::Super => [KeyCode::SuperLeft, KeyCode::SuperRight],
+            Modifier::Control => [Key::ControlLeft, Key::ControlRight],
+            Modifier::Alt => [Key::AltLeft, Key::AltRight],
+            Modifier::Shift => [Key::ShiftLeft, Key::ShiftRight],
+            Modifier::Super => [Key::SuperLeft, Key::SuperRight],
         }
     }
 

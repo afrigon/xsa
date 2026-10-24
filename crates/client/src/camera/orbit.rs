@@ -1,8 +1,8 @@
 use std::f64::consts::FRAC_PI_2;
 
 use glam::{DQuat, DVec3};
-use winit::event::MouseButton;
 use xsa_core::simulation::BodyIndex;
+use xsa_input::MouseButton;
 
 use super::{Anchor, Camera, CameraPose, Controls, ControlsContext};
 use crate::config::DebugCameraConfig;

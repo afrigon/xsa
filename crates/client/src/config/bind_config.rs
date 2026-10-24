@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use xsa_config::{ConfigSection, ConfigVisitor};
 
 use super::BindAction;
-use crate::input::{Input, InputChord};
+use xsa_input::InputChord;
+
+use crate::input::Input;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BindConfig {

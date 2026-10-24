@@ -72,7 +72,9 @@ that produce them. `resource-vulkan` depends on no xsa crate
 either, only on `memory-vulkan` and `resource-loader`: the client adds its own
 kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
 `config` depends on no xsa crate: `logging`, `commands`, `server` and `client`
-define their settings through it. `animation` depends on no xsa crate either: the
+define their settings through it. `input` depends only on `config`: it holds input as plain data, with no window
+library types, so `commands` parses chords with it and the server build never pulls in `winit`; the client converts
+window events through its `winit` feature. `animation` depends on no xsa crate either: the
 server's time warps and the client's camera transitions move through it.
 
 | Crate | Responsibility |
@@ -89,6 +91,7 @@ server's time warps and the client's camera transitions move through it.
 | `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), the converter of terrain layers into `.terrain` files (`terrain create`), their inspector (`terrain inspect`) and their extractor back to KTX2 (`terrain extract`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
 | `logging` | The verbosity flags (`-v`, `-q`), the log filter (a config value) and the `tracing` subscriber shared by `xsa` and `launchpad`, whose filter can change while the process runs |
 | `config` | Config stores (see Config): the session and saved layers over a KDL file, sections that name each key once (`ConfigSection`), value types (`ConfigValue`, `ConfigChoice`) |
+| `input` | Input as plain data: keys and mouse buttons (`Key`, `MouseButton`), chords of them (`InputChord`) that binds and the `input` commands share, and input events (`InputEvent`) tagged with their source (`InputSource`); its `winit` feature converts window events |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains; `terrain` defines the `.terrain` format (pages of a cube map at every level) and reads it |

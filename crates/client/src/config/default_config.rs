@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use resource_vulkan::ResourceLimits;
-use winit::keyboard::KeyCode;
 use xsa_commands::logging::LoggingConfig;
+use xsa_input::{InputChord, Key, Modifier};
 
 use super::{
     AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
@@ -10,7 +10,6 @@ use super::{
     ServiceConfig, TerrainConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
 };
 
-use crate::input::{InputChord, Modifier};
 use crate::renderer::Tonemapper;
 
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
@@ -41,31 +40,31 @@ impl DefaultBind {
         [
             DefaultBind {
                 action: BindAction::CameraTargetNext,
-                chord: InputChord::key(KeyCode::Tab),
+                chord: InputChord::key(Key::Tab),
             },
             DefaultBind {
                 action: BindAction::CameraTargetPrevious,
-                chord: InputChord::with_modifier(Modifier::Shift, KeyCode::Tab),
+                chord: InputChord::with_modifier(Modifier::Shift, Key::Tab),
             },
             DefaultBind {
                 action: BindAction::InterfacePauseMenu,
-                chord: InputChord::key(KeyCode::Escape),
+                chord: InputChord::key(Key::Escape),
             },
             DefaultBind {
                 action: BindAction::InterfaceDebugOverlay,
-                chord: InputChord::key(KeyCode::F3),
+                chord: InputChord::key(Key::F3),
             },
             DefaultBind {
                 action: BindAction::TimeFaster,
-                chord: InputChord::key(KeyCode::Period),
+                chord: InputChord::key(Key::Period),
             },
             DefaultBind {
                 action: BindAction::TimeSlower,
-                chord: InputChord::key(KeyCode::Comma),
+                chord: InputChord::key(Key::Comma),
             },
             DefaultBind {
                 action: BindAction::TimeRealTime,
-                chord: InputChord::key(KeyCode::Slash),
+                chord: InputChord::key(Key::Slash),
             },
         ]
     }

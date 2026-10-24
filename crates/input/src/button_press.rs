@@ -1,4 +1,4 @@
-use crate::input::InputButton;
+use crate::InputButton;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ButtonPress {

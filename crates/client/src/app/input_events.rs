@@ -1,7 +1,6 @@
-use winit::event::ElementState;
+use xsa_input::{InputButton, InputEvent, InputEventKind};
 
 use super::App;
-use crate::input::{InputButton, InputEvent, InputEventKind};
 
 impl App {
     pub(super) fn handle_input(&mut self, event: InputEvent) {
@@ -12,10 +11,10 @@ impl App {
         match event.kind {
             InputEventKind::Pressed {
                 button: InputButton::Mouse(button),
-            } => self.handle_mouse_button(button, ElementState::Pressed),
+            } => self.handle_mouse_pressed(button),
             InputEventKind::Released {
                 button: InputButton::Mouse(button),
-            } => self.handle_mouse_button(button, ElementState::Released),
+            } => self.handle_mouse_released(button),
             InputEventKind::Pressed { button } => self.input.press(button),
             InputEventKind::Released { button } => self.input.release(button),
             InputEventKind::CursorMoved { position } => self.handle_cursor_moved(position),

@@ -1,26 +1,7 @@
-mod button_press;
-mod chord_button;
-mod input_button;
-mod input_chord;
-mod input_event;
-mod input_event_kind;
-mod input_source;
-mod modifier;
-
-pub use button_press::ButtonPress;
-pub use chord_button::ChordButton;
-pub use input_button::InputButton;
-pub use input_chord::InputChord;
-pub use input_event::InputEvent;
-pub use input_event_kind::InputEventKind;
-pub use input_source::InputSource;
-pub use modifier::Modifier;
-
 use std::collections::HashSet;
 
 use glam::DVec2;
-use winit::event::{MouseButton, MouseScrollDelta};
-use winit::keyboard::KeyCode;
+use xsa_input::{ButtonPress, InputButton, Key, MouseButton, ScrollDelta};
 
 const PIXELS_PER_SCROLL_STEP: f64 = 50.0;
 
@@ -38,18 +19,18 @@ impl Input {
         self.mouse_delta += delta;
     }
 
-    pub fn handle_scroll(&mut self, delta: MouseScrollDelta) {
+    pub fn handle_scroll(&mut self, delta: ScrollDelta) {
         self.scroll_steps += match delta {
-            MouseScrollDelta::LineDelta(_, lines) => f64::from(lines),
-            MouseScrollDelta::PixelDelta(position) => position.y / PIXELS_PER_SCROLL_STEP,
+            ScrollDelta::Notches { vertical } => vertical,
+            ScrollDelta::Pixels { vertical } => vertical / PIXELS_PER_SCROLL_STEP,
         };
     }
 
-    pub fn is_held(&self, key: KeyCode) -> bool {
+    pub fn is_held(&self, key: Key) -> bool {
         self.held.contains(&InputButton::Key(key))
     }
 
-    pub fn axis(&self, positive: KeyCode, negative: KeyCode) -> f64 {
+    pub fn axis(&self, positive: Key, negative: Key) -> f64 {
         let value = |key| if self.is_held(key) { 1.0 } else { 0.0 };
 
         value(positive) - value(negative)

@@ -1,9 +1,9 @@
 use std::sync::LazyLock;
 
+use xsa_input::InputSource;
 use xsa_packs::Id;
 use xui::{ColorSchemeKey, Context, EdgeInsets, ForegroundStyleKey, Text, View};
 
-use crate::input::InputSource;
 use crate::theme::ThemeKey;
 use crate::ui::ThemedView;
 

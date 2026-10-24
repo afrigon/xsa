@@ -1,8 +1,9 @@
+use std::str::FromStr;
+
 use anyhow::Context;
-use winit::keyboard::KeyCode;
 use xsa_config::{ConfigValue, KdlValue};
 
-use crate::input::{ButtonPress, ChordButton, InputButton, Modifier};
+use crate::{ButtonPress, ChordButton, InputButton, Key, Modifier};
 
 const SEPARATOR: char = '+';
 
@@ -21,11 +22,11 @@ impl InputChord {
         InputChord { held, trigger }
     }
 
-    pub fn key(key: KeyCode) -> InputChord {
+    pub fn key(key: Key) -> InputChord {
         InputChord::new(Vec::new(), ChordButton::Button(InputButton::Key(key)))
     }
 
-    pub fn with_modifier(modifier: Modifier, key: KeyCode) -> InputChord {
+    pub fn with_modifier(modifier: Modifier, key: Key) -> InputChord {
         InputChord::new(
             vec![ChordButton::Modifier(modifier)],
             ChordButton::Button(InputButton::Key(key)),
@@ -68,6 +69,15 @@ impl InputChord {
     }
 }
 
+impl FromStr for InputChord {
+    type Err = anyhow::Error;
+
+    fn from_str(text: &str) -> anyhow::Result<InputChord> {
+        InputChord::from_name(text)
+            .with_context(|| format!("{text:?} is not a chord like f4, shift+tab, x+w or ctrl+mouse-left"))
+    }
+}
+
 impl ConfigValue for InputChord {
     fn from_kdl(value: &KdlValue) -> Option<InputChord> {
         value.as_string().and_then(InputChord::from_name)
@@ -78,8 +88,7 @@ impl ConfigValue for InputChord {
     }
 
     fn parse(text: &str) -> anyhow::Result<InputChord> {
-        InputChord::from_name(text)
-            .with_context(|| format!("{text:?} is not a chord like f4, shift+tab, x+w or ctrl+mouse-left"))
+        text.parse()
     }
 
     fn type_name() -> String {
@@ -97,15 +106,14 @@ impl ConfigValue for InputChord {
 
 #[cfg(test)]
 mod tests {
-    use winit::event::MouseButton;
-
     use super::*;
+    use crate::MouseButton;
 
     fn chord(name: &str) -> InputChord {
         InputChord::from_name(name).unwrap()
     }
 
-    fn press(button: InputButton, held: &[KeyCode]) -> ButtonPress {
+    fn press(button: InputButton, held: &[Key]) -> ButtonPress {
         ButtonPress {
             button,
             held: held.iter().map(|key| InputButton::Key(*key)).collect(),
@@ -139,10 +147,7 @@ mod tests {
 
     #[test]
     fn names_ignore_case_and_reject_unknown_buttons() {
-        assert_eq!(
-            chord("Shift+Tab"),
-            InputChord::with_modifier(Modifier::Shift, KeyCode::Tab)
-        );
+        assert_eq!(chord("Shift+Tab"), InputChord::with_modifier(Modifier::Shift, Key::Tab));
         assert!(InputChord::from_name("hyper+a").is_none());
         assert!(InputChord::from_name("f99").is_none());
         assert!(InputChord::from_name("mouse-wheel").is_none());
@@ -151,35 +156,35 @@ mod tests {
     #[test]
     fn side_less_modifiers_match_either_key() {
         let shift_tab = chord("shift+tab");
-        let tab = InputButton::Key(KeyCode::Tab);
+        let tab = InputButton::Key(Key::Tab);
 
-        assert!(shift_tab.matches(&press(tab, &[KeyCode::ShiftLeft])));
-        assert!(shift_tab.matches(&press(tab, &[KeyCode::ShiftRight])));
-        assert!(!chord("left-shift+tab").matches(&press(tab, &[KeyCode::ShiftRight])));
+        assert!(shift_tab.matches(&press(tab, &[Key::ShiftLeft])));
+        assert!(shift_tab.matches(&press(tab, &[Key::ShiftRight])));
+        assert!(!chord("left-shift+tab").matches(&press(tab, &[Key::ShiftRight])));
     }
 
     #[test]
     fn extra_held_buttons_do_not_prevent_a_match() {
-        let tab = InputButton::Key(KeyCode::Tab);
+        let tab = InputButton::Key(Key::Tab);
 
-        assert!(chord("tab").matches(&press(tab, &[KeyCode::KeyW])));
-        assert!(chord("shift+tab").matches(&press(tab, &[KeyCode::KeyW, KeyCode::ShiftLeft])));
+        assert!(chord("tab").matches(&press(tab, &[Key::W])));
+        assert!(chord("shift+tab").matches(&press(tab, &[Key::W, Key::ShiftLeft])));
     }
 
     #[test]
     fn the_trigger_comes_last() {
         let x_w = chord("x+w");
 
-        assert!(x_w.matches(&press(InputButton::Key(KeyCode::KeyW), &[KeyCode::KeyX])));
-        assert!(!x_w.matches(&press(InputButton::Key(KeyCode::KeyX), &[KeyCode::KeyW])));
-        assert!(!chord("shift+tab").matches(&press(InputButton::Key(KeyCode::Tab), &[])));
+        assert!(x_w.matches(&press(InputButton::Key(Key::W), &[Key::X])));
+        assert!(!x_w.matches(&press(InputButton::Key(Key::X), &[Key::W])));
+        assert!(!chord("shift+tab").matches(&press(InputButton::Key(Key::Tab), &[])));
     }
 
     #[test]
     fn mouse_buttons_are_chord_members() {
         let click = InputButton::Mouse(MouseButton::Left);
 
-        assert!(chord("ctrl+mouse-left").matches(&press(click, &[KeyCode::ControlRight])));
+        assert!(chord("ctrl+mouse-left").matches(&press(click, &[Key::ControlRight])));
         assert!(chord("mouse-back").matches(&press(InputButton::Mouse(MouseButton::Back), &[])));
     }
 }

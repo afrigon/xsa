@@ -1,9 +1,8 @@
 use std::f64::consts::FRAC_PI_2;
 
 use glam::{DQuat, DVec3};
-use winit::event::MouseButton;
-use winit::keyboard::KeyCode;
 use xsa_core::simulation::BodyIndex;
+use xsa_input::{Key, MouseButton};
 
 use super::{Anchor, Attitude, CameraPose, Controls, ControlsContext};
 use crate::app::ClientWorld;
@@ -114,9 +113,9 @@ impl Controls for DebugControls {
         let heading = self.frame * DQuat::from_rotation_z(self.yaw);
         let forward = heading * DVec3::Y;
         let right = heading * DVec3::X;
-        let direction = forward * input.axis(KeyCode::KeyW, KeyCode::KeyS)
-            + right * input.axis(KeyCode::KeyD, KeyCode::KeyA)
-            + up * input.axis(KeyCode::Space, KeyCode::ShiftLeft);
+        let direction = forward * input.axis(Key::W, Key::S)
+            + right * input.axis(Key::D, Key::A)
+            + up * input.axis(Key::Space, Key::ShiftLeft);
         self.position += direction.normalize_or_zero() * f64::from(context.debug_camera.speed) * context.delta_seconds;
 
         CameraPose {
