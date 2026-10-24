@@ -99,6 +99,9 @@ define their settings through it.
 - **Content is data.** Every body, effect and rendering feature is configured
   by pack data; adding an atmosphere to the Moon is a few lines in its data
   file. Nothing is hard-coded per body or per system.
+- **Any star system.** Sol is one system among many: code, data, names and commands work for systems with several
+  stars, circumbinary planets and bodies unlike ours. Never assume one star, a body named after the Sun or Earth,
+  or a property of the solar system; "the star" of a body is a defined choice, never the root of the tree.
 - **One simulation runner.** Local play runs the same `Server` as the dedicated
   binary, on its own thread, over an in-process `Connection`; `--remote` swaps
   in QUIC. Client code is identical either way.
