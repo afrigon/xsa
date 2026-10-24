@@ -85,12 +85,13 @@ impl RunningScript {
 
     fn succeed(&mut self) {
         if let Some(reply) = self.reply.take() {
-            let _ = reply.send(Output::success(format!("script: ran {} commands", self.next_line)));
+            let noun = if self.next_line == 1 { "command" } else { "commands" };
+            let _ = reply.send(Output::success(format!("script: ran {} {noun}", self.next_line)));
         }
     }
 
     fn fail(&mut self, location: &str, text: &str) {
-        let text = format!("{location}: {}; skipped the rest of the script", text.trim_end());
+        let text = format!("{location}: {}\nskipped the rest of the script", text.trim_end());
 
         match self.reply.take() {
             Some(reply) => {
