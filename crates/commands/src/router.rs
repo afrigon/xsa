@@ -4,6 +4,9 @@ mod command_invocation;
 #[cfg(feature = "client")]
 mod command_reply;
 mod output;
+mod pending_wait;
+mod running_script;
+mod script_progress;
 
 pub use command_execution::CommandExecution;
 pub use command_executor::CommandExecutor;
@@ -12,8 +15,13 @@ pub use command_invocation::CommandInvocation;
 pub use command_reply::CommandReply;
 pub use output::Output;
 
+use pending_wait::PendingWait;
+use running_script::RunningScript;
+use script_progress::ScriptProgress;
+
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::time::Instant;
 
 use tokio::sync::oneshot;
 use usage::help::Style;
@@ -23,11 +31,15 @@ use xsa_proto::session::ServerSession;
 
 use crate::command::{Command, CommandLine, Routable, Route, ServerCommand};
 use crate::completion::Completions;
+use crate::script::Script;
+use crate::shell::Transcript;
 
 #[derive(Default)]
 pub struct CommandRouter {
     pending: HashMap<RequestId, Pending>,
     waiting_for_join: Vec<Waiting>,
+    scripts: Vec<RunningScript>,
+    waits: Vec<PendingWait>,
 }
 
 struct Pending {
@@ -41,6 +53,47 @@ struct Waiting {
 }
 
 impl CommandRouter {
+    // A script started here replies to nobody: a failure is logged.
+    pub fn start_script(&mut self, script: Script) {
+        self.scripts.push(RunningScript::new(script, None));
+    }
+
+    // Called once per frame or wake: ends the waits that are due and runs scripts until each waits on a reply.
+    pub fn advance(&mut self, executor: &mut impl CommandExecutor, transcript: Transcript) {
+        loop {
+            self.end_waits(Instant::now());
+            let mut scripts = std::mem::take(&mut self.scripts);
+            let mut progressed = false;
+            scripts.retain_mut(|script| {
+                let progress = script.step(self, executor, transcript);
+                progressed |= progress != ScriptProgress::Waiting;
+
+                progress != ScriptProgress::Finished
+            });
+            scripts.append(&mut self.scripts);
+            self.scripts = scripts;
+
+            if !progressed {
+                break;
+            }
+        }
+    }
+
+    pub fn next_deadline(&self) -> Option<Instant> {
+        self.waits.iter().map(|wait| wait.deadline).min()
+    }
+
+    fn end_waits(&mut self, now: Instant) {
+        let (due, waiting) = std::mem::take(&mut self.waits)
+            .into_iter()
+            .partition(|wait| wait.deadline <= now);
+        self.waits = waiting;
+
+        for wait in due {
+            let _ = wait.reply.send(Output::success("waited"));
+        }
+    }
+
     pub fn handle(&mut self, invocation: CommandInvocation, executor: &mut impl CommandExecutor) {
         match invocation {
             CommandInvocation::Execute(execution) => self.execute(execution, executor),
@@ -72,7 +125,7 @@ impl CommandRouter {
         let route = command.route();
         let joined = executor.session().state().is_some();
 
-        if !joined && !matches!(route, Route::Exit | Route::Local(_)) {
+        if !joined && !matches!(route, Route::Exit | Route::Local(_) | Route::Script(_) | Route::Wait(_)) {
             self.waiting_for_join.push(Waiting { route, reply });
 
             return;
@@ -133,6 +186,23 @@ impl CommandRouter {
                 }
             }
             Route::Session(command) => command.answer(executor.session().state()),
+            Route::Script(command) => match command.script() {
+                Ok(script) => {
+                    self.scripts.push(RunningScript::new(script, Some(reply)));
+
+                    return;
+                }
+                Err(err) => Output::failure(format!("{err:#}")),
+            },
+            Route::Wait(command) => match command.duration.real_time() {
+                Ok(duration) => {
+                    let deadline = Instant::now() + duration;
+                    self.waits.push(PendingWait { deadline, reply });
+
+                    return;
+                }
+                Err(err) => Output::failure(format!("{err:#}")),
+            },
             Route::Exit => {
                 executor.exit();
                 Output::success("exiting")
@@ -278,6 +348,14 @@ mod tests {
                 &mut self.executor,
             );
             receiver
+        }
+
+        fn advance(&mut self) {
+            let transcript = Transcript {
+                enabled: false,
+                ..Transcript::default()
+            };
+            self.router.advance(&mut self.executor, transcript);
         }
 
         fn sent(&mut self) -> ClientFrame {
@@ -432,5 +510,69 @@ mod tests {
         let mut harness = Harness::joined();
         harness.invoke("exit");
         assert!(harness.executor.exited);
+    }
+
+    #[test]
+    fn a_script_runs_commands_that_finish_at_once_in_one_advance() {
+        let mut harness = Harness::joined();
+        let mut script = harness.invoke("script --text 'time; wait 0ms; time'");
+        assert!(script.try_recv().is_err());
+
+        harness.advance();
+        assert_eq!(script.try_recv().unwrap(), Output::success("script: ran 3 commands"));
+    }
+
+    #[test]
+    fn a_failing_line_stops_the_script_and_names_its_location() {
+        let mut harness = Harness::joined();
+        let mut script = harness.invoke("script --text 'time; bogus; time rate 100'");
+        harness.advance();
+
+        let output = script.try_recv().unwrap();
+        assert!(!output.succeeded && output.text.starts_with("script:2: "), "{output:?}");
+        assert!(harness.link.client_frames.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_script_line_waits_for_the_server_reply() {
+        let mut harness = Harness::joined();
+        let mut script = harness.invoke("script --text 'time rate 100; time'");
+        harness.advance();
+        let frame = harness.sent();
+        assert!(script.try_recv().is_err());
+
+        harness.deliver(ServerFrame::Reply {
+            id: frame.id,
+            result: Ok(Reply::Empty),
+        });
+        harness.advance();
+        assert_eq!(script.try_recv().unwrap(), Output::success("script: ran 2 commands"));
+    }
+
+    #[test]
+    fn a_wait_replies_once_its_deadline_passed() {
+        let mut harness = Harness::joined();
+        let mut long = harness.invoke("wait 1h");
+        let mut short = harness.invoke("wait 0ms");
+        harness.advance();
+
+        assert!(short.try_recv().unwrap().succeeded);
+        assert!(long.try_recv().is_err());
+        assert!(
+            harness
+                .router
+                .next_deadline()
+                .is_some_and(|deadline| deadline > Instant::now())
+        );
+    }
+
+    #[test]
+    fn a_script_needs_exactly_one_source() {
+        let mut harness = Harness::joined();
+        let output = harness.invoke("script").try_recv().unwrap();
+        assert!(
+            !output.succeeded && output.text.contains("either a path or --text"),
+            "{output:?}"
+        );
     }
 }

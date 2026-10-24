@@ -10,6 +10,13 @@ pub enum Easing {
 }
 
 impl Easing {
+    /// CSS's `ease-in`: starts slowly.
+    pub const EASE_IN: Easing = Easing::CubicBezier(CubicBezier::new(0.42, 0.0, 1.0, 1.0));
+    /// CSS's `ease-out`: ends slowly.
+    pub const EASE_OUT: Easing = Easing::CubicBezier(CubicBezier::new(0.0, 0.0, 0.58, 1.0));
+    /// CSS's `ease-in-out`: starts and ends slowly.
+    pub const EASE_IN_OUT: Easing = Easing::CubicBezier(CubicBezier::new(0.42, 0.0, 0.58, 1.0));
+
     /// The eased progress at `progress`, which is read as 0 below 0 and as 1 above 1.
     pub fn apply(&self, progress: f64) -> f64 {
         let progress = progress.clamp(0.0, 1.0);

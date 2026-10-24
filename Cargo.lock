@@ -3286,6 +3286,7 @@ dependencies = [
  "xsa-commands",
  "xsa-config",
  "xsa-core",
+ "xsa-input",
  "xsa-logging",
  "xsa-packs",
  "xsa-proto",
@@ -3299,6 +3300,7 @@ dependencies = [
 name = "xsa-commands"
 version = "0.0.1"
 dependencies = [
+ "animation",
  "anstream",
  "anstyle",
  "anyhow",
@@ -3312,6 +3314,7 @@ dependencies = [
  "windows-sys 0.61.2",
  "xsa-config",
  "xsa-core",
+ "xsa-input",
  "xsa-logging",
  "xsa-packs",
  "xsa-proto",
@@ -3335,6 +3338,16 @@ dependencies = [
  "glam",
  "resource-loader",
  "xsa-units",
+]
+
+[[package]]
+name = "xsa-input"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "glam",
+ "winit",
+ "xsa-config",
 ]
 
 [[package]]

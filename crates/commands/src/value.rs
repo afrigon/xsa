@@ -2,6 +2,8 @@
 mod altitude;
 mod duration;
 #[cfg(feature = "client")]
+mod easing_name;
+#[cfg(feature = "client")]
 mod latitude;
 #[cfg(feature = "client")]
 mod length_unit;
@@ -15,6 +17,8 @@ mod timestamp;
 #[cfg(feature = "client")]
 pub use altitude::Altitude;
 pub use duration::Duration;
+#[cfg(feature = "client")]
+pub use easing_name::EasingName;
 #[cfg(feature = "client")]
 pub use latitude::Latitude;
 #[cfg(feature = "client")]

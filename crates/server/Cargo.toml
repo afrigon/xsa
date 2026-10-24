@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 animation.workspace = true
 anyhow.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tracing.workspace = true
 xsa-commands.workspace = true
 xsa-config.workspace = true

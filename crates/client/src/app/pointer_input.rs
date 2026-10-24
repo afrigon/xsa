@@ -1,5 +1,5 @@
-use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, MouseButton};
+use glam::DVec2;
+use xsa_input::{InputButton, MouseButton};
 use xui::{Point, PointerButton, PointerEvent, PointerEventKind};
 
 use super::App;
@@ -7,7 +7,7 @@ use super::App;
 // The interface sees the pointer first: what it uses never reaches the camera or the binds. While the camera holds
 // the mouse captured, the interface sees nothing.
 impl App {
-    pub(super) fn handle_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
+    pub(super) fn handle_cursor_moved(&mut self, position: DVec2) {
         self.cursor = Point {
             x: position.x as f32,
             y: position.y as f32,
@@ -30,17 +30,26 @@ impl App {
         self.pointer_moved = false;
     }
 
-    pub(super) fn handle_mouse_button(&mut self, button: MouseButton, state: ElementState) {
-        let used = match App::pointer_button(button) {
-            Some(button) if !self.mouse_captured => self.offer_pointer(match state {
-                ElementState::Pressed => PointerEventKind::Pressed { button },
-                ElementState::Released => PointerEventKind::Released { button },
-            }),
-            _ => false,
-        };
+    pub(super) fn handle_mouse_pressed(&mut self, button: MouseButton) {
+        if !self.offer_mouse_button(button, |button| PointerEventKind::Pressed { button }) {
+            self.input.press(InputButton::Mouse(button));
+        }
+    }
 
-        if !used {
-            self.input.handle_mouse_button(button, state);
+    pub(super) fn handle_mouse_released(&mut self, button: MouseButton) {
+        if !self.offer_mouse_button(button, |button| PointerEventKind::Released { button }) {
+            self.input.release(InputButton::Mouse(button));
+        }
+    }
+
+    fn offer_mouse_button(
+        &mut self,
+        button: MouseButton,
+        kind: impl FnOnce(PointerButton) -> PointerEventKind,
+    ) -> bool {
+        match App::pointer_button(button) {
+            Some(button) if !self.mouse_captured => self.offer_pointer(kind(button)),
+            _ => false,
         }
     }
 
@@ -56,7 +65,7 @@ impl App {
             MouseButton::Left => Some(PointerButton::Primary),
             MouseButton::Right => Some(PointerButton::Secondary),
             MouseButton::Middle => Some(PointerButton::Middle),
-            MouseButton::Back | MouseButton::Forward | MouseButton::Other(_) => None,
+            MouseButton::Back | MouseButton::Forward | MouseButton::Other { .. } => None,
         }
     }
 }

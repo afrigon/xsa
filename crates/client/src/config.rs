@@ -10,8 +10,7 @@ mod debug_config;
 mod debug_view_choice;
 mod default_config;
 mod input_config;
-mod key_chord;
-mod key_chord_name;
+mod input_source_config;
 mod lens_config;
 mod render_config;
 mod resources_config;
@@ -34,7 +33,7 @@ pub use bloom_config::BloomConfig;
 pub use debug_camera_config::DebugCameraConfig;
 pub use debug_config::DebugConfig;
 pub use input_config::InputConfig;
-pub use key_chord::KeyChord;
+pub use input_source_config::InputSourceConfig;
 pub use lens_config::LensConfig;
 pub use render_config::RenderConfig;
 pub use resources_config::ResourcesConfig;
@@ -117,6 +116,8 @@ mod tests {
             "video.bloom.strength",
             "video.white-balance.enabled",
             "input.enabled",
+            "input.raw.enabled",
+            "input.commands.enabled",
             "input.bind.camera.target-next",
             "terrain.lod.vertex-spacing",
             "terrain.streaming.freeze",

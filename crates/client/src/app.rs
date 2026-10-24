@@ -8,7 +8,10 @@ mod command_progress;
 mod command_task;
 mod forwarded_command;
 mod frame_timing;
+mod glide_motion;
 mod immediate_command_handler;
+mod input_events;
+mod input_glide;
 mod pointer_input;
 mod running_task;
 mod snapshot;
@@ -35,7 +38,9 @@ use xsa_commands::command::{ClientCommand, LocalCommand, Overlay, ViewController
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
+use xsa_commands::script::Script;
 use xsa_config::ConfigStore;
+use xsa_input::{InputEvent, InputEventKind, InputSource};
 use xsa_packs::PackStack;
 use xsa_proto::frame::ServerFrame;
 use xsa_proto::network::DisconnectReason;
@@ -85,6 +90,8 @@ pub struct App {
     forwarded: Vec<ForwardedCommand>,
     packs_directory: PathBuf,
     input: Input,
+    // Counts input resets; a glide started before the latest one stops.
+    input_resets: u64,
     cameras: Option<CameraController>,
     config_store: ConfigStore<Config>,
     config: Config,
@@ -134,6 +141,7 @@ impl App {
             forwarded: Vec::new(),
             packs_directory,
             input: Input::default(),
+            input_resets: 0,
             cameras: None,
             config: config_store.config().clone(),
             config_store,
@@ -254,12 +262,14 @@ impl App {
             }
         }
 
+        // Input arriving from here on, from tasks or the window, belongs to the next update.
+        self.input.end_frame();
+
         Ok(())
     }
 
     fn finish_update(&mut self) {
         self.poll_tasks();
-        self.input.end_frame();
     }
 
     fn conclude(&mut self, event_loop: &ActiveEventLoop, result: anyhow::Result<()>) {
@@ -302,7 +312,13 @@ impl App {
             router.forward(forwarded.command, reply, self);
         }
 
+        let transcript = self.config.logging.script_transcript();
+        router.advance(self, transcript);
         self.router = router;
+    }
+
+    pub fn start_script(&mut self, script: Script) {
+        self.router.start_script(script);
     }
 
     fn join(&mut self, state: &WorldState) -> anyhow::Result<()> {
@@ -348,7 +364,7 @@ impl App {
         self.shell_outputs.apply(&self.config.logging);
 
         for chord in self.config.input.bind.shared_chords() {
-            tracing::warn!("{} is bound to more than one action", chord.config_name());
+            tracing::warn!("{} is bound to more than one action", chord.name());
         }
 
         self.navigation
@@ -459,8 +475,13 @@ impl App {
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
         });
-        let input_disabled =
-            (!self.config.input.enabled).then(|| InputDisabledView.max_frame(fill, fill, Alignment::TOP));
+        let disabled_sources = self.config.input.disabled_sources();
+        let input_disabled = (!disabled_sources.is_empty()).then(|| {
+            InputDisabledView {
+                sources: disabled_sources,
+            }
+            .max_frame(fill, fill, Alignment::TOP)
+        });
         let root = ZStack::new((self.navigation.view(), debug_overlay, input_disabled));
         let draw_list = self.interface.render(&root, viewport, &environment)?;
         renderer.set_user_interface(draw_list);
@@ -614,6 +635,13 @@ impl CommandExecutor for App {
             ClientCommand::InterfaceHide(command) => command.start(self),
             ClientCommand::InterfaceToggle(command) => command.start(self),
             ClientCommand::TimeWarp(command) => command.start(self),
+            ClientCommand::InputDown(command) => command.start(self),
+            ClientCommand::InputUp(command) => command.start(self),
+            ClientCommand::InputPress(command) => command.start(self),
+            ClientCommand::InputReset(command) => command.start(self),
+            ClientCommand::InputCursorSet(command) => command.start(self),
+            ClientCommand::InputCursorMove(command) => command.start(self),
+            ClientCommand::InputScroll(command) => command.start(self),
         };
 
         self.follow(progress, Some(reply));
@@ -645,17 +673,19 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::Focused(false) => self.input.clear(),
-            WindowEvent::KeyboardInput { event, .. } => self.input.handle_key(&event),
-            WindowEvent::MouseInput { state, button, .. } => self.handle_mouse_button(button, state),
-            WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(position),
-            WindowEvent::CursorLeft { .. } => self.handle_cursor_left(),
-            WindowEvent::MouseWheel { delta, .. } => self.input.handle_scroll(delta),
             WindowEvent::Occluded(occluded) => self.set_window_visibility(occluded),
             WindowEvent::RedrawRequested if self.schedule.visibility() == WindowVisibility::Visible => {
                 let result = self.redraw();
                 self.conclude(event_loop, result);
             }
-            _ => {}
+            event => {
+                if let Some(kind) = InputEventKind::from_window_event(&event) {
+                    self.handle_input(InputEvent {
+                        source: InputSource::Raw,
+                        kind,
+                    });
+                }
+            }
         }
     }
 
@@ -678,7 +708,12 @@ impl ApplicationHandler for App {
         if let DeviceEvent::MouseMotion { delta } = event
             && self.mouse_captured
         {
-            self.input.handle_mouse_motion(DVec2::from(delta));
+            self.handle_input(InputEvent {
+                source: InputSource::Raw,
+                kind: InputEventKind::Moved {
+                    delta: DVec2::from(delta),
+                },
+            });
         }
     }
 }

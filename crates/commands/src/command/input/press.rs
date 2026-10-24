@@ -1,0 +1,23 @@
+use usage::Args;
+use xsa_input::InputChord;
+
+use crate::command::{ClientCommand, Routable, Route};
+use crate::completion::complete_input_chord;
+use crate::value::Duration;
+
+#[derive(Args)]
+pub struct InputPressCommand {
+    #[usage(complete = complete_input_chord, help = "The buttons to press and release, e.g. escape, shift+tab or ctrl+mouse-left")]
+    pub chord: InputChord,
+    #[usage(
+        long,
+        help = "Hold the buttons this long before releasing them, e.g. 500ms; a tap without it"
+    )]
+    pub duration: Option<Duration>,
+}
+
+impl Routable for InputPressCommand {
+    fn route(self) -> Route {
+        Route::Client(ClientCommand::InputPress(self))
+    }
+}

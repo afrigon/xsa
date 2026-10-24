@@ -72,7 +72,9 @@ that produce them. `resource-vulkan` depends on no xsa crate
 either, only on `memory-vulkan` and `resource-loader`: the client adds its own
 kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
 `config` depends on no xsa crate: `logging`, `commands`, `server` and `client`
-define their settings through it. `animation` depends on no xsa crate either: the
+define their settings through it. `input` depends only on `config`: it holds input as plain data, with no window
+library types, so `commands` parses chords with it and the server build never pulls in `winit`; the client converts
+window events through its `winit` feature. `animation` depends on no xsa crate either: the
 server's time warps and the client's camera transitions move through it.
 
 | Crate | Responsibility |
@@ -89,6 +91,7 @@ server's time warps and the client's camera transitions move through it.
 | `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), the converter of terrain layers into `.terrain` files (`terrain create`), their inspector (`terrain inspect`) and their extractor back to KTX2 (`terrain extract`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
 | `logging` | The verbosity flags (`-v`, `-q`), the log filter (a config value) and the `tracing` subscriber shared by `xsa` and `launchpad`, whose filter can change while the process runs |
 | `config` | Config stores (see Config): the session and saved layers over a KDL file, sections that name each key once (`ConfigSection`), value types (`ConfigValue`, `ConfigChoice`) |
+| `input` | Input as plain data: keys and mouse buttons (`Key`, `MouseButton`), chords of them (`InputChord`) that binds and the `input` commands share, and input events (`InputEvent`) tagged with their source (`InputSource`); its `winit` feature converts window events |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains; `terrain` defines the `.terrain` format (pages of a cube map at every level) and reads it |
@@ -135,6 +138,10 @@ server's time warps and the client's camera transitions move through it.
 - **Networking:** QUIC on UDP 1969. The dedicated server generates a
   self-signed identity in `.xsa/server/` and prints its fingerprint; clients
   pin it with `--fingerprint` (the SSH model).
+- **One path for real and injected input.** The player's devices and the `input` commands produce the same
+  `InputEvent`s, tagged with their source; binds, the interface and the camera never tell them apart. An event
+  passes when `input.enabled` and its source's key (`input.raw.enabled`, `input.commands.enabled`) are on; releases
+  always pass, so nothing stays held.
 - **Logging:** diagnostics go through `tracing`, filtered by `logging.filter`: WARN by default, a level or per-crate
   directives (`warn,xsa_client=debug`). `-v` / `-vv` / `-vvv` / `-q` or `RUST_LOG` set it for the session only, a
   flag winning over the variable.
@@ -283,7 +290,7 @@ Names in code, data and documents use these words in these meanings only:
 
 ## Commands
 
-- Durations take `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
+- Durations take `ms`, `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
   `Mm` or `Gm` (case-sensitive), a bare number is km; angles are degrees.
 - Time runs at most 2¹⁷× real time (`MAXIMUM_TIME_RATE` on the server): faster rates are refused, and `time faster`
   there conflicts.
@@ -313,12 +320,14 @@ Names in code, data and documents use these words in these meanings only:
   starts a comment), each waiting for the previous one's reply; each command and its reply are printed to the shell
   under `<script file name>:<line>`, and the first failure skips the rest. `init.xsa` is the repository's development
   setup: `mise run client -- --script init.xsa`.
+- `script` runs a file or `--text` of commands in the process that receives it. The process loop runs scripts
+  itself, so commands that finish at once run back to back in the same frame; `wait` times the rest.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
 - Commands received over IPC and their replies are printed to the shell, each pair under one `ipc #<sequence>` label;
   `logging.shell.ipc.enabled`, `.input.enabled` and `.output.enabled` choose which (`logging.shell.script.*` for
-  startup scripts), and `logging.shell.enabled false` silences them with the log.
+  scripts), and `logging.shell.enabled false` silences them with the log.
 
 ## Testing
 
@@ -350,8 +359,14 @@ Always bring the game to a stable state first:
 - Pause time with `time pause`.
 - Set a specific time with `time set <datetime>`.
 - Disable animations with `config set animation.duration-scale 0`.
-- Disable player input, so it cannot interfere, with `config set input.enabled false`.
+- Disable player input, so it cannot interfere, with `config set input.raw.enabled false`.
 - Show the debug overlay with `ui show debug-overlay` when needed.
+
+### Driving input
+
+- The `input` commands act as the player's keyboard and mouse; `input --help` documents them.
+- Send timed sequences as one `script --text "…; …"`: separate IPC calls land on frames you do not control.
+- `input.raw.enabled false` keeps the player's devices out while the commands still work.
 
 ### Recording
 
@@ -365,7 +380,8 @@ Always bring the game to a stable state first:
 ### After testing
 
 - Inside herdr, leave the game running so I can try the implementation by hand; outside herdr, close it with `exit`.
-- Re-enable player input with `config set input.enabled true`.
+- Release anything a test left held with `input reset`.
+- Re-enable player input with `config set input.raw.enabled true`.
 
 ## Dependencies and assets
 

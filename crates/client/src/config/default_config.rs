@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use resource_vulkan::ResourceLimits;
-use winit::keyboard::KeyCode;
 use xsa_commands::logging::LoggingConfig;
+use xsa_input::{InputChord, Key, Modifier};
 
 use super::{
     AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
-    DebugCameraConfig, DebugConfig, InputConfig, KeyChord, LensConfig, RenderConfig, ResourcesConfig, ServiceConfig,
-    TerrainConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
+    DebugCameraConfig, DebugConfig, InputConfig, InputSourceConfig, LensConfig, RenderConfig, ResourcesConfig,
+    ServiceConfig, TerrainConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
@@ -25,51 +25,50 @@ const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
 
 struct DefaultBind {
     action: BindAction,
-    chord: KeyChord,
+    chord: InputChord,
 }
 
 impl DefaultBind {
-    fn keys() -> HashMap<BindAction, KeyChord> {
-        let mut keys = HashMap::new();
+    fn keys() -> HashMap<BindAction, InputChord> {
+        DefaultBind::all()
+            .into_iter()
+            .map(|bind| (bind.action, bind.chord))
+            .collect()
+    }
 
-        for bind in &DEFAULT_BINDS {
-            keys.insert(bind.action, bind.chord);
-        }
-
-        keys
+    fn all() -> [DefaultBind; 7] {
+        [
+            DefaultBind {
+                action: BindAction::CameraTargetNext,
+                chord: InputChord::key(Key::Tab),
+            },
+            DefaultBind {
+                action: BindAction::CameraTargetPrevious,
+                chord: InputChord::with_modifier(Modifier::Shift, Key::Tab),
+            },
+            DefaultBind {
+                action: BindAction::InterfacePauseMenu,
+                chord: InputChord::key(Key::Escape),
+            },
+            DefaultBind {
+                action: BindAction::InterfaceDebugOverlay,
+                chord: InputChord::key(Key::F3),
+            },
+            DefaultBind {
+                action: BindAction::TimeFaster,
+                chord: InputChord::key(Key::Period),
+            },
+            DefaultBind {
+                action: BindAction::TimeSlower,
+                chord: InputChord::key(Key::Comma),
+            },
+            DefaultBind {
+                action: BindAction::TimeRealTime,
+                chord: InputChord::key(Key::Slash),
+            },
+        ]
     }
 }
-
-const DEFAULT_BINDS: [DefaultBind; 7] = [
-    DefaultBind {
-        action: BindAction::CameraTargetNext,
-        chord: KeyChord::key(KeyCode::Tab),
-    },
-    DefaultBind {
-        action: BindAction::CameraTargetPrevious,
-        chord: KeyChord::shift(KeyCode::Tab),
-    },
-    DefaultBind {
-        action: BindAction::InterfacePauseMenu,
-        chord: KeyChord::key(KeyCode::Escape),
-    },
-    DefaultBind {
-        action: BindAction::InterfaceDebugOverlay,
-        chord: KeyChord::key(KeyCode::F3),
-    },
-    DefaultBind {
-        action: BindAction::TimeFaster,
-        chord: KeyChord::key(KeyCode::Period),
-    },
-    DefaultBind {
-        action: BindAction::TimeSlower,
-        chord: KeyChord::key(KeyCode::Comma),
-    },
-    DefaultBind {
-        action: BindAction::TimeRealTime,
-        chord: KeyChord::key(KeyCode::Slash),
-    },
-];
 
 impl Default for Config {
     fn default() -> Self {
@@ -87,6 +86,8 @@ impl Default for Config {
             },
             input: InputConfig {
                 enabled: INPUT_ENABLED,
+                raw: InputSourceConfig { enabled: INPUT_ENABLED },
+                commands: InputSourceConfig { enabled: INPUT_ENABLED },
                 bind: BindConfig {
                     keys: DefaultBind::keys(),
                 },
