@@ -30,11 +30,10 @@ use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
-use xsa_commands::command::{CameraSpeedCommand, ClientCommand, LocalCommand, Overlay, ViewControllerId};
+use xsa_commands::command::{ClientCommand, LocalCommand, Overlay, ViewControllerId};
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
-use xsa_commands::value::Speed;
 use xsa_config::ConfigStore;
 use xsa_packs::PackStack;
 use xsa_proto::frame::ServerFrame;
@@ -60,7 +59,6 @@ use client_command_handler::ClientCommandHandler;
 pub(crate) use client_world::ClientWorld;
 use command_progress::CommandProgress;
 use frame_timing::FrameTiming;
-use immediate_command_handler::ImmediateCommandHandler;
 use running_task::RunningTask;
 use task_status::TaskStatus;
 use update_schedule::UpdateSchedule;
@@ -243,10 +241,13 @@ impl App {
         self.follow_camera_switch();
 
         if let Some(meters_per_second) = scrolled_speed {
-            let command = CameraSpeedCommand {
-                speed: Speed { meters_per_second },
-            };
-            App::finish(command.run(self), None);
+            let speed = meters_per_second as f32;
+            let result = self.config_store.update(|config| config.debug.camera.speed = speed);
+            self.reconfigure();
+
+            if let Err(err) = result {
+                tracing::warn!("{err:#}");
+            }
         }
 
         Ok(())
@@ -591,7 +592,6 @@ impl CommandExecutor for App {
             ClientCommand::CameraTarget(command) => command.start(self),
             ClientCommand::CameraTeleport(command) => command.start(self),
             ClientCommand::CameraLookAt(command) => command.start(self),
-            ClientCommand::CameraSpeed(command) => command.start(self),
             ClientCommand::CameraSnap(command) => command.start(self),
             ClientCommand::InterfacePush(command) => command.start(self),
             ClientCommand::InterfacePop(command) => command.start(self),

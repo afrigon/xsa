@@ -1,6 +1,5 @@
 mod camera_look_at;
 mod camera_snap;
-mod camera_speed;
 mod camera_target;
 mod camera_teleport;
 mod interface_hide;
