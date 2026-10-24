@@ -164,10 +164,12 @@ mod tests {
     use xsa_proto::event::{JoinAccepted, Reply, TimeChangedEvent};
     use xsa_proto::frame::ClientFrame;
     use xsa_proto::network::{ClientLink, Connection};
-    use xsa_proto::request::{JoinRequest, Request, Role, SetTimeRateRequest, SetTimeRequest, StepTimeRequest};
+    use xsa_proto::request::{
+        JoinRequest, Request, Role, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest, StepTimeRequest,
+    };
     use xsa_proto::session::SessionEnvironment;
     use xsa_proto::world::WorldState;
-    use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateChange};
+    use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateStep};
 
     use super::*;
     use crate::command::LocalCommand;
@@ -278,12 +280,7 @@ mod tests {
         let mut receiver = harness.invoke("time rate 100");
         let frame = harness.sent();
         let rate = TimeRate { multiplier: 100.0 };
-        assert_eq!(
-            frame.request,
-            Request::SetTimeRate(SetTimeRateRequest {
-                change: TimeRateChange::To(rate)
-            })
-        );
+        assert_eq!(frame.request, Request::SetTimeRate(SetTimeRateRequest { rate }));
         assert!(receiver.try_recv().is_err());
 
         harness.deliver(Event::TimeChanged(TimeChangedEvent {
@@ -335,26 +332,24 @@ mod tests {
         let cases = [
             Case {
                 line: "time pause",
-                request: Request::SetTimeRate(SetTimeRateRequest {
-                    change: TimeRateChange::To(TimeRate::PAUSED),
-                }),
+                request: Request::SetTimeRate(SetTimeRateRequest { rate: TimeRate::PAUSED }),
             },
             Case {
                 line: "time resume",
                 request: Request::SetTimeRate(SetTimeRateRequest {
-                    change: TimeRateChange::To(TimeRate::REAL_TIME),
+                    rate: TimeRate::REAL_TIME,
                 }),
             },
             Case {
                 line: "time faster",
-                request: Request::SetTimeRate(SetTimeRateRequest {
-                    change: TimeRateChange::Faster,
+                request: Request::StepTimeRate(StepTimeRateRequest {
+                    step: TimeRateStep::Faster,
                 }),
             },
             Case {
                 line: "time slower",
-                request: Request::SetTimeRate(SetTimeRateRequest {
-                    change: TimeRateChange::Slower,
+                request: Request::StepTimeRate(StepTimeRateRequest {
+                    step: TimeRateStep::Slower,
                 }),
             },
             Case {

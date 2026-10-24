@@ -6,13 +6,11 @@ use crate::server::message_handler::MessageHandler;
 
 impl MessageHandler for SetTimeRateRequest {
     fn handle(self, server: &mut Server, _client: usize) -> Outcome {
-        let rate = self.change.apply(server.world.time_flow().rate);
-
-        if !rate.is_valid() {
+        if !self.rate.is_valid() {
             return Outcome::denied("the time rate must be a finite number of at least 0");
         }
 
-        server.world.set_rate(rate);
+        server.world.set_rate(self.rate);
         server.broadcast_time();
 
         Outcome::Accepted

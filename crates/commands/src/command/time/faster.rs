@@ -1,7 +1,7 @@
 use usage::Args;
-use xsa_proto::request::{Request, SetTimeRateRequest};
+use xsa_proto::request::{Request, StepTimeRateRequest};
 use xsa_proto::session::SessionState;
-use xsa_units::TimeRateChange;
+use xsa_units::TimeRateStep;
 
 use super::TimeCommand;
 use crate::command::{Routable, Route, ServerCommand};
@@ -18,8 +18,8 @@ impl Routable for TimeFasterCommand {
 
 impl ServerCommand for TimeFasterCommand {
     fn request(&self) -> Request {
-        Request::SetTimeRate(SetTimeRateRequest {
-            change: TimeRateChange::Faster,
+        Request::StepTimeRate(StepTimeRateRequest {
+            step: TimeRateStep::Faster,
         })
     }
 

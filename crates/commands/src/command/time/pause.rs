@@ -1,7 +1,7 @@
 use usage::Args;
 use xsa_proto::request::{Request, SetTimeRateRequest};
 use xsa_proto::session::SessionState;
-use xsa_units::{TimeRate, TimeRateChange};
+use xsa_units::TimeRate;
 
 use super::TimeCommand;
 use crate::command::{Routable, Route, ServerCommand};
@@ -18,9 +18,7 @@ impl Routable for TimePauseCommand {
 
 impl ServerCommand for TimePauseCommand {
     fn request(&self) -> Request {
-        Request::SetTimeRate(SetTimeRateRequest {
-            change: TimeRateChange::To(TimeRate::PAUSED),
-        })
+        Request::SetTimeRate(SetTimeRateRequest { rate: TimeRate::PAUSED })
     }
 
     fn describe(&self, state: Option<&SessionState>) -> Output {

@@ -4,10 +4,10 @@ use xsa_units::TimeRate;
 use crate::session::SessionEnvironments;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
-pub struct SetTimeOverrideRequest {
+pub struct SetTimeRateOverrideRequest {
     pub rate: Option<TimeRate>,
 }
 
-impl SetTimeOverrideRequest {
+impl SetTimeRateOverrideRequest {
     pub const SESSION_ENVIRONMENT: SessionEnvironments = SessionEnvironments::SINGLEPLAYER;
 }

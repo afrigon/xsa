@@ -128,10 +128,11 @@ impl Server {
         match request {
             Request::Join(request) => request.handle(self, client),
             Request::Leave(request) => request.handle(self, client),
-            Request::SetTimeRate(request) => request.handle(self, client),
-            Request::SetTimeOverride(request) => request.handle(self, client),
             Request::SetTime(request) => request.handle(self, client),
             Request::StepTime(request) => request.handle(self, client),
+            Request::SetTimeRate(request) => request.handle(self, client),
+            Request::StepTimeRate(request) => request.handle(self, client),
+            Request::SetTimeRateOverride(request) => request.handle(self, client),
         }
     }
 
@@ -192,10 +193,10 @@ mod tests {
     use std::path::PathBuf;
 
     use xsa_proto::request::{
-        JoinRequest, LeaveRequest, RequestId, Role, SetTimeOverrideRequest, SetTimeRateRequest, SetTimeRequest,
-        StepTimeRequest,
+        JoinRequest, LeaveRequest, RequestId, Role, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest,
+        StepTimeRateRequest, StepTimeRequest,
     };
-    use xsa_units::{SimulationTime, TimeFlow, TimeRate, TimeRateChange};
+    use xsa_units::{SimulationTime, TimeFlow, TimeRate, TimeRateStep};
 
     use super::*;
     use crate::WorldOptions;
@@ -309,12 +310,7 @@ mod tests {
         drain(&mut observer);
 
         let rate = TimeRate { multiplier: 100.0 };
-        let id = harness.send(
-            &server_user,
-            Request::SetTimeRate(SetTimeRateRequest {
-                change: TimeRateChange::To(rate),
-            }),
-        );
+        let id = harness.send(&server_user, Request::SetTimeRate(SetTimeRateRequest { rate }));
         let changed = Event::TimeChanged(TimeChangedEvent {
             time: harness.server.world.time(),
             time_flow: TimeFlow {
@@ -332,17 +328,17 @@ mod tests {
         let connection = harness.connect();
         harness.send(&connection, server_role());
 
-        for (change, multiplier) in [
-            (TimeRateChange::Faster, 2.0),
-            (TimeRateChange::Faster, 4.0),
-            (TimeRateChange::Slower, 2.0),
-            (TimeRateChange::Slower, 1.0),
-            (TimeRateChange::Slower, 0.5),
-            (TimeRateChange::Slower, 0.25),
-            (TimeRateChange::Slower, 0.1),
-            (TimeRateChange::Slower, 0.0),
+        for (step, multiplier) in [
+            (TimeRateStep::Faster, 2.0),
+            (TimeRateStep::Faster, 4.0),
+            (TimeRateStep::Slower, 2.0),
+            (TimeRateStep::Slower, 1.0),
+            (TimeRateStep::Slower, 0.5),
+            (TimeRateStep::Slower, 0.25),
+            (TimeRateStep::Slower, 0.1),
+            (TimeRateStep::Slower, 0.0),
         ] {
-            harness.send(&connection, Request::SetTimeRate(SetTimeRateRequest { change }));
+            harness.send(&connection, Request::StepTimeRate(StepTimeRateRequest { step }));
             assert_eq!(harness.server.world.time_flow().rate, TimeRate { multiplier });
         }
     }
@@ -365,9 +361,7 @@ mod tests {
         harness.send(&connection, server_role());
         harness.send(
             &connection,
-            Request::SetTimeRate(SetTimeRateRequest {
-                change: TimeRateChange::To(TimeRate::PAUSED),
-            }),
+            Request::SetTimeRate(SetTimeRateRequest { rate: TimeRate::PAUSED }),
         );
         let before = harness.server.world.time();
         harness.server.world.advance(SimulationDuration { seconds: 1.0 });
@@ -380,15 +374,10 @@ mod tests {
         let connection = harness.connect();
         harness.send(&connection, server_role());
         let rate = TimeRate { multiplier: 4.0 };
+        harness.send(&connection, Request::SetTimeRate(SetTimeRateRequest { rate }));
         harness.send(
             &connection,
-            Request::SetTimeRate(SetTimeRateRequest {
-                change: TimeRateChange::To(rate),
-            }),
-        );
-        harness.send(
-            &connection,
-            Request::SetTimeOverride(SetTimeOverrideRequest {
+            Request::SetTimeRateOverride(SetTimeRateOverrideRequest {
                 rate: Some(TimeRate::PAUSED),
             }),
         );
@@ -399,7 +388,7 @@ mod tests {
 
         harness.send(
             &connection,
-            Request::SetTimeOverride(SetTimeOverrideRequest { rate: None }),
+            Request::SetTimeRateOverride(SetTimeRateOverrideRequest { rate: None }),
         );
         assert_eq!(
             harness.server.world.time_flow(),
@@ -419,7 +408,7 @@ mod tests {
 
         harness.send(
             &connection,
-            Request::SetTimeOverride(SetTimeOverrideRequest {
+            Request::SetTimeRateOverride(SetTimeRateOverrideRequest {
                 rate: Some(TimeRate::PAUSED),
             }),
         );
@@ -436,10 +425,10 @@ mod tests {
 
         for request in [
             Request::SetTimeRate(SetTimeRateRequest {
-                change: TimeRateChange::To(TimeRate { multiplier: -1.0 }),
+                rate: TimeRate { multiplier: -1.0 },
             }),
             Request::SetTimeRate(SetTimeRateRequest {
-                change: TimeRateChange::To(TimeRate { multiplier: f64::NAN }),
+                rate: TimeRate { multiplier: f64::NAN },
             }),
             Request::SetTime(SetTimeRequest {
                 time: SimulationTime { seconds: f64::INFINITY },
@@ -447,7 +436,7 @@ mod tests {
             Request::StepTime(StepTimeRequest {
                 duration: SimulationDuration { seconds: 0.0 },
             }),
-            Request::SetTimeOverride(SetTimeOverrideRequest {
+            Request::SetTimeRateOverride(SetTimeRateOverrideRequest {
                 rate: Some(TimeRate { multiplier: -1.0 }),
             }),
         ] {
@@ -466,7 +455,7 @@ mod tests {
         harness.send(
             &connection,
             Request::SetTimeRate(SetTimeRateRequest {
-                change: TimeRateChange::To(TimeRate { multiplier: 2.0 }),
+                rate: TimeRate { multiplier: 2.0 },
             }),
         );
         assert!(is_denied(&drain(&mut connection)));
