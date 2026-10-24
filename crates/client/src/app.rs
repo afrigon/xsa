@@ -166,7 +166,7 @@ impl App {
         self.resources = Some(renderer.create_resources());
         self.renderer = Some(renderer);
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
-        self.cameras = Some(CameraController::new(window.inner_size(), &self.config.input));
+        self.cameras = Some(CameraController::new(window.inner_size(), &self.config.debug.camera));
         window.request_redraw();
         self.apply_config();
 
@@ -343,7 +343,7 @@ impl App {
 
         if let Some(cameras) = &mut self.cameras {
             cameras.set_animation_duration_scale(f64::from(self.config.animation.camera_duration_scale()));
-            cameras.set_input_config(&self.config.input);
+            cameras.set_debug_camera_config(&self.config.debug.camera);
         }
 
         if let Some(resources) = &self.resources {

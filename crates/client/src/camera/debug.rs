@@ -7,7 +7,7 @@ use xsa_core::simulation::BodyIndex;
 
 use super::{Anchor, Attitude, CameraPose, Controls, ControlsContext};
 use crate::app::ClientWorld;
-use crate::config::InputConfig;
+use crate::config::DebugCameraConfig;
 use crate::input::Input;
 
 const MOUSE_SENSITIVITY: f64 = 0.0015;
@@ -64,10 +64,10 @@ impl DebugControls {
     }
 
     // The speed scrolling asks for, if it scrolled.
-    pub fn scrolled_speed(input: &Input, config: &InputConfig) -> Option<f64> {
+    pub fn scrolled_speed(input: &Input, debug_camera: &DebugCameraConfig) -> Option<f64> {
         let steps = input.scroll_steps();
 
-        (steps != 0.0).then(|| f64::from(config.debug_camera.speed) * SPEED_FACTOR_PER_SCROLL_STEP.powf(steps))
+        (steps != 0.0).then(|| f64::from(debug_camera.speed) * SPEED_FACTOR_PER_SCROLL_STEP.powf(steps))
     }
 
     // Carries the camera along with the nearest body's motion and spin since the previous frame, so it hovers over
@@ -122,8 +122,7 @@ impl Controls for DebugControls {
         let direction = forward * input.axis(KeyCode::KeyW, KeyCode::KeyS)
             + right * input.axis(KeyCode::KeyD, KeyCode::KeyA)
             + up * input.axis(KeyCode::Space, KeyCode::ShiftLeft);
-        self.position +=
-            direction.normalize_or_zero() * f64::from(context.config.debug_camera.speed) * context.delta_seconds;
+        self.position += direction.normalize_or_zero() * f64::from(context.debug_camera.speed) * context.delta_seconds;
 
         CameraPose {
             position: self.position,
@@ -143,8 +142,8 @@ impl Controls for DebugControls {
         "debug"
     }
 
-    fn speed(&self, config: &InputConfig) -> Option<f64> {
-        Some(f64::from(config.debug_camera.speed))
+    fn speed(&self, debug_camera: &DebugCameraConfig) -> Option<f64> {
+        Some(f64::from(debug_camera.speed))
     }
 }
 

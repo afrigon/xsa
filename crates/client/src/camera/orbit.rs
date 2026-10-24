@@ -5,7 +5,7 @@ use winit::event::MouseButton;
 use xsa_core::simulation::BodyIndex;
 
 use super::{Anchor, Camera, CameraPose, Controls, ControlsContext};
-use crate::config::InputConfig;
+use crate::config::DebugCameraConfig;
 use crate::input::Input;
 
 const MOUSE_SENSITIVITY: f64 = 0.004;
@@ -119,7 +119,7 @@ impl Controls for OrbitControls {
         "orbit"
     }
 
-    fn speed(&self, _config: &InputConfig) -> Option<f64> {
+    fn speed(&self, _debug_camera: &DebugCameraConfig) -> Option<f64> {
         None
     }
 }

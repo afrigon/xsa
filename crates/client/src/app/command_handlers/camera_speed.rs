@@ -4,7 +4,7 @@ use xsa_commands::command::CameraSpeedCommand;
 use crate::app::App;
 use crate::app::immediate_command_handler::ImmediateCommandHandler;
 
-const DEBUG_CAMERA_SPEED_KEY: &str = "input.debug-camera.speed";
+const DEBUG_CAMERA_SPEED_KEY: &str = "debug.camera.speed";
 
 impl ImmediateCommandHandler for CameraSpeedCommand {
     fn run(self, app: &mut App) -> anyhow::Result<String> {

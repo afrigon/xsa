@@ -90,9 +90,6 @@ impl Default for Config {
                 bind: BindConfig {
                     keys: DefaultBind::keys(),
                 },
-                debug_camera: DebugCameraConfig {
-                    speed: DEBUG_CAMERA_SPEED,
-                },
             },
             terrain: TerrainConfig {
                 lod: TerrainLodConfig {
@@ -114,7 +111,12 @@ impl Default for Config {
                 terrain_shader_override: None,
                 surface_shader_override: None,
             },
-            debug: DebugConfig { wireframe: false },
+            debug: DebugConfig {
+                wireframe: false,
+                camera: DebugCameraConfig {
+                    speed: DEBUG_CAMERA_SPEED,
+                },
+            },
             logging: LoggingConfig::default(),
         }
     }

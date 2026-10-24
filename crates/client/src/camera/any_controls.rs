@@ -1,5 +1,5 @@
 use super::{Anchor, CameraPose, Controls, ControlsContext, DebugControls, OrbitControls};
-use crate::config::InputConfig;
+use crate::config::DebugCameraConfig;
 use crate::input::Input;
 
 pub enum AnyControls {
@@ -40,7 +40,7 @@ impl Controls for AnyControls {
         self.controls().name()
     }
 
-    fn speed(&self, config: &InputConfig) -> Option<f64> {
-        self.controls().speed(config)
+    fn speed(&self, debug_camera: &DebugCameraConfig) -> Option<f64> {
+        self.controls().speed(debug_camera)
     }
 }

@@ -13,7 +13,7 @@ use crate::camera::{
     Anchor, AnyControls, Attitude, Camera, CameraPose, CameraSwitch, CameraTransition, Controls, ControlsContext,
     DebugControls, OrbitControls,
 };
-use crate::config::InputConfig;
+use crate::config::DebugCameraConfig;
 use crate::input::Input;
 use crate::ui::CameraReading;
 
@@ -30,7 +30,7 @@ pub(super) struct CameraController {
     transition: Option<CameraTransition>,
     // The last switch of controls, until the app takes it to release the mouse and, after a cut, the frame history.
     switched: Option<CameraSwitch>,
-    input_config: InputConfig,
+    debug_camera: DebugCameraConfig,
     animation_duration_scale: f64,
 }
 
@@ -44,7 +44,7 @@ pub(super) struct TeleportTarget {
 }
 
 impl CameraController {
-    pub fn new(window_size: PhysicalSize<u32>, input_config: &InputConfig) -> CameraController {
+    pub fn new(window_size: PhysicalSize<u32>, debug_camera: &DebugCameraConfig) -> CameraController {
         CameraController {
             camera: Camera::new(
                 HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians(),
@@ -53,7 +53,7 @@ impl CameraController {
             controls: None,
             transition: None,
             switched: None,
-            input_config: input_config.clone(),
+            debug_camera: debug_camera.clone(),
             animation_duration_scale: 1.0,
         }
     }
@@ -79,7 +79,7 @@ impl CameraController {
 
         Some(CameraReading {
             controls: controls.name(),
-            speed: controls.speed(&self.input_config),
+            speed: controls.speed(&self.debug_camera),
             attitude: Attitude::of(self.camera.orientation, DVec3::Z, DVec3::Y),
         })
     }
@@ -99,8 +99,8 @@ impl CameraController {
         self.switched.take()
     }
 
-    pub fn set_input_config(&mut self, input_config: &InputConfig) {
-        self.input_config = input_config.clone();
+    pub fn set_debug_camera_config(&mut self, debug_camera: &DebugCameraConfig) {
+        self.debug_camera = debug_camera.clone();
     }
 
     pub fn wants_mouse_capture(&self, input: &Input) -> Option<bool> {
@@ -114,7 +114,7 @@ impl CameraController {
             world,
             input,
             camera: &self.camera,
-            config: &self.input_config,
+            debug_camera: &self.debug_camera,
             delta_seconds,
         };
         let mut pose = controls.update(&context);
@@ -128,7 +128,7 @@ impl CameraController {
         }
 
         let scrolled_speed = match controls {
-            AnyControls::Debug(_) => DebugControls::scrolled_speed(input, &self.input_config),
+            AnyControls::Debug(_) => DebugControls::scrolled_speed(input, &self.debug_camera),
             AnyControls::Orbit(_) => None,
         };
         self.camera.position = pose.position;
@@ -327,7 +327,7 @@ impl CameraController {
             world,
             input: &idle,
             camera: &self.camera,
-            config: &self.input_config,
+            debug_camera: &self.debug_camera,
             delta_seconds: 0.0,
         });
         let from_pose = CameraPose {

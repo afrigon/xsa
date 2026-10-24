@@ -1,5 +1,5 @@
 use super::{Anchor, CameraPose, ControlsContext};
-use crate::config::InputConfig;
+use crate::config::DebugCameraConfig;
 use crate::input::Input;
 
 // How input moves the camera. Each kind of controls keeps its own state; switching kinds replaces the controls.
@@ -13,5 +13,5 @@ pub trait Controls {
     fn name(&self) -> &'static str;
 
     // Meters per second, for controls that fly at a set speed.
-    fn speed(&self, config: &InputConfig) -> Option<f64>;
+    fn speed(&self, debug_camera: &DebugCameraConfig) -> Option<f64>;
 }
