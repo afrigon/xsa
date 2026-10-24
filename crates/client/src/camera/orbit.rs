@@ -8,6 +8,7 @@ pub use orbit_target::OrbitTarget;
 
 use std::f64::consts::{FRAC_PI_2, SQRT_2};
 
+use animation::{EasedProgress, Easing};
 use glam::{DQuat, DVec3};
 use winit::event::MouseButton;
 use xsa_core::simulation::BodyIndex;
@@ -116,8 +117,7 @@ impl OrbitCamera {
         self.transition = Some(Transition {
             path,
             end,
-            elapsed: 0.0,
-            duration,
+            progress: EasedProgress::new(duration, Easing::Smoothstep),
         });
     }
 
@@ -134,8 +134,8 @@ impl OrbitCamera {
 
         self.current = match &mut self.transition {
             Some(transition) => {
-                transition.elapsed += delta_seconds;
-                let progress = transition.eased_progress();
+                transition.progress.advance(delta_seconds);
+                let progress = transition.progress.value();
                 let on_path = transition.path.at(progress);
                 let target_drift = target.position - transition.end.focus;
                 let zoom_adjustment = (self.distance / transition.end.distance).powf(progress);
@@ -153,7 +153,7 @@ impl OrbitCamera {
         if self
             .transition
             .as_ref()
-            .is_some_and(|transition| transition.elapsed >= transition.duration)
+            .is_some_and(|transition| transition.progress.is_finished())
         {
             self.transition = None;
         }

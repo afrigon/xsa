@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+animation.workspace = true
 anyhow.workspace = true
 ash.workspace = true
 glam.workspace = true

@@ -72,10 +72,12 @@ that produce them. `resource-vulkan` depends on no xsa crate
 either, only on `memory-vulkan` and `resource-loader`: the client adds its own
 kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
 `config` depends on no xsa crate: `logging`, `commands`, `server` and `client`
-define their settings through it.
+define their settings through it. `animation` depends on no xsa crate either: the
+server's time warps and the client's camera transitions move through it.
 
 | Crate | Responsibility |
 | --- | --- |
+| `animation` | Values that move over time: easing curves (`Easing`, `CubicBezier`), eased progress over a duration (`EasedProgress`) and speed-limited motion (`LimitedMotion`) |
 | `units` | Plain value types shared by every crate: simulation time, time rate |
 | `core` | The pure simulation: orbits, coordinate frames, bodies and their state, terrain heights over the pages a side holds (`HeightPages`) |
 | `packs` | Pack loading (see `docs/packs.md`): reads KDL content into `core` types and plain definitions, and a terrain's height pages (`HeightPageReader`) |
