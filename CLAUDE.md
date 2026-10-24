@@ -297,12 +297,12 @@ Names in code, data and documents use these words in these meanings only:
   camera transitions, eye adaptation and interface transitions finish at once.
 - `xsa client --script <path>` and `xsa server --script <path>` run a file of commands at startup, one per line (`#`
   starts a comment), each waiting for the previous one's reply; each command and its reply are printed to the shell
-  under its `path:line`, and the first failure skips the rest. `init.xsa` is the repository's development setup:
-  `mise run client -- --script init.xsa`.
+  under `<script file name>:<line>`, and the first failure skips the rest. `init.xsa` is the repository's development
+  setup: `mise run client -- --script init.xsa`.
 - Commands are read from stdin with a `>` prompt (plain lines when stdin is
   not a terminal), and from `xsa ipc` over a socket in `$XDG_RUNTIME_DIR/xsa/`
   (named pipes on Windows).
-- Commands received over IPC and their replies are printed to the shell, each pair under one sequence number;
+- Commands received over IPC and their replies are printed to the shell, each pair under one `ipc #<sequence>` label;
   `logging.shell.ipc.enabled`, `.input.enabled` and `.output.enabled` choose which (`logging.shell.script.*` for
   startup scripts), and `logging.shell.enabled false` silences them with the log.
 
