@@ -15,8 +15,9 @@ use xsa_proto::reply::Reply;
 use xsa_proto::request::Request;
 use xsa_proto::session::SessionEnvironment;
 use xsa_proto::user::{Actor, User};
-use xsa_units::{SimulationDuration, TICK_RATE_HERTZ};
+use xsa_units::{SimulationDuration, TICK_RATE_HERTZ, TimeRate};
 
+use crate::world::MAXIMUM_TIME_RATE;
 use crate::{LocalServer, Peer, ServerHandle, World};
 use client::Client;
 use request_handler::RequestHandler;
@@ -162,6 +163,24 @@ impl Server {
     fn send_snapshot(&mut self, client: usize) {
         let state = self.world.state(self.users.clone(), self.environment);
         self.send(client, ServerFrame::Snapshot(state));
+    }
+
+    // A rate time can run at: finite, at least 0 and at most the maximum. `setting` names it in the refusal.
+    fn check_time_rate(rate: TimeRate, setting: &str) -> Result<(), RequestError> {
+        if !rate.is_valid() {
+            return Err(RequestError::invalid(format!(
+                "the {setting} must be a finite number of at least 0"
+            )));
+        }
+
+        if rate > MAXIMUM_TIME_RATE {
+            return Err(RequestError::invalid(format!(
+                "the {setting} is at most {}",
+                MAXIMUM_TIME_RATE.multiplier
+            )));
+        }
+
+        Ok(())
     }
 
     fn broadcast_time(&mut self) {
@@ -398,6 +417,57 @@ mod tests {
             harness.send(&connection, Request::StepTimeRate(StepTimeRateRequest { step }));
             assert_eq!(harness.server.world.time_flow().rate, TimeRate { multiplier });
         }
+    }
+
+    fn refusal(frames: &[ServerFrame], id: RequestId) -> Option<RequestError> {
+        frames.iter().find_map(|frame| match frame {
+            ServerFrame::Reply {
+                id: replied,
+                result: Err(error),
+            } if *replied == id => Some(error.clone()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn rates_above_the_maximum_are_refused() {
+        let mut harness = Harness::new();
+        let mut connection = harness.connect_operator();
+        let before = harness.server.world.time_flow();
+        let rate = TimeRate {
+            multiplier: MAXIMUM_TIME_RATE.multiplier * 2.0,
+        };
+        let set = harness.send(&connection, Request::SetTimeRate(SetTimeRateRequest { rate }));
+        let set_override = harness.send(
+            &connection,
+            Request::SetTimeRateOverride(SetTimeRateOverrideRequest { rate: Some(rate) }),
+        );
+        let frames = drain(&mut connection);
+        assert!(
+            matches!(refusal(&frames, set), Some(RequestError::Invalid { .. })),
+            "{frames:?}"
+        );
+        assert!(
+            matches!(refusal(&frames, set_override), Some(RequestError::Invalid { .. })),
+            "{frames:?}"
+        );
+        assert_eq!(harness.server.world.time_flow(), before);
+    }
+
+    #[test]
+    fn faster_at_the_maximum_conflicts() {
+        let mut harness = Harness::new();
+        let mut connection = harness.connect_operator();
+        let rate = MAXIMUM_TIME_RATE;
+        harness.send(&connection, Request::SetTimeRate(SetTimeRateRequest { rate }));
+        let step = TimeRateStep::Faster;
+        let faster = harness.send(&connection, Request::StepTimeRate(StepTimeRateRequest { step }));
+        let frames = drain(&mut connection);
+        assert!(
+            matches!(refusal(&frames, faster), Some(RequestError::Conflict { .. })),
+            "{frames:?}"
+        );
+        assert_eq!(harness.server.world.time_flow().rate, MAXIMUM_TIME_RATE);
     }
 
     #[test]

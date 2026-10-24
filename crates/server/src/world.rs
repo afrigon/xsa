@@ -11,6 +11,8 @@ use xsa_proto::world::{PackReference, WorldState};
 use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate};
 
 const DEFAULT_NAMESPACE: &str = "base";
+// The fastest time runs, past which a frame cannot keep up: 2^17, so doubling from real time reaches it exactly.
+pub(crate) const MAXIMUM_TIME_RATE: TimeRate = TimeRate { multiplier: 131_072.0 };
 
 pub struct World {
     simulation_id: Id,

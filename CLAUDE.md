@@ -285,6 +285,8 @@ Names in code, data and documents use these words in these meanings only:
 
 - Durations take `s`, `min`, `h` or `t` (ticks); altitudes take `m`, `km`,
   `Mm` or `Gm` (case-sensitive), a bare number is km; angles are degrees.
+- Time runs at most 2¹⁷× real time (`MAXIMUM_TIME_RATE` on the server): faster rates are refused, and `time faster`
+  there conflicts.
 - `time override <rate>` runs time at a rate without changing the configured one, until `time override none`; only
   singleplayer allows it (its request's `SESSION_ENVIRONMENTS`), and the pause menu stops time with one.
 - Client commands may span frames: a handler returns `CommandProgress::Done`
