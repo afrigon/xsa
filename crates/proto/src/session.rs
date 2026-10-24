@@ -8,10 +8,10 @@ pub use session_state::SessionState;
 
 use anyhow::{Context, bail};
 
-use crate::frame::{ClientFrame, ServerFrame};
+use crate::frame::{ClientFrame, RequestId, ServerFrame};
 use crate::network::{Connection, DisconnectReason};
 use crate::reply::Reply;
-use crate::request::{JoinRequest, Request, RequestId};
+use crate::request::{JoinRequest, Request};
 use crate::user::Actor;
 
 pub struct ServerSession {

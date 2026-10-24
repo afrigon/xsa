@@ -159,10 +159,10 @@ The `proto` crate defines it; `mise run docs -- --open` renders the reference fr
   to decode closes the connection as a `ProtocolViolation`, logged at WARN. The server handles every disconnect
   alike: it removes the user and broadcasts `UserLeftEvent`.
 - **Naming:** a request is a `<Name>Request`, an event a `<Name>Event` in the past tense and a reply a `<Name>Reply`,
-  each in its own file in `request/`, `event/` or `reply/`. Besides their dispatch enum, those modules hold only the
-  types of a request's contract (`RequestType`, `RequestId`, `RequestError`, `ForbiddenCause`). Requests say
+  each in its own file in `request/`, `event/` or `reply/`, which hold nothing else besides their dispatch enum
+  (and `RequestType` in `request/`); refusals live in `error/`, ids in `frame/`. Requests say
   **Set** for an absolute value and **Step** for a change relative to the server's value.
-- **Documentation:** every public type and field in `request`, `reply`, `event`, `frame`, `world` and `user` has a
+- **Documentation:** every public type and field in `request`, `reply`, `event`, `error`, `frame`, `world` and `user` has a
   doc comment; their `missing_docs` lint makes `lint` fail otherwise.
 
 ## Terms

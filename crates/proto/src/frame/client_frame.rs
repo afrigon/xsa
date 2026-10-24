@@ -1,6 +1,7 @@
 use bitcode::{Decode, Encode};
 
-use crate::request::{Request, RequestId};
+use super::RequestId;
+use crate::request::Request;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
 /// What a client sends: a request and the id its reply will carry.

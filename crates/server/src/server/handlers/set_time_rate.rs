@@ -1,4 +1,5 @@
-use xsa_proto::request::{RequestError, SetTimeRateRequest};
+use xsa_proto::error::RequestError;
+use xsa_proto::request::SetTimeRateRequest;
 
 use crate::server::Server;
 use crate::server::request_handler::RequestHandler;

@@ -1,6 +1,7 @@
 //! Requests: what a client asks the server to do.
 //!
-//! A client sends each request in a [`ClientFrame`](crate::frame::ClientFrame) with a [`RequestId`]. The server
+//! A client sends each request in a [`ClientFrame`](crate::frame::ClientFrame) with a
+//! [`RequestId`](crate::frame::RequestId). The server
 //! checks that the sender has joined and that the request is available in the session, handles it, broadcasts the
 //! [`Event`](crate::event::Event)s it caused, then answers only the sender with a
 //! [`ServerFrame::Reply`](crate::frame::ServerFrame::Reply): the request's typed [`Reply`](crate::reply::Reply), or a
@@ -10,10 +11,7 @@
 //! A request is a `<Name>Request` type in its own file whose [`RequestType`] states its contract, listed in
 //! `requests!`.
 
-mod forbidden_cause;
 mod join_request;
-mod request_error;
-mod request_id;
 mod request_type;
 mod set_time_rate_override_request;
 mod set_time_rate_request;
@@ -21,10 +19,7 @@ mod set_time_request;
 mod step_time_rate_request;
 mod step_time_request;
 
-pub use forbidden_cause::ForbiddenCause;
 pub use join_request::JoinRequest;
-pub use request_error::RequestError;
-pub use request_id::RequestId;
 pub use request_type::RequestType;
 pub use set_time_rate_override_request::SetTimeRateOverrideRequest;
 pub use set_time_rate_request::SetTimeRateRequest;
@@ -34,6 +29,7 @@ pub use step_time_request::StepTimeRequest;
 
 use bitcode::{Decode, Encode};
 
+use crate::error::{ForbiddenCause, RequestError};
 use crate::session::{SessionEnvironment, SessionEnvironments};
 
 macro_rules! requests {

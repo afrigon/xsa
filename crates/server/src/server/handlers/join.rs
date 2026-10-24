@@ -1,6 +1,7 @@
+use xsa_proto::error::RequestError;
 use xsa_proto::event::{Event, UserJoinedEvent};
 use xsa_proto::reply::JoinReply;
-use xsa_proto::request::{JoinRequest, RequestError};
+use xsa_proto::request::JoinRequest;
 use xsa_proto::user::{Actor, User, UserId};
 
 use crate::server::Server;

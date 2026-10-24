@@ -1,4 +1,5 @@
-use xsa_proto::request::{RequestError, RequestType};
+use xsa_proto::error::RequestError;
+use xsa_proto::request::RequestType;
 
 use super::Server;
 

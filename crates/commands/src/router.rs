@@ -17,8 +17,8 @@ use std::ffi::OsStr;
 
 use tokio::sync::oneshot;
 use usage::help::Style;
+use xsa_proto::frame::RequestId;
 use xsa_proto::frame::ServerFrame;
-use xsa_proto::request::RequestId;
 use xsa_proto::session::ServerSession;
 
 use crate::command::{Command, CommandLine, Routable, Route, ServerCommand};
@@ -161,12 +161,13 @@ impl CommandRouter {
 
 #[cfg(test)]
 mod tests {
+    use xsa_proto::error::RequestError;
     use xsa_proto::event::{Event, TimeChangedEvent};
     use xsa_proto::frame::ClientFrame;
     use xsa_proto::network::{ClientLink, Connection, Received};
     use xsa_proto::reply::{JoinReply, Reply};
     use xsa_proto::request::{
-        JoinRequest, Request, RequestError, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest, StepTimeRequest,
+        JoinRequest, Request, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest, StepTimeRequest,
     };
     use xsa_proto::session::SessionEnvironment;
     use xsa_proto::user::UserId;

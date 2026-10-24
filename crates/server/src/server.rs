@@ -7,11 +7,12 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use xsa_proto::error::{ForbiddenCause, RequestError};
 use xsa_proto::event::{Event, TickEvent, TimeChangedEvent, UserLeftEvent};
 use xsa_proto::frame::ServerFrame;
 use xsa_proto::network::{Connection, DisconnectReason};
 use xsa_proto::reply::Reply;
-use xsa_proto::request::{ForbiddenCause, Request, RequestError};
+use xsa_proto::request::Request;
 use xsa_proto::session::SessionEnvironment;
 use xsa_proto::user::{Actor, User};
 use xsa_units::{SimulationDuration, TICK_RATE_HERTZ};
@@ -180,9 +181,10 @@ mod tests {
 
     use xsa_proto::event::UserJoinedEvent;
     use xsa_proto::frame::ClientFrame;
+    use xsa_proto::frame::RequestId;
     use xsa_proto::reply::JoinReply;
     use xsa_proto::request::{
-        JoinRequest, RequestId, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest,
+        JoinRequest, SetTimeRateOverrideRequest, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest,
         StepTimeRequest,
     };
     use xsa_proto::user::UserId;

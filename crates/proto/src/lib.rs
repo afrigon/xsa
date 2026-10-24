@@ -1,4 +1,6 @@
 #[warn(missing_docs)]
+pub mod error;
+#[warn(missing_docs)]
 pub mod event;
 #[warn(missing_docs)]
 pub mod frame;

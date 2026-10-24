@@ -1,8 +1,9 @@
 use bitcode::{Decode, Encode};
 
+use super::RequestId;
+use crate::error::RequestError;
 use crate::event::Event;
 use crate::reply::Reply;
-use crate::request::{RequestError, RequestId};
 use crate::world::WorldState;
 
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
