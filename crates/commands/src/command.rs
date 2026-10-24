@@ -37,6 +37,8 @@ pub use time::{
     TimeResumeCommand, TimeSetCommand, TimeSlowerCommand, TimeStepCommand,
 };
 #[cfg(feature = "client")]
+pub use time::{TimeWarpCommand, TimeWarpRequestCommand};
+#[cfg(feature = "client")]
 pub use ui::{
     InterfaceAction, InterfaceCommand, InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand,
     InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand, Overlay, ViewControllerId,

@@ -9,6 +9,8 @@ pub struct AnimationConfig {
     // Camera transitions and eye adaptation.
     pub camera: AnimationGroupConfig,
     pub ui: AnimationGroupConfig,
+    // Time warps easing to their end.
+    pub time: AnimationGroupConfig,
 }
 
 impl AnimationConfig {
@@ -19,6 +21,10 @@ impl AnimationConfig {
     pub fn ui_duration_scale(&self) -> f32 {
         self.all.effective_duration_scale() * self.ui.effective_duration_scale()
     }
+
+    pub fn time_duration_scale(&self) -> f32 {
+        self.all.effective_duration_scale() * self.time.effective_duration_scale()
+    }
 }
 
 impl ConfigSection for AnimationConfig {
@@ -26,5 +32,6 @@ impl ConfigSection for AnimationConfig {
         self.all.visit(visitor);
         visitor.section("camera", &mut self.camera);
         visitor.section("ui", &mut self.ui);
+        visitor.section("time", &mut self.time);
     }
 }

@@ -9,6 +9,8 @@ mod completions;
 mod config_completer;
 #[cfg(feature = "client")]
 mod coordinate_completer;
+#[cfg(feature = "client")]
+mod time_of_day_completer;
 
 #[cfg(feature = "client")]
 pub(crate) use body_category_completer::complete_body_category;
@@ -21,6 +23,8 @@ pub use completions::Completions;
 pub(crate) use config_completer::{complete_config_key, complete_config_value};
 #[cfg(feature = "client")]
 pub(crate) use coordinate_completer::{complete_latitude, complete_longitude};
+#[cfg(feature = "client")]
+pub(crate) use time_of_day_completer::complete_time_of_day;
 
 use std::cell::RefCell;
 use std::collections::HashMap;

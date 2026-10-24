@@ -28,6 +28,8 @@ pub(super) struct CameraController {
     // None until the simulation has a body to look at.
     controls: Option<AnyControls>,
     transition: Option<CameraTransition>,
+    // Where the controls put the camera, before a transition blends it in: where the camera is about to be.
+    controls_pose: CameraPose,
     // The last switch of controls, until the app takes it to release the mouse and, after a cut, the frame history.
     switched: Option<CameraSwitch>,
     debug_camera: DebugCameraConfig,
@@ -52,6 +54,10 @@ impl CameraController {
             ),
             controls: None,
             transition: None,
+            controls_pose: CameraPose {
+                position: DVec3::ZERO,
+                orientation: DQuat::IDENTITY,
+            },
             switched: None,
             debug_camera: debug_camera.clone(),
             animation_duration_scale: 1.0,
@@ -68,6 +74,10 @@ impl CameraController {
         }
 
         self.camera.aspect_ratio = CameraController::aspect_ratio_of(window_size);
+    }
+
+    pub fn controls_pose(&self) -> CameraPose {
+        self.controls_pose
     }
 
     pub fn anchor(&self) -> Option<Anchor> {
@@ -118,6 +128,7 @@ impl CameraController {
             delta_seconds,
         };
         let mut pose = controls.update(&context);
+        self.controls_pose = pose;
 
         if let Some(transition) = &mut self.transition {
             pose = transition.update(pose, controls.anchor(), &context);
@@ -299,8 +310,8 @@ impl CameraController {
 
                 Ok(degrees.to_radians())
             }
-            Latitude::Substellar => Ok(declination(CameraController::star(body, command, world)?)),
-            Latitude::Antistellar => Ok(-declination(CameraController::star(body, command, world)?)),
+            Latitude::Substellar => Ok(declination(world.star_for(body, command.star.as_deref())?)),
+            Latitude::Antistellar => Ok(-declination(world.star_for(body, command.star.as_deref())?)),
             Latitude::NearSide => Ok(declination(CameraController::parent(body, world)?)),
             Latitude::FarSide => Ok(-declination(CameraController::parent(body, world)?)),
         }
@@ -318,7 +329,7 @@ impl CameraController {
         match longitude {
             Longitude::Degrees { degrees } => Ok(degrees.to_radians()),
             Longitude::TimeOfDay { time_of_day } => {
-                let star = CameraController::star(body, command, world)?;
+                let star = world.star_for(body, command.star.as_deref())?;
 
                 Ok(world
                     .daylight(body, star)
@@ -331,21 +342,6 @@ impl CameraController {
                 Ok((opposite + PI).rem_euclid(TAU) - PI)
             }
         }
-    }
-
-    // The star `--star` names, else the one lighting the body most.
-    fn star(body: BodyIndex, command: &CameraTeleportCommand, world: &ClientWorld) -> anyhow::Result<BodyIndex> {
-        let Some(id) = &command.star else {
-            let position = world.body_state(body).position;
-
-            return world
-                .brightest_star(position)
-                .with_context(|| format!("no star lights {}", world.body(body).id));
-        };
-        let star = world.find_body(id)?;
-        ensure!(world.body(star).star.is_some(), "{id} is not a star");
-
-        Ok(star)
     }
 
     fn parent(body: BodyIndex, world: &ClientWorld) -> anyhow::Result<BodyIndex> {
@@ -380,22 +376,7 @@ impl CameraController {
     }
 
     // Replaces the controls; a smooth switch carries the camera from where it is now.
-    fn switch(&mut self, controls: AnyControls, switch: CameraSwitch, world: &ClientWorld) {
-        let previous = self.controls.replace(controls);
-        let switch = if self.animation_duration_scale > 0.0 {
-            switch
-        } else {
-            CameraSwitch::Cut
-        };
-        self.transition = None;
-        self.switched = Some(switch);
-
-        let (Some(previous), CameraSwitch::Smooth) = (previous, switch) else {
-            return;
-        };
-        let Some(controls) = &mut self.controls else {
-            return;
-        };
+    fn switch(&mut self, mut controls: AnyControls, switch: CameraSwitch, world: &ClientWorld) {
         let idle = Input::default();
         let to_pose = controls.update(&ControlsContext {
             world,
@@ -404,6 +385,20 @@ impl CameraController {
             debug_camera: &self.debug_camera,
             delta_seconds: 0.0,
         });
+        let to_anchor = controls.anchor();
+        let previous = self.controls.replace(controls);
+        let switch = if self.animation_duration_scale > 0.0 {
+            switch
+        } else {
+            CameraSwitch::Cut
+        };
+        self.controls_pose = to_pose;
+        self.transition = None;
+        self.switched = Some(switch);
+
+        let (Some(previous), CameraSwitch::Smooth) = (previous, switch) else {
+            return;
+        };
         let from_pose = CameraPose {
             position: self.camera.position,
             orientation: self.camera.orientation,
@@ -411,7 +406,7 @@ impl CameraController {
         self.transition = Some(CameraTransition::new(
             previous,
             from_pose,
-            controls.anchor(),
+            to_anchor,
             to_pose,
             world,
             self.animation_duration_scale,

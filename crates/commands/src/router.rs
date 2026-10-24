@@ -81,6 +81,17 @@ impl CommandRouter {
         self.run(route, reply, executor);
     }
 
+    // Sends a request a client command worked out, replying to that command as a server command would.
+    #[cfg(feature = "client")]
+    pub fn forward(
+        &mut self,
+        command: Box<dyn ServerCommand>,
+        reply: CommandReply,
+        executor: &mut impl CommandExecutor,
+    ) {
+        self.run(Route::Server(command), reply.into_sender(), executor);
+    }
+
     pub fn resume(&mut self, executor: &mut impl CommandExecutor) {
         if executor.session().state().is_none() {
             return;

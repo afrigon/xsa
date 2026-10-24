@@ -102,6 +102,7 @@ impl Default for Config {
                 all: RUNNING_ANIMATIONS,
                 camera: RUNNING_ANIMATIONS,
                 ui: RUNNING_ANIMATIONS,
+                time: RUNNING_ANIMATIONS,
             },
             service: ServiceConfig {
                 resources: ResourcesConfig::from_limits(ResourceLimits::default()),

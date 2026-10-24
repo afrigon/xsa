@@ -6,6 +6,7 @@ mod client_world;
 mod command_handlers;
 mod command_progress;
 mod command_task;
+mod forwarded_command;
 mod frame_timing;
 mod immediate_command_handler;
 mod pointer_input;
@@ -58,6 +59,7 @@ use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
 pub(crate) use client_world::ClientWorld;
 use command_progress::CommandProgress;
+use forwarded_command::ForwardedCommand;
 use frame_timing::FrameTiming;
 use running_task::RunningTask;
 use task_status::TaskStatus;
@@ -80,6 +82,7 @@ pub struct App {
     shell_outputs: ShellOutputs,
     exit_requested: bool,
     tasks: Vec<RunningTask>,
+    forwarded: Vec<ForwardedCommand>,
     packs_directory: PathBuf,
     input: Input,
     cameras: Option<CameraController>,
@@ -128,6 +131,7 @@ impl App {
             shell_outputs,
             exit_requested: false,
             tasks: Vec::new(),
+            forwarded: Vec::new(),
             packs_directory,
             input: Input::default(),
             cameras: None,
@@ -290,6 +294,14 @@ impl App {
             router.handle(invocation, self);
         }
 
+        for forwarded in std::mem::take(&mut self.forwarded) {
+            // Nothing waits for the reply of a command a bind ran; it is dropped.
+            let reply = forwarded
+                .reply
+                .unwrap_or_else(|| CommandReply::new(oneshot::channel().0));
+            router.forward(forwarded.command, reply, self);
+        }
+
         self.router = router;
     }
 
@@ -442,6 +454,7 @@ impl App {
                 clock: self.session.state().map(|state| ClockReading {
                     time: state.time(),
                     time_flow: state.time_flow(),
+                    rate: state.rate(),
                 }),
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
@@ -494,6 +507,7 @@ impl App {
         match progress {
             CommandProgress::Done(result) => App::finish(result, reply),
             CommandProgress::Running(task) => self.tasks.push(RunningTask { task, reply }),
+            CommandProgress::Forward(command) => self.forwarded.push(ForwardedCommand { command, reply }),
         }
     }
 
@@ -599,6 +613,7 @@ impl CommandExecutor for App {
             ClientCommand::InterfaceShow(command) => command.start(self),
             ClientCommand::InterfaceHide(command) => command.start(self),
             ClientCommand::InterfaceToggle(command) => command.start(self),
+            ClientCommand::TimeWarp(command) => command.start(self),
         };
 
         self.follow(progress, Some(reply));

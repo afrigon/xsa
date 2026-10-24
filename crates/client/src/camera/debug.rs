@@ -70,21 +70,16 @@ impl DebugControls {
         (steps != 0.0).then(|| f64::from(debug_camera.speed) * SPEED_FACTOR_PER_SCROLL_STEP.powf(steps))
     }
 
-    // Carries the camera along with the nearest body's motion and spin since the previous frame, so it hovers over
-    // the same ground whatever the simulation's speed.
+    // Carries the camera along with its body's motion and spin since the previous frame, so it hovers over the same
+    // ground whatever the simulation's speed, then rides whichever body is nearest from there. Carrying comes first:
+    // after a jump in time, the position the body left behind says nothing about which body is near.
     fn ride_nearest_body(&mut self, world: &ClientWorld) {
-        let Some(index) = world.nearest_body(self.position) else {
-            return;
-        };
-        let state = world.body_state(index);
-
-        if self.attachment.body == index {
-            let rotation = state.orientation * self.attachment.orientation.inverse();
-            self.position = state.position + rotation * (self.position - self.attachment.position);
-            self.frame = (rotation * self.frame).normalize();
-        }
-
-        self.attachment = Attachment::of(index, world);
+        let state = world.body_state(self.attachment.body);
+        let rotation = state.orientation * self.attachment.orientation.inverse();
+        self.position = state.position + rotation * (self.position - self.attachment.position);
+        self.frame = (rotation * self.frame).normalize();
+        let nearest = world.nearest_body(self.position).unwrap_or(self.attachment.body);
+        self.attachment = Attachment::of(nearest, world);
     }
 
     fn take_pending_view(&mut self) {

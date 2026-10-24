@@ -115,9 +115,12 @@ impl DebugOverlayView {
             .time_flow
             .time_override
             .map_or_else(String::new, |rate| format!(" (override: {})", Self::rate(rate)));
+        let warp = clock.time_flow.warp.map_or_else(String::new, |warp| {
+            format!(" (warp: {:.0}× to {})", clock.rate.multiplier, warp.until)
+        });
 
         format!(
-            "date: {date}\ntime: {} UTC\nrate: {}{time_override}",
+            "date: {date}\ntime: {} UTC\nrate: {}{time_override}{warp}",
             time.trim_end_matches('Z'),
             Self::rate(clock.time_flow.rate)
         )

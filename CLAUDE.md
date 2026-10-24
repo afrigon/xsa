@@ -289,6 +289,11 @@ Names in code, data and documents use these words in these meanings only:
   there conflicts.
 - `time override <rate>` runs time at a rate without changing the configured one, until `time override none`; only
   singleplayer allows it (its request's `SESSION_ENVIRONMENTS`), and the pause menu stops time with one.
+- `time warp <time-of-day> [--star <id>] [--instant]` runs time ahead to the next dawn, sunrise, noon, sunset, dusk or
+  midnight where the camera's controls stand: the client finds the moment (`core::daylight`) and the server eases time
+  there (`SetTimeWarpRequest`) over `0.25 s × log₂(1 + span / 1 min)`, scaled by `animation.time`, never faster than
+  the maximum rate; at scale 0 or with `--instant` it jumps. An override holds a warp, any other change to time stops
+  it, `time warp --cancel` too. Singleplayer only.
 - Client commands may span frames: a handler returns `CommandProgress::Done`
   or a `CommandTask` that `App` polls after each update, replying when it
   finishes. Updates run with every frame the window draws, and at the tick

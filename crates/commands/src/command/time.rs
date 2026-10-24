@@ -7,6 +7,10 @@ mod slower;
 mod step;
 mod time_action;
 mod time_override;
+#[cfg(feature = "client")]
+mod time_warp_request_command;
+#[cfg(feature = "client")]
+mod warp;
 
 pub use faster::TimeFasterCommand;
 pub use pause::TimePauseCommand;
@@ -17,6 +21,10 @@ pub use slower::TimeSlowerCommand;
 pub use step::TimeStepCommand;
 pub use time_action::TimeAction;
 pub use time_override::TimeOverrideCommand;
+#[cfg(feature = "client")]
+pub use time_warp_request_command::TimeWarpRequestCommand;
+#[cfg(feature = "client")]
+pub use warp::TimeWarpCommand;
 
 use usage::Args;
 use xsa_proto::session::SessionState;

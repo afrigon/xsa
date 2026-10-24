@@ -341,6 +341,19 @@ impl ClientWorld {
         SkyPosition::at(&self.simulation, body, other, self.time)
     }
 
+    // The star named `id`, else the one lighting `body` most.
+    pub fn star_for(&self, body: BodyIndex, id: Option<&str>) -> anyhow::Result<BodyIndex> {
+        let Some(id) = id else {
+            return self
+                .brightest_star(self.body_state(body).position)
+                .with_context(|| format!("no star lights {}", self.body(body).id));
+        };
+        let star = self.find_body(id)?;
+        ensure!(self.body(star).star.is_some(), "{id} is not a star");
+
+        Ok(star)
+    }
+
     // The star that lights `position` most.
     pub fn brightest_star(&self, position: DVec3) -> Option<BodyIndex> {
         self.illumination.brightest_star(&self.state.bodies, position)
