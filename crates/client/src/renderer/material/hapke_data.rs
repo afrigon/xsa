@@ -1,30 +1,28 @@
-use super::{HapkeParameters, NO_TEXTURE};
+use glam::Vec3;
 
+use super::Shader;
+use super::shader_data::ShaderData;
+use crate::renderer::gpu_data::{BiomeData, GpuData, SurfaceData};
+use crate::renderer::surface::SURFACE_CLASSES;
+
+// The terrain layers it shades with are each tile's pages, not material parameters. Its surfaces are read only once
+// every class's arrays are loaded.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(super) struct HapkeData {
-    pub medium_texture: u32,
-    pub opposition_texture: u32,
+pub struct HapkeData {
+    pub(super) base_color: Vec3,
+    pub(super) emissive_texture: u32,
+    pub(super) emissive_luminance: f32,
+    pub(super) surfaces_loaded: u32,
+    pub(super) padding: [u32; 2],
+    pub(super) biome: BiomeData,
+    pub(super) surfaces: [SurfaceData; SURFACE_CLASSES],
 }
 
-impl HapkeData {
-    pub const NONE: HapkeData = HapkeData {
-        medium_texture: NO_TEXTURE,
-        opposition_texture: NO_TEXTURE,
-    };
-}
+const _: () = assert!(size_of::<HapkeData>() == 192);
 
-impl HapkeData {
-    // The shader reads both maps once it has the medium, so none until both are ready.
-    pub fn of(hapke: Option<&HapkeParameters>) -> HapkeData {
-        let indices = hapke.and_then(|hapke| Some((hapke.medium.get()?.index(), hapke.opposition.get()?.index())));
+unsafe impl GpuData for HapkeData {}
 
-        match indices {
-            Some((medium_texture, opposition_texture)) => HapkeData {
-                medium_texture,
-                opposition_texture,
-            },
-            None => HapkeData::NONE,
-        }
-    }
+impl ShaderData for HapkeData {
+    const SHADER: Shader = Shader::Hapke;
 }

@@ -93,7 +93,7 @@ def generate() -> None:
             "axial-tilt 0\n",
         )
         rgb = " ".join(f"{component:.5f}" for component in np.clip(color, 0, None))
-        write(NAMESPACE / "resources/materials" / f"{patch}.kdl", f'shader "base:planet"\nbase-color {rgb}\n')
+        write(NAMESPACE / "resources/materials" / f"{patch}.kdl", f'shader "base:lambert"\nbase-color {rgb}\n')
         write(NAMESPACE / "resources/objects/bodies" / f"{patch}.kdl", f'material "{patch}"\n')
         # A zero mean motion keeps every patch on +X whatever the date, side by side along the orbit.
         anomaly = np.degrees(index * PATCH_SPACING / ASTRONOMICAL_UNIT)

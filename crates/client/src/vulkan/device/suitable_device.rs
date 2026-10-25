@@ -3,6 +3,8 @@ use ash::vk;
 use ash::{ext, khr};
 
 use super::TransferQueueLocation;
+use video_vulkan::VideoEncoder;
+
 use crate::vulkan::Surface;
 
 #[derive(Clone, Copy)]
@@ -10,6 +12,8 @@ pub struct SuitableDevice {
     pub physical_device: vk::PhysicalDevice,
     pub queue_family: u32,
     pub transfer: TransferQueueLocation,
+    // Camera captures encode video on a queue of their own.
+    pub encode_family: u32,
     pub device_type: vk::PhysicalDeviceType,
     // Wireframe needs the polygon mode to be dynamic state (VK_EXT_extended_dynamic_state3).
     pub dynamic_polygon_mode: bool,
@@ -22,10 +26,17 @@ impl SuitableDevice {
         for physical_device in unsafe { instance.enumerate_physical_devices() }? {
             if let Some(queue_family) = SuitableDevice::find_queue_family(instance, surface, physical_device)? {
                 let queue_families = unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+                let transfer = TransferQueueLocation::select(&queue_families, queue_family);
+                let Some(encode_family) =
+                    SuitableDevice::find_encode_family(&queue_families, queue_family, transfer.family(queue_family))
+                else {
+                    continue;
+                };
                 suitable.push(SuitableDevice {
                     physical_device,
                     queue_family,
-                    transfer: TransferQueueLocation::select(&queue_families, queue_family),
+                    transfer,
+                    encode_family,
                     device_type: unsafe { instance.get_physical_device_properties(physical_device) }.device_type,
                     dynamic_polygon_mode: SuitableDevice::supports_dynamic_polygon_mode(instance, physical_device)?,
                 });
@@ -35,7 +46,9 @@ impl SuitableDevice {
         suitable
             .into_iter()
             .min_by_key(|device| device.device_type != vk::PhysicalDeviceType::DISCRETE_GPU)
-            .context("no GPU supports Vulkan 1.3, swapchain maintenance and presenting to this window")
+            .context(
+                "no GPU supports Vulkan 1.3, swapchain maintenance, H.265 video encoding and presenting to this window",
+            )
     }
 
     fn find_queue_family(
@@ -59,6 +72,7 @@ impl SuitableDevice {
         if !supports(khr::swapchain::NAME)
             || !supports(ext::swapchain_maintenance1::NAME)
             || !supports(ext::memory_budget::NAME)
+            || !VideoEncoder::DEVICE_EXTENSIONS.into_iter().all(supports)
         {
             return Ok(None);
         }
@@ -86,6 +100,18 @@ impl SuitableDevice {
         }
 
         Ok(None)
+    }
+
+    fn find_encode_family(
+        queue_families: &[vk::QueueFamilyProperties],
+        graphics_family: u32,
+        transfer_family: u32,
+    ) -> Option<u32> {
+        (0..).zip(queue_families).find_map(|(index, family)| {
+            let separate = index != graphics_family && index != transfer_family;
+
+            (separate && family.queue_flags.contains(VideoEncoder::QUEUE_CAPABILITY)).then_some(index)
+        })
     }
 
     fn supports_dynamic_polygon_mode(

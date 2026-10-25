@@ -1,6 +1,6 @@
 use anyhow::{bail, ensure};
 
-use super::{TextureFormat, TextureImage, TextureLoader};
+use super::{TextureFormat, TextureImage, TextureKind, TextureLoader, TextureMetadata};
 
 const DDS_MAGIC: &[u8; 4] = b"DDS ";
 const DX10_FOURCC: &[u8; 4] = b"DX10";
@@ -53,17 +53,19 @@ impl TextureLoader for DdsLoader {
             DXGI_FORMAT_BC7_UNORM_SRGB => TextureFormat::Bc7Srgb,
             other => bail!("unsupported DXGI format {other}"),
         };
-        let layer_count = if word(MISC_FLAGS_OFFSET) & DDS_RESOURCE_MISC_TEXTURECUBE != 0 {
-            CUBE_FACE_COUNT
+        let (kind, layer_count) = if word(MISC_FLAGS_OFFSET) & DDS_RESOURCE_MISC_TEXTURECUBE != 0 {
+            (TextureKind::CubeMap, CUBE_FACE_COUNT)
         } else {
-            1
+            (TextureKind::Plane, 1)
         };
         let mut image = TextureImage {
             format,
+            kind,
             width: word(WIDTH_OFFSET),
             height: word(HEIGHT_OFFSET),
             mip_levels: word(MIP_COUNT_OFFSET).max(1),
             layers: Vec::new(),
+            metadata: TextureMetadata::default(),
         };
         let layer_size = image.layer_size()?;
         let data = &bytes[DDS_HEADER_SIZE..];

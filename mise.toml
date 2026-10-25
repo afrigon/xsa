@@ -30,7 +30,7 @@ run = [
 #!/usr/bin/env bash
 set -euo pipefail
 # clang-format picks the C# language from the assumed name, which it only reads for standard input.
-find data/base/base/resources/shaders crates/xui-vulkan/shaders -name '*.slang' | while read -r source; do
+find data/base/base/resources/shaders crates/xui-vulkan/shaders crates/video-vulkan/shaders -name '*.slang' | while read -r source; do
     clang-format --assume-filename="$source.cs" < "$source" > "$source.formatted"
     mv "$source.formatted" "$source"
 done
@@ -46,7 +46,7 @@ run = [
     """
 #!/usr/bin/env bash
 set -euo pipefail
-find data/base/base/resources/shaders crates/xui-vulkan/shaders -name '*.slang' | while read -r source; do
+find data/base/base/resources/shaders crates/xui-vulkan/shaders crates/video-vulkan/shaders -name '*.slang' | while read -r source; do
     if ! clang-format --assume-filename="$source.cs" --dry-run --Werror < "$source" 2> /dev/null; then
         echo "$source is not formatted, run mise run fmt" >&2
         exit 1
@@ -55,17 +55,27 @@ done
 """,
 ]
 
+[tasks.docs]
+description = "Build the protocol reference from the proto crate's documentation"
+usage = 'flag "--open" help="Open the reference in a browser"'
+run = 'cargo doc -p xsa-proto --no-deps ${usage_open:+--open}'
+
 [tasks.shaders]
-description = "Compile the base pack's and xui-vulkan's Slang shaders to SPIR-V next to their sources and validate the output"
-sources = ["data/base/base/resources/shaders/**/*.slang", "crates/xui-vulkan/shaders/*.slang"]
-outputs = ["data/base/base/resources/shaders/*.spv", "crates/xui-vulkan/shaders/*.spv"]
+description = "Compile the base pack's, xui-vulkan's and video-vulkan's Slang shaders to SPIR-V next to their sources and validate the output"
+sources = ["data/base/base/resources/shaders/**/*.slang", "crates/xui-vulkan/shaders/*.slang", "crates/video-vulkan/shaders/*.slang"]
+outputs = ["data/base/base/resources/shaders/**/*.spv", "crates/xui-vulkan/shaders/*.spv", "crates/video-vulkan/shaders/*.spv"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-for directory in data/base/base/resources/shaders crates/xui-vulkan/shaders; do
-    for source in "$directory"/*.slang; do
-        slangc "$source" -I "$directory" -target spirv -matrix-layout-column-major -fvk-use-entrypoint-name -o "${source%.slang}.spv"
-        spirv-val --target-env vulkan1.3 "${source%.slang}.spv"
+options=(-target spirv -matrix-layout-column-major -fvk-use-entrypoint-name)
+compile() {
+    slangc "$@"
+    spirv-val --target-env vulkan1.3 "${@: -1}"
+}
+# A program is a file with entry points; every other file is a module it imports.
+for root in data/base/base/resources/shaders crates/xui-vulkan/shaders crates/video-vulkan/shaders; do
+    for source in $(grep -rl --include='*.slang' '\\[shader(' "$root"); do
+        compile "$source" -I "$root" "${options[@]}" -o "${source%.slang}.spv"
     done
 done
 """
@@ -114,6 +124,13 @@ cargo run -p xsa --no-default-features --features server --target-dir {{vars.ser
 """
 
 [tasks.generate]
-description = "Generate system-solar's assets from their sources; recipe names after --, e.g. -- luna skybox"
-dir = "data/system-solar/scripts"
-run = "uv run build.py"
+description = "Generate a pack's assets from their sources; the pack, then its scripts' arguments after --, e.g. -- system-solar luna skybox, or -- base-surfaces --density 1024"
+# No usage spec: mise would take --help meant for the pack's scripts as a request for this task's help.
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+pack="${1:?the pack to generate, e.g. system-solar}"
+shift
+cd "data/$pack/scripts"
+uv run build.py "$@"
+"""

@@ -2,6 +2,8 @@ use ash::vk;
 
 pub struct GraphicsPipelineDescription<'a> {
     pub spirv: &'a [u8],
+    // Each specialization constant's value, by constant id, for both stages.
+    pub specialization_constants: &'a [u32],
     pub color_formats: &'a [vk::Format],
     pub depth_format: Option<vk::Format>,
     pub depth_compare_op: vk::CompareOp,

@@ -1,43 +1,30 @@
-use xsa_proto::event::{JoinAccepted, Outcome, Player, PlayerId, PlayerJoined, ServerEvent};
-use xsa_proto::message::{Join, Role};
+use xsa_proto::error::RequestError;
+use xsa_proto::event::{Event, UserJoinedEvent};
+use xsa_proto::reply::JoinReply;
+use xsa_proto::request::JoinRequest;
+use xsa_proto::user::{Actor, User, UserId};
 
 use crate::server::Server;
-use crate::server::membership::Membership;
-use crate::server::message_handler::MessageHandler;
+use crate::server::request_handler::RequestHandler;
 
-impl MessageHandler for Join {
-    fn handle(self, server: &mut Server, client: usize) -> Outcome {
-        if server.clients[client].membership.is_some() {
-            return Outcome::denied("already joined");
+impl RequestHandler for JoinRequest {
+    fn handle(self, server: &mut Server, client: usize) -> Result<JoinReply, RequestError> {
+        if server.clients[client].actor.is_some() {
+            return Err(RequestError::conflict("already joined"));
         }
 
-        let membership = match self.role {
-            Role::Player { name } => {
-                let player = Player {
-                    id: PlayerId {
-                        value: server.next_player,
-                    },
-                    name,
-                };
-                server.next_player += 1;
-
-                Membership::Player { player }
-            }
-            Role::Server => Membership::Server,
+        let user = User {
+            id: UserId {
+                value: server.next_user,
+            },
         };
-        let joined_player = match &membership {
-            Membership::Player { player } => Some(player.clone()),
-            Membership::Server => None,
-        };
-        server.clients[client].membership = Some(membership);
+        server.next_user += 1;
 
-        let state = server.world.state(server.players(), server.environment);
-        server.send(client, ServerEvent::JoinAccepted(JoinAccepted { state }));
+        server.send_snapshot(client);
+        server.users.push(user.clone());
+        server.clients[client].actor = Some(Actor::User(user.id));
+        server.broadcast(&Event::UserJoined(UserJoinedEvent { user: user.clone() }));
 
-        if let Some(player) = joined_player {
-            server.broadcast_except(Some(client), &ServerEvent::PlayerJoined(PlayerJoined { player }));
-        }
-
-        Outcome::Accepted
+        Ok(JoinReply { user: user.id })
     }
 }

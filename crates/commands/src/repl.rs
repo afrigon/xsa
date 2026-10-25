@@ -11,8 +11,8 @@ use rustyline::{Editor, EventHandler, KeyEvent};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
-use crate::console_log::ConsoleLog;
 use crate::router::{CommandExecution, CommandInvocation};
+use crate::shell::Shell;
 use crate::terminal::TerminalGuard;
 use crate::words;
 use command_completer::CommandCompleter;
@@ -47,7 +47,7 @@ impl Repl {
         let interactive = io::stdin().is_terminal() && io::stdout().is_terminal();
 
         if interactive && let Ok(printer) = editor.create_external_printer() {
-            ConsoleLog::attach(printer);
+            Shell::attach(printer);
         }
 
         editor.set_helper(Some(CommandCompleter {
@@ -98,6 +98,6 @@ impl Repl {
             }
         }
 
-        ConsoleLog::detach();
+        Shell::detach();
     }
 }

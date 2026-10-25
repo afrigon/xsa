@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.2563 0.2542 0.2543
-color-texture "bodies/umbriel/color"
-normal-texture "bodies/umbriel/normal"
-hapke medium-texture="bodies/umbriel/hapke-medium" opposition-texture="bodies/umbriel/hapke-opposition"

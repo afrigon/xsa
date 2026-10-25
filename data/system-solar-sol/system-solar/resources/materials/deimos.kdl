@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.3116 0.2678 0.2094
-color-texture "bodies/deimos/color"
-normal-texture "bodies/deimos/normal"
-hapke medium-texture="bodies/deimos/hapke-medium" opposition-texture="bodies/deimos/hapke-opposition"

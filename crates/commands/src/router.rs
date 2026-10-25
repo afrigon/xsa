@@ -4,6 +4,9 @@ mod command_invocation;
 #[cfg(feature = "client")]
 mod command_reply;
 mod output;
+mod pending_wait;
+mod running_script;
+mod script_progress;
 
 pub use command_execution::CommandExecution;
 pub use command_executor::CommandExecutor;
@@ -12,22 +15,31 @@ pub use command_invocation::CommandInvocation;
 pub use command_reply::CommandReply;
 pub use output::Output;
 
+use pending_wait::PendingWait;
+use running_script::RunningScript;
+use script_progress::ScriptProgress;
+
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::time::Instant;
 
 use tokio::sync::oneshot;
 use usage::help::Style;
-use xsa_proto::event::{Outcome, ServerEvent};
-use xsa_proto::message::MessageId;
+use xsa_proto::frame::RequestId;
+use xsa_proto::frame::ServerFrame;
 use xsa_proto::session::ServerSession;
 
 use crate::command::{Command, CommandLine, Routable, Route, ServerCommand};
 use crate::completion::Completions;
+use crate::script::Script;
+use crate::shell::Transcript;
 
 #[derive(Default)]
 pub struct CommandRouter {
-    pending: HashMap<MessageId, Pending>,
+    pending: HashMap<RequestId, Pending>,
     waiting_for_join: Vec<Waiting>,
+    scripts: Vec<RunningScript>,
+    waits: Vec<PendingWait>,
 }
 
 struct Pending {
@@ -41,6 +53,47 @@ struct Waiting {
 }
 
 impl CommandRouter {
+    // A script started here replies to nobody: a failure is logged.
+    pub fn start_script(&mut self, script: Script) {
+        self.scripts.push(RunningScript::new(script, None));
+    }
+
+    // Called once per frame or wake: ends the waits that are due and runs scripts until each waits on a reply.
+    pub fn advance(&mut self, executor: &mut impl CommandExecutor, transcript: Transcript) {
+        loop {
+            self.end_waits(executor.now());
+            let mut scripts = std::mem::take(&mut self.scripts);
+            let mut progressed = false;
+            scripts.retain_mut(|script| {
+                let progress = script.step(self, executor, transcript);
+                progressed |= progress != ScriptProgress::Waiting;
+
+                progress != ScriptProgress::Finished
+            });
+            scripts.append(&mut self.scripts);
+            self.scripts = scripts;
+
+            if !progressed {
+                break;
+            }
+        }
+    }
+
+    pub fn next_deadline(&self) -> Option<Instant> {
+        self.waits.iter().map(|wait| wait.deadline).min()
+    }
+
+    fn end_waits(&mut self, now: Instant) {
+        let (due, waiting) = std::mem::take(&mut self.waits)
+            .into_iter()
+            .partition(|wait| wait.deadline <= now);
+        self.waits = waiting;
+
+        for wait in due {
+            let _ = wait.reply.send(Output::success("waited"));
+        }
+    }
+
     pub fn handle(&mut self, invocation: CommandInvocation, executor: &mut impl CommandExecutor) {
         match invocation {
             CommandInvocation::Execute(execution) => self.execute(execution, executor),
@@ -72,13 +125,24 @@ impl CommandRouter {
         let route = command.route();
         let joined = executor.session().state().is_some();
 
-        if !joined && !matches!(route, Route::Exit) {
+        if !joined && !matches!(route, Route::Exit | Route::Local(_) | Route::Script(_) | Route::Wait(_)) {
             self.waiting_for_join.push(Waiting { route, reply });
 
             return;
         }
 
         self.run(route, reply, executor);
+    }
+
+    // Sends a request a client command worked out, replying to that command as a server command would.
+    #[cfg(feature = "client")]
+    pub fn forward(
+        &mut self,
+        command: Box<dyn ServerCommand>,
+        reply: CommandReply,
+        executor: &mut impl CommandExecutor,
+    ) {
+        self.run(Route::Server(command), reply.into_sender(), executor);
     }
 
     pub fn resume(&mut self, executor: &mut impl CommandExecutor) {
@@ -99,17 +163,18 @@ impl CommandRouter {
 
                 return;
             }
+            Route::Local(command) => executor.run_local(command),
             Route::Server(command) => {
-                let message = command.message();
+                let request = command.request();
                 let refusal = executor
                     .session()
                     .state()
-                    .and_then(|state| message.check_session_environment(state.environment()).err());
+                    .and_then(|state| request.check_session_environment(state.environment()).err());
 
-                if let Some(reason) = refusal {
-                    Output::failure(reason)
+                if let Some(error) = refusal {
+                    Output::failure(error.to_string())
                 } else {
-                    match executor.session().send(message) {
+                    match executor.session().send(request) {
                         Ok(id) => {
                             let pending = Pending { command, reply };
                             self.pending.insert(id, pending);
@@ -121,6 +186,23 @@ impl CommandRouter {
                 }
             }
             Route::Session(command) => command.answer(executor.session().state()),
+            Route::Script(command) => match command.script() {
+                Ok(script) => {
+                    self.scripts.push(RunningScript::new(script, Some(reply)));
+
+                    return;
+                }
+                Err(err) => Output::failure(format!("{err:#}")),
+            },
+            Route::Wait(command) => match command.duration.real_time() {
+                Ok(duration) => {
+                    let deadline = executor.now() + duration;
+                    self.waits.push(PendingWait { deadline, reply });
+
+                    return;
+                }
+                Err(err) => Output::failure(format!("{err:#}")),
+            },
             Route::Exit => {
                 executor.exit();
                 Output::success("exiting")
@@ -130,16 +212,16 @@ impl CommandRouter {
         let _ = reply.send(output);
     }
 
-    pub fn handle_event(&mut self, event: &ServerEvent, session: &ServerSession) {
-        let ServerEvent::Reply(reply) = event else {
+    pub fn handle_frame(&mut self, frame: &ServerFrame, session: &ServerSession) {
+        let ServerFrame::Reply { id, result } = frame else {
             return;
         };
-        let Some(pending) = self.pending.remove(&reply.id) else {
+        let Some(pending) = self.pending.remove(id) else {
             return;
         };
-        let output = match &reply.outcome {
-            Outcome::Accepted => pending.command.describe(session.state()),
-            Outcome::Denied { reason } => Output::failure(reason.clone()),
+        let output = match result {
+            Ok(_) => pending.command.describe(session.state()),
+            Err(error) => Output::failure(error.to_string()),
         };
 
         let _ = pending.reply.send(output);
@@ -160,13 +242,21 @@ impl CommandRouter {
 
 #[cfg(test)]
 mod tests {
-    use xsa_proto::connection::{ClientLink, Connection};
-    use xsa_proto::event::{JoinAccepted, Reply, TimeChanged, WorldState};
-    use xsa_proto::message::{ClientFrame, ClientMessage, Join, Role, SetTime, SetTimeRate, StepTime};
+    use xsa_proto::error::RequestError;
+    use xsa_proto::event::{Event, TimeChangedEvent};
+    use xsa_proto::frame::ClientFrame;
+    use xsa_proto::network::{ClientLink, Connection, Received};
+    use xsa_proto::reply::{JoinReply, Reply};
+    use xsa_proto::request::{
+        JoinRequest, Request, SetTimeRateRequest, SetTimeRequest, StepTimeRateRequest, StepTimeRequest,
+    };
     use xsa_proto::session::SessionEnvironment;
-    use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateChange};
+    use xsa_proto::user::UserId;
+    use xsa_proto::world::WorldState;
+    use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate, TimeRateStep};
 
     use super::*;
+    use crate::command::LocalCommand;
 
     struct FakeExecutor {
         session: ServerSession,
@@ -181,6 +271,10 @@ mod tests {
         fn exit(&mut self) {
             self.exited = true;
         }
+
+        fn run_local(&mut self, _command: LocalCommand) -> Output {
+            Output::failure("no config in this test")
+        }
     }
 
     struct Harness {
@@ -190,11 +284,11 @@ mod tests {
     }
 
     impl Harness {
-        fn unjoined() -> Self {
+        fn with(session: impl FnOnce(Connection) -> ServerSession) -> Self {
             let local = Connection::local();
             Self {
                 executor: FakeExecutor {
-                    session: ServerSession::new(local.connection),
+                    session: session(local.connection),
                     exited: false,
                 },
                 link: local.link,
@@ -202,39 +296,43 @@ mod tests {
             }
         }
 
+        fn joining() -> Self {
+            let mut harness = Harness::with(|connection| ServerSession::join(connection).unwrap());
+            assert_eq!(harness.sent().request, Request::Join(JoinRequest));
+            harness
+        }
+
         fn joined() -> Self {
             Harness::joined_in(SessionEnvironment::Singleplayer)
         }
 
         fn joined_in(environment: SessionEnvironment) -> Self {
-            let mut harness = Harness::unjoined();
-            harness
-                .executor
-                .session
-                .send(ClientMessage::Join(Join { role: Role::Server }))
-                .unwrap();
-            harness.link.messages.try_recv().unwrap();
-            harness.deliver(ServerEvent::JoinAccepted(JoinAccepted {
-                state: WorldState {
-                    simulation: "system-solar:sol".to_string(),
-                    packs: Vec::new(),
-                    time: SimulationTime::J2000,
-                    time_flow: TimeFlow {
-                        rate: TimeRate::PAUSED,
-                        time_override: None,
-                    },
-                    environment,
-                    players: Vec::new(),
-                },
-            }));
+            let mut harness = Harness::with(ServerSession::operator);
+            harness.deliver(ServerFrame::Snapshot(Harness::state(environment)));
             harness
         }
 
-        fn deliver(&mut self, event: ServerEvent) {
-            self.link.events.send(event).unwrap();
+        fn state(environment: SessionEnvironment) -> WorldState {
+            WorldState {
+                simulation: "system-solar:sol".to_string(),
+                packs: Vec::new(),
+                time: SimulationTime::J2000,
+                time_flow: TimeFlow {
+                    rate: TimeRate::PAUSED,
+                    time_override: None,
+                    warp: None,
+                },
+                rate: TimeRate::PAUSED,
+                environment,
+                users: Vec::new(),
+            }
+        }
 
-            while let Some(event) = self.executor.session.poll().unwrap() {
-                self.router.handle_event(&event, &self.executor.session);
+        fn deliver(&mut self, frame: ServerFrame) {
+            self.link.server_frames.send(Received::Frame(frame)).unwrap();
+
+            while let Some(frame) = self.executor.session.poll().unwrap() {
+                self.router.handle_frame(&frame, &self.executor.session);
             }
         }
 
@@ -252,8 +350,19 @@ mod tests {
             receiver
         }
 
+        fn advance(&mut self) {
+            let transcript = Transcript {
+                enabled: false,
+                ..Transcript::default()
+            };
+            self.router.advance(&mut self.executor, transcript);
+        }
+
         fn sent(&mut self) -> ClientFrame {
-            self.link.messages.try_recv().unwrap()
+            let Ok(Received::Frame(frame)) = self.link.client_frames.try_recv() else {
+                panic!("no frame was sent");
+            };
+            frame
         }
     }
 
@@ -265,43 +374,40 @@ mod tests {
     }
 
     #[test]
-    fn server_commands_become_messages_answered_by_the_reply() {
+    fn server_commands_become_requests_answered_by_the_reply() {
         let mut harness = Harness::joined();
         let mut receiver = harness.invoke("time rate 100");
         let frame = harness.sent();
         let rate = TimeRate { multiplier: 100.0 };
-        assert_eq!(
-            frame.message,
-            ClientMessage::SetTimeRate(SetTimeRate {
-                change: TimeRateChange::To(rate)
-            })
-        );
+        assert_eq!(frame.request, Request::SetTimeRate(SetTimeRateRequest { rate }));
         assert!(receiver.try_recv().is_err());
 
-        harness.deliver(ServerEvent::TimeChanged(TimeChanged {
+        harness.deliver(ServerFrame::Event(Event::TimeChanged(TimeChangedEvent {
             time: SimulationTime::J2000,
             time_flow: TimeFlow {
                 rate,
                 time_override: None,
+                warp: None,
             },
-        }));
-        harness.deliver(ServerEvent::Reply(Reply {
+            rate,
+        })));
+        harness.deliver(ServerFrame::Reply {
             id: frame.id,
-            outcome: Outcome::Accepted,
-        }));
+            result: Ok(Reply::Empty),
+        });
         let output = receiver.try_recv().unwrap();
         assert!(output.succeeded && output.text.contains("rate 100×"), "{output:?}");
     }
 
     #[test]
-    fn a_message_outside_its_session_environment_is_refused_without_sending() {
+    fn a_request_outside_its_session_environment_is_refused_without_sending() {
         let mut harness = Harness::joined_in(SessionEnvironment::Dedicated);
         let output = harness.invoke("time override 0").try_recv().unwrap();
         assert!(
             !output.succeeded && output.text.contains("dedicated server"),
             "{output:?}"
         );
-        assert!(harness.link.messages.try_recv().is_err());
+        assert!(harness.link.client_frames.try_recv().is_err());
     }
 
     #[test]
@@ -309,55 +415,53 @@ mod tests {
         let mut harness = Harness::joined();
         let mut receiver = harness.invoke("time rate 5");
         let frame = harness.sent();
-        harness.deliver(ServerEvent::Reply(Reply {
+        harness.deliver(ServerFrame::Reply {
             id: frame.id,
-            outcome: Outcome::denied("no"),
-        }));
+            result: Err(RequestError::invalid("no")),
+        });
         assert_eq!(receiver.try_recv().unwrap(), Output::failure("no"));
     }
 
     struct Case {
         line: &'static str,
-        message: ClientMessage,
+        request: Request,
     }
 
     #[test]
-    fn aliases_and_durations_map_to_their_messages() {
+    fn aliases_and_durations_map_to_their_requests() {
         let mut harness = Harness::joined();
         let cases = [
             Case {
                 line: "time pause",
-                message: ClientMessage::SetTimeRate(SetTimeRate {
-                    change: TimeRateChange::To(TimeRate::PAUSED),
-                }),
+                request: Request::SetTimeRate(SetTimeRateRequest { rate: TimeRate::PAUSED }),
             },
             Case {
                 line: "time resume",
-                message: ClientMessage::SetTimeRate(SetTimeRate {
-                    change: TimeRateChange::To(TimeRate::REAL_TIME),
+                request: Request::SetTimeRate(SetTimeRateRequest {
+                    rate: TimeRate::REAL_TIME,
                 }),
             },
             Case {
                 line: "time faster",
-                message: ClientMessage::SetTimeRate(SetTimeRate {
-                    change: TimeRateChange::Faster,
+                request: Request::StepTimeRate(StepTimeRateRequest {
+                    step: TimeRateStep::Faster,
                 }),
             },
             Case {
                 line: "time slower",
-                message: ClientMessage::SetTimeRate(SetTimeRate {
-                    change: TimeRateChange::Slower,
+                request: Request::StepTimeRate(StepTimeRateRequest {
+                    step: TimeRateStep::Slower,
                 }),
             },
             Case {
                 line: "time step 2min",
-                message: ClientMessage::StepTime(StepTime {
+                request: Request::StepTime(StepTimeRequest {
                     duration: SimulationDuration { seconds: 120.0 },
                 }),
             },
             Case {
                 line: "time set 2000-01-01T12:00:10Z",
-                message: ClientMessage::SetTime(SetTime {
+                request: Request::SetTime(SetTimeRequest {
                     time: SimulationTime { seconds: 10.0 },
                 }),
             },
@@ -365,7 +469,7 @@ mod tests {
 
         for case in cases {
             harness.invoke(case.line);
-            assert_eq!(harness.sent().message, case.message, "{}", case.line);
+            assert_eq!(harness.sent().request, case.request, "{}", case.line);
         }
     }
 
@@ -380,26 +484,23 @@ mod tests {
 
     #[test]
     fn commands_wait_for_the_join_but_exit_does_not() {
-        let mut harness = Harness::unjoined();
+        let mut harness = Harness::joining();
         let mut time = harness.invoke("time");
         assert!(time.try_recv().is_err());
 
         harness.invoke("exit");
         assert!(harness.executor.exited);
 
-        harness.deliver(ServerEvent::JoinAccepted(JoinAccepted {
-            state: WorldState {
-                simulation: "system-solar:sol".to_string(),
-                packs: Vec::new(),
-                time: SimulationTime::J2000,
-                time_flow: TimeFlow {
-                    rate: TimeRate::PAUSED,
-                    time_override: None,
-                },
-                environment: SessionEnvironment::Singleplayer,
-                players: Vec::new(),
-            },
-        }));
+        harness.deliver(ServerFrame::Snapshot(Harness::state(SessionEnvironment::Singleplayer)));
+        harness.router.resume(&mut harness.executor);
+        assert!(time.try_recv().is_err());
+
+        harness.deliver(ServerFrame::Reply {
+            id: RequestId { value: 0 },
+            result: Ok(Reply::Join(JoinReply {
+                user: UserId { value: 0 },
+            })),
+        });
         harness.router.resume(&mut harness.executor);
         assert!(time.try_recv().unwrap().succeeded);
     }
@@ -409,5 +510,69 @@ mod tests {
         let mut harness = Harness::joined();
         harness.invoke("exit");
         assert!(harness.executor.exited);
+    }
+
+    #[test]
+    fn a_script_runs_commands_that_finish_at_once_in_one_advance() {
+        let mut harness = Harness::joined();
+        let mut script = harness.invoke("script --text 'time; wait 0ms; time'");
+        assert!(script.try_recv().is_err());
+
+        harness.advance();
+        assert_eq!(script.try_recv().unwrap(), Output::success("script: ran 3 commands"));
+    }
+
+    #[test]
+    fn a_failing_line_stops_the_script_and_names_its_location() {
+        let mut harness = Harness::joined();
+        let mut script = harness.invoke("script --text 'time; bogus; time rate 100'");
+        harness.advance();
+
+        let output = script.try_recv().unwrap();
+        assert!(!output.succeeded && output.text.starts_with("script:2: "), "{output:?}");
+        assert!(harness.link.client_frames.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_script_line_waits_for_the_server_reply() {
+        let mut harness = Harness::joined();
+        let mut script = harness.invoke("script --text 'time rate 100; time'");
+        harness.advance();
+        let frame = harness.sent();
+        assert!(script.try_recv().is_err());
+
+        harness.deliver(ServerFrame::Reply {
+            id: frame.id,
+            result: Ok(Reply::Empty),
+        });
+        harness.advance();
+        assert_eq!(script.try_recv().unwrap(), Output::success("script: ran 2 commands"));
+    }
+
+    #[test]
+    fn a_wait_replies_once_its_deadline_passed() {
+        let mut harness = Harness::joined();
+        let mut long = harness.invoke("wait 1h");
+        let mut short = harness.invoke("wait 0ms");
+        harness.advance();
+
+        assert!(short.try_recv().unwrap().succeeded);
+        assert!(long.try_recv().is_err());
+        assert!(
+            harness
+                .router
+                .next_deadline()
+                .is_some_and(|deadline| deadline > Instant::now())
+        );
+    }
+
+    #[test]
+    fn a_script_needs_exactly_one_source() {
+        let mut harness = Harness::joined();
+        let output = harness.invoke("script").try_recv().unwrap();
+        assert!(
+            !output.succeeded && output.text.contains("either a path or --text"),
+            "{output:?}"
+        );
     }
 }

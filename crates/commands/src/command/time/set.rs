@@ -1,5 +1,5 @@
 use usage::Args;
-use xsa_proto::message::{ClientMessage, SetTime};
+use xsa_proto::request::{Request, SetTimeRequest};
 use xsa_proto::session::SessionState;
 
 use super::TimeCommand;
@@ -19,8 +19,8 @@ impl Routable for TimeSetCommand {
 }
 
 impl ServerCommand for TimeSetCommand {
-    fn message(&self) -> ClientMessage {
-        ClientMessage::SetTime(SetTime { time: self.time.time })
+    fn request(&self) -> Request {
+        Request::SetTime(SetTimeRequest { time: self.time.time })
     }
 
     fn describe(&self, state: Option<&SessionState>) -> Output {

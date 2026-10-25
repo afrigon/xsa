@@ -17,10 +17,13 @@ pub(in crate::renderer) struct FrameData {
     pub exposure: f32,
     pub tonemapper: u32,
     pub starlight_illuminance: f32,
-    pub shading_model: u32,
     // The angle one vertex spacing of terrain covers on screen.
     pub vertex_spacing_angle: f32,
-    pub padding: [u32; 3],
+    // The angle one pixel covers at the screen's center.
+    pub pixel_angle: f32,
+    // Multiplies the terrain's heights as they are drawn.
+    pub terrain_height_scale: f32,
+    pub padding: [u32; 2],
     // Rows of the linear sRGB white balance matrix, applied before tone mapping.
     pub white_balance: [Vec4; 3],
 }

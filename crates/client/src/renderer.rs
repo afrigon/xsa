@@ -1,11 +1,17 @@
 mod auto_exposure;
+mod capture_readback;
 mod captured_image;
 mod command_recorder;
 mod culler;
+mod debug_view;
+mod forward_pipeline;
 mod frame;
 mod frame_context;
 mod frame_inputs;
+mod frame_output;
+mod frame_role;
 mod frame_statistics;
+mod frame_target;
 mod frustum;
 mod gpu_context;
 mod gpu_data;
@@ -17,77 +23,102 @@ mod lens_lights;
 mod light_occlusion;
 mod light_projection;
 mod material;
+mod noise_volume;
 mod object_pose;
 mod passes;
 mod pending_capture;
 mod quad_sphere;
+mod queued_capture;
 mod render_passes;
 mod scene;
 mod shader_binaries;
+mod shading_range;
 mod star_visibility;
 mod static_buffer;
+mod surface;
+mod surface_debug_view;
 mod temporal_history;
-mod terrain_buffer;
-mod terrain_displacement;
+mod terrain;
+mod terrain_debug_view;
 mod terrain_draw;
-mod terrain_height;
+mod tile_shape;
 mod tonemapper;
+mod video_output;
+mod video_phase;
+mod video_target;
 mod white_balance;
 
 pub use auto_exposure::AutoExposure;
 pub use captured_image::CapturedImage;
+pub use debug_view::DebugView;
 pub use frame_statistics::FrameStatistics;
+pub use frame_target::FrameTarget;
 pub use lens_lights::LensLights;
-pub use material::{
-    EmissiveMaterial, HapkeParameters, LitMaterial, Material, PlanetMaterial, Shader, ShadingModel, SkyboxMaterial,
-};
+pub use material::{EmissiveMaterial, HapkeMaterial, LambertMaterial, Material, Shader, SkyboxMaterial};
 pub use pending_capture::PendingCapture;
 pub use resource_loader::texture::ColorSpace;
 pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
 pub use shader_binaries::ShaderBinaries;
+pub use surface::{BiomeSurfaces, SurfaceClass, SurfaceTextures};
+pub use surface_debug_view::SurfaceDebugView;
+pub use terrain::{TerrainLayer, TerrainPageStatistics, TerrainPages};
+pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use ash::vk;
-use glam::{DVec2, DVec3, Mat4, Vec2};
-use memory_vulkan::{Buffer, MemoryError, MemoryLocation, Recording, TimelineValue, TransferPriority};
-use render_graph_vulkan::{BufferState, ImageState, ImportedBuffer, ImportedImage, RenderGraph};
+use glam::{DVec3, Mat4, Vec2, Vec3};
+use memory_vulkan::{Buffer, MemoryError, MemoryLocation, Recording, TransferPriority};
+use render_graph_vulkan::{
+    BufferState, GraphImageDescription, ImageSize, ImageState, ImportedBuffer, ImportedImage, RenderGraph, Subresource,
+};
+use tokio::sync::oneshot;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
-use resource_vulkan::{ResourceHandle, Resources};
+use resource_vulkan::{Residency, ResourceHandle, Resources};
 use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
-use crate::config::{AnimationConfig, AntialiasingKind, Config, RenderConfig};
+use crate::config::{AntialiasingKind, Config};
 use crate::resource_kinds::{LensGhost, LensStarburst};
 use crate::vulkan::Swapchain;
+use capture_readback::{BYTES_PER_PIXEL, CaptureReadback};
 use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
+use frame_output::FrameOutput;
+use frame_role::FrameRole;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, TileData};
+use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TileData, TilePages};
 use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
 use light_projection::LightProjection;
 use material::MaterialBuffer;
+use noise_volume::NoiseVolume;
 use object_pose::ObjectPose;
 use passes::TaaPass;
-use pending_capture::BYTES_PER_PIXEL;
-use quad_sphere::{DetailRanges, QuadSphere, SelectedTile};
+use quad_sphere::{DetailRanges, QuadSphere, SelectedTile, TileHeightBounds};
+use queued_capture::QueuedCapture;
 use render_passes::RenderPasses;
+use shading_range::ShadingRange;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
-use terrain_displacement::TerrainDisplacement;
+use terrain::{PageDetail, TilePageWriter};
 use terrain_draw::TerrainDraw;
-use terrain_height::TerrainHeight;
+use tile_shape::TileShape;
 use tonemapper::NO_TONEMAPPER;
+use video_output::VideoOutput;
+use video_phase::VideoPhase;
+use video_target::VideoTarget;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
 const FRAMES_IN_FLIGHT: usize = 2;
@@ -95,7 +126,11 @@ const INITIAL_EXPOSURE_EV100: f32 = 15.0;
 const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_TILE_CAPACITY: usize = 4096;
 const INITIAL_STAR_CAPACITY: usize = 4;
+const INITIAL_SURFACE_ANCHOR_CAPACITY: usize = 4;
 const INITIAL_LIGHT_CAPACITY: usize = 4;
+// Far longer than any frame the compositor asks for. Some drivers never return an image while the window is hidden
+// (NVIDIA on Wayland); the frame is skipped rather than the event loop stalled.
+const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
 // Presentation waits on the acquire semaphore at the color attachment output stage.
 const SWAPCHAIN_ACQUIRED: ImageState = ImageState {
     stages: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
@@ -119,12 +154,15 @@ const HOST_READABLE: BufferState = BufferState {
 
 pub struct Renderer {
     scene: Scene,
-    render: RenderConfig,
+    config: Config,
     exposure: AutoExposure,
     white_balance: WhiteBalance,
     illuminance: Option<f32>,
     star_visibility: StarVisibility,
+    captures: Vec<QueuedCapture>,
+    // The buffer the frame being recorded copies its output into, on capture frames.
     capture: Option<Buffer>,
+    video: Option<VideoOutput>,
     user_interface: DrawList,
     statistics: FrameStatistics,
     gpu_milliseconds: Option<f32>,
@@ -138,13 +176,20 @@ pub struct Renderer {
     selected_tiles: Vec<SelectedTile>,
     terrain_draws: Vec<TerrainDraw>,
     tile_data: Vec<TileData>,
+    tile_pages: Vec<TilePages>,
+    surface_anchor_data: Vec<SurfaceAnchorData>,
+    // Each terrain's slot in `surface_anchor_data`, by terrain index; None for terrains without surfaces.
+    surface_anchor_slots: Vec<Option<usize>>,
+    noise_volume: NoiseVolume,
+    page_writer: TilePageWriter,
+    // Whether terrain pages follow what tiles request, or stay as they are.
+    terrain_residency: Residency,
     object_capacity: usize,
     tile_capacity: usize,
     star_capacity: usize,
+    surface_anchor_capacity: usize,
     light_capacity: usize,
     materials: Vec<MaterialBuffer>,
-    // By terrain index; None until its height map is ready.
-    terrain_displacements: Vec<Option<TerrainDisplacement>>,
     lens: Option<Lens>,
     passes: RenderPasses,
     graph: RenderGraph,
@@ -152,6 +197,7 @@ pub struct Renderer {
     temporal: TemporalHistory,
     frames: Vec<Frame>,
     frame_index: usize,
+    frames_rendered: u64,
     swapchain: Swapchain,
     swapchain_outdated: bool,
     window_extent: vk::Extent2D,
@@ -178,20 +224,24 @@ impl Renderer {
                     INITIAL_TILE_CAPACITY,
                     INITIAL_STAR_CAPACITY,
                     INITIAL_LIGHT_CAPACITY,
+                    INITIAL_SURFACE_ANCHOR_CAPACITY,
                 )
             })
             .collect::<anyhow::Result<_>>()?;
         let mut graph = RenderGraph::new(&gpu.memory, swapchain.extent());
         let passes = RenderPasses::new(&gpu, &mut graph, shaders, swapchain.format(), FRAMES_IN_FLIGHT)?;
+        let noise_volume = NoiseVolume::new(&gpu)?;
 
         Ok(Self {
             scene: Scene::default(),
-            render: config.render.clone(),
+            config: config.clone(),
             exposure: AutoExposure::new(INITIAL_EXPOSURE_EV100),
             white_balance: WhiteBalance::new(),
             illuminance: None,
             star_visibility: StarVisibility::new(),
+            captures: Vec::new(),
             capture: None,
+            video: None,
             user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
             gpu_milliseconds: None,
@@ -205,12 +255,18 @@ impl Renderer {
             selected_tiles: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             terrain_draws: Vec::new(),
             tile_data: Vec::with_capacity(INITIAL_TILE_CAPACITY),
+            tile_pages: Vec::with_capacity(INITIAL_TILE_CAPACITY),
+            surface_anchor_data: Vec::with_capacity(INITIAL_SURFACE_ANCHOR_CAPACITY),
+            surface_anchor_slots: Vec::new(),
+            noise_volume,
+            page_writer: TilePageWriter::new(),
+            terrain_residency: Residency::Live,
             object_capacity: INITIAL_OBJECT_CAPACITY,
             tile_capacity: INITIAL_TILE_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
+            surface_anchor_capacity: INITIAL_SURFACE_ANCHOR_CAPACITY,
             light_capacity: INITIAL_LIGHT_CAPACITY,
             materials: Vec::new(),
-            terrain_displacements: Vec::new(),
             lens: None,
             passes,
             graph,
@@ -218,6 +274,7 @@ impl Renderer {
             temporal: TemporalHistory::default(),
             frames,
             frame_index: 0,
+            frames_rendered: 0,
             swapchain,
             swapchain_outdated: false,
             window_extent,
@@ -246,15 +303,21 @@ impl Renderer {
         self.user_interface = draw_list;
     }
 
-    pub fn configure(&mut self, render: &RenderConfig, animations: &AnimationConfig) {
-        self.render = render.clone();
-        self.exposure.configure(animations.duration_scale);
-        self.white_balance.configure(animations.duration_scale);
-        self.star_visibility.configure(animations.duration_scale);
+    pub fn configure(&mut self, config: &Config) {
+        self.config = config.clone();
+        self.terrain_residency = if config.terrain.streaming.freeze {
+            Residency::Frozen
+        } else {
+            Residency::Live
+        };
+        let adaptation_duration_scale = config.animation.camera_duration_scale();
+        self.exposure.configure(adaptation_duration_scale);
+        self.white_balance.configure(adaptation_duration_scale);
+        self.star_visibility.configure(adaptation_duration_scale);
 
-        if render.wireframe && !self.supports_wireframe() {
+        if config.debug.wireframe && !self.supports_wireframe() {
             tracing::warn!("wireframe is unsupported by this device");
-            self.render.wireframe = false;
+            self.config.debug.wireframe = false;
         }
     }
 
@@ -264,8 +327,8 @@ impl Renderer {
     }
 
     // Frames to render after a change before the image reflects it: temporal effects carry earlier frames forward.
-    pub fn settling_frames(&self) -> u32 {
-        let antialiasing = match self.render.antialiasing.kind {
+    fn settling_frames(&self) -> u32 {
+        let antialiasing = match self.config.video.antialiasing {
             Some(AntialiasingKind::Taa) => TaaPass::settling_frames(),
             _ => 0,
         };
@@ -307,20 +370,13 @@ impl Renderer {
             material.refresh(&self.gpu)?;
         }
 
-        let terrains = self.scene.terrains();
-        self.terrain_displacements.resize_with(terrains.len(), || None);
-
-        for (terrain, displacement) in terrains.iter().zip(&mut self.terrain_displacements) {
-            if displacement.is_none()
-                && let Some(height_map) = &terrain.height_map
-            {
-                let radius = self.scene.object(terrain.object).scale;
-                *displacement = TerrainDisplacement::of(&self.gpu, "terrain", height_map, radius)?;
-            }
-
-            if let Some(displacement) = displacement {
-                displacement.buffer.poll()?;
-            }
+        for pages in self
+            .scene
+            .terrains()
+            .iter()
+            .filter_map(|terrain| terrain.pages.as_ref())
+        {
+            pages.update(self.terrain_residency);
         }
 
         if let Some(lens) = &mut self.lens {
@@ -335,7 +391,8 @@ impl Renderer {
         self.swapchain_outdated = true;
     }
 
-    pub fn draw(&mut self, camera: &Camera) -> anyhow::Result<()> {
+    // `now` is the moment the frame shows: adaptations to the light advance by the time since the previous one.
+    pub fn draw(&mut self, camera: &Camera, target: FrameTarget, now: Instant) -> anyhow::Result<()> {
         if self.window_extent.width == 0 || self.window_extent.height == 0 {
             return Ok(());
         }
@@ -345,41 +402,157 @@ impl Renderer {
         }
 
         self.poll_uploads()?;
+        self.passes.ensure_pipelines(&self.gpu, &self.config)?;
         self.ensure_object_capacity()?;
         self.ensure_star_capacity()?;
         self.ensure_light_capacity()?;
+        self.wait_for_frame_slot()?;
 
-        let Some(image_index) = self.acquire_image()? else {
-            return Ok(());
+        let output = match target {
+            FrameTarget::Window { window } => {
+                let Some(image_index) = self.acquire_image()? else {
+                    return Ok(());
+                };
+
+                FrameOutput::Window { window, image_index }
+            }
+            FrameTarget::Offscreen => FrameOutput::Offscreen,
         };
 
-        if self.render.antialiasing.kind != Some(AntialiasingKind::Taa) {
-            self.temporal.reset();
-        }
-
-        self.update_exposure();
-        self.update_white_balance(camera.position);
-        self.update_star_visibility()?;
-        self.update_gpu_time()?;
-        self.write_frame_data(camera)?;
-        let recording = self.record_frame(image_index)?;
-        self.submit_and_present(image_index, recording)?;
-        self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
+        self.render_frame(camera, output, now, FrameRole::Display)?;
+        self.render_settled_captures(camera, now);
 
         Ok(())
     }
 
-    // Renders one frame now and starts copying its pixels back to the CPU.
-    pub fn capture(&mut self, camera: &Camera) -> anyhow::Result<PendingCapture> {
-        anyhow::ensure!(
-            self.swapchain.supports_capture(),
-            "this display does not allow copying the rendered image"
-        );
+    // Captures a frame once temporal effects reflect the scene. It is rendered off screen, so it is taken whether the
+    // window shows or not.
+    pub fn request_capture(&mut self) -> PendingCapture {
+        let (sender, receiver) = oneshot::channel();
+        self.captures.push(QueuedCapture {
+            settling_frames: self.settling_frames(),
+            sender,
+        });
 
-        if self.swapchain_outdated {
-            self.recreate_swapchain()?;
+        PendingCapture::new(receiver)
+    }
+
+    // Every frame displayed from now on is converted, encoded and written to `path` at `fps`, until `stop_video`.
+    pub fn start_video(&mut self, path: PathBuf, fps: u32) -> anyhow::Result<()> {
+        anyhow::ensure!(self.video.is_none(), "a video is already being written");
+        self.video = Some(VideoOutput::new(
+            &self.gpu,
+            path,
+            self.swapchain.extent(),
+            self.swapchain.format(),
+            fps,
+            FRAMES_IN_FLIGHT,
+        )?);
+
+        Ok(())
+    }
+
+    // Stops capturing and deletes the file, for a capture that failed.
+    pub fn abort_video(&mut self) {
+        if let Some(video) = self.video.take() {
+            video.discard();
+        }
+    }
+
+    pub fn stop_video(&mut self) {
+        if let Some(video) = &mut self.video {
+            video.phase = VideoPhase::Closing;
+        }
+    }
+
+    // Whether the next displayed frame can be captured; without a video every frame can.
+    pub fn video_ready(&self) -> bool {
+        self.video.as_ref().is_none_or(VideoOutput::is_ready)
+    }
+
+    // Writes the frames encoded so far. Returns the file once a stopped video is complete, or why it failed.
+    pub fn poll_video(&mut self) -> Option<anyhow::Result<PathBuf>> {
+        let video = self.video.as_mut()?;
+
+        if let Err(error) = video.write_encoded() {
+            if let Some(video) = self.video.take() {
+                video.discard();
+            }
+
+            return Some(Err(error.into()));
         }
 
+        if !video.is_done() {
+            return None;
+        }
+
+        let video = self.video.take()?;
+
+        Some(video.finish().map_err(Into::into))
+    }
+
+    fn captures_display_frames(&self) -> bool {
+        self.video
+            .as_ref()
+            .is_some_and(|video| video.phase == VideoPhase::Recording)
+    }
+
+    pub fn frames_rendered(&self) -> u64 {
+        self.frames_rendered
+    }
+
+    fn render_frame(
+        &mut self,
+        camera: &Camera,
+        output: FrameOutput,
+        now: Instant,
+        role: FrameRole,
+    ) -> anyhow::Result<()> {
+        if self.config.video.antialiasing != Some(AntialiasingKind::Taa) {
+            self.temporal.reset();
+        }
+
+        self.update_exposure(now);
+        self.update_white_balance(camera.position, now);
+        self.update_star_visibility(now)?;
+        self.update_gpu_time()?;
+        self.write_frame_data(camera)?;
+        let captured = self.captures_display_frames() && role == FrameRole::Display;
+        let recording = self.record_frame(output, captured, camera.clear_color)?;
+
+        match output {
+            FrameOutput::Window { window, image_index } => self.submit_and_present(window, image_index, recording)?,
+            FrameOutput::Offscreen => self.submit_offscreen(recording)?,
+        }
+
+        if captured && let (Some(video), Some(submitted)) = (&mut self.video, &self.frames[self.frame_index].submitted)
+        {
+            video.encode(submitted);
+        }
+
+        self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
+        self.frames_rendered += 1;
+
+        for capture in &mut self.captures {
+            capture.settling_frames = capture.settling_frames.saturating_sub(1);
+        }
+
+        Ok(())
+    }
+
+    fn render_settled_captures(&mut self, camera: &Camera, now: Instant) {
+        let (settled, settling): (Vec<_>, Vec<_>) = std::mem::take(&mut self.captures)
+            .into_iter()
+            .partition(|capture| capture.settling_frames == 0);
+        self.captures = settling;
+
+        for capture in settled {
+            let readback = self.render_capture(camera, now);
+            let _ = capture.sender.send(readback);
+        }
+    }
+
+    fn render_capture(&mut self, camera: &Camera, now: Instant) -> anyhow::Result<CaptureReadback> {
         let extent = self.swapchain.extent();
         let size = u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL as u64;
         let buffer = Buffer::new(
@@ -390,51 +563,32 @@ impl Renderer {
             MemoryLocation::GpuOnly,
             &self.gpu.transfer.sharing(),
         )?;
+        self.wait_for_frame_slot()?;
+        let frame = self.frame_index;
         self.capture = Some(buffer);
-        let rendered = self.render_capture(camera, extent);
+        let rendered = self.render_frame(camera, FrameOutput::Offscreen, now, FrameRole::Snapshot);
         let buffer = self.capture.take().expect("the capture buffer is set while capturing");
+        rendered?;
+        let submitted = self.frames[frame]
+            .submitted
+            .clone()
+            .expect("a frame was submitted from the slot rendered above");
         let readback = self
             .gpu
             .transfer
-            .read_buffer(buffer, Some(rendered?), TransferPriority::High);
+            .read_buffer(buffer, Some(submitted), TransferPriority::High);
 
-        Ok(PendingCapture::new(extent, self.swapchain.format(), readback))
+        Ok(CaptureReadback::new(extent, self.swapchain.format(), readback))
     }
 
-    // The point the graphics timeline reaches once the captured frame is rendered.
-    fn render_capture(&mut self, camera: &Camera, extent: vk::Extent2D) -> anyhow::Result<TimelineValue> {
-        let frame = self.frame_index;
-        self.draw(camera)?;
-
-        // No image was acquired because the swapchain went out of date: recreate it and try once more.
-        if self.frame_index == frame && self.swapchain_outdated {
-            self.recreate_swapchain()?;
-            anyhow::ensure!(
-                self.swapchain.extent() == extent,
-                "the window changed size while capturing"
-            );
-            self.draw(camera)?;
-        }
-
-        anyhow::ensure!(
-            self.frame_index != frame,
-            "the window is not visible, nothing was rendered"
-        );
-
-        Ok(self.frames[frame]
-            .submitted
-            .clone()
-            .expect("a frame was submitted from the slot drawn above"))
-    }
-
-    fn update_exposure(&mut self) {
+    fn update_exposure(&mut self, now: Instant) {
         if let Some(illuminance) = self.illuminance {
-            self.exposure.update(illuminance);
+            self.exposure.update(illuminance, now);
         }
     }
 
     // Adapts to the star whose light is strongest at the camera.
-    fn update_white_balance(&mut self, camera_position: DVec3) {
+    fn update_white_balance(&mut self, camera_position: DVec3, now: Instant) {
         let dominant = self
             .scene
             .stars()
@@ -452,16 +606,16 @@ impl Renderer {
             .max_by(|a, b| a.0.total_cmp(&b.0));
 
         if let Some((_, color)) = dominant {
-            self.white_balance.update(color);
+            self.white_balance.update(color, now);
         }
     }
 
-    fn update_star_visibility(&mut self) -> anyhow::Result<()> {
+    fn update_star_visibility(&mut self, now: Instant) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
 
         if frame.submitted.is_some() {
             frame.histogram.read(&mut self.histogram)?;
-            self.star_visibility.update(&self.histogram);
+            self.star_visibility.update(&self.histogram, now);
         }
 
         Ok(())
@@ -479,19 +633,23 @@ impl Renderer {
         Ok(())
     }
 
-    fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
-        let frame = &self.frames[self.frame_index];
-
-        if let Some(submitted) = &frame.submitted {
+    // Once the slot's previous frame is done, its buffers may be rewritten and its read-backs hold that frame's results.
+    fn wait_for_frame_slot(&mut self) -> anyhow::Result<()> {
+        if let Some(submitted) = &self.frames[self.frame_index].submitted {
             self.gpu.graphics.wait(submitted.value)?;
         }
 
         self.gpu.memory.collect()?;
+
+        Ok(())
+    }
+
+    fn acquire_image(&mut self) -> anyhow::Result<Option<u32>> {
         let acquired = unsafe {
             self.gpu.memory.swapchain_loader().acquire_next_image(
                 self.swapchain.handle(),
-                u64::MAX,
-                frame.image_acquired.handle(),
+                ACQUIRE_TIMEOUT.as_nanos() as u64,
+                self.frames[self.frame_index].image_acquired.handle(),
                 vk::Fence::null(),
             )
         };
@@ -504,6 +662,10 @@ impl Renderer {
                 self.swapchain_outdated = true;
                 return Ok(None);
             }
+            Err(vk::Result::TIMEOUT) => {
+                tracing::debug!("no swapchain image became available within {ACQUIRE_TIMEOUT:?}, skipping the frame");
+                return Ok(None);
+            }
             Err(err) => return Err(err.into()),
         };
 
@@ -511,12 +673,13 @@ impl Renderer {
     }
 
     fn write_frame_data(&mut self, camera: &Camera) -> anyhow::Result<()> {
+        self.noise_volume.poll(&self.gpu)?;
         let extent = self.swapchain.extent();
         let clip_from_view = camera.clip_from_view();
         let unjittered_view_projection = clip_from_view * camera.view_rotation();
         self.temporal
             .begin_frame(unjittered_view_projection, self.exposure.exposure(), camera.position);
-        let jitter = if self.render.antialiasing.kind == Some(AntialiasingKind::Taa) {
+        let jitter = if self.config.video.antialiasing == Some(AntialiasingKind::Taa) {
             self.temporal.jitter(extent)
         } else {
             Vec2::ZERO
@@ -535,12 +698,17 @@ impl Renderer {
             viewport_size: Vec2::new(extent.width as f32, extent.height as f32),
             jitter,
             exposure: self.exposure.exposure(),
-            tonemapper: self.render.tonemapper.map_or(NO_TONEMAPPER, Tonemapper::shader_id),
+            tonemapper: self
+                .config
+                .video
+                .tonemapper
+                .map_or(NO_TONEMAPPER, Tonemapper::shader_id),
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
-            shading_model: self.render.shading_model.shader_id(),
-            vertex_spacing_angle: self.render.terrain_lod.vertex_spacing_pixels / self.focal_length_pixels,
-            padding: [0; 3],
-            white_balance: self.white_balance.rows(self.render.white_balance.enabled),
+            vertex_spacing_angle: self.config.terrain.lod.vertex_spacing_pixels / self.focal_length_pixels,
+            pixel_angle: self.focal_length_pixels.recip(),
+            terrain_height_scale: self.config.terrain.height.drawn_scale(),
+            padding: [0; 2],
+            white_balance: self.white_balance.rows(self.config.video.white_balance.enabled),
         };
 
         self.object_data.clear();
@@ -609,18 +777,22 @@ impl Renderer {
             }
         }
 
-        if !self.render.terrain_lod.freeze {
+        if !self.config.terrain.lod.freeze {
             self.select_tiles(camera);
         }
 
-        self.write_tile_data(camera);
+        self.write_tiles(camera);
         self.ensure_tile_capacity()?;
+        self.write_surface_anchors(camera);
+        self.ensure_surface_anchor_capacity()?;
 
         let frame = &mut self.frames[self.frame_index];
         frame.frame_data.write(&[frame_data])?;
         frame.objects.write(&self.object_data)?;
         frame.tiles.write(&self.tile_data)?;
+        frame.tile_pages.write(&self.tile_pages)?;
         frame.stars.write(&self.star_data)?;
+        frame.surface_anchors.write(&self.surface_anchor_data)?;
         Ok(frame.projected_lights.write(&self.projected_light_data)?)
     }
 
@@ -628,11 +800,12 @@ impl Renderer {
         DetailRanges::new(
             radius,
             f64::from(self.focal_length_pixels),
-            f64::from(self.render.terrain_lod.vertex_spacing_pixels),
+            f64::from(self.config.terrain.lod.vertex_spacing_pixels),
         )
     }
 
-    // Tiles are grouped into one draw per terrain and grid size.
+    // Tiles are grouped into one draw per terrain, shading range and grid size. A tile is shaded with surfaces where
+    // some pixel of it can magnify the colour layer past its finest texels.
     fn select_tiles(&mut self, camera: &Camera) {
         let culler = Culler::new(camera, self.swapchain.extent());
         self.selected_tiles.clear();
@@ -642,9 +815,19 @@ impl Renderer {
             let object = self.scene.object(terrain.object);
             let center = object.position - camera.position;
 
-            let height = TerrainDisplacement::uploaded(&self.terrain_displacements, TerrainHandle { index })
-                .map(|displacement| &displacement.height);
-            let bounding_radius = object.bounding_radius + height.map_or(0.0, TerrainHeight::maximum);
+            let heights = terrain.pages.as_ref().and_then(|pages| pages.heights());
+            let height_scale = f64::from(self.config.terrain.height.drawn_scale());
+            let shape = if heights.is_some() {
+                TileShape::Displaced
+            } else {
+                TileShape::Smooth
+            };
+            let highest = heights
+                .as_ref()
+                .and_then(TileHeightBounds::overall_range)
+                .map_or(0.0, |range| range.scaled(height_scale).maximum);
+            let relief = terrain.surfaces.as_deref().map_or(0.0, BiomeSurfaces::relief);
+            let bounding_radius = object.bounding_radius + highest + relief;
 
             if !culler.is_visible(center, bounding_radius) {
                 continue;
@@ -652,22 +835,44 @@ impl Renderer {
 
             let sphere = QuadSphere {
                 radius: object.scale,
-                height,
+                height: heights.as_ref().map(|heights| heights as &dyn TileHeightBounds),
+                relief,
+                height_scale,
                 center,
                 orientation: object.orientation,
             };
+            let ranges = self.detail_ranges(object.scale);
+            let detail = PageDetail {
+                radius: object.scale,
+                focal_length_pixels: f64::from(self.focal_length_pixels),
+                vertex_spacing_angle: ranges.vertex_spacing_angle(),
+            };
+            let finest_color = terrain
+                .pages
+                .as_ref()
+                .and_then(|pages| pages.layer(TerrainLayer::Color))
+                .map(|(_, finest)| finest);
+            let surfaces = terrain
+                .surfaces
+                .as_deref()
+                .filter(|_| self.noise_volume.index().is_some());
+            let range = |tile: &SelectedTile| match (surfaces, finest_color) {
+                (Some(_), Some(level)) if detail.magnifies(level, tile.nearest) => ShadingRange::Near,
+                _ => ShadingRange::Far,
+            };
+            let draw_key = |tile: &SelectedTile| (range(tile), DetailRanges::grid_cells(tile.tile.depth, tile.detail));
             let first_tile = self.selected_tiles.len();
-            sphere.select(&self.detail_ranges(object.scale), &culler, &mut self.selected_tiles);
+            sphere.select(&ranges, &culler, &mut self.selected_tiles);
             let tiles = &mut self.selected_tiles[first_tile..];
-            tiles.sort_by_key(|tile| DetailRanges::grid_cells(tile.detail));
+            tiles.sort_by_key(draw_key);
             let mut run_start = first_tile;
 
-            for run in tiles.chunk_by(|first, second| {
-                DetailRanges::grid_cells(first.detail) == DetailRanges::grid_cells(second.detail)
-            }) {
+            for run in tiles.chunk_by(|first, second| draw_key(first) == draw_key(second)) {
                 self.terrain_draws.push(TerrainDraw {
                     terrain: TerrainHandle { index },
-                    grid_cells: DetailRanges::grid_cells(run[0].detail),
+                    shape,
+                    range: range(&run[0]),
+                    grid_cells: DetailRanges::grid_cells(run[0].tile.depth, run[0].detail),
                     first_tile: run_start as u32,
                     tile_count: run.len() as u32,
                 });
@@ -676,18 +881,24 @@ impl Renderer {
         }
     }
 
-    // Tile centers are placed in f64, relative to each frame's camera, so only offsets within a tile reach f32.
-    fn write_tile_data(&mut self, camera: &Camera) {
+    // Tile centers are placed in f64, relative to each frame's camera, so only offsets within a tile reach f32. Each
+    // tile's pages are written beside it, and the pages tiles need are requested.
+    fn write_tiles(&mut self, camera: &Camera) {
         self.tile_data.clear();
+        self.tile_pages.clear();
+        self.page_writer.begin(self.scene.terrains().len());
         let previous_camera_position = self.temporal.previous_camera_position();
 
         for draw in &self.terrain_draws {
-            let object_handle = self.scene.terrain(draw.terrain).object;
-            let object = self.scene.object(object_handle);
-            let previous = self.temporal.previous_pose(object_handle.index);
+            let terrain = self.scene.terrain(draw.terrain);
+            let object = self.scene.object(terrain.object);
+            let previous = self.temporal.previous_pose(terrain.object.index);
             let ranges = self.detail_ranges(object.scale);
-            let grid = TerrainDisplacement::uploaded(&self.terrain_displacements, draw.terrain)
-                .map(|displacement| displacement.height.grid());
+            let detail = PageDetail {
+                radius: object.scale,
+                focal_length_pixels: f64::from(self.focal_length_pixels),
+                vertex_spacing_angle: ranges.vertex_spacing_angle(),
+            };
             let first_tile = draw.first_tile as usize;
 
             for selected in &self.selected_tiles[first_tile..first_tile + draw.tile_count as usize] {
@@ -696,8 +907,6 @@ impl Renderer {
                 let center = object.position - camera.position + object.orientation * (direction * object.scale);
                 let previous_center =
                     previous.position - previous_camera_position + previous.orientation * (direction * previous.scale);
-                let texel = grid.map_or(DVec2::ZERO, |grid| grid.texel_position(direction));
-                let center_texel = texel.floor();
                 self.tile_data.push(TileData {
                     center: center.as_vec3(),
                     detail: selected.detail,
@@ -705,18 +914,51 @@ impl Renderer {
                     grid_cells: draw.grid_cells,
                     cube_center: tile.cube_center().as_vec3(),
                     morph_start: ranges.morph_start(selected.detail) as f32,
-                    horizontal_axis: tile.horizontal_axis().as_vec3(),
+                    column_axis: tile.column_axis().as_vec3(),
                     morph_end: ranges.morph_end(selected.detail) as f32,
-                    vertical_axis: tile.vertical_axis().as_vec3(),
-                    padding: 0,
-                    center_texel: center_texel.as_ivec2(),
-                    center_texel_fraction: (texel - center_texel).as_vec2(),
+                    row_axis: tile.row_axis().as_vec3(),
+                    half_size: tile.half_size() as f32,
+                    x: tile.x,
+                    y: tile.y,
+                    depth: tile.depth,
+                    layer_finest_levels: terrain.pages.as_ref().map_or(0, |pages| pages.layer_finest_levels()),
                 });
+                self.tile_pages
+                    .push(terrain.pages.as_ref().map_or(TilePages::NONE, |pages| {
+                        self.page_writer.write(draw.terrain.index, pages, selected, &detail)
+                    }));
             }
+        }
+
+        self.page_writer
+            .submit(self.scene.terrains().iter().map(|terrain| terrain.pages.as_deref()));
+    }
+
+    // Where the camera stands in each terrain's surfaces, computed in f64 in the body's frame. Surfaces are drawn only
+    // once the noise they read is uploaded.
+    fn write_surface_anchors(&mut self, camera: &Camera) {
+        self.surface_anchor_data.clear();
+        self.surface_anchor_slots.clear();
+        let noise_volume = self.noise_volume.index();
+
+        for terrain in self.scene.terrains() {
+            let slot = terrain
+                .surfaces
+                .as_ref()
+                .zip(noise_volume)
+                .map(|(surfaces, noise_volume)| {
+                    let object = self.scene.object(terrain.object);
+                    let camera_in_body = object.orientation.inverse() * (camera.position - object.position);
+                    self.surface_anchor_data
+                        .push(surfaces.anchor_data(camera_in_body, noise_volume));
+                    self.surface_anchor_data.len() - 1
+                });
+            self.surface_anchor_slots.push(slot);
         }
     }
 
-    fn record_frame(&mut self, image_index: u32) -> anyhow::Result<Recording> {
+    // A captured frame renders into an image of its own the video reads, then shows in the window through a copy.
+    fn record_frame(&mut self, output: FrameOutput, captured: bool, clear_color: Vec3) -> anyhow::Result<Recording> {
         let GpuContext {
             bindless,
             device,
@@ -738,16 +980,45 @@ impl Renderer {
         }
 
         let mut graph = self.graph.begin_frame();
+        let window: Option<Subresource> = match output {
+            FrameOutput::Window { image_index, .. } => Some(
+                graph
+                    .import_image(ImportedImage {
+                        name: "swapchain",
+                        image: self.swapchain.image(image_index),
+                        view: self.swapchain.image_view(image_index),
+                        extent: self.swapchain.extent(),
+                        aspect: vk::ImageAspectFlags::COLOR,
+                        initial: SWAPCHAIN_ACQUIRED,
+                        final_state: SWAPCHAIN_PRESENTABLE,
+                    })
+                    .into(),
+            ),
+            FrameOutput::Offscreen => None,
+        };
+        let captured_frame = captured.then(|| {
+            graph.create_image(GraphImageDescription {
+                name: "captured frame",
+                format: self.swapchain.format(),
+                size: ImageSize::Output,
+                mip_levels: 1,
+            })
+        });
+        let output: Subresource = match (captured_frame, window) {
+            (Some(frame), _) => frame.into(),
+            (None, Some(window)) => window,
+            (None, None) => graph
+                .create_image(GraphImageDescription {
+                    name: "offscreen output",
+                    format: self.swapchain.format(),
+                    size: ImageSize::Output,
+                    mip_levels: 1,
+                })
+                .into(),
+        };
+        let video = captured_frame.map(|frame| VideoTarget { frame, window });
         let inputs = FrameInputs {
-            output: graph.import_image(ImportedImage {
-                name: "swapchain",
-                image: self.swapchain.image(image_index),
-                view: self.swapchain.image_view(image_index),
-                extent: self.swapchain.extent(),
-                aspect: vk::ImageAspectFlags::COLOR,
-                initial: SWAPCHAIN_ACQUIRED,
-                final_state: SWAPCHAIN_PRESENTABLE,
-            }),
+            output,
             histogram: graph.import_buffer(ImportedBuffer {
                 name: "luminance histogram",
                 buffer: frame.histogram.handle(),
@@ -762,10 +1033,12 @@ impl Renderer {
                     final_state: HOST_READABLE,
                 })
             }),
+            video,
             projected_light_count: self.projected_light_data.len() as u32,
             lens_loaded: self.lens.as_ref().and_then(Lens::flare).is_some(),
+            clear_color,
         };
-        self.passes.add_to(&mut graph, &self.render, inputs);
+        self.passes.add_to(&mut graph, &self.config, inputs);
         let compiled = graph.compile()?;
         self.graph_textures
             .register(bindless, compiled.graph(), compiled.created_images())?;
@@ -775,15 +1048,16 @@ impl Renderer {
             frame_slot: self.frame_index,
             textures: &self.graph_textures,
             temporal: &self.temporal,
-            render: &self.render,
+            config: &self.config,
             scene: &self.scene,
             materials: &self.materials,
-            terrain_displacements: &self.terrain_displacements,
             lens: self.lens.as_ref().and_then(Lens::flare),
             focal_length_pixels: self.focal_length_pixels,
             terrain_draws: &self.terrain_draws,
+            surface_anchor_slots: &self.surface_anchor_slots,
             descriptor_set: bindless.set(),
             user_interface: &self.user_interface,
+            video: video.and(self.video.as_ref()),
             triangles: Cell::new(0),
         };
         compiled.execute(device.handle(), frame.command_buffer, &context)?;
@@ -792,7 +1066,19 @@ impl Renderer {
             timer.end(device, frame.command_buffer);
         }
 
+        let mut terrain_pages = TerrainPageStatistics::default();
+
+        for pages in self
+            .scene
+            .terrains()
+            .iter()
+            .filter_map(|terrain| terrain.pages.as_ref())
+        {
+            terrain_pages.add(&pages.statistics());
+        }
+
         self.statistics = FrameStatistics {
+            terrain_pages,
             triangles: context.triangles.get(),
             tiles: self.selected_tiles.len(),
             deepest_depth: self.selected_tiles.iter().map(|selected| selected.tile.depth).max(),
@@ -803,7 +1089,14 @@ impl Renderer {
         Ok(recording)
     }
 
-    fn submit_and_present(&mut self, image_index: u32, recording: Recording) -> anyhow::Result<()> {
+    fn submit_offscreen(&mut self, recording: Recording) -> anyhow::Result<()> {
+        let submitted = recording.submit(&[self.gpu.transfer.visibility_wait()], &[])?;
+        self.frames[self.frame_index].submitted = Some(submitted);
+
+        Ok(())
+    }
+
+    fn submit_and_present(&mut self, window: &Window, image_index: u32, recording: Recording) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
         let render_finished = self.swapchain.render_finished(image_index);
         let wait_semaphores = [
@@ -825,6 +1118,9 @@ impl Renderer {
             .wait_semaphores(&present_wait)
             .swapchains(&swapchains)
             .image_indices(&image_indices);
+        // On Wayland, winit then holds `RedrawRequested` until the compositor asks for another frame, so a hidden
+        // window stops drawing instead of blocking in the next present.
+        window.pre_present_notify();
 
         match self.gpu.graphics.present(present_info) {
             Ok(suboptimal) => self.swapchain_outdated |= suboptimal,
@@ -862,6 +1158,24 @@ impl Renderer {
 
         for frame in &mut self.frames {
             frame.tiles = Frame::create_tile_buffer(&self.gpu.memory, self.tile_capacity)?;
+            frame.tile_pages = Frame::create_tile_pages_buffer(&self.gpu.memory, self.tile_capacity)?;
+        }
+
+        Ok(())
+    }
+
+    fn ensure_surface_anchor_capacity(&mut self) -> anyhow::Result<()> {
+        let anchor_count = self.surface_anchor_data.len();
+
+        if anchor_count <= self.surface_anchor_capacity {
+            return Ok(());
+        }
+
+        self.surface_anchor_capacity = anchor_count.next_power_of_two();
+
+        for frame in &mut self.frames {
+            frame.surface_anchors =
+                Frame::create_surface_anchor_buffer(&self.gpu.memory, self.surface_anchor_capacity)?;
         }
 
         Ok(())

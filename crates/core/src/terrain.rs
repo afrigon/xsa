@@ -1,5 +1,9 @@
-mod equirectangular_grid;
-mod height_map;
+mod face_point;
+mod height_page;
+mod height_pages;
+mod height_sample;
 
-pub use equirectangular_grid::EquirectangularGrid;
-pub use height_map::HeightMap;
+pub use face_point::FacePoint;
+pub use height_page::HeightPage;
+pub use height_pages::HeightPages;
+pub use height_sample::HeightSample;

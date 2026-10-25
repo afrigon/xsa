@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.2092 0.1088 0.0656
-color-texture "bodies/amalthea/color"
-normal-texture "bodies/amalthea/normal"
-hapke medium-texture="bodies/amalthea/hapke-medium" opposition-texture="bodies/amalthea/hapke-opposition"

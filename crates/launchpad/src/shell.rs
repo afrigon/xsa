@@ -7,7 +7,7 @@ use xsa_logging::Verbosity;
 pub struct Shell {
     stdout: anstream::Stdout,
     stderr: anstream::Stderr,
-    verbosity: Verbosity,
+    verbosity: Option<Verbosity>,
 }
 
 impl Shell {
@@ -17,7 +17,7 @@ impl Shell {
     const NOTE_STYLE: Style = AnsiColor::BrightCyan.on_default().effects(Effects::BOLD);
     const STATUS_WIDTH: usize = 12;
 
-    pub fn new(verbosity: Verbosity) -> Shell {
+    pub fn new(verbosity: Option<Verbosity>) -> Shell {
         Shell {
             stdout: anstream::stdout(),
             stderr: anstream::stderr(),
@@ -35,7 +35,7 @@ impl Shell {
     }
 
     pub fn status(&mut self, status: impl Display, message: impl Display) -> io::Result<()> {
-        if self.verbosity == Verbosity::Quiet {
+        if self.verbosity == Some(Verbosity::Quiet) {
             return Ok(());
         }
 
@@ -52,7 +52,7 @@ impl Shell {
 
     #[expect(dead_code, reason = "for the commands that print progress")]
     pub fn note(&mut self, message: impl Display) -> io::Result<()> {
-        if self.verbosity == Verbosity::Quiet {
+        if self.verbosity == Some(Verbosity::Quiet) {
             return Ok(());
         }
 

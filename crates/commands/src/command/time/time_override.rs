@@ -1,5 +1,5 @@
 use usage::Args;
-use xsa_proto::message::{ClientMessage, SetTimeOverride};
+use xsa_proto::request::{Request, SetTimeRateOverrideRequest};
 use xsa_proto::session::SessionState;
 
 use super::TimeCommand;
@@ -20,8 +20,8 @@ impl Routable for TimeOverrideCommand {
 }
 
 impl ServerCommand for TimeOverrideCommand {
-    fn message(&self) -> ClientMessage {
-        ClientMessage::SetTimeOverride(SetTimeOverride { rate: self.rate.rate })
+    fn request(&self) -> Request {
+        Request::SetTimeRateOverride(SetTimeRateOverrideRequest { rate: self.rate.rate })
     }
 
     fn describe(&self, state: Option<&SessionState>) -> Output {

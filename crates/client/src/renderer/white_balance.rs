@@ -35,8 +35,7 @@ impl WhiteBalance {
     }
 
     // The color of the light to adapt to, in linear sRGB with a luminance of 1.
-    pub fn update(&mut self, light: Vec3) {
-        let now = Instant::now();
+    pub fn update(&mut self, light: Vec3, now: Instant) {
         let elapsed = self.last_update.map(|last| now.duration_since(last).as_secs_f32());
         self.last_update = Some(now);
         self.white = match elapsed {
@@ -101,7 +100,7 @@ mod tests {
     #[test]
     fn the_adapted_light_becomes_white() {
         let mut white_balance = WhiteBalance::new();
-        white_balance.update(SUNLIGHT);
+        white_balance.update(SUNLIGHT, Instant::now());
         let white = apply(white_balance.rows(true), SUNLIGHT);
         assert!((white - Vec3::ONE).abs().max_element() < 1e-3, "{white}");
     }
@@ -109,7 +108,7 @@ mod tests {
     #[test]
     fn a_gray_surface_in_that_light_renders_gray() {
         let mut white_balance = WhiteBalance::new();
-        white_balance.update(SUNLIGHT);
+        white_balance.update(SUNLIGHT, Instant::now());
         let gray = apply(white_balance.rows(true), SUNLIGHT * 0.18);
         assert!((gray - Vec3::splat(0.18)).abs().max_element() < 1e-3, "{gray}");
     }
@@ -117,7 +116,7 @@ mod tests {
     #[test]
     fn disabled_it_leaves_colors_alone() {
         let mut white_balance = WhiteBalance::new();
-        white_balance.update(SUNLIGHT);
+        white_balance.update(SUNLIGHT, Instant::now());
         let color = Vec3::new(0.3, 0.5, 0.7);
         assert!((apply(white_balance.rows(false), color) - color).abs().max_element() < 1e-4);
     }
@@ -125,7 +124,7 @@ mod tests {
     #[test]
     fn luminance_is_kept() {
         let mut white_balance = WhiteBalance::new();
-        white_balance.update(SUNLIGHT);
+        white_balance.update(SUNLIGHT, Instant::now());
         let color = Vec3::new(0.4, 0.2, 0.1);
         let balanced = apply(white_balance.rows(true), color);
         assert!((balanced.dot(LUMINANCE_WEIGHTS) - color.dot(LUMINANCE_WEIGHTS)).abs() < 0.01);

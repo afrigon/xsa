@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.5391 0.4796 0.3969
-color-texture "bodies/pluto/color"
-normal-texture "bodies/pluto/normal"
-hapke medium-texture="bodies/pluto/hapke-medium" opposition-texture="bodies/pluto/hapke-opposition"

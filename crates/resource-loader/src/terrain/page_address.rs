@@ -8,3 +8,14 @@ pub struct PageAddress {
     pub level: u32,
     pub key: PageKey,
 }
+
+impl PageAddress {
+    /// The page one level coarser that covers this one, or `None` at level 0.
+    pub fn coarser(self) -> Option<PageAddress> {
+        Some(PageAddress {
+            face: self.face,
+            level: self.level.checked_sub(1)?,
+            key: self.key.parent(),
+        })
+    }
+}

@@ -1,11 +1,13 @@
-use resource_vulkan::ResourceHandle;
+use std::sync::Arc;
 
 use super::{MaterialHandle, ObjectHandle};
-use crate::resource_kinds::TerrainHeightMap;
+use crate::renderer::{BiomeSurfaces, TerrainPages};
 
 pub struct Terrain {
     pub object: ObjectHandle,
     pub material: MaterialHandle,
-    // None for a smooth body; drawn smooth until it loads.
-    pub height_map: Option<ResourceHandle<TerrainHeightMap>>,
+    // None for a smooth body without layers.
+    pub pages: Option<Arc<TerrainPages>>,
+    // None for ground without surfaces up close.
+    pub surfaces: Option<Arc<BiomeSurfaces>>,
 }

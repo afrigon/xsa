@@ -56,6 +56,11 @@ impl<'frame> PassContext<'frame> {
             .expect("a used graph image is pooled")
     }
 
+    /// The layout a sampled read of `image` sees: the same in every pass, as bindless descriptors record it.
+    pub fn sampled_layout(&self, image: ImageHandle) -> vk::ImageLayout {
+        self.recorder.image_pool.image(self.image_id(image)).sampled_layout()
+    }
+
     pub fn view(&self, subresource: impl Into<Subresource>) -> vk::ImageView {
         let subresource = subresource.into();
         let resolved = self.resolved_image(subresource.image);

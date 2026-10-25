@@ -6,7 +6,7 @@ use quinn::Endpoint;
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::PrivateKeyDer;
 
-use super::{APPLICATION_PROTOCOL, Identity, PendingClient};
+use super::{APPLICATION_PROTOCOL, DisconnectReason, Identity, PendingClient};
 
 pub struct Listener {
     endpoint: Endpoint,
@@ -31,5 +31,10 @@ impl Listener {
 
     pub async fn accept(&self) -> Option<PendingClient> {
         self.endpoint.accept().await.map(|incoming| PendingClient { incoming })
+    }
+
+    pub async fn close(&self, reason: DisconnectReason) {
+        self.endpoint.close(reason.code(), reason.message());
+        self.endpoint.wait_idle().await;
     }
 }

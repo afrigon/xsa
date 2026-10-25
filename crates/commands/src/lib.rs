@@ -1,9 +1,11 @@
 pub mod command;
 pub mod completion;
-pub mod console_log;
 pub mod ipc;
+pub mod logging;
 pub mod repl;
 pub mod router;
+pub mod script;
+pub mod shell;
 pub mod terminal;
 pub mod value;
 pub mod words;

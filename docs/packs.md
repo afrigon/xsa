@@ -29,11 +29,16 @@ data/<pack>/
       bodies/                               intrinsic properties of each body
       systems/                              how bodies relate: hierarchy and orbits
       simulations/                          which systems make up a playable simulation
+      terrains/                             each body's heights
+      biomes/                               each body's kinds of ground
       parts/                                rocket parts (reserved)
     resources/                              presentation — read by the client
       objects/                              mirrors data/ one-to-one
         bodies/  systems/  simulations/  parts/
       materials/                            shader and its parameters
+      surfaces/                             close-up ground materials, shared by every body
+      biomes/                               how each biome's ground looks up close
+      terrains/                             terrain layers materials shade with
       shaders/                              SPIR-V shaders (base only, see below)
       textures/  models/  sounds/  fonts/   shared assets, organized freely
       theme/                                design system: colors, roles, typefaces, text styles
@@ -113,8 +118,17 @@ axial-tilt 23.4392811
 - **`luminosity`** (W) and **`effective-temperature`** (K), together and only
   on stars: the star's total radiated power and the temperature of the
   blackbody that matches it. Lighting derives from them: illuminance at any
-  distance, the star's surface brightness and its color. The first star in a
-  simulation is its light source.
+  distance, the star's surface brightness and its color. Every star in a
+  simulation lights it.
+- **`atmosphere`** (block, optional): the body's air. **`twilight-depression`**
+  (°, above 0, optional) is how far the star sinks below the horizon before its
+  light leaves the sky: dawn and dusk are when the star sits that far below it.
+  Without it, the sky goes dark at sunset, so dawn is sunrise and dusk is
+  sunset.
+- **`seed`** (integer, optional): where the body's seeded patterns start (its
+  surfaces' tiling, the noise moving their handovers), so the same body looks the
+  same on every run and every machine. Derived from the body's id when absent.
+- **`terrain`** (optional): the body's terrain, an id in `data/terrains/`.
 
 ### Systems — `<namespace>/data/systems/`
 
@@ -223,43 +237,40 @@ of them is binary.
 
 ### Terrains — `<namespace>/data/terrains/`
 
-A body's shape: a height map and the range its heights span. A body names its
-terrain with `terrain "<id>"`.
+A body's shape: its heights. A body names its terrain with `terrain "<id>"`.
 
 ```kdl
 height-map "luna"
-minimum -9041
-maximum 10752
+biome "luna/regolith-plains"
 ```
 
-- **`height-map`:** the height map, relative to `data/terrains/` like every
+- **`height-map`:** the heights, relative to `data/terrains/` like every
   reference is relative to its kind's folder: `luna` is
-  `data/terrains/luna.ktx2`.
-- **`minimum`, `maximum`** (m): the lowest and highest heights in the map,
-  relative to the body's `radius`, signed.
+  `data/terrains/luna.terrain`, a terrain layer (below) of heights in meters
+  relative to the body's `radius`. Each page stores 16-bit values over its own
+  range; the body's overall range is the combined range of its six level 0
+  pages.
+- **`biome`** (optional): the body's kind of ground, an id in `data/biomes/`. A
+  terrain names at most one.
 
-The height map is a KTX2 cube map, `R32_SFLOAT` and uncompressed: six square
-faces in Vulkan's face order and orientation, +X, −X, +Y, −Y, +Z, −Z of the
-body's frame (+X at longitude 0, +Z the north pole). Faces are equal-angle:
-a face coordinate s from −1 to 1 lies at the angle π/4 · s from the face's
-center, so texels are evenly spaced by angle and their ground size varies far
-less than on a plain (gnomonic) cube. It is sampled by direction, so
-neighbouring faces blend across their edges and no face stretches toward the
-poles. Each texel is a height in meters relative to the
-body's `radius`. It carries its full mip chain,
-each level the average of the one above, so the game only reads and uploads
-it. The server and every client read the same file, so the terrain has one
-resolution whatever texture tier a player installs.
+The heights are data, so the server and every client share one terrain
+whatever texture tier a player installs. The game streams pages: only those
+the tiles it draws need, at the level they need, are loaded.
 
 #### Terrain layers
 
-Every terrain layer (the height map, colour, normals and Hapke maps) is a KTX2
-cube map in the same shape, which the game streams in pages. The height map
-lives here, in `data/terrains/`; the others are resources in
-`resources/terrains/`, named by the body's planet material.
+Every terrain layer (the heights, colour, normals and Hapke maps) is a
+`.terrain` file: each cube face cut into pages at every level of detail (see
+the `resource-loader` crate's `terrain` module). The heights live in
+`data/terrains/`; the other layers are resources in `resources/terrains/`,
+named by the body's material. A creator provides each layer as a KTX2 cube
+map:
 
-- six square equal-angle faces in Vulkan's face order and orientation, as
-  above;
+- six square faces in Vulkan's face order and orientation, +X, −X, +Y, −Y,
+  +Z, −Z of the body's frame (+X at longitude 0, +Z the north pole);
+- equal-angle faces: a face coordinate s from −1 to 1 lies at the angle
+  π/4 · s from the face's center, so texels are evenly spaced by angle and
+  their ground size varies far less than on a plain (gnomonic) cube;
 - a face size that is a power of two, at least 128;
 - its full mip chain, each level the average of the one above;
 - uncompressed texels, in the layer's format:
@@ -272,9 +283,16 @@ lives here, in `data/terrains/`; the others are resources in
 | Hapke maps | `R16G16B16A16_SFLOAT` |
 
 Packaging converts each layer into the paged file the game reads, compressing
-it there; a creator only provides the cube maps. `launchpad terrain create
-[--height] <cube map>` runs that conversion on its own to check a layer
-before packaging, and its `--help` lists each face's orientation.
+it there. `launchpad terrain create [--height] <cube map>` runs that
+conversion on its own to check a layer before packaging, and its `--help`
+lists each face's orientation.
+
+### Biomes — `<namespace>/data/biomes/`
+
+A kind of ground (`luna/regolith-plains`), named by its body's terrain. Its
+data file carries no keys of its own: it is where the server's side of a biome
+(scatters, terrain detail) belongs. How its ground looks up close is the
+resource of the same id in `resources/biomes/` (below).
 
 ## Resources
 
@@ -301,40 +319,45 @@ skybox texture="skyboxes/deep-star-maps" frame="equatorial" luminance=0.05
 ### Materials — `<namespace>/resources/materials/`
 
 ```kdl
-shader "base:lit"
+shader "base:terrain/lambert"
 base-color 0.1 0.25 0.6
 ```
 
 Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 (cd/m²), and emissive values are luminances in cd/m².
 
-- **`shader "base:lit"`** with **`base-color`**: the albedo (linear red green
-  blue).
-- **`shader "base:emissive"`** with optional **`color`** (a tint, white by
+- **`shader "base:terrain/lambert"`** with **`base-color`** (the average albedo,
+  linear red green blue) and optional **`color-texture`** (sRGB albedo),
+  **`normal-texture`** and **`emissive-texture`** (sRGB), each a texture id;
+  an emissive texture needs **`emissive-luminance`** (cd/m² for a texture
+  value of 1). Without a color texture the surface takes the base color. A
+  texture no loaded pack provides is skipped with a warning.
+- **`shader "base:terrain/hapke"`** for a body's terrain, shaded with Hapke's model
+  of particulate surfaces (Hapke 2012, eq. 12.55), with **`base-color`**,
+  optional **`emissive-texture`** and **`emissive-luminance`** as for
+  `base:terrain/lambert`, and its maps as terrain layers (`resources/terrains/`, see
+  Terrain layers), each a layer id: **`color-terrain`** (sRGB albedo),
+  **`normal-terrain`**, and two layers holding Hapke's other standard
+  parameters, as published: **`medium-terrain`** (the particulate medium:
+  phase-function lobe width b, lobe balance c, macroscopic roughness θ̄ in
+  degrees, porosity coefficient K) and **`opposition-terrain`** (the
+  opposition effects: shadow-hiding amplitude B_S0 and width h_S,
+  coherent-backscatter amplitude B_C0 and width h_C), both half-float,
+  channels in that order. The color layer's linear values are the diffusive
+  reflectance r0, from which the shader derives the single-scattering albedo
+  w. A layer no loaded pack provides is skipped with a warning: without color
+  the surface takes the base color, and without both Hapke layers it is
+  shaded with Lambert. Normal layers are tangent space in the frame of the
+  face they lie on: red along the face's columns and green across them, both
+  on the sphere's tangent plane; z is reconstructed.
+- **`shader "base:terrain/emissive"`** with optional **`color`** (a tint, white by
   default) and **`luminance`** (cd/m²). A star takes its luminance and color
   from its data and needs neither.
-- **`shader "base:planet"`** with **`base-color`** (the body's average albedo,
-  linear red green blue) and optional **`color-terrain`** (sRGB albedo) and
-  **`normal-terrain`**, each a terrain layer id (`resources/terrains/`, see
-  Terrain layers), and **`emissive-texture`** (sRGB), a texture id; an
-  emissive texture needs **`emissive-luminance`** (cd/m² for a texture value
-  of 1). Without a color layer the surface takes the base color. A layer or
-  texture no loaded pack provides is skipped with a warning, as is a `hapke`
-  node missing either of its layers.
-  An optional **`hapke`** node shades the surface with Hapke's model of
-  particulate surfaces (Hapke 2012, eq. 12.55) instead of Lambert. The color
-  map's linear values are the diffusive reflectance r0, from which the shader
-  derives the single-scattering albedo w; the node names the layers holding
-  the other standard parameters, as published: `medium-terrain` (the
-  particulate medium: phase-function lobe width b, lobe balance c, macroscopic
-  roughness θ̄ in degrees, porosity coefficient K) and `opposition-terrain`
-  (the opposition effects: shadow-hiding amplitude B_S0 and width h_S,
-  coherent-backscatter amplitude B_C0 and width h_C), both half-float,
-  channels in that order.
-  Normal maps are tangent space in the frame of the face they lie on: red
-  along the face's columns and green along its rows, both projected onto the
-  sphere; z is reconstructed. Emissive textures are equirectangular with the
-  first row at the south pole, longitude 0 at u = 0.25 and u growing westward.
+
+Textures are equirectangular with the first row at the south pole, longitude 0
+at u = 0.25 and u growing westward (the convention of KSP's Kopernicus and
+Parallax). Normal textures are tangent-space with red toward west and green
+toward north; z is reconstructed.
 
 ### Lenses — `<namespace>/resources/lenses/`
 
@@ -414,7 +437,8 @@ go to `target/lens-bake/`.
 ### Shaders — `base/resources/shaders/`
 
 The built-in shaders live in the base pack as Slang sources compiled to SPIR-V
-by `mise run shaders`; the game loads them by id (`base:lit`). Shaders from
+by `mise run shaders`; materials name them by id (`base:terrain/lambert`), and
+`docs/rendering.md` describes how they are organized. Shaders from
 other packs, with their own material properties, are planned.
 
 ### Terrain layers — `<namespace>/resources/terrains/`
@@ -426,7 +450,8 @@ file the game reads.
 
 ### Textures — `<namespace>/resources/textures/`
 
-KTX2 files (uncompressed or with Zstandard supercompression), DDS files with
+KTX2 files (uncompressed or with Zstandard supercompression; 2D textures, cube
+maps or texture arrays, with key/value metadata), DDS files with
 a DX10 header, or PNG files, uploaded exactly as stored. KTX2 and DDS hold
 BC7, BC5, BC4, RGBA8, half-float RGBA for values beyond 1 (such as lens
 textures), or 16-bit R and RG for heights; a PNG becomes one RGBA8 level
@@ -436,6 +461,74 @@ replaces an earlier pack's whatever the formats, and a pack holding the same
 texture in several formats uses the first of KTX2, DDS and PNG, with a
 warning. Folders are organized by subject for people; a texture's purpose is
 declared by whatever references it.
+
+### Surfaces — `<namespace>/resources/surfaces/`
+
+The close-up materials of the ground, named by material (`regolith`), never by
+body: any body can use any surface. `base-surfaces` ships them.
+
+```kdl
+color-texture "surfaces/regolith/color"
+normal-texture "surfaces/regolith/normal"
+displacement-texture "surfaces/regolith/displacement"
+size 3.1015625
+displacement low=0.0 high=0.05
+```
+
+- **`color-texture`**, **`normal-texture`**, **`displacement-texture`:**
+  three texture arrays of one layer, with the same size and mip chain.
+  - Colour: `BC7` sRGB, the photograph's colour kept in full. Its KTX2
+    metadata `xsa.averageColor` holds the array's average linear red, green
+    and blue. The game divides the colour by it, so a surface brightens and
+    darkens the body's colour layer around its own average and never replaces
+    it.
+  - Normal: `BC5`, x and y of a tangent-space normal in the OpenGL convention
+    (green toward the image's top), z reconstructed. Its KTX2 metadata
+    `xsa.slopeSpread` holds, for every mip level, the root mean square slope
+    (height change per unit of distance) of the ground that level shows; each
+    level's slopes are the area average of the level above.
+  - Displacement: `BC4`, from 0 at the array's lowest point to 1 at its
+    highest.
+- **`size`** (m): the side of the square one tile covers.
+- **`displacement`** (m): the heights a displacement of 0 (`low`) and 1
+  (`high`) stand for. Near the camera the ground moves by them around their
+  average; collision does not.
+
+Metadata values are text, numbers separated by spaces, ending with a NUL.
+
+`base-surfaces`' scripts build the surfaces from Poly Haven sets at a texel
+density given in texels per meter: `mise run generate -- base-surfaces
+--density 1024`. Each set is resampled to the side nearest that density that
+is a multiple of 4 texels, with a Lanczos filter wrapping around its edges so
+it still tiles, and `size` is that side over the density.
+
+### Biomes — `<namespace>/resources/biomes/`
+
+How a biome's ground looks up close: a surface for flat ground and one for
+slopes, and where the ground's slope hands over from one to the other.
+
+```kdl
+flat "base-surfaces:regolith"
+slope "base-surfaces:regolith-rocky"
+handovers {
+    transition angle=29 width=17 blend-sharpness=0.4
+    noise size=20000 amplitude=3
+}
+curvature convex=10 concave=10 relief=5
+```
+
+- **`flat`**, **`slope`:** surface ids (`resources/surfaces/`).
+- **`transition`:** the slope (°) at the middle of the handover, the range of
+  slopes (°) it spans, and how sharply the higher of the two surfaces shows
+  through where both do: from 0, a cross-fade over their whole displacement
+  range, toward 1, only the higher one (rocks through dust). Below 1.
+- **`noise`:** a seeded noise moving the handover across the ground, so class
+  borders do not follow contour lines: its feature size (m) and how far it moves
+  the slope (°).
+- **`curvature`:** how the ground's shape moves the slope the handover reads,
+  in degrees per unit of each measure: `convex` ground (ridges, crater rims)
+  counts as steeper, `concave` ground (hollows) and ground lower than its
+  surroundings two levels coarser (`relief`) as flatter.
 
 ### Fonts — `<namespace>/resources/fonts/`
 
@@ -535,6 +628,6 @@ into them without a format change.
 
 Pack text files (`.kdl`, `.slang`) are committed to the repository; binary
 files (`.dds`, `.spv`, …) are git-ignored, except the base pack's textures,
-which no task produces. In the repository, system-solar's binaries come from its
-scripts: `mise run generate`. Releases, the pack repository and installation are
+which no task produces. In the repository, the other packs' binaries come from
+their scripts: `mise run generate -- <pack>`. Releases, the pack repository and installation are
 described in `docs/launchpad.md`.

@@ -1,4 +1,0 @@
-shader "base:planet"
-base-color 0.0954 0.0949 0.0932
-color-texture "bodies/proteus/color"
-normal-texture "bodies/proteus/normal"

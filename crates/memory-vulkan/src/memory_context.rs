@@ -78,6 +78,32 @@ impl MemoryContext {
         &self.shared.device
     }
 
+    /// The instance the device was created from, for loading instance-level extension functions.
+    pub fn instance(&self) -> &ash::Instance {
+        &self.shared.instance
+    }
+
+    pub fn physical_device(&self) -> vk::PhysicalDevice {
+        self.shared.physical_device
+    }
+
+    /// Memory for an object that is neither a buffer nor an image, such as a video session, which the caller binds
+    /// itself. It is freed once the GPU is done with the work submitted before the returned object drops.
+    pub fn allocate_memory(
+        &self,
+        name: &str,
+        requirements: vk::MemoryRequirements,
+        location: MemoryLocation,
+    ) -> Result<DeviceObject<Allocation>, MemoryError> {
+        self.allocate(
+            name,
+            requirements,
+            location,
+            false,
+            AllocationScheme::GpuAllocatorManaged,
+        )
+    }
+
     pub fn swapchain_loader(&self) -> &khr::swapchain::Device {
         &self.shared.swapchain
     }
@@ -192,13 +218,14 @@ impl MemoryContext {
         requirements: vk::MemoryRequirements,
         location: MemoryLocation,
         linear: bool,
+        allocation_scheme: AllocationScheme,
     ) -> Result<DeviceObject<Allocation>, MemoryError> {
         let allocation = self.allocator().allocate(&AllocationCreateDesc {
             name,
             requirements,
             location,
             linear,
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            allocation_scheme,
         })?;
 
         Ok(DeviceObject::new(self, allocation))
@@ -245,6 +272,12 @@ impl MemoryContext {
 
     pub(crate) fn timeline_semaphore(&self, timeline: TimelineId) -> vk::Semaphore {
         self.bookkeeping().timelines[timeline.index].semaphore
+    }
+
+    pub(crate) fn timeline_completed(&self, timeline: TimelineId) -> Result<u64, MemoryError> {
+        let semaphore = self.bookkeeping().timelines[timeline.index].semaphore;
+
+        Ok(unsafe { self.shared.device.get_semaphore_counter_value(semaphore) }?)
     }
 
     pub(crate) fn wait_timeline(&self, timeline: TimelineId, value: u64) -> Result<(), MemoryError> {

@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.4312 0.4288 0.4257
-color-texture "bodies/dione/color"
-normal-texture "bodies/dione/normal"
-hapke medium-texture="bodies/dione/hapke-medium" opposition-texture="bodies/dione/hapke-opposition"

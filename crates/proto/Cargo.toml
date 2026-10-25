@@ -11,4 +11,5 @@ rcgen = { version = "0.14.10", default-features = false, features = ["ring"] }
 ring = "0.17.14"
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros"] }
+tracing.workspace = true
 xsa-units.workspace = true

@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.0832 0.0861 0.0856
-color-texture "bodies/phoebe/color"
-normal-texture "bodies/phoebe/normal"
-hapke medium-texture="bodies/phoebe/hapke-medium" opposition-texture="bodies/phoebe/hapke-opposition"

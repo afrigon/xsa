@@ -23,7 +23,16 @@ The pack format itself is described in `docs/packs.md`.
 Authors host their own archives anywhere reachable over HTTPS. First-party
 packs are hosted on the xsa repository's GitHub Releases, one release per pack
 version, tagged `<pack>-v<version>` (`base-v0.0.1`, `system-solar-v0.0.1`);
-game releases are tagged `xsa-v<version>`.
+game releases are tagged `xsa-v<version>` and `launchpad` releases
+`launchpad-v<version>`.
+
+The two binaries are versioned by date, `<year>.<month>.<release that month>`
+with no leading zero (`2026.10.1`), each in its own crate's `Cargo.toml`; the
+libraries share the workspace's semantic version. A game build is an official
+release only when CI builds a commit tagged with its crate's version, and CI
+fails a build whose commit carries a different `xsa-v` tag. Official releases
+show their version in the debug overlay; every other build shows its profile,
+branch and commit.
 
 A release is one archive, `<pack>-v<version>.tar.zst`, holding the whole pack:
 data and resources together. It holds exactly one top-level directory named
@@ -198,7 +207,7 @@ server's is `server`, and `--instance <name>` selects another.
 $HOME/xsa/instances/main/
   launchpad.kdl     the instance's manifest
   launchpad.lock    resolved releases
-  config.kdl        overrides of the global game config, optional
+  config.kdl        the instance's config file, optional
   packs/<pack>/     installed packs
   saves/
   identity/         the dedicated server's certificate and key
@@ -269,8 +278,12 @@ Once synced, an instance runs without a network connection.
 
 ## Config
 
-The game's config (`$XDG_CONFIG_HOME/xsa/config.kdl`) applies to every
-instance; an instance's `config.kdl` overrides individual keys.
+An instance's `config.kdl`, when it exists, is the config file in effect for
+that instance, for the game and the dedicated server alike. It replaces the
+user's config (`$XDG_CONFIG_HOME/xsa/config.kdl`) entirely, with no layering;
+an instance without one uses the user's. `--save` writes to the file in
+effect, and `config save <instance>/config.kdl` starts an instance's file from
+the user's saved settings.
 
 `launchpad`'s own settings live in `$XDG_CONFIG_HOME/xsa/launchpad.kdl` (falling
 back to `~/.config/xsa/launchpad.kdl`): the instances directory and repositories

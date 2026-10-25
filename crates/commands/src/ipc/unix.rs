@@ -6,11 +6,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::mpsc::UnboundedSender;
 
 use super::ipc_connection::IpcConnection;
 use super::{Bound, IpcEndpoint};
-use crate::router::CommandInvocation;
 
 const DIRECTORY_NAME: &str = "xsa";
 const SOCKET_EXTENSION: &str = "sock";
@@ -30,7 +28,7 @@ fn socket_path(name: &str) -> PathBuf {
     directory().join(name).with_extension(SOCKET_EXTENSION)
 }
 
-pub async fn serve(name: String, invocations: UnboundedSender<CommandInvocation>, bound: Bound) {
+pub async fn serve(name: String, connection: IpcConnection, bound: Bound) {
     let listener = match bind(&name).await {
         Ok(listener) => listener,
         Err(err) => {
@@ -43,7 +41,7 @@ pub async fn serve(name: String, invocations: UnboundedSender<CommandInvocation>
     }));
 
     while let Ok((stream, _address)) = listener.accept().await {
-        tokio::spawn(IpcConnection::new(invocations.clone()).handle(stream));
+        tokio::spawn(connection.clone().handle(stream));
     }
 }
 

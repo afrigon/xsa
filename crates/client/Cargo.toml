@@ -4,19 +4,21 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+animation.workspace = true
 anyhow.workspace = true
 ash.workspace = true
 glam.workspace = true
 image = { workspace = true, features = ["png"] }
-kdl = "6.7.1"
 memory-vulkan.workspace = true
 render-graph-vulkan.workspace = true
-resource-loader = { workspace = true, features = ["texture"] }
+resource-loader = { workspace = true, features = ["texture", "terrain"] }
 resource-vulkan.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 winit.workspace = true
 xsa-commands = { workspace = true, features = ["client"] }
+xsa-config.workspace = true
+xsa-logging.workspace = true
 xsa-core.workspace = true
 xsa-packs.workspace = true
 xsa-proto.workspace = true
@@ -24,3 +26,5 @@ xsa-server.workspace = true
 xsa-units.workspace = true
 xui.workspace = true
 xui-vulkan.workspace = true
+xsa-input = { workspace = true, features = ["winit"] }
+video-vulkan.workspace = true

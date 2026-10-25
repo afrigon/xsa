@@ -1,25 +1,25 @@
 use super::{
-    CameraLookAtCommand, CameraModeCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand,
-    ConfigGetCommand, ConfigReloadCommand, ConfigSaveCommand, ConfigSetCommand, ConfigToggleCommand,
-    InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand,
-    InterfaceToggleCommand,
+    CameraAction, InputCursorMoveCommand, InputCursorSetCommand, InputDownCommand, InputPressCommand,
+    InputResetCommand, InputScrollCommand, InputUpCommand, InterfaceHideCommand, InterfacePopCommand,
+    InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand, TimeWarpCommand,
 };
 
+use crate::value::CameraId;
+
 pub enum ClientCommand {
-    CameraMode(CameraModeCommand),
-    CameraTarget(CameraTargetCommand),
-    CameraTeleport(CameraTeleportCommand),
-    CameraLookAt(CameraLookAtCommand),
-    CameraSnap(CameraSnapCommand),
-    ConfigGet(ConfigGetCommand),
-    ConfigSet(ConfigSetCommand),
-    ConfigToggle(ConfigToggleCommand),
-    ConfigSave(ConfigSaveCommand),
-    ConfigReload(ConfigReloadCommand),
+    Camera { camera: CameraId, action: CameraAction },
     InterfacePush(InterfacePushCommand),
     InterfacePop(InterfacePopCommand),
     InterfaceSet(InterfaceSetCommand),
     InterfaceShow(InterfaceShowCommand),
     InterfaceHide(InterfaceHideCommand),
     InterfaceToggle(InterfaceToggleCommand),
+    TimeWarp(TimeWarpCommand),
+    InputDown(InputDownCommand),
+    InputUp(InputUpCommand),
+    InputPress(InputPressCommand),
+    InputReset(InputResetCommand),
+    InputCursorSet(InputCursorSetCommand),
+    InputCursorMove(InputCursorMoveCommand),
+    InputScroll(InputScrollCommand),
 }

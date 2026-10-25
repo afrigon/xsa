@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.2017 0.1986 0.1953
-color-texture "bodies/mimas/color"
-normal-texture "bodies/mimas/normal"
-hapke medium-texture="bodies/mimas/hapke-medium" opposition-texture="bodies/mimas/hapke-opposition"

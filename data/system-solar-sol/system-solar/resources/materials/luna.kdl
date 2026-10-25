@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.3128 0.3007 0.2802
-color-texture "bodies/luna/color"
-normal-texture "bodies/luna/normal"
-hapke medium-texture="bodies/luna/hapke-medium" opposition-texture="bodies/luna/hapke-opposition"

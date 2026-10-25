@@ -1,0 +1,5 @@
+color-texture "surfaces/regolith/color"
+normal-texture "surfaces/regolith/normal"
+displacement-texture "surfaces/regolith/displacement"
+size 3.1015625
+displacement low=0.0 high=0.05

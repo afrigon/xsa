@@ -1,3 +1,4 @@
+mod atmosphere;
 mod barycenter_node;
 mod body;
 mod body_category;
@@ -17,6 +18,7 @@ mod star;
 mod system_node;
 mod system_tree;
 
+pub use atmosphere::Atmosphere;
 pub use barycenter_node::BarycenterNode;
 pub use body::Body;
 pub use body_category::BodyCategory;

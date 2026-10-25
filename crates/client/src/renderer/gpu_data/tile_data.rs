@@ -1,8 +1,11 @@
-use glam::{IVec2, Vec2, Vec3};
+use glam::Vec3;
 
 use super::GpuData;
 
-// Centers are relative to the camera of their frame; cube coordinates and axes are on the cube spanning -1 to 1.
+// Centers are relative to the camera of their frame; the cube center is on the cube spanning -1 to 1, the axes are its
+// face's unit column and row axes, and the half size is in the face's equal-angle coordinates. `x`, `y` and `depth`
+// are the tile's place in its face's quadtree, which its pages are found from; the finest level of each shading layer
+// takes five bits, the first layer lowest.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(in crate::renderer) struct TileData {
@@ -12,13 +15,14 @@ pub(in crate::renderer) struct TileData {
     pub grid_cells: u32,
     pub cube_center: Vec3,
     pub morph_start: f32,
-    pub horizontal_axis: Vec3,
+    pub column_axis: Vec3,
     pub morph_end: f32,
-    pub vertical_axis: Vec3,
-    pub padding: u32,
-    // The center's position on the height map's top level, split so the fraction keeps full precision.
-    pub center_texel: IVec2,
-    pub center_texel_fraction: Vec2,
+    pub row_axis: Vec3,
+    pub half_size: f32,
+    pub x: u32,
+    pub y: u32,
+    pub depth: u32,
+    pub layer_finest_levels: u32,
 }
 
 const _: () = assert!(size_of::<TileData>() == 96);

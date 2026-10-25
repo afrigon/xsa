@@ -1,8 +1,11 @@
+mod forward_inputs;
 mod forward_resources;
 
+pub(in crate::renderer) use forward_inputs::ForwardInputs;
 pub(in crate::renderer) use forward_resources::ForwardResources;
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::mem::offset_of;
 
 use ash::vk;
@@ -11,12 +14,16 @@ use render_graph_vulkan::{
     Attachment, GraphImageDescription, ImageSize, PassContext, PassDeclaration, PassError, RenderPass,
 };
 
+use crate::config::RenderConfig;
 use crate::mesh::{GridMesh, GridVertex};
+use crate::renderer::forward_pipeline::ForwardPipeline;
 use crate::renderer::frame_context::FrameContext;
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::renderer::quad_sphere::{COARSEST_DETAIL, DetailRanges};
+use crate::renderer::shading_range::ShadingRange;
 use crate::renderer::static_buffer::StaticBuffer;
+use crate::renderer::tile_shape::TileShape;
 use crate::renderer::{Shader, ShaderBinaries};
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
 
@@ -24,11 +31,12 @@ const TRIANGLES_PER_CELL: u64 = 2;
 pub(in crate::renderer) const HDR_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 pub(in crate::renderer) const MOTION_FORMAT: vk::Format = vk::Format::R16G16_SFLOAT;
 pub(in crate::renderer) const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
-const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const ZERO_MOTION: [f32; 4] = [0.0; 4];
 const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
-    pipelines: HashMap<Shader, GraphicsPipeline>,
+    programs: HashMap<Shader, Vec<u8>>,
+    pipelines: HashMap<ForwardPipeline, GraphicsPipeline>,
     grids: GridMesh,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -36,13 +44,7 @@ pub(in crate::renderer) struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
-        let pipelines = ForwardPass::object_shaders()
-            .map(|shader| {
-                let pipeline = ForwardPass::create_pipeline(gpu, &binaries.shaders[shader.index()])?;
-                Ok((shader, pipeline))
-            })
-            .collect::<anyhow::Result<_>>()?;
-        let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
+        let grids = GridMesh::new((COARSEST_DETAIL..=0).map(|detail| DetailRanges::grid_cells(0, detail)));
         // Every frame draws the grid, so it is in GPU memory before the first one.
         let vertex_buffer = StaticBuffer::new(
             gpu,
@@ -60,11 +62,40 @@ impl ForwardPass {
         let index_buffer = index_buffer.into_buffer()?;
 
         Ok(ForwardPass {
-            pipelines,
+            programs: binaries.forward.clone(),
+            pipelines: HashMap::new(),
             grids,
             vertex_buffer,
             index_buffer,
         })
+    }
+
+    // Builds the pipelines `render`'s debug views draw with, the first time they are shown.
+    pub fn ensure_pipelines(&mut self, gpu: &GpuContext, render: &RenderConfig) -> anyhow::Result<()> {
+        for (shader, spirv) in &self.programs {
+            for shape in TileShape::ALL {
+                for range in ShadingRange::ALL {
+                    let key = ForwardPipeline {
+                        shader: *shader,
+                        shape,
+                        range,
+                        view: render.shader_override,
+                        terrain_view: render.terrain_shader_override,
+                        surface_view: render.surface_shader_override,
+                    };
+
+                    if let Entry::Vacant(entry) = self.pipelines.entry(key) {
+                        entry.insert(ForwardPass::create_pipeline(
+                            gpu,
+                            spirv,
+                            &key.specialization_constants(),
+                        )?);
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn target(name: &'static str, format: vk::Format) -> GraphImageDescription {
@@ -76,37 +107,26 @@ impl ForwardPass {
         }
     }
 
-    // The skybox is drawn by its own pass.
-    fn object_shaders() -> impl Iterator<Item = Shader> {
-        Shader::ALL.iter().copied().filter(|shader| *shader != Shader::Skybox)
-    }
-
-    fn pipeline(&self, shader: Shader) -> &GraphicsPipeline {
-        &self.pipelines[&shader]
-    }
-
     fn record_objects(&self, frame: &FrameContext) {
         let recorder = &frame.recorder;
-        recorder.set_wireframe(frame.render.wireframe);
+        recorder.set_wireframe(frame.config.debug.wireframe);
         recorder.bind_mesh(&self.vertex_buffer, &self.index_buffer);
 
-        for shader in ForwardPass::object_shaders() {
-            let pipeline = self.pipeline(shader);
+        let drawn = self
+            .pipelines
+            .iter()
+            .filter(|(key, _)| ForwardPass::shows_views(key, &frame.config.render));
+
+        for (key, pipeline) in drawn {
             let mut bound = false;
 
             for draw in frame.terrain_draws {
                 let terrain = frame.scene.terrain(draw.terrain);
 
-                if !frame.is_drawable(terrain.material) {
-                    continue;
-                }
-
-                let terrain_shader = frame
-                    .render
-                    .shader_override
-                    .unwrap_or(frame.material(terrain.material).shader());
-
-                if terrain_shader != shader {
+                if draw.shape != key.shape
+                    || draw.range != key.range
+                    || frame.material(terrain.material).shader() != Some(key.shader)
+                {
                     continue;
                 }
 
@@ -120,7 +140,7 @@ impl ForwardPass {
                     terrain.object.index,
                     terrain.material,
                     draw.first_tile,
-                    Some(draw.terrain),
+                    frame.surface_anchors(draw.terrain),
                 );
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);
@@ -133,7 +153,17 @@ impl ForwardPass {
         recorder.set_wireframe(false);
     }
 
-    fn create_pipeline(gpu: &GpuContext, spirv: &[u8]) -> anyhow::Result<GraphicsPipeline> {
+    fn shows_views(key: &ForwardPipeline, render: &RenderConfig) -> bool {
+        key.view == render.shader_override
+            && key.terrain_view == render.terrain_shader_override
+            && key.surface_view == render.surface_shader_override
+    }
+
+    fn create_pipeline(
+        gpu: &GpuContext,
+        spirv: &[u8],
+        specialization_constants: &[u32],
+    ) -> anyhow::Result<GraphicsPipeline> {
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(size_of::<GridVertex>() as u32)
@@ -145,6 +175,7 @@ impl ForwardPass {
             .offset(offset_of!(GridVertex, cell) as u32)];
         let description = GraphicsPipelineDescription {
             spirv,
+            specialization_constants,
             color_formats: &[HDR_FORMAT, MOTION_FORMAT],
             depth_format: Some(DEPTH_FORMAT),
             depth_compare_op: vk::CompareOp::GREATER,
@@ -164,15 +195,15 @@ impl ForwardPass {
 impl<'frame> RenderPass<FrameContext<'frame>> for ForwardPass {
     const NAME: &'static str = "forward";
 
-    type Inputs = ();
+    type Inputs = ForwardInputs;
     type Resources = ForwardResources;
 
-    fn declare(&self, pass: &mut PassDeclaration, _inputs: ()) -> ForwardResources {
+    fn declare(&self, pass: &mut PassDeclaration, inputs: ForwardInputs) -> ForwardResources {
         let hdr = pass.create_image(ForwardPass::target("hdr color", HDR_FORMAT));
         let motion = pass.create_image(ForwardPass::target("motion vectors", MOTION_FORMAT));
         let depth = pass.create_image(ForwardPass::target("depth", DEPTH_FORMAT));
-        pass.color_attachment(hdr, Attachment::ClearColor(CLEAR_COLOR));
-        pass.color_attachment(motion, Attachment::ClearColor(CLEAR_COLOR));
+        pass.color_attachment(hdr, Attachment::ClearColor(inputs.clear_color));
+        pass.color_attachment(motion, Attachment::ClearColor(ZERO_MOTION));
         pass.depth_attachment(depth, Attachment::ClearDepth(REVERSE_Z_FAR_DEPTH));
 
         ForwardResources { hdr, motion, depth }

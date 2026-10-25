@@ -3,6 +3,9 @@
 //! `Resources` loads each file once on a worker pool of its own, hands out typed handles at once, and frees a
 //! resource once its last handle is dropped, or later when memory is needed. Each kind of file is a `ResourceKind`;
 //! this crate provides textures and cube maps, and users add their own.
+//!
+//! Paged data larger than memory streams through a `StreamedSet`: its client requests the pages it wants each frame,
+//! and the pages stay resident in texture array chunks as far as the shared memory budget allows.
 
 mod any_entry;
 mod any_handle;
@@ -27,6 +30,9 @@ mod resource_limits;
 mod resource_state;
 mod resources;
 mod retention;
+mod soft_owner;
+mod soft_usage;
+mod streaming;
 mod textures;
 mod unavailable;
 mod unreferenced_entry;
@@ -42,9 +48,11 @@ pub(crate) use load_environment::LoadEnvironment;
 pub(crate) use memory_budget::{BudgetReading, MemoryBudget};
 pub(crate) use registry::Registry;
 pub(crate) use resource_key::ResourceKey;
+pub(crate) use soft_owner::SoftOwner;
+pub(crate) use soft_usage::SoftUsage;
 pub(crate) use unavailable::Unavailable;
 pub(crate) use unreferenced_entry::UnreferencedEntry;
-pub(crate) use worker_pool::{Job, WorkerPool};
+pub(crate) use worker_pool::{Job, JobOwner, WorkerPool};
 
 pub use group_progress::GroupProgress;
 pub use load_context::LoadContext;
@@ -59,7 +67,8 @@ pub use resource_limits::ResourceLimits;
 pub use resource_state::ResourceState;
 pub use resources::Resources;
 pub use retention::Retention;
-pub use textures::{CubeMap, PendingTexture, Texture};
+pub use streaming::{PageFormat, PagePlacement, PageRequest, PageSource, Residency, SetStatistics, StreamedSet};
+pub use textures::{CubeMap, PendingTexture, Texture, TextureArray};
 
 #[cfg(test)]
 mod tests {

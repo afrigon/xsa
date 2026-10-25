@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.4994 0.4723 0.4144
-color-texture "bodies/ceres/color"
-normal-texture "bodies/ceres/normal"
-hapke medium-texture="bodies/ceres/hapke-medium" opposition-texture="bodies/ceres/hapke-opposition"

@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.3439 0.3258 0.3202
-color-texture "bodies/mercury/color"
-normal-texture "bodies/mercury/normal"
-hapke medium-texture="bodies/mercury/hapke-medium" opposition-texture="bodies/mercury/hapke-opposition"

@@ -36,8 +36,7 @@ impl StarVisibility {
     }
 
     // The frame's exposed luminance, binned by histogram.slang.
-    pub fn update(&mut self, histogram: &[u32]) {
-        let now = Instant::now();
+    pub fn update(&mut self, histogram: &[u32], now: Instant) {
         let elapsed = self.last_update.map(|last| now.duration_since(last).as_secs_f32());
         self.last_update = Some(now);
         let light = StarVisibility::average_brightness(histogram);
@@ -136,7 +135,7 @@ mod tests {
         }
 
         let mut stars = StarVisibility::new();
-        stars.update(&histogram);
+        stars.update(&histogram, Instant::now());
         stars.visibility()
     }
 

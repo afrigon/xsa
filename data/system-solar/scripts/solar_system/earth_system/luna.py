@@ -144,7 +144,7 @@ class Luna(Recipe):
         TextureWriter.normal().write(context.terrain_layer_path("bodies/luna/normal"), heights.normals(RADIUS).faces)
 
         hapke = self._hapke(context)
-        context.materials.write_planet("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
+        context.materials.write_textured("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
 
     # Meters relative to the radius, each texel from the finest elevation model covering it.
     def _heights(self, context: BuildContext) -> CubeMap:

@@ -72,6 +72,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc7eb209b1518d6bb87b283c20095f5228ecda460da70b44f0802523dea6da04"
 
 [[package]]
+name = "animation"
+version = "0.0.1"
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2778,6 +2782,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "video-vulkan"
+version = "0.0.1"
+dependencies = [
+ "ash",
+ "gpu-allocator",
+ "memory-vulkan",
+]
+
+[[package]]
 name = "walkdir"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3252,7 +3265,7 @@ checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
 
 [[package]]
 name = "xsa"
-version = "0.0.1"
+version = "2026.10.1"
 dependencies = [
  "anyhow",
  "shlex",
@@ -3267,20 +3280,24 @@ dependencies = [
 name = "xsa-client"
 version = "0.0.1"
 dependencies = [
+ "animation",
  "anyhow",
  "ash",
  "glam",
  "image",
- "kdl",
  "memory-vulkan",
  "render-graph-vulkan",
  "resource-loader",
  "resource-vulkan",
  "tokio",
  "tracing",
+ "video-vulkan",
  "winit",
  "xsa-commands",
+ "xsa-config",
  "xsa-core",
+ "xsa-input",
+ "xsa-logging",
  "xsa-packs",
  "xsa-proto",
  "xsa-server",
@@ -3293,6 +3310,9 @@ dependencies = [
 name = "xsa-commands"
 version = "0.0.1"
 dependencies = [
+ "animation",
+ "anstream",
+ "anstyle",
  "anyhow",
  "bitcode",
  "nix",
@@ -3302,10 +3322,22 @@ dependencies = [
  "tracing",
  "usage-rs",
  "windows-sys 0.61.2",
+ "xsa-config",
  "xsa-core",
+ "xsa-input",
+ "xsa-logging",
  "xsa-packs",
  "xsa-proto",
  "xsa-units",
+]
+
+[[package]]
+name = "xsa-config"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "kdl",
+ "tracing",
 ]
 
 [[package]]
@@ -3314,12 +3346,23 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "glam",
+ "resource-loader",
  "xsa-units",
 ]
 
 [[package]]
-name = "xsa-launchpad"
+name = "xsa-input"
 version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "glam",
+ "winit",
+ "xsa-config",
+]
+
+[[package]]
+name = "xsa-launchpad"
+version = "2026.10.1"
 dependencies = [
  "anstream",
  "anstyle",
@@ -3337,9 +3380,11 @@ dependencies = [
 name = "xsa-logging"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "tracing",
  "tracing-subscriber",
  "usage-rs",
+ "xsa-config",
 ]
 
 [[package]]
@@ -3367,6 +3412,7 @@ dependencies = [
  "ring",
  "rustls",
  "tokio",
+ "tracing",
  "xsa-units",
 ]
 
@@ -3374,11 +3420,14 @@ dependencies = [
 name = "xsa-server"
 version = "0.0.1"
 dependencies = [
+ "animation",
  "anyhow",
  "tokio",
  "tracing",
  "xsa-commands",
+ "xsa-config",
  "xsa-core",
+ "xsa-logging",
  "xsa-packs",
  "xsa-proto",
  "xsa-units",

@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.3148 0.3042 0.2942
-color-texture "bodies/oberon/color"
-normal-texture "bodies/oberon/normal"
-hapke medium-texture="bodies/oberon/hapke-medium" opposition-texture="bodies/oberon/hapke-opposition"

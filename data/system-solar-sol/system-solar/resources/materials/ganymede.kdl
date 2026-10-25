@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.2849 0.2556 0.2279
-color-texture "bodies/ganymede/color"
-normal-texture "bodies/ganymede/normal"
-hapke medium-texture="bodies/ganymede/hapke-medium" opposition-texture="bodies/ganymede/hapke-opposition"

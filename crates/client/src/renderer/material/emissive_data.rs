@@ -1,5 +1,7 @@
 use glam::Vec3;
 
+use super::Shader;
+use super::shader_data::ShaderData;
 use crate::renderer::gpu_data::GpuData;
 
 #[repr(C)]
@@ -12,3 +14,7 @@ pub struct EmissiveData {
 const _: () = assert!(size_of::<EmissiveData>() == 16);
 
 unsafe impl GpuData for EmissiveData {}
+
+impl ShaderData for EmissiveData {
+    const SHADER: Shader = Shader::Emissive;
+}

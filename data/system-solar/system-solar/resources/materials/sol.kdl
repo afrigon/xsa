@@ -1,1 +1,1 @@
-shader "base:emissive"
+shader "base:terrain/emissive"

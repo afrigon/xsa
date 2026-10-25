@@ -1,19 +1,33 @@
 #[cfg(feature = "client")]
 mod altitude;
+#[cfg(feature = "client")]
+mod camera_id;
 mod duration;
 #[cfg(feature = "client")]
-mod region;
+mod easing_name;
 #[cfg(feature = "client")]
-mod target;
+mod latitude;
+#[cfg(feature = "client")]
+mod length_unit;
+#[cfg(feature = "client")]
+mod longitude;
+#[cfg(feature = "client")]
+mod region;
 mod time_override;
 mod timestamp;
 
 #[cfg(feature = "client")]
 pub use altitude::Altitude;
+#[cfg(feature = "client")]
+pub use camera_id::CameraId;
 pub use duration::Duration;
 #[cfg(feature = "client")]
-pub use region::Region;
+pub use easing_name::EasingName;
 #[cfg(feature = "client")]
-pub use target::Target;
+pub use latitude::Latitude;
+#[cfg(feature = "client")]
+pub use longitude::Longitude;
+#[cfg(feature = "client")]
+pub use region::Region;
 pub use time_override::TimeOverride;
 pub use timestamp::Timestamp;

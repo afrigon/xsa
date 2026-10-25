@@ -2,7 +2,7 @@ use std::io::{Read, Seek};
 
 use anyhow::{Context, bail, ensure};
 use resource_loader::terrain::{PAGE_BORDER, PAGE_EXTENT, PAGE_INTERIOR, TerrainReader};
-use resource_loader::texture::TextureImage;
+use resource_loader::texture::{TextureImage, TextureKind};
 use resource_loader::utils::CubeFace;
 
 use super::{LayerEncoding, LevelSelection, TerrainRegion};
@@ -27,8 +27,8 @@ impl<R: Read + Seek> TerrainExtractor<R> {
 
     pub fn extract(&mut self, region: TerrainRegion) -> anyhow::Result<TextureImage> {
         match region {
-            TerrainRegion::Cube(levels) => self.faces(&CubeFace::ALL, levels),
-            TerrainRegion::Face(face, levels) => self.faces(&[face], levels),
+            TerrainRegion::Cube(levels) => self.faces(&CubeFace::ALL, TextureKind::CubeMap, levels),
+            TerrainRegion::Face(face, levels) => self.faces(&[face], TextureKind::Plane, levels),
             TerrainRegion::Page(address) => {
                 let entry = self
                     .reader
@@ -36,13 +36,20 @@ impl<R: Read + Seek> TerrainExtractor<R> {
                     .with_context(|| format!("{region}: the file holds no such page"))?;
                 let texels = self.layer.decode(&self.reader.page(&entry)?, entry.range);
 
-                TextureImage::new(self.layer.input_format(), PAGE_EXTENT, PAGE_EXTENT, 1, vec![texels])
+                TextureImage::new(
+                    self.layer.input_format(),
+                    TextureKind::Plane,
+                    PAGE_EXTENT,
+                    PAGE_EXTENT,
+                    1,
+                    vec![texels],
+                )
             }
         }
     }
 
     // Each face's mip chain over the selected levels, finest first.
-    fn faces(&mut self, faces: &[CubeFace], levels: LevelSelection) -> anyhow::Result<TextureImage> {
+    fn faces(&mut self, faces: &[CubeFace], kind: TextureKind, levels: LevelSelection) -> anyhow::Result<TextureImage> {
         let level_count = self.reader.header().level_count;
         ensure!(level_count > 0, "the file holds no levels");
 
@@ -66,7 +73,14 @@ impl<R: Read + Seek> TerrainExtractor<R> {
         }
 
         let extent = PAGE_INTERIOR << levels[0];
-        TextureImage::new(self.layer.input_format(), extent, extent, levels.len() as u32, layers)
+        TextureImage::new(
+            self.layer.input_format(),
+            kind,
+            extent,
+            extent,
+            levels.len() as u32,
+            layers,
+        )
     }
 
     // A face at a level, stitched from its pages' interiors, absent pages filled with the absent texel.

@@ -2,26 +2,30 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureLoader};
+use super::{ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureKind, TextureLoader, TextureMetadata};
 use crate::utils::HalfFloat;
 
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;
 
-/// A decoded texture: one or more layers (six for a cube map), each holding its full mip chain, largest level first.
+/// A decoded texture: one or more layers arranged as its kind says, each holding its full mip chain, largest level
+/// first, with the key/value metadata its file carries.
 pub struct TextureImage {
     pub(super) format: TextureFormat,
+    pub(super) kind: TextureKind,
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) mip_levels: u32,
     pub(super) layers: Vec<Vec<u8>>,
+    pub(super) metadata: TextureMetadata,
 }
 
 impl TextureImage {
     /// A texture from its layers' texels, each layer its mip chain, largest level first, refusing layers of the wrong
-    /// size.
+    /// size or count for its kind.
     pub fn new(
         format: TextureFormat,
+        kind: TextureKind,
         width: u32,
         height: u32,
         mip_levels: u32,
@@ -29,13 +33,15 @@ impl TextureImage {
     ) -> anyhow::Result<TextureImage> {
         let image = TextureImage {
             format,
+            kind,
             width,
             height,
             mip_levels,
             layers,
+            metadata: TextureMetadata::default(),
         };
         let layer_size = image.layer_size()?;
-        ensure!(!image.layers.is_empty(), "a texture needs at least one layer");
+        image.check_layer_count()?;
 
         for (index, layer) in image.layers.iter().enumerate() {
             ensure!(
@@ -84,6 +90,10 @@ impl TextureImage {
         self.format
     }
 
+    pub fn kind(&self) -> TextureKind {
+        self.kind
+    }
+
     pub fn width(&self) -> u32 {
         self.width
     }
@@ -104,6 +114,21 @@ impl TextureImage {
     /// Each layer's mip chain, as `layers` lays them out, owned.
     pub fn into_layers(self) -> Vec<Vec<u8>> {
         self.layers
+    }
+
+    /// The value stored under a key/value metadata key, as the file holds it.
+    pub fn metadata(&self, key: &str) -> Option<&[u8]> {
+        self.metadata.value(key)
+    }
+
+    /// The numbers stored under a key/value metadata key, written as text separated by spaces and ending with a NUL.
+    pub fn metadata_numbers(&self, key: &str) -> anyhow::Result<Vec<f32>> {
+        self.metadata.numbers(key)
+    }
+
+    /// Every key/value metadata entry the file carries.
+    pub fn all_metadata(&self) -> &TextureMetadata {
+        &self.metadata
     }
 
     /// The top mip level of a half-float image, row by row, as red green blue.
@@ -127,6 +152,17 @@ impl TextureImage {
             .take(texel_count)
             .map(|texel| [channel(texel, 0), channel(texel, 1), channel(texel, 2)])
             .collect())
+    }
+
+    pub(super) fn check_layer_count(&self) -> anyhow::Result<()> {
+        ensure!(
+            self.kind.holds(self.layers.len()),
+            "a {} cannot hold {} layers",
+            self.kind,
+            self.layers.len()
+        );
+
+        Ok(())
     }
 
     // The size in bytes of a layer's mip chain as the file's header declares it, refusing shapes no valid file has

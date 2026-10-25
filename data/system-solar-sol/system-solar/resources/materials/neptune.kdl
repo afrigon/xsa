@@ -1,5 +1,0 @@
-shader "base:planet"
-base-color 0.3455 0.4823 0.5911
-color-texture "bodies/neptune/color"
-normal-texture "bodies/neptune/normal"
-hapke medium-texture="bodies/neptune/hapke-medium" opposition-texture="bodies/neptune/hapke-opposition"
