@@ -43,12 +43,8 @@ impl UpdateSchedule {
         delta_seconds.flatten()
     }
 
-    // The seconds the update covers.
-    pub fn record_update(&mut self, now: Instant) -> f64 {
-        let delta_seconds = self.last_update.map_or(0.0, |last| (now - last).as_secs_f64());
+    pub fn record_update(&mut self, now: Instant) {
         self.last_update = Some(now);
-
-        delta_seconds
     }
 
     pub fn is_due(&self, now: Instant) -> bool {

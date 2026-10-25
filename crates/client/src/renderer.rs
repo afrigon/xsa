@@ -62,7 +62,7 @@ pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ash::vk;
 use glam::{DVec3, Mat4, Vec2};
@@ -380,7 +380,8 @@ impl Renderer {
         self.swapchain_outdated = true;
     }
 
-    pub fn draw(&mut self, camera: &Camera, target: FrameTarget) -> anyhow::Result<()> {
+    // `now` is the moment the frame shows: adaptations to the light advance by the time since the previous one.
+    pub fn draw(&mut self, camera: &Camera, target: FrameTarget, now: Instant) -> anyhow::Result<()> {
         if self.window_extent.width == 0 || self.window_extent.height == 0 {
             return Ok(());
         }
@@ -407,8 +408,8 @@ impl Renderer {
             FrameTarget::Offscreen => FrameOutput::Offscreen,
         };
 
-        self.render_frame(camera, output)?;
-        self.render_settled_captures(camera);
+        self.render_frame(camera, output, now)?;
+        self.render_settled_captures(camera, now);
 
         Ok(())
     }
@@ -429,14 +430,14 @@ impl Renderer {
         self.frames_rendered
     }
 
-    fn render_frame(&mut self, camera: &Camera, output: FrameOutput) -> anyhow::Result<()> {
+    fn render_frame(&mut self, camera: &Camera, output: FrameOutput, now: Instant) -> anyhow::Result<()> {
         if self.config.video.antialiasing != Some(AntialiasingKind::Taa) {
             self.temporal.reset();
         }
 
-        self.update_exposure();
-        self.update_white_balance(camera.position);
-        self.update_star_visibility()?;
+        self.update_exposure(now);
+        self.update_white_balance(camera.position, now);
+        self.update_star_visibility(now)?;
         self.update_gpu_time()?;
         self.write_frame_data(camera)?;
         let recording = self.record_frame(output)?;
@@ -456,19 +457,19 @@ impl Renderer {
         Ok(())
     }
 
-    fn render_settled_captures(&mut self, camera: &Camera) {
+    fn render_settled_captures(&mut self, camera: &Camera, now: Instant) {
         let (settled, settling): (Vec<_>, Vec<_>) = std::mem::take(&mut self.captures)
             .into_iter()
             .partition(|capture| capture.settling_frames == 0);
         self.captures = settling;
 
         for capture in settled {
-            let readback = self.render_capture(camera);
+            let readback = self.render_capture(camera, now);
             let _ = capture.sender.send(readback);
         }
     }
 
-    fn render_capture(&mut self, camera: &Camera) -> anyhow::Result<CaptureReadback> {
+    fn render_capture(&mut self, camera: &Camera, now: Instant) -> anyhow::Result<CaptureReadback> {
         let extent = self.swapchain.extent();
         let size = u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL as u64;
         let buffer = Buffer::new(
@@ -482,7 +483,7 @@ impl Renderer {
         self.wait_for_frame_slot()?;
         let frame = self.frame_index;
         self.capture = Some(buffer);
-        let rendered = self.render_frame(camera, FrameOutput::Offscreen);
+        let rendered = self.render_frame(camera, FrameOutput::Offscreen, now);
         let buffer = self.capture.take().expect("the capture buffer is set while capturing");
         rendered?;
         let submitted = self.frames[frame]
@@ -497,14 +498,14 @@ impl Renderer {
         Ok(CaptureReadback::new(extent, self.swapchain.format(), readback))
     }
 
-    fn update_exposure(&mut self) {
+    fn update_exposure(&mut self, now: Instant) {
         if let Some(illuminance) = self.illuminance {
-            self.exposure.update(illuminance);
+            self.exposure.update(illuminance, now);
         }
     }
 
     // Adapts to the star whose light is strongest at the camera.
-    fn update_white_balance(&mut self, camera_position: DVec3) {
+    fn update_white_balance(&mut self, camera_position: DVec3, now: Instant) {
         let dominant = self
             .scene
             .stars()
@@ -522,16 +523,16 @@ impl Renderer {
             .max_by(|a, b| a.0.total_cmp(&b.0));
 
         if let Some((_, color)) = dominant {
-            self.white_balance.update(color);
+            self.white_balance.update(color, now);
         }
     }
 
-    fn update_star_visibility(&mut self) -> anyhow::Result<()> {
+    fn update_star_visibility(&mut self, now: Instant) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
 
         if frame.submitted.is_some() {
             frame.histogram.read(&mut self.histogram)?;
-            self.star_visibility.update(&self.histogram);
+            self.star_visibility.update(&self.histogram, now);
         }
 
         Ok(())

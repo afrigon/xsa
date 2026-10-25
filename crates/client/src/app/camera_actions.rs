@@ -16,7 +16,7 @@ impl App {
             CameraAction::Target(command) => command.start(self),
             CameraAction::Tp(command) => command.start(self),
             CameraAction::LookAt(command) => command.start(self),
-            CameraAction::Capture(command) => command.start(self),
+            CameraAction::Capture(command) => self.start_capture(camera, command),
         }
     }
 }

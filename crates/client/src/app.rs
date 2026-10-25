@@ -2,12 +2,17 @@ mod bind_actions;
 mod body_step;
 mod camera_actions;
 mod camera_controller;
+mod capture_completion;
+mod capture_end;
+mod capture_phase;
 mod client_command_handler;
 mod client_world;
 mod command_handlers;
 mod command_progress;
 mod command_task;
 mod forwarded_command;
+mod frame_clock;
+mod frame_pace;
 mod frame_timing;
 mod glide_motion;
 mod immediate_command_handler;
@@ -18,10 +23,12 @@ mod running_task;
 mod snapshot;
 mod task_status;
 mod update_schedule;
+mod video_capture;
+mod video_captures;
 mod view_controllers;
 mod window_visibility;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
@@ -40,6 +47,7 @@ use xsa_commands::completion::{CompletionCandidate, CompletionKind};
 use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
 use xsa_commands::script::Script;
+use xsa_commands::value::CameraId;
 use xsa_config::ConfigStore;
 use xsa_input::{InputEvent, InputEventKind, InputSource};
 use xsa_packs::PackStack;
@@ -66,10 +74,12 @@ use client_command_handler::ClientCommandHandler;
 pub(crate) use client_world::ClientWorld;
 use command_progress::CommandProgress;
 use forwarded_command::ForwardedCommand;
+use frame_clock::FrameClock;
 use frame_timing::FrameTiming;
 use running_task::RunningTask;
 use task_status::TaskStatus;
 use update_schedule::UpdateSchedule;
+use video_capture::VideoCapture;
 use window_visibility::WindowVisibility;
 
 const APP_ID: &str = "xsa";
@@ -93,6 +103,8 @@ pub struct App {
     input: Input,
     // Counts input resets; a glide started before the latest one stops.
     input_resets: u64,
+    clock: FrameClock,
+    captures: HashMap<CameraId, VideoCapture>,
     cameras: Option<CameraController>,
     config_store: ConfigStore<Config>,
     config: Config,
@@ -143,6 +155,8 @@ impl App {
             packs_directory,
             input: Input::default(),
             input_resets: 0,
+            clock: FrameClock::new(),
+            captures: HashMap::new(),
             cameras: None,
             config: config_store.config().clone(),
             config_store,
@@ -195,9 +209,10 @@ impl App {
             self.frame_timing.record(delta_seconds, gpu_milliseconds);
         }
 
-        self.update(now)?;
-        self.draw_window()?;
-        self.finish_update();
+        if self.update(now)? {
+            self.draw_window()?;
+            self.finish_update();
+        }
 
         if let Some(window) = &self.window {
             window.request_redraw();
@@ -207,9 +222,11 @@ impl App {
     }
 
     fn update_without_window(&mut self, now: Instant) -> anyhow::Result<()> {
-        self.update(now)?;
+        if !self.update(now)? {
+            return Ok(());
+        }
 
-        if self.tasks.iter().any(|running| running.task.needs_frames()) {
+        if !self.captures.is_empty() || self.tasks.iter().any(|running| running.task.needs_frames()) {
             self.draw_offscreen()?;
         }
 
@@ -218,11 +235,9 @@ impl App {
         Ok(())
     }
 
-    fn update(&mut self, now: Instant) -> anyhow::Result<()> {
-        let delta_seconds = self.schedule.record_update(now);
-        self.offer_pointer_move();
-        let environment = self.environment();
-        self.navigation.advance(delta_seconds as f32, &environment);
+    // Returns whether the update advanced a frame: the connection and commands are polled either way.
+    fn update(&mut self, now: Instant) -> anyhow::Result<bool> {
+        self.schedule.record_update(now);
         self.poll_connection()?;
 
         if let Some(resources) = &self.resources {
@@ -231,6 +246,15 @@ impl App {
 
         self.advance_loading();
         self.poll_invocations();
+
+        if !self.frame_ready() {
+            return Ok(false);
+        }
+
+        let delta_seconds = self.clock.tick().as_secs_f64();
+        self.offer_pointer_move();
+        let environment = self.environment();
+        self.navigation.advance(delta_seconds as f32, &environment);
         self.poll_input();
         self.run_game_commands();
         let idle = Input::default();
@@ -266,10 +290,11 @@ impl App {
         // Input arriving from here on, from tasks or the window, belongs to the next update.
         self.input.end_frame();
 
-        Ok(())
+        Ok(true)
     }
 
     fn finish_update(&mut self) {
+        self.advance_captures();
         self.poll_tasks();
     }
 
@@ -290,7 +315,8 @@ impl App {
                 ServerFrame::Snapshot(state) => self
                     .join(&state)
                     .with_context(|| format!("joining simulation {}", state.simulation))?,
-                ServerFrame::Event(_) | ServerFrame::Reply { .. } => {}
+                ServerFrame::Reply { id, result } => self.handle_capture_reply(id, &result),
+                ServerFrame::Event(_) => {}
             }
         }
 
@@ -395,7 +421,7 @@ impl App {
             return Ok(());
         };
 
-        renderer.draw(cameras.camera(), FrameTarget::Window { window })
+        renderer.draw(cameras.camera(), FrameTarget::Window { window }, self.clock.now())
     }
 
     fn draw_offscreen(&mut self) -> anyhow::Result<()> {
@@ -404,7 +430,7 @@ impl App {
             return Ok(());
         };
 
-        renderer.draw(cameras.camera(), FrameTarget::Offscreen)
+        renderer.draw(cameras.camera(), FrameTarget::Offscreen, self.clock.now())
     }
 
     fn prepare_frame(&mut self) -> anyhow::Result<()> {
@@ -611,6 +637,10 @@ impl CommandExecutor for App {
                 CompletionCandidate::config(kind, self.config_store.keys())
             }
         }
+    }
+
+    fn now(&self) -> Instant {
+        self.clock.now()
     }
 
     fn run_local(&mut self, command: LocalCommand) -> Output {
