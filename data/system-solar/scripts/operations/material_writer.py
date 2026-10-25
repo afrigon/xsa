@@ -19,17 +19,17 @@ class MaterialWriter:
         self,
         body: str,
         base_color: np.ndarray,
-        color_terrain: str,
-        normal_terrain: str,
+        color: str,
+        normal: str,
         hapke: HapkeMaterial | None = None,
     ) -> Path:
         path = self.materials / f"{body}.kdl"
         shader = "lambert" if hapke is None else "hapke"
         text = self.header(shader, base_color)
-        text += f'color-terrain "{color_terrain}"\nnormal-terrain "{normal_terrain}"\n'
+        text += f'color "{color}"\nnormal "{normal}"\n'
 
         if hapke is not None:
-            text += f'medium-terrain "{hapke.medium_terrain}"\nopposition-terrain "{hapke.opposition_terrain}"\n'
+            text += f'scatter "{hapke.scatter}"\nsurge "{hapke.surge}"\n'
 
         path.write_text(text)
         return path

@@ -121,7 +121,7 @@ class Luna(Recipe):
     ]
     credits = [
         Credit(
-            "Moon surface (system-solar/resources/terrains/bodies/luna/, system-solar/data/terrains/luna.ktx2)",
+            "Moon surface (system-solar/resources/textures/bodies/luna/, system-solar/data/terrains/luna.ktx2)",
             "Color: the Lunar Reconnaissance Orbiter Camera (LROC) Wide Angle Camera Hapke-normalized mosaic "
             "(LRO-L-LROC-5-RDR-V1.0, WAC_HAPKE; Sato et al. 2017, Icarus 296) and Hapke parameter maps "
             "(WAC_HAPKEPARAMMAP; Sato et al. 2014, Journal of Geophysical Research: Planets 119), NASA/GSFC/Arizona "
@@ -137,11 +137,11 @@ class Luna(Recipe):
 
     def build(self, context: BuildContext) -> None:
         color = self._color(context)
-        TextureWriter.color().write(context.terrain_layer_path("bodies/luna/color"), color.faces)
+        TextureWriter.color().write(context.texture_path("bodies/luna/color"), color.faces)
 
         heights = self._heights(context)
         context.terrains.write("luna", heights)
-        TextureWriter.normal().write(context.terrain_layer_path("bodies/luna/normal"), heights.normals(RADIUS).faces)
+        TextureWriter.normal().write(context.texture_path("bodies/luna/normal"), heights.normals(RADIUS).faces)
 
         hapke = self._hapke(context)
         context.materials.write_textured("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
@@ -173,14 +173,14 @@ class Luna(Recipe):
         medium = self._channels(parameters, ["b", "c", "theta"])
         porosity = Luna._porosity(parameters.pixels[..., PARAMETERS.index("phi")])
         layers = {
-            "bodies/luna/hapke-medium": Raster(np.concatenate([medium.pixels, porosity[..., None]], axis=-1)),
-            "bodies/luna/hapke-opposition": self._channels(parameters, ["Bs0", "hs", "Bc0", "hc"]),
+            "bodies/luna/scatter": Raster(np.concatenate([medium.pixels, porosity[..., None]], axis=-1)),
+            "bodies/luna/surge": self._channels(parameters, ["Bs0", "hs", "Bc0", "hc"]),
         }
 
         for layer, raster in layers.items():
             cube = CubeAccumulator(HAPKE_FACE_SIZE, CubeProjection.EQUAL_ANGLE, raster.pixels.shape[-1])
             cube.add(EquirectangularSource.from_raster(raster))
-            TextureWriter.values().write(context.terrain_layer_path(layer), cube.cube_map().faces)
+            TextureWriter.values().write(context.texture_path(layer), cube.cube_map().faces)
 
         return HapkeMaterial(*layers)
 

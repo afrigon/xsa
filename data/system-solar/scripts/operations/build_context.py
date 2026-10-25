@@ -27,7 +27,3 @@ class BuildContext:
 
     def texture_path(self, texture: str) -> Path:
         return self.resources / "textures" / f"{texture}.ktx2"
-
-    # A surface layer's cube map, which packaging converts into the streamed file the game reads.
-    def terrain_layer_path(self, layer: str) -> Path:
-        return self.resources / "terrains" / f"{layer}.ktx2"
