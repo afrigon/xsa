@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/animation", "crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph-vulkan", "crates/memory-vulkan", "crates/resource-loader", "crates/resource-vulkan", "crates/logging", "crates/config", "crates/input", "crates/launchpad"]
+members = ["crates/animation", "crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph-vulkan", "crates/memory-vulkan", "crates/video-vulkan", "crates/resource-loader", "crates/resource-vulkan", "crates/logging", "crates/config", "crates/input", "crates/launchpad"]
 
 [workspace.package]
 version = "0.0.1"
@@ -18,6 +18,7 @@ image = { version = "0.25.10", default-features = false, features = ["exr"] }
 render-graph-vulkan = { path = "crates/render-graph-vulkan" }
 resource-loader = { path = "crates/resource-loader" }
 resource-vulkan = { path = "crates/resource-vulkan" }
+video-vulkan = { path = "crates/video-vulkan" }
 tokio = "1.53.1"
 tracing = "0.1.44"
 usage = { version = "6.12.0", package = "usage-rs" }

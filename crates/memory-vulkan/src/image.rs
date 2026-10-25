@@ -111,7 +111,8 @@ impl Image {
     }
 
     /// Every level and layer, as barriers name them.
-    pub(crate) fn subresource_range(&self) -> vk::ImageSubresourceRange {
+    /// Every level and layer of the image, in its aspect.
+    pub fn subresource_range(&self) -> vk::ImageSubresourceRange {
         vk::ImageSubresourceRange::default()
             .aspect_mask(self.aspect)
             .level_count(self.mip_levels)

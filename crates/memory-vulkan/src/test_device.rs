@@ -8,7 +8,7 @@ use gpu_allocator::MemoryLocation;
 
 use crate::{
     BindlessTable, Buffer, DeviceObject, Image, MemoryContext, MemoryError, TestQueue, TestRequirements, Timeline,
-    TransferQueue,
+    TimelineValue, TransferQueue,
 };
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
@@ -30,7 +30,7 @@ pub struct TestDevice {
     messenger: vk::DebugUtilsMessengerEXT,
     messages: Box<Mutex<Vec<String>>>,
     instance: ash::Instance,
-    _entry: ash::Entry,
+    entry: ash::Entry,
 }
 
 impl TestDevice {
@@ -166,8 +166,13 @@ impl TestDevice {
             messenger,
             messages,
             instance,
-            _entry: entry,
+            entry,
         })
+    }
+
+    /// The loader the instance came from, for instance-level extension functions.
+    pub fn entry(&self) -> &ash::Entry {
+        &self.entry
     }
 
     pub fn memory(&self) -> &MemoryContext {
@@ -197,6 +202,19 @@ impl TestDevice {
         self.free(command_buffer);
 
         self.memory.collect()
+    }
+
+    /// Records commands with `record` on the graphics queue, submits them after every copy seen complete and waits for
+    /// them. Returns the point the submission signalled, for work on other queues to wait on.
+    pub fn run(&self, record: impl FnOnce(vk::CommandBuffer)) -> Result<TimelineValue, MemoryError> {
+        let command_buffer = self.command_buffer()?;
+        let recording = self.graphics.begin(command_buffer)?;
+        record(command_buffer);
+        let point = recording.submit(&[self.transfer.visibility_wait()], &[])?;
+        self.graphics.wait(point.value)?;
+        self.free(command_buffer);
+
+        Ok(point)
     }
 
     /// Copies the region of level 0 of `image`, in `layout`, at `offset` and of `extent` back to the CPU: `size` bytes
