@@ -57,13 +57,15 @@ class CubeAccumulator:
         values = values.reshape(-1, values.shape[-1])
         areas = np.ascontiguousarray(areas).ravel()
         valid = np.isfinite(values).all(axis=-1)
-        count = len(self.weights)
+        # A band touches a sliver of the cube: sums run over the texels it reaches, never over the whole cube.
+        touched, slots = np.unique(texels, return_inverse=True)
+        count = len(touched)
 
         for channel in range(values.shape[-1]):
-            self.sums[:, channel] += np.bincount(texels[valid], values[valid, channel] * areas[valid], count)
+            self.sums[touched, channel] += np.bincount(slots[valid], values[valid, channel] * areas[valid], count)
 
-        self.weights += np.bincount(texels[valid], areas[valid], count)
-        self.missing += np.bincount(texels[~valid], areas[~valid], count)
+        self.weights[touched] += np.bincount(slots[valid], areas[valid], count)
+        self.missing[touched] += np.bincount(slots[~valid], areas[~valid], count)
         logger.debug("added rows %d to %d", band.top, band.top + band.values.shape[0])
 
     # NaN where no source pixel with data fell.
