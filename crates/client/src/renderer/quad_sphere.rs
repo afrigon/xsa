@@ -26,6 +26,8 @@ pub(in crate::renderer) struct QuadSphere<'a> {
     pub height: Option<&'a dyn TileHeightBounds>,
     // How far surface displacement can move the ground either way beyond its heights (m).
     pub relief: f64,
+    // Multiplies the heights as they are drawn.
+    pub height_scale: f64,
     // Relative to the camera.
     pub center: DVec3,
     pub orientation: DQuat,
@@ -37,7 +39,7 @@ impl QuadSphere<'_> {
         let lowest = self
             .height
             .and_then(|height| height.overall_range())
-            .map_or(0.0, |range| range.minimum)
+            .map_or(0.0, |range| range.scaled(self.height_scale).minimum)
             - self.relief;
         let horizon = HorizonCuller::new(camera, self.radius + lowest);
 
@@ -63,6 +65,7 @@ impl QuadSphere<'_> {
             .height
             .and_then(|height| height.tile_range(tile))
             .unwrap_or(HeightRange::SMOOTH)
+            .scaled(self.height_scale)
             .widened(self.relief);
 
         if horizon.is_hidden(direction, angular_radius, self.radius + height.maximum) {
@@ -171,6 +174,7 @@ mod tests {
             radius: RADIUS,
             height,
             relief: 0.0,
+            height_scale: 1.0,
             center,
             orientation: DQuat::IDENTITY,
         };

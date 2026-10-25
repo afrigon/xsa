@@ -70,7 +70,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use ash::vk;
-use glam::{DVec3, Mat4, Vec2};
+use glam::{DVec3, Mat4, Vec2, Vec3};
 use memory_vulkan::{Buffer, MemoryError, MemoryLocation, Recording, TransferPriority};
 use render_graph_vulkan::{
     BufferState, GraphImageDescription, ImageSize, ImageState, ImportedBuffer, ImportedImage, RenderGraph, Subresource,
@@ -518,7 +518,7 @@ impl Renderer {
         self.update_gpu_time()?;
         self.write_frame_data(camera)?;
         let captured = self.captures_display_frames() && role == FrameRole::Display;
-        let recording = self.record_frame(output, captured)?;
+        let recording = self.record_frame(output, captured, camera.clear_color)?;
 
         match output {
             FrameOutput::Window { window, image_index } => self.submit_and_present(window, image_index, recording)?,
@@ -706,7 +706,8 @@ impl Renderer {
             starlight_illuminance: BACKGROUND_ILLUMINANCE as f32,
             vertex_spacing_angle: self.config.terrain.lod.vertex_spacing_pixels / self.focal_length_pixels,
             pixel_angle: self.focal_length_pixels.recip(),
-            padding: [0; 3],
+            terrain_height_scale: self.config.terrain.height.drawn_scale(),
+            padding: [0; 2],
             white_balance: self.white_balance.rows(self.config.video.white_balance.enabled),
         };
 
@@ -815,6 +816,7 @@ impl Renderer {
             let center = object.position - camera.position;
 
             let heights = terrain.pages.as_ref().and_then(|pages| pages.heights());
+            let height_scale = f64::from(self.config.terrain.height.drawn_scale());
             let shape = if heights.is_some() {
                 TileShape::Displaced
             } else {
@@ -823,7 +825,7 @@ impl Renderer {
             let highest = heights
                 .as_ref()
                 .and_then(TileHeightBounds::overall_range)
-                .map_or(0.0, |range| range.maximum);
+                .map_or(0.0, |range| range.scaled(height_scale).maximum);
             let relief = terrain.surfaces.as_deref().map_or(0.0, BiomeSurfaces::relief);
             let bounding_radius = object.bounding_radius + highest + relief;
 
@@ -835,6 +837,7 @@ impl Renderer {
                 radius: object.scale,
                 height: heights.as_ref().map(|heights| heights as &dyn TileHeightBounds),
                 relief,
+                height_scale,
                 center,
                 orientation: object.orientation,
             };
@@ -955,7 +958,7 @@ impl Renderer {
     }
 
     // A captured frame renders into an image of its own the video reads, then shows in the window through a copy.
-    fn record_frame(&mut self, output: FrameOutput, captured: bool) -> anyhow::Result<Recording> {
+    fn record_frame(&mut self, output: FrameOutput, captured: bool, clear_color: Vec3) -> anyhow::Result<Recording> {
         let GpuContext {
             bindless,
             device,
@@ -1033,6 +1036,7 @@ impl Renderer {
             video,
             projected_light_count: self.projected_light_data.len() as u32,
             lens_loaded: self.lens.as_ref().and_then(Lens::flare).is_some(),
+            clear_color,
         };
         self.passes.add_to(&mut graph, &self.config, inputs);
         let compiled = graph.compile()?;

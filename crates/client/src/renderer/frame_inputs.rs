@@ -1,3 +1,4 @@
+use glam::Vec3;
 use render_graph_vulkan::{ImportedBufferHandle, Subresource};
 
 use super::video_target::VideoTarget;
@@ -10,4 +11,6 @@ pub(super) struct FrameInputs {
     pub video: Option<VideoTarget>,
     pub projected_light_count: u32,
     pub lens_loaded: bool,
+    // Linear.
+    pub clear_color: Vec3,
 }
