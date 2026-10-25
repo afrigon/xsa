@@ -72,7 +72,8 @@ that produce them. `resource-vulkan` depends on no xsa crate
 either, only on `memory-vulkan` and `resource-loader`: the client adds its own
 kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
 `config` depends on no xsa crate: `logging`, `commands`, `server` and `client`
-define their settings through it. `input` depends only on `config`: it holds input as plain data, with no window
+define their settings through it. `video-vulkan` depends on no xsa crate, only on `memory-vulkan`: the client encodes camera captures through it.
+`input` depends only on `config`: it holds input as plain data, with no window
 library types, so `commands` parses chords with it and the server build never pulls in `winit`; the client converts
 window events through its `winit` feature. `animation` depends on no xsa crate either: the
 server's time warps and the client's camera transitions move through it.
@@ -96,6 +97,7 @@ server's time warps and the client's camera transitions move through it.
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
 | `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains; `terrain` defines the `.terrain` format (pages of a cube map at every level) and reads it |
 | `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue, video memory budget), `DeviceObject`, `Buffer`, `Image` (in shared or dedicated memory), timelines and present fences, the `TransferQueue` every copy between CPU and GPU goes through (whole resources, or regions of an image frames keep sampling), and the `BindlessTable` whose owned slots return once no frame reads them. Its `test-device` feature adds `TestDevice`, a headless device for GPU tests that collects validation messages |
+| `video-vulkan` | H.265 encoding on the GPU's hardware encoder through Vulkan Video: `ColorConversion` turns rendered frames into the encoder's NV12 input on the host's command buffer, `VideoEncoder` encodes them on the encode queue, `Mp4Writer` wraps the bitstream in an MP4 file |
 | `resource-vulkan` | `Resources`: background, reference-counted loading of the files content refers to, on a worker pool of its own; typed `ResourceHandle`s, groups with byte progress, priorities, and a memory budget that evicts unreferenced cached resources least recently used first. Ships the texture and cube map kinds. Its `Streamer` keeps paged data resident: a client registers a `StreamedSet` with its `PageSource`, requests the pages it wants each frame with a score, and reads each page's `PagePlacement` (the page or its nearest resident coarser page); pages live in 2D atlas chunks of about 32 MiB per format that grow and shrink with the shared budget, and stay decoded in RAM once evicted, where clients that also read pages on the CPU (terrain heights) take their bytes |
 | `render-graph-vulkan` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images and transient buffers |
 
@@ -316,6 +318,10 @@ Names in code, data and documents use these words in these meanings only:
   `--output` it goes to `$XDG_PICTURES_DIR/xsa/xsa-<wall-clock time>.png`. It
   does not wait for animations: set `animation.duration-scale 0` first so
   camera transitions, eye adaptation and interface transitions finish at once.
+- `camera capture --duration <duration>` and `camera capture start` / `stop` record a video to an MP4 (H.265 on the
+  GPU), in `$XDG_VIDEOS_DIR/xsa/` without `--output`. A capture holds time with an override and steps it by one
+  frame's worth after each frame, so it plays smoothly and repeats exactly whatever the frame rate; singleplayer only.
+  Camera commands take `--id`; `main` is the only camera.
 - `xsa client --script <path>` and `xsa server --script <path>` run a file of commands at startup, one per line (`#`
   starts a comment), each waiting for the previous one's reply; each command and its reply are printed to the shell
   under `<script file name>:<line>`, and the first failure skips the rest. `init.xsa` is the repository's development
@@ -375,6 +381,7 @@ Always bring the game to a stable state first:
 - Capture the game with `camera capture`:
   - `--output <path>` saves the snapshot to your scratchpad.
   - `--region <region>` captures only part of the screen; leave it out to capture the entire screen.
+  - `--duration <duration>` records a video instead.
 - When asked for a comparison, build a simple A/B comparison HTML page and open it automatically.
 
 ### After testing
