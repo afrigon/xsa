@@ -4,10 +4,13 @@ mod transfer_queue_location;
 pub use suitable_device::SuitableDevice;
 pub use transfer_queue_location::TransferQueueLocation;
 
+use std::ffi::CStr;
+
 use anyhow::Context;
 use ash::vk;
 use ash::{ext, khr};
 use memory_vulkan::MemoryContext;
+use video_vulkan::VideoEncoder;
 
 use super::Instance;
 
@@ -18,6 +21,8 @@ pub struct Device {
     queue: vk::Queue,
     transfer: TransferQueueLocation,
     transfer_queue: vk::Queue,
+    encode_family: u32,
+    encode_queue: vk::Queue,
     max_sampler_anisotropy: f32,
     // Nanoseconds per timestamp tick; `None` when the queue cannot write timestamps.
     timestamp_period: Option<f32>,
@@ -31,13 +36,17 @@ impl Device {
             physical_device,
             queue_family,
             transfer,
+            encode_family,
             dynamic_polygon_mode,
             ..
         } = *suitable;
         let one_queue = [1.0];
         let two_queues = [1.0, 1.0];
         let graphics_queues = vk::DeviceQueueCreateInfo::default().queue_family_index(queue_family);
-        let queue_create_infos = match transfer {
+        let encode_queues = vk::DeviceQueueCreateInfo::default()
+            .queue_family_index(encode_family)
+            .queue_priorities(&one_queue);
+        let mut queue_create_infos = match transfer {
             TransferQueueLocation::DedicatedFamily(family) => vec![
                 graphics_queues.queue_priorities(&one_queue),
                 vk::DeviceQueueCreateInfo::default()
@@ -47,11 +56,13 @@ impl Device {
             TransferQueueLocation::SecondGraphicsQueue => vec![graphics_queues.queue_priorities(&two_queues)],
             TransferQueueLocation::SharedGraphicsQueue => vec![graphics_queues.queue_priorities(&one_queue)],
         };
+        queue_create_infos.push(encode_queues);
         let mut extensions = vec![
             khr::swapchain::NAME.as_ptr(),
             ext::swapchain_maintenance1::NAME.as_ptr(),
             ext::memory_budget::NAME.as_ptr(),
         ];
+        extensions.extend(VideoEncoder::DEVICE_EXTENSIONS.map(CStr::as_ptr));
 
         if dynamic_polygon_mode {
             extensions.push(ext::extended_dynamic_state3::NAME.as_ptr());
@@ -101,10 +112,12 @@ impl Device {
             physical_device,
             queue_family,
             transfer,
+            encode_family,
             dynamic_polygon_mode,
             ..
         } = *suitable;
         let device = memory.device().clone();
+        let encode_queue = unsafe { device.get_device_queue(encode_family, 0) };
         let queue = unsafe { device.get_device_queue(queue_family, 0) };
         let transfer_queue = match transfer {
             TransferQueueLocation::DedicatedFamily(family) => unsafe { device.get_device_queue(family, 0) },
@@ -129,6 +142,8 @@ impl Device {
             queue,
             transfer,
             transfer_queue,
+            encode_family,
+            encode_queue,
             max_sampler_anisotropy: limits.max_sampler_anisotropy,
             timestamp_period,
             extended_dynamic_state3,
@@ -161,6 +176,14 @@ impl Device {
 
     pub fn transfer_queue(&self) -> vk::Queue {
         self.transfer_queue
+    }
+
+    pub fn encode_family(&self) -> u32 {
+        self.encode_family
+    }
+
+    pub fn encode_queue(&self) -> vk::Queue {
+        self.encode_queue
     }
 
     pub fn max_sampler_anisotropy(&self) -> f32 {

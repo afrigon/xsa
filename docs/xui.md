@@ -252,4 +252,4 @@ for any app.
   it is updated; presses, releases and leaving the window are offered at
   once. Keyboard input stays with the binds until text fields exist.
 - The renderer's `UserInterfacePass` runs after tonemapping and before
-  capture, so `camera snap` includes the interface.
+  capture, so `camera capture` includes the interface.

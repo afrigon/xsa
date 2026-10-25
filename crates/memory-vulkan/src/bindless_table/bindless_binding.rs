@@ -6,13 +6,17 @@ pub enum BindlessBinding {
     Texture,
     CubeMap,
     StorageImage,
+    TextureArray,
+    Volume,
 }
 
 impl BindlessBinding {
-    pub(crate) const ALL: [BindlessBinding; 3] = [
+    pub(crate) const ALL: [BindlessBinding; 5] = [
         BindlessBinding::Texture,
         BindlessBinding::CubeMap,
         BindlessBinding::StorageImage,
+        BindlessBinding::TextureArray,
+        BindlessBinding::Volume,
     ];
 
     pub(crate) fn index(self) -> usize {
@@ -24,6 +28,8 @@ impl BindlessBinding {
             BindlessBinding::CubeMap => 1,
             BindlessBinding::Texture => 3,
             BindlessBinding::StorageImage => 4,
+            BindlessBinding::TextureArray => 5,
+            BindlessBinding::Volume => 7,
         }
     }
 
@@ -32,12 +38,17 @@ impl BindlessBinding {
             BindlessBinding::Texture => 2048,
             BindlessBinding::CubeMap => 64,
             BindlessBinding::StorageImage => 64,
+            BindlessBinding::TextureArray => 256,
+            BindlessBinding::Volume => 16,
         }
     }
 
     pub(crate) fn descriptor_type(self) -> vk::DescriptorType {
         match self {
-            BindlessBinding::Texture | BindlessBinding::CubeMap => vk::DescriptorType::SAMPLED_IMAGE,
+            BindlessBinding::Texture
+            | BindlessBinding::CubeMap
+            | BindlessBinding::TextureArray
+            | BindlessBinding::Volume => vk::DescriptorType::SAMPLED_IMAGE,
             BindlessBinding::StorageImage => vk::DescriptorType::STORAGE_IMAGE,
         }
     }

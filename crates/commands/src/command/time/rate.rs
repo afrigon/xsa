@@ -1,7 +1,7 @@
 use usage::Args;
-use xsa_proto::message::{ClientMessage, SetTimeRate};
+use xsa_proto::request::{Request, SetTimeRateRequest};
 use xsa_proto::session::SessionState;
-use xsa_units::{TimeRate, TimeRateChange};
+use xsa_units::TimeRate;
 
 use super::TimeCommand;
 use crate::command::{Routable, Route, ServerCommand};
@@ -20,11 +20,11 @@ impl Routable for TimeRateCommand {
 }
 
 impl ServerCommand for TimeRateCommand {
-    fn message(&self) -> ClientMessage {
-        ClientMessage::SetTimeRate(SetTimeRate {
-            change: TimeRateChange::To(TimeRate {
+    fn request(&self) -> Request {
+        Request::SetTimeRate(SetTimeRateRequest {
+            rate: TimeRate {
                 multiplier: self.multiplier,
-            }),
+            },
         })
     }
 

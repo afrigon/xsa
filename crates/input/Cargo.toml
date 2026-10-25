@@ -1,0 +1,13 @@
+[package]
+name = "xsa-input"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+glam.workspace = true
+winit = { workspace = true, optional = true }
+xsa-config.workspace = true
+
+[features]
+winit = ["dep:winit"]

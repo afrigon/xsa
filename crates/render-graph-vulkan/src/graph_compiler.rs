@@ -772,6 +772,46 @@ mod tests {
         assert!(compiled.image_usage_flags[image.index].is_empty());
     }
 
+    // Forward writes scene color; tonemap samples it into an output image the frame creates.
+    fn forward_and_tonemap_offscreen(frame: &mut FrameDeclaration) -> ImageHandle {
+        let output = frame.add_image(DeclaredImage::Transient(color("output", 1)));
+        let mut forward = PassDeclaration::new(frame, &[], "forward");
+        let scene = forward.create_image(color("scene", 1));
+        forward.color_attachment(scene, Attachment::ClearColor([0.0; 4]));
+        let mut tonemap = PassDeclaration::new(frame, &[], "tonemap");
+        tonemap.sampled(scene, Stage::Fragment);
+        tonemap.color_attachment(output, Attachment::DontCare);
+
+        output
+    }
+
+    #[test]
+    fn a_frame_image_copied_to_an_imported_buffer_keeps_its_writers() {
+        let mut frame = FrameDeclaration::default();
+        let output = forward_and_tonemap_offscreen(&mut frame);
+        let readback = import_readback(&mut frame);
+        let mut capture = PassDeclaration::new(&mut frame, &[], "capture");
+        capture.transfer_source(output);
+        capture.buffer(readback, BufferUsage::TransferDestination);
+        let compiled = compile(&frame).unwrap();
+
+        assert_eq!(compiled.passes.len(), 3);
+        assert_eq!(
+            compiled.image_usage_flags[output.index],
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC
+        );
+    }
+
+    #[test]
+    fn a_frame_image_nothing_reads_is_never_allocated() {
+        let mut frame = FrameDeclaration::default();
+        let output = forward_and_tonemap_offscreen(&mut frame);
+        let compiled = compile(&frame).unwrap();
+
+        assert!(compiled.passes.is_empty());
+        assert!(compiled.image_usage_flags[output.index].is_empty());
+    }
+
     #[test]
     fn a_pass_writing_an_imported_buffer_is_kept() {
         let mut frame = FrameDeclaration::default();

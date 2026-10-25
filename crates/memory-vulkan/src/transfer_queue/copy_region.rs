@@ -6,7 +6,7 @@ pub(crate) enum CopyRegion {
     Image {
         mip_level: u32,
         array_layer: u32,
-        offset: vk::Offset2D,
+        offset: vk::Offset3D,
         extent: vk::Extent2D,
     },
     // A region of one image copied into another, on the GPU.

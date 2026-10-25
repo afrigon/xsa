@@ -35,8 +35,7 @@ impl AutoExposure {
     }
 
     // Starlight at the camera, in lux.
-    pub fn update(&mut self, illuminance: f32) {
-        let now = Instant::now();
+    pub fn update(&mut self, illuminance: f32, now: Instant) {
         let elapsed = self.last_update.map(|last| now.duration_since(last).as_secs_f32());
         self.last_update = Some(now);
         self.anchor_ev100 = (illuminance * ISO_SENSITIVITY / INCIDENT_METER_CALIBRATION).log2();
@@ -76,7 +75,7 @@ mod tests {
     #[test]
     fn sunlight_at_one_astronomical_unit_meters_like_a_sunny_day() {
         let mut exposure = AutoExposure::new(0.0);
-        exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT);
+        exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT, Instant::now());
         assert!(
             (exposure.anchor_ev100 - 15.6).abs() < 0.1,
             "EV100 {}",
@@ -88,7 +87,7 @@ mod tests {
     fn a_gray_card_in_sunlight_renders_at_middle_gray() {
         const GRAY_CARD_ALBEDO: f32 = 0.18;
         let mut exposure = AutoExposure::new(0.0);
-        exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT);
+        exposure.update(SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT, Instant::now());
         let luminance = GRAY_CARD_ALBEDO * SUNLIGHT_AT_ONE_ASTRONOMICAL_UNIT / std::f32::consts::PI;
         let display = luminance * exposure.exposure();
         assert!((display - MIDDLE_GRAY).abs() < 0.02, "{display}");

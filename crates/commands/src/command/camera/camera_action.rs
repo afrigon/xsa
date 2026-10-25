@@ -1,30 +1,15 @@
 use usage::Subcommands;
 
-use super::{CameraLookAtCommand, CameraModeCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand};
-use crate::command::{Routable, Route};
+use super::{CameraCaptureCommand, CameraLookAtCommand, CameraTargetCommand, CameraTeleportCommand};
 
 #[derive(Subcommands)]
 pub enum CameraAction {
-    /// Switch between the target camera and the debug fly camera
-    Mode(CameraModeCommand),
-    /// Orbit a body: a body id, next, previous or parent
+    /// Orbit a body by id, or the next, previous or parent one with --next, --previous or --parent
     Target(CameraTargetCommand),
     /// Stand the debug camera on a body at a latitude and longitude
     Tp(CameraTeleportCommand),
     /// Turn the debug camera towards a body
     LookAt(CameraLookAtCommand),
-    /// Save the rendered frame as a PNG, returning once the file is written
-    Snap(CameraSnapCommand),
-}
-
-impl Routable for CameraAction {
-    fn route(self) -> Route {
-        match self {
-            CameraAction::Mode(command) => command.route(),
-            CameraAction::Target(command) => command.route(),
-            CameraAction::Tp(command) => command.route(),
-            CameraAction::LookAt(command) => command.route(),
-            CameraAction::Snap(command) => command.route(),
-        }
-    }
+    /// Save the rendered frame as a PNG, or a video with --duration or start, returning once the file is written
+    Capture(CameraCaptureCommand),
 }

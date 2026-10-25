@@ -1,0 +1,18 @@
+[project]
+name = "base-surfaces-scripts"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "etcpak>=0.9.15",
+    "numpy>=2.5.4",
+    "openexr>=3.5.2",
+    "zstandard>=0.25.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

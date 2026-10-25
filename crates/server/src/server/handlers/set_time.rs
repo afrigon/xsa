@@ -1,18 +1,18 @@
-use xsa_proto::event::Outcome;
-use xsa_proto::message::SetTime;
+use xsa_proto::error::RequestError;
+use xsa_proto::request::SetTimeRequest;
 
 use crate::server::Server;
-use crate::server::message_handler::MessageHandler;
+use crate::server::request_handler::RequestHandler;
 
-impl MessageHandler for SetTime {
-    fn handle(self, server: &mut Server, _client: usize) -> Outcome {
+impl RequestHandler for SetTimeRequest {
+    fn handle(self, server: &mut Server, _client: usize) -> Result<(), RequestError> {
         if !self.time.is_valid() {
-            return Outcome::denied("the time must be finite");
+            return Err(RequestError::invalid("the time must be finite"));
         }
 
         server.world.set_time(self.time);
         server.broadcast_time();
 
-        Outcome::Accepted
+        Ok(())
     }
 }

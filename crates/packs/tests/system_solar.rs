@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use xsa_core::simulation::{BodyId, Simulation, SimulationState};
+use xsa_core::daylight::{Daylight, DaylightError, TimeOfDay};
+use xsa_core::light::Illumination;
+use xsa_core::simulation::{BodyId, BodyIndex, Simulation, SimulationState};
 use xsa_packs::{Id, PackStack, SimulationDefinition};
 use xsa_units::SimulationTime;
 
@@ -14,7 +16,15 @@ struct Positions {
 
 fn load() -> Simulation {
     let packs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data");
-    let stack = PackStack::load(&packs, &["base".to_string(), "system-solar".to_string()]).unwrap();
+    let stack = PackStack::load(
+        &packs,
+        &[
+            "base".to_string(),
+            "base-surfaces".to_string(),
+            "system-solar".to_string(),
+        ],
+    )
+    .unwrap();
     let id = Id::parse("system-solar:sol", "base").unwrap();
     let definition = stack.load_data::<SimulationDefinition>(&id).unwrap();
     definition.build(&stack).unwrap()
@@ -226,4 +236,119 @@ fn bodies_know_the_body_they_orbit() {
         let expected = format!("system-solar:{}", case.parent);
         assert_eq!(parent_path(&simulation, case.body), Some(expected), "{}", case.body);
     }
+}
+
+#[test]
+fn earth_has_civil_twilight_and_luna_no_atmosphere() {
+    let simulation = load();
+    let body = |id: &str| {
+        let id = BodyId {
+            value: format!("system-solar:{id}"),
+        };
+        simulation.body(simulation.find_body(&id).unwrap())
+    };
+    let twilight = body("earth")
+        .atmosphere
+        .and_then(|atmosphere| atmosphere.twilight_depression);
+    assert_eq!(twilight, Some(6.0_f64.to_radians()));
+    assert!(body("luna").atmosphere.is_none());
+}
+
+const SECONDS_PER_MINUTE: f64 = 60.0;
+const SECONDS_PER_DAY: f64 = 86_400.0;
+
+fn index(simulation: &Simulation, id: &str) -> BodyIndex {
+    let id = BodyId {
+        value: format!("system-solar:{id}"),
+    };
+    simulation.find_body(&id).unwrap()
+}
+
+fn time(text: &str) -> SimulationTime {
+    text.parse().unwrap()
+}
+
+fn daylight<'a>(simulation: &'a Simulation, body: &str) -> Daylight<'a> {
+    Daylight::new(simulation, index(simulation, body), index(simulation, "sol"))
+}
+
+#[test]
+fn the_equinox_sun_rises_near_six_at_the_prime_meridian() {
+    let simulation = load();
+    let earth = daylight(&simulation, "earth");
+    let midnight = time("2026-03-20T00:00:00Z");
+    let sunrise = earth.next(TimeOfDay::Sunrise, 0.0, 0.0, midnight).unwrap();
+    let minutes = sunrise.seconds_since(midnight) / SECONDS_PER_MINUTE;
+    assert!(
+        (350.0..380.0).contains(&minutes),
+        "sunrise {minutes} minutes after midnight"
+    );
+
+    let dawn = earth.next(TimeOfDay::Dawn, 0.0, 0.0, midnight).unwrap();
+    let twilight = sunrise.seconds_since(dawn) / SECONDS_PER_MINUTE;
+    assert!(
+        (20.0..28.0).contains(&twilight),
+        "civil twilight lasts {twilight} minutes"
+    );
+}
+
+#[test]
+fn the_polar_night_has_no_sunrise() {
+    let simulation = load();
+    let earth = daylight(&simulation, "earth");
+    let result = earth.next(
+        TimeOfDay::Sunrise,
+        80.0_f64.to_radians(),
+        0.0,
+        time("2026-12-21T00:00:00Z"),
+    );
+    assert_eq!(
+        result,
+        Err(DaylightError::NoCrossing {
+            time_of_day: TimeOfDay::Sunrise
+        })
+    );
+}
+
+#[test]
+fn solar_days_last_as_long_as_observed() {
+    let simulation = load();
+    let start = time("2026-01-01T00:00:00Z");
+
+    for (body, days) in [("luna", 29.53), ("venus", 116.75)] {
+        let daylight = daylight(&simulation, body);
+        let first = daylight.next(TimeOfDay::Noon, 0.0, 0.0, start).unwrap();
+        let second = daylight.next(TimeOfDay::Noon, 0.0, 0.0, first).unwrap();
+        let length = second.seconds_since(first) / SECONDS_PER_DAY;
+        assert!((length - days).abs() < 0.5, "{body}'s solar day lasts {length} days");
+    }
+}
+
+#[test]
+fn a_sunset_falls_where_its_longitude_says() {
+    let simulation = load();
+    let earth = daylight(&simulation, "earth");
+    let moment = time("2026-06-01T15:00:00Z");
+    let latitude = 30.0_f64.to_radians();
+    let longitude = earth.longitude(TimeOfDay::Sunset, latitude, moment).unwrap();
+    let hour_before = time("2026-06-01T14:00:00Z");
+    let sunset = earth.next(TimeOfDay::Sunset, latitude, longitude, hour_before).unwrap();
+    let minutes = sunset.seconds_since(moment).abs() / SECONDS_PER_MINUTE;
+    assert!(
+        minutes < 1.0,
+        "sunset {minutes} minutes from where its longitude puts it"
+    );
+}
+
+#[test]
+fn the_sun_is_the_brightest_star_at_earth() {
+    let simulation = load();
+    let mut state = SimulationState::default();
+    simulation.state_at(time("2026-06-01T00:00:00Z"), &mut state);
+    let illumination = Illumination::new(simulation.bodies());
+    let earth = state.body(index(&simulation, "earth")).position;
+    assert_eq!(
+        illumination.brightest_star(&state.bodies, earth),
+        Some(index(&simulation, "sol"))
+    );
 }

@@ -6,15 +6,18 @@ use xui::DrawList;
 
 use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
-use super::gpu_data::PushConstants;
+use super::gpu_data::{PushConstants, SurfaceAnchorData};
 use super::graph_textures::GraphTextures;
 use super::lens_flare::LensFlare;
 use super::material::MaterialBuffer;
 use super::temporal_history::TemporalHistory;
 use super::terrain_draw::TerrainDraw;
-use super::{MaterialHandle, Scene};
-use crate::config::RenderConfig;
+use super::video_output::VideoOutput;
+use super::{MaterialHandle, Scene, TerrainHandle};
+use crate::config::Config;
 use crate::vulkan::GraphicsPipeline;
+
+pub(super) const NO_ADDRESS: vk::DeviceAddress = 0;
 
 pub(super) struct FrameContext<'a> {
     pub recorder: CommandRecorder<'a>,
@@ -22,14 +25,17 @@ pub(super) struct FrameContext<'a> {
     pub frame_slot: usize,
     pub textures: &'a GraphTextures,
     pub temporal: &'a TemporalHistory,
-    pub render: &'a RenderConfig,
+    pub config: &'a Config,
     pub scene: &'a Scene,
     pub materials: &'a [MaterialBuffer],
     pub lens: Option<&'a LensFlare>,
     pub focal_length_pixels: f32,
     pub terrain_draws: &'a [TerrainDraw],
+    // Each terrain's slot in the frame's surface anchors, by terrain index; None for terrains without surfaces.
+    pub surface_anchor_slots: &'a [Option<usize>],
     pub descriptor_set: vk::DescriptorSet,
     pub user_interface: &'a DrawList,
+    pub video: Option<&'a VideoOutput>,
     pub triangles: Cell<u64>,
 }
 
@@ -40,6 +46,7 @@ impl FrameContext<'_> {
         object_index: usize,
         material: MaterialHandle,
         first_tile: u32,
+        surface_anchors: vk::DeviceAddress,
     ) {
         self.recorder.push_graphics_constants(
             pipeline,
@@ -54,8 +61,16 @@ impl FrameContext<'_> {
                 first_tile,
                 tiles: self.frame.tiles.device_address(),
                 tile_pages: self.frame.tile_pages.device_address(),
+                surface_anchors,
             },
         );
+    }
+
+    // Where the camera stands in a terrain's surfaces; NO_ADDRESS for a terrain without surfaces.
+    pub fn surface_anchors(&self, terrain: TerrainHandle) -> vk::DeviceAddress {
+        self.surface_anchor_slots[terrain.index].map_or(NO_ADDRESS, |slot| {
+            self.frame.surface_anchors.device_address() + (slot * size_of::<SurfaceAnchorData>()) as vk::DeviceAddress
+        })
     }
 
     // Whether its parameters are in GPU memory.

@@ -1,12 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph-vulkan", "crates/memory-vulkan", "crates/resource-loader", "crates/resource-vulkan", "crates/logging", "crates/launchpad"]
+members = ["crates/animation", "crates/units", "crates/core", "crates/packs", "crates/proto", "crates/commands", "crates/server", "crates/client", "crates/xsa", "crates/xui", "crates/xui-vulkan", "crates/render-graph-vulkan", "crates/memory-vulkan", "crates/video-vulkan", "crates/resource-loader", "crates/resource-vulkan", "crates/logging", "crates/config", "crates/input", "crates/launchpad"]
 
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
 
 [workspace.dependencies]
+animation = { path = "crates/animation" }
 anyhow = "1.0.104"
 ash = "0.38.0"
 bitcode = "0.6.9"
@@ -17,13 +18,16 @@ image = { version = "0.25.10", default-features = false, features = ["exr"] }
 render-graph-vulkan = { path = "crates/render-graph-vulkan" }
 resource-loader = { path = "crates/resource-loader" }
 resource-vulkan = { path = "crates/resource-vulkan" }
+video-vulkan = { path = "crates/video-vulkan" }
 tokio = "1.53.1"
 tracing = "0.1.44"
 usage = { version = "6.12.0", package = "usage-rs" }
 winit = "0.30.13"
 xsa-client = { path = "crates/client" }
+xsa-config = { path = "crates/config" }
 xsa-commands = { path = "crates/commands" }
 xsa-core = { path = "crates/core" }
+xsa-input = { path = "crates/input" }
 xsa-logging = { path = "crates/logging" }
 xsa-packs = { path = "crates/packs" }
 xsa-proto = { path = "crates/proto" }

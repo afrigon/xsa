@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use anyhow::Context;
+
 use xsa_units::SimulationDuration;
 
 struct TimeUnit {
@@ -7,7 +9,12 @@ struct TimeUnit {
     seconds: f64,
 }
 
-const TIME_UNITS: [TimeUnit; 3] = [
+// A suffix that ends another one (ms, s) comes first.
+const TIME_UNITS: [TimeUnit; 4] = [
+    TimeUnit {
+        suffix: "ms",
+        seconds: 0.001,
+    },
     TimeUnit {
         suffix: "min",
         seconds: 60.0,
@@ -35,13 +42,20 @@ impl Duration {
             Duration::Ticks { ticks } => SimulationDuration::from_ticks(ticks),
         }
     }
+
+    // The same span of wall-clock time, for waits and injected motion.
+    pub fn real_time(self) -> anyhow::Result<std::time::Duration> {
+        std::time::Duration::try_from_secs_f64(self.duration().seconds)
+            .ok()
+            .context("a duration of real time cannot be negative")
+    }
 }
 
 impl FromStr for Duration {
     type Err = String;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        let invalid = || format!("{text:?} is not a duration like 10s, 5min, 2h or 60t (ticks)");
+        let invalid = || format!("{text:?} is not a duration like 50ms, 10s, 5min, 2h or 60t (ticks)");
 
         if let Some(ticks) = text.strip_suffix('t') {
             let ticks = ticks.parse().map_err(|_| invalid())?;
@@ -80,6 +94,7 @@ mod tests {
         assert_eq!(seconds("1.5min"), 90.0);
         assert_eq!(seconds("2h"), 7_200.0);
         assert_eq!(seconds("1e3s"), 1_000.0);
+        assert_eq!(seconds("250ms"), 0.25);
     }
 
     #[test]

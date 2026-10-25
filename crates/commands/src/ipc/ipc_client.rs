@@ -1,6 +1,6 @@
 use anyhow::{Context, bail};
 use tokio::runtime;
-use xsa_proto::frame_stream::FrameStream;
+use xsa_proto::network::FrameStream;
 
 use super::ipc_request::IpcRequest;
 use super::ipc_response::IpcResponse;

@@ -11,6 +11,7 @@ pub struct WorldArguments {
         long,
         delimiter = ',',
         default = "base",
+        default = "base-surfaces",
         default = "system-solar",
         help = "Packs to load, in stack order (later packs override earlier ones)"
     )]

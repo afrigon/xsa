@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use anyhow::bail;
 
-use resource_loader::texture::{TextureFormat, TextureImage};
+use resource_loader::texture::{TextureFormat, TextureImage, TextureKind};
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const HEADER_SIZE: usize = 80;
@@ -12,7 +12,7 @@ const WRITER_KEY: &str = "KTXwriter";
 const WRITER: &str = concat!("launchpad ", env!("CARGO_PKG_VERSION"));
 const WORD_BYTES: usize = 4;
 
-/// Writes uncompressed textures and cube maps as KTX2 files, without supercompression.
+/// Writes uncompressed 2D textures and cube maps as KTX2 files, without supercompression.
 pub struct Ktx2Writer;
 
 impl Ktx2Writer {
@@ -20,6 +20,10 @@ impl Ktx2Writer {
         let Some(descriptor) = DataFormatDescriptor::new(image.format()) else {
             bail!("{} texels: only uncompressed formats can be written", image.format());
         };
+
+        if image.kind() == TextureKind::Array {
+            bail!("texture arrays cannot be written");
+        }
 
         let descriptor = descriptor.bytes();
         let key_values = Ktx2Writer::key_values();
@@ -254,7 +258,7 @@ mod tests {
                 layer
             })
             .collect();
-        let image = TextureImage::new(TextureFormat::Rg8Unorm, 4, 4, 3, layers.clone()).unwrap();
+        let image = TextureImage::new(TextureFormat::Rg8Unorm, TextureKind::CubeMap, 4, 4, 3, layers.clone()).unwrap();
         let read = Ktx2Loader::load(&written(&image)).unwrap();
 
         assert_eq!(read.format(), TextureFormat::Rg8Unorm);
@@ -274,7 +278,7 @@ mod tests {
         ] {
             let size = format.level_size(2, 1) + format.level_size(1, 1);
             let layer: Vec<u8> = (0..size as u8).collect();
-            let image = TextureImage::new(format, 2, 1, 2, vec![layer.clone()]).unwrap();
+            let image = TextureImage::new(format, TextureKind::Plane, 2, 1, 2, vec![layer.clone()]).unwrap();
             let read = Ktx2Loader::load(&written(&image)).unwrap();
 
             assert_eq!(read.format(), format, "{format}");
@@ -284,7 +288,7 @@ mod tests {
 
     #[test]
     fn a_written_file_describes_its_texels() {
-        let image = TextureImage::new(TextureFormat::Rgba8Srgb, 1, 1, 1, vec![vec![0; 4]]).unwrap();
+        let image = TextureImage::new(TextureFormat::Rgba8Srgb, TextureKind::Plane, 1, 1, 1, vec![vec![0; 4]]).unwrap();
         let bytes = written(&image);
         let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
         let descriptor = word(48) as usize;
@@ -300,7 +304,15 @@ mod tests {
 
     #[test]
     fn block_compressed_textures_are_not_written() {
-        let image = TextureImage::new(TextureFormat::Bc7Srgb, 4, 4, 1, vec![vec![0; BC7_BLOCK_BYTES]]).unwrap();
+        let image = TextureImage::new(
+            TextureFormat::Bc7Srgb,
+            TextureKind::Plane,
+            4,
+            4,
+            1,
+            vec![vec![0; BC7_BLOCK_BYTES]],
+        )
+        .unwrap();
 
         assert!(Ktx2Writer::write(&image, &mut Vec::new()).is_err());
     }

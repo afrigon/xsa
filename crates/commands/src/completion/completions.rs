@@ -85,9 +85,12 @@ mod tests {
 
         let all = completed("camera look-at ", &bodies);
 
-        for value in ["next", "previous", "luna", "system-solar:"] {
+        for value in ["luna", "system-solar:"] {
             assert!(all.contains(&value.to_string()), "{value} in {all:?}");
         }
+
+        assert!(!all.contains(&"next".to_string()), "{all:?}");
+        assert_eq!(completed("camera target --ne", &bodies), ["--next"]);
     }
 
     #[cfg(feature = "client")]

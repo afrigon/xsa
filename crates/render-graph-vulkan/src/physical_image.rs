@@ -1,5 +1,5 @@
 use ash::vk;
-use memory_vulkan::{DeviceObject, Image, ImageDescription, ImageLayers, ImageMemory, MemoryContext, QueueSharing};
+use memory_vulkan::{DeviceObject, Image, ImageDescription, ImageKind, ImageMemory, MemoryContext, QueueSharing};
 
 use crate::access::Access;
 use crate::image_owner::ImageOwner;
@@ -40,7 +40,7 @@ impl PhysicalImage {
                 usage,
                 aspect: view_aspect,
                 mip_levels: description.mip_levels,
-                layers: ImageLayers::Single,
+                kind: ImageKind::Single,
                 memory: ImageMemory::Shared,
                 sharing: QueueSharing::Exclusive,
             },

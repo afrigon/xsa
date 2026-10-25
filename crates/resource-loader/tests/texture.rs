@@ -1,10 +1,11 @@
 use resource_loader::texture::{
-    ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureImage, TextureLoader,
+    ColorSpace, DdsLoader, Ktx2Loader, PngLoader, TextureFormat, TextureImage, TextureKind, TextureLoader,
 };
 
 const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
 const KTX2_HEADER_SIZE: usize = 80;
 const KTX2_LEVEL_ENTRY_SIZE: usize = 24;
+const KTX2_KEY_VALUE_OFFSET_OFFSET: usize = 56;
 const VK_FORMAT_R8G8B8A8_UNORM: u32 = 37;
 const VK_FORMAT_R8G8B8A8_SRGB: u32 = 43;
 const VK_FORMAT_R16_UNORM: u32 = 70;
@@ -21,7 +22,10 @@ struct Ktx2 {
     width: u32,
     height: u32,
     faces: u32,
+    layers: u32,
     supercompression: u32,
+    // The key/value data, entries already padded.
+    key_values: Vec<u8>,
     // Each level's data, all faces in order.
     levels: Vec<Vec<u8>>,
 }
@@ -44,7 +48,7 @@ impl Ktx2 {
             self.width,
             self.height,
             0,
-            0,
+            self.layers,
             self.faces,
             self.levels.len() as u32,
             self.supercompression,
@@ -52,8 +56,12 @@ impl Ktx2 {
             bytes.extend_from_slice(&word.to_le_bytes());
         }
 
+        let key_values_offset = KTX2_HEADER_SIZE + self.levels.len() * KTX2_LEVEL_ENTRY_SIZE;
+        bytes.resize(KTX2_KEY_VALUE_OFFSET_OFFSET, 0);
+        bytes.extend_from_slice(&(key_values_offset as u32).to_le_bytes());
+        bytes.extend_from_slice(&(self.key_values.len() as u32).to_le_bytes());
         bytes.resize(KTX2_HEADER_SIZE, 0);
-        let mut offset = KTX2_HEADER_SIZE + self.levels.len() * KTX2_LEVEL_ENTRY_SIZE;
+        let mut offset = key_values_offset + self.key_values.len();
 
         for (level, data) in self.levels.iter().zip(&stored) {
             for long in [offset, data.len(), level.len()] {
@@ -62,12 +70,25 @@ impl Ktx2 {
             offset += data.len();
         }
 
+        bytes.extend_from_slice(&self.key_values);
+
         for data in &stored {
             bytes.extend_from_slice(data);
         }
 
         bytes
     }
+}
+
+// One key/value entry: its length, the key ending with a NUL, the value, padded to a multiple of 4 bytes.
+fn key_value(key: &str, value: &[u8]) -> Vec<u8> {
+    let length = key.len() + 1 + value.len();
+    let mut bytes = (length as u32).to_le_bytes().to_vec();
+    bytes.extend_from_slice(key.as_bytes());
+    bytes.push(0);
+    bytes.extend_from_slice(value);
+    bytes.resize(bytes.len().next_multiple_of(4), 0);
+    bytes
 }
 
 // A DDS header with a DX10 extension, for a BC7 texture.
@@ -103,7 +124,9 @@ fn a_ktx2_cube_map_regroups_its_levels_by_face() {
         width: 2,
         height: 2,
         faces: 6,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_ZSTANDARD,
+        key_values: Vec::new(),
         levels,
     };
     let image = Ktx2Loader::load(&file.bytes())
@@ -129,7 +152,9 @@ fn an_uncompressed_ktx2_height_map_reads_as_is() {
         width: 4,
         height: 2,
         faces: 1,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
         levels: vec![(0..16).collect()],
     };
     let image = Ktx2Loader::load(&file.bytes())
@@ -149,12 +174,15 @@ fn a_ktx2_texture_keeps_the_format_it_stores() {
         width: 1,
         height: 1,
         faces: 1,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
         levels: vec![vec![0; 4]],
     };
     let heights = Ktx2 {
         format: VK_FORMAT_R32_SFLOAT,
         levels: vec![1.5f32.to_le_bytes().to_vec()],
+        key_values: Vec::new(),
         ..colors
     };
 
@@ -175,7 +203,9 @@ fn data_formats_cannot_be_read_as_colors() {
         width: 4,
         height: 4,
         faces: 1,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
         levels: vec![vec![0; 8]],
     };
 
@@ -194,7 +224,9 @@ fn a_ktx2_level_of_the_wrong_size_is_rejected() {
         width: 2,
         height: 2,
         faces: 1,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
         levels: vec![vec![0; 12]],
     };
 
@@ -245,7 +277,9 @@ fn a_ktx2_header_too_large_for_any_file_is_rejected_before_allocating() {
         width: 1 << 31,
         height: 1 << 31,
         faces: 6,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
         levels: vec![vec![0; 4]],
     };
     let unallocatable = Ktx2 {
@@ -253,7 +287,9 @@ fn a_ktx2_header_too_large_for_any_file_is_rejected_before_allocating() {
         width: 1 << 30,
         height: 1 << 30,
         faces: 6,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
         levels: vec![vec![0; 4]],
     };
 
@@ -268,7 +304,9 @@ fn ktx2_mip_levels_beyond_the_full_chain_are_rejected() {
         width: 2,
         height: 2,
         faces: 1,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
         levels: vec![vec![0; 16], vec![0; 4], vec![0; 4]],
     };
 
@@ -282,7 +320,9 @@ fn a_ktx2_level_past_the_end_of_the_file_is_rejected() {
         width: 1,
         height: 1,
         faces: 1,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
         levels: vec![vec![0; 4]],
     };
     let mut bytes = file.bytes();
@@ -304,7 +344,9 @@ fn a_supercompressed_ktx2_level_declaring_another_size_is_rejected() {
         width: 2,
         height: 2,
         faces: 1,
+        layers: 0,
         supercompression: SUPERCOMPRESSION_ZSTANDARD,
+        key_values: Vec::new(),
         levels: vec![vec![0; 16]],
     };
     let mut bytes = file.bytes();
@@ -329,6 +371,89 @@ fn a_dds_header_too_large_for_any_file_is_rejected() {
 
 #[test]
 fn a_texture_with_layers_of_the_wrong_size_is_refused() {
-    assert!(TextureImage::new(TextureFormat::Rgba8Unorm, 2, 2, 1, vec![vec![0; 15]]).is_err());
-    assert!(TextureImage::new(TextureFormat::Rgba8Unorm, 2, 2, 1, Vec::new()).is_err());
+    assert!(
+        TextureImage::new(
+            TextureFormat::Rgba8Unorm,
+            TextureKind::Plane,
+            2,
+            2,
+            1,
+            vec![vec![0; 15]]
+        )
+        .is_err()
+    );
+    assert!(TextureImage::new(TextureFormat::Rgba8Unorm, TextureKind::Array, 2, 2, 1, Vec::new()).is_err());
+}
+
+#[test]
+fn a_ktx2_array_reads_each_layer_with_its_mip_chain() {
+    let levels = [(2, 2), (1, 1)]
+        .iter()
+        .enumerate()
+        .map(|(level, (width, height))| {
+            (0..3)
+                .flat_map(|layer| tagged(level as u8, layer, width * height * 4))
+                .collect()
+        })
+        .collect();
+    let file = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_UNORM,
+        width: 2,
+        height: 2,
+        faces: 1,
+        layers: 3,
+        supercompression: SUPERCOMPRESSION_ZSTANDARD,
+        key_values: Vec::new(),
+        levels,
+    };
+    let image = Ktx2Loader::load(&file.bytes()).unwrap();
+
+    assert_eq!(image.kind(), TextureKind::Array);
+    assert_eq!(image.layers().len(), 3);
+
+    for (index, layer) in image.layers().iter().enumerate() {
+        let mut expected = tagged(0, index as u8, 16);
+        expected.extend(tagged(1, index as u8, 4));
+        assert_eq!(layer, &expected);
+    }
+}
+
+#[test]
+fn a_ktx2_cube_map_array_is_refused() {
+    let file = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_UNORM,
+        width: 1,
+        height: 1,
+        faces: 6,
+        layers: 2,
+        supercompression: SUPERCOMPRESSION_NONE,
+        key_values: Vec::new(),
+        levels: vec![vec![0; 48]],
+    };
+
+    assert!(Ktx2Loader::load(&file.bytes()).is_err());
+}
+
+#[test]
+fn ktx2_metadata_reads_back_by_key() {
+    let mut key_values = key_value("KTXwriter", b"tests\0");
+    key_values.extend(key_value("xsa.slopeSpread", b"0.5 0.25 1e-3\0"));
+    key_values.extend(key_value("xsa.binary", &[1, 2, 3]));
+    let file = Ktx2 {
+        format: VK_FORMAT_R8G8B8A8_UNORM,
+        width: 1,
+        height: 1,
+        faces: 1,
+        layers: 0,
+        supercompression: SUPERCOMPRESSION_NONE,
+        key_values,
+        levels: vec![vec![0; 4]],
+    };
+    let image = Ktx2Loader::load(&file.bytes()).unwrap();
+
+    assert_eq!(image.kind(), TextureKind::Plane);
+    assert_eq!(image.metadata("xsa.binary"), Some([1, 2, 3].as_slice()));
+    assert_eq!(image.metadata_numbers("xsa.slopeSpread").unwrap(), [0.5, 0.25, 1e-3]);
+    assert!(image.metadata_numbers("xsa.binary").is_err());
+    assert!(image.metadata_numbers("xsa.missing").is_err());
 }

@@ -1,101 +1,125 @@
 use std::collections::HashMap;
 
 use resource_vulkan::ResourceLimits;
-use winit::keyboard::KeyCode;
+use xsa_commands::logging::LoggingConfig;
+use xsa_input::{InputChord, Key, Modifier};
 
 use super::{
-    AnimationConfig, AntialiasingConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config, InputConfig,
-    KeyChord, LensConfig, RenderConfig, TerrainLodConfig, TerrainStreamingConfig, WhiteBalanceConfig,
+    AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
+    DebugCameraConfig, DebugConfig, InputConfig, InputSourceConfig, LensConfig, RenderConfig, ResourcesConfig,
+    ServiceConfig, TerrainConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
 
 // Fraction of all light redistributed into the glow, like the scatter of a real lens.
 const BLOOM_STRENGTH: f32 = 0.02;
-const ANIMATION_DURATION_SCALE: f32 = 1.0;
+const RUNNING_ANIMATIONS: AnimationGroupConfig = AnimationGroupConfig {
+    enabled: true,
+    duration_scale: 1.0,
+};
 const INPUT_ENABLED: bool = true;
+const DEBUG_CAMERA_SPEED: f32 = 2_000_000.0;
 // A starting point to tune from, not a measured optimum.
 const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
 
 struct DefaultBind {
     action: BindAction,
-    chord: KeyChord,
+    chord: InputChord,
 }
 
 impl DefaultBind {
-    fn keys() -> HashMap<BindAction, KeyChord> {
-        let mut keys = HashMap::new();
+    fn keys() -> HashMap<BindAction, InputChord> {
+        DefaultBind::all()
+            .into_iter()
+            .map(|bind| (bind.action, bind.chord))
+            .collect()
+    }
 
-        for bind in &DEFAULT_BINDS {
-            keys.insert(bind.action, bind.chord);
-        }
-
-        keys
+    fn all() -> [DefaultBind; 7] {
+        [
+            DefaultBind {
+                action: BindAction::CameraTargetNext,
+                chord: InputChord::key(Key::Tab),
+            },
+            DefaultBind {
+                action: BindAction::CameraTargetPrevious,
+                chord: InputChord::with_modifier(Modifier::Shift, Key::Tab),
+            },
+            DefaultBind {
+                action: BindAction::InterfacePauseMenu,
+                chord: InputChord::key(Key::Escape),
+            },
+            DefaultBind {
+                action: BindAction::InterfaceDebugOverlay,
+                chord: InputChord::key(Key::F3),
+            },
+            DefaultBind {
+                action: BindAction::TimeFaster,
+                chord: InputChord::key(Key::Period),
+            },
+            DefaultBind {
+                action: BindAction::TimeSlower,
+                chord: InputChord::key(Key::Comma),
+            },
+            DefaultBind {
+                action: BindAction::TimeRealTime,
+                chord: InputChord::key(Key::Slash),
+            },
+        ]
     }
 }
-
-const DEFAULT_BINDS: [DefaultBind; 7] = [
-    DefaultBind {
-        action: BindAction::CameraTargetNext,
-        chord: KeyChord::key(KeyCode::Tab),
-    },
-    DefaultBind {
-        action: BindAction::CameraTargetPrevious,
-        chord: KeyChord::shift(KeyCode::Tab),
-    },
-    DefaultBind {
-        action: BindAction::InterfacePauseMenu,
-        chord: KeyChord::key(KeyCode::Escape),
-    },
-    DefaultBind {
-        action: BindAction::InterfaceDebugOverlay,
-        chord: KeyChord::key(KeyCode::F3),
-    },
-    DefaultBind {
-        action: BindAction::TimeFaster,
-        chord: KeyChord::key(KeyCode::Period),
-    },
-    DefaultBind {
-        action: BindAction::TimeSlower,
-        chord: KeyChord::key(KeyCode::Comma),
-    },
-    DefaultBind {
-        action: BindAction::TimeRealTime,
-        chord: KeyChord::key(KeyCode::Slash),
-    },
-];
 
 impl Default for Config {
     fn default() -> Self {
         Config {
-            render: RenderConfig {
+            video: VideoConfig {
                 tonemapper: Some(Tonemapper::Agx),
                 stars: true,
+                antialiasing: Some(AntialiasingKind::Taa),
                 bloom: BloomConfig {
                     enabled: true,
                     strength: BLOOM_STRENGTH,
                 },
                 lens: LensConfig { enabled: true },
                 white_balance: WhiteBalanceConfig { enabled: true },
-                antialiasing: AntialiasingConfig {
-                    kind: Some(AntialiasingKind::Taa),
+            },
+            input: InputConfig {
+                enabled: INPUT_ENABLED,
+                raw: InputSourceConfig { enabled: INPUT_ENABLED },
+                commands: InputSourceConfig { enabled: INPUT_ENABLED },
+                bind: BindConfig {
+                    keys: DefaultBind::keys(),
                 },
-                wireframe: false,
-                shader_override: None,
-                terrain_lod: TerrainLodConfig {
+            },
+            terrain: TerrainConfig {
+                lod: TerrainLodConfig {
                     vertex_spacing_pixels: TERRAIN_VERTEX_SPACING_PIXELS,
                     freeze: false,
                 },
+                streaming: TerrainStreamingConfig { freeze: false },
             },
-            bind: BindConfig {
-                keys: DefaultBind::keys(),
+            animation: AnimationConfig {
+                all: RUNNING_ANIMATIONS,
+                camera: RUNNING_ANIMATIONS,
+                ui: RUNNING_ANIMATIONS,
+                time: RUNNING_ANIMATIONS,
             },
-            animations: AnimationConfig {
-                duration_scale: ANIMATION_DURATION_SCALE,
+            service: ServiceConfig {
+                resources: ResourcesConfig::from_limits(ResourceLimits::default()),
             },
-            input: InputConfig { enabled: INPUT_ENABLED },
-            resources: ResourceLimits::default(),
-            terrain_streaming: TerrainStreamingConfig { freeze: false },
+            render: RenderConfig {
+                shader_override: None,
+                terrain_shader_override: None,
+                surface_shader_override: None,
+            },
+            debug: DebugConfig {
+                wireframe: false,
+                camera: DebugCameraConfig {
+                    speed: DEBUG_CAMERA_SPEED,
+                },
+            },
+            logging: LoggingConfig::default(),
         }
     }
 }

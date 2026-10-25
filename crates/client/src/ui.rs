@@ -14,7 +14,7 @@ mod themed_view;
 mod view_controller_factory;
 
 pub use config::ConfigViewController;
-pub use debug::{CameraReading, ClockReading, DebugOverlayView, InputDisabledView, SurfaceReading};
+pub use debug::{CameraReading, ClockReading, DebugOverlayView, InputDisabledView, PositionReading};
 pub use game::GameViewController;
 pub use game_commands::GameCommands;
 pub use link_button_style::LinkButtonStyle;

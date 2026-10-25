@@ -1,16 +1,20 @@
 use std::time::Instant;
 
-use xsa_units::{SimulationDuration, SimulationTime, TimeFlow};
+use xsa_units::{SimulationDuration, SimulationTime, TimeFlow, TimeRate};
 
 use super::SessionEnvironment;
-use crate::event::{PackReference, Player, ServerEvent, WorldState};
+use crate::event::Event;
+use crate::user::User;
+use crate::world::{PackReference, WorldState};
 
 pub struct SessionState {
     pub simulation: String,
     pub packs: Vec<PackReference>,
-    pub players: Vec<Player>,
+    pub users: Vec<User>,
     time: SimulationTime,
     time_flow: TimeFlow,
+    // The rate time ran at in the last update, which carries it on until the next one.
+    rate: TimeRate,
     environment: SessionEnvironment,
     time_received: Instant,
 }
@@ -20,9 +24,10 @@ impl SessionState {
         Self {
             simulation: state.simulation.clone(),
             packs: state.packs.clone(),
-            players: state.players.clone(),
+            users: state.users.clone(),
             time: state.time,
             time_flow: state.time_flow,
+            rate: state.rate,
             environment: state.environment,
             time_received: Instant::now(),
         }
@@ -33,7 +38,11 @@ impl SessionState {
             seconds: self.time_received.elapsed().as_secs_f64(),
         };
 
-        self.time.advanced_by(self.time_flow.effective().scale(elapsed))
+        self.time.advanced_by(self.rate.scale(elapsed))
+    }
+
+    pub fn rate(&self) -> TimeRate {
+        self.rate
     }
 
     pub fn time_flow(&self) -> TimeFlow {
@@ -44,21 +53,21 @@ impl SessionState {
         self.environment
     }
 
-    pub(super) fn apply(&mut self, event: &ServerEvent) {
+    pub(super) fn apply(&mut self, event: &Event) {
         match event {
-            ServerEvent::PlayerJoined(joined) => self.players.push(joined.player.clone()),
-            ServerEvent::PlayerLeft(left) => self.players.retain(|player| player.id != left.player),
-            ServerEvent::TimeChanged(changed) => {
-                self.set_time(changed.time);
+            Event::UserJoined(joined) => self.users.push(joined.user.clone()),
+            Event::UserLeft(left) => self.users.retain(|user| user.id != left.user),
+            Event::TimeChanged(changed) => {
+                self.set_time(changed.time, changed.rate);
                 self.time_flow = changed.time_flow;
             }
-            ServerEvent::Tick(tick) => self.set_time(tick.time),
-            ServerEvent::JoinAccepted(_) | ServerEvent::JoinDenied(_) | ServerEvent::Reply(_) => {}
+            Event::Tick(tick) => self.set_time(tick.time, tick.rate),
         }
     }
 
-    fn set_time(&mut self, time: SimulationTime) {
+    fn set_time(&mut self, time: SimulationTime, rate: TimeRate) {
         self.time = time;
+        self.rate = rate;
         self.time_received = Instant::now();
     }
 }

@@ -1,14 +1,12 @@
 use anyhow::ensure;
 use ash::vk;
 use memory_vulkan::{
-    BindlessBinding, Image, ImageCopy, ImageDescription, ImageLayers, ImageMemory, ImageUpload, TexelBlock,
+    BindlessBinding, Image, ImageCopy, ImageDescription, ImageKind, ImageMemory, ImageUpload, TexelBlock,
 };
-use resource_loader::texture::TextureImage;
+use resource_loader::texture::{TextureImage, TextureKind};
 
 use crate::LoadContext;
 use crate::textures::PendingTexture;
-
-const CUBE_FACE_COUNT: usize = 6;
 
 // Creates a texture's image, takes its bindless slot and queues the upload of every level of every layer.
 pub(crate) struct TextureUpload {
@@ -22,31 +20,46 @@ impl TextureUpload {
 
     pub fn cube_map(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
         ensure!(
-            self.image.layers().len() == CUBE_FACE_COUNT,
-            "a cube map needs {CUBE_FACE_COUNT} faces"
+            self.image.kind() == TextureKind::CubeMap,
+            "expected a cube map, found a {}",
+            self.image.kind()
         );
         ensure!(
             self.image.width() == self.image.height(),
             "cube map faces must be square"
         );
 
-        self.upload(context, BindlessBinding::CubeMap, ImageLayers::Cube)
+        self.upload(context, BindlessBinding::CubeMap, ImageKind::Cube)
+    }
+
+    pub fn array(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
+        ensure!(
+            self.image.kind() == TextureKind::Array,
+            "expected a texture array, found a {}",
+            self.image.kind()
+        );
+        let kind = ImageKind::Array {
+            count: self.image.layers().len() as u32,
+        };
+
+        self.upload(context, BindlessBinding::TextureArray, kind)
     }
 
     pub fn texture(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
         ensure!(
-            self.image.layers().len() == 1,
-            "expected a 2D texture, found a cube map"
+            self.image.kind() == TextureKind::Plane,
+            "expected a 2D texture, found a {}",
+            self.image.kind()
         );
 
-        self.upload(context, BindlessBinding::Texture, ImageLayers::Single)
+        self.upload(context, BindlessBinding::Texture, ImageKind::Single)
     }
 
     fn upload(
         self,
         context: &LoadContext,
         binding: BindlessBinding,
-        layers: ImageLayers,
+        kind: ImageKind,
     ) -> anyhow::Result<PendingTexture> {
         let format = self.image.format();
         let image = Image::new(
@@ -61,7 +74,7 @@ impl TextureUpload {
                 usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
                 aspect: vk::ImageAspectFlags::COLOR,
                 mip_levels: self.image.mip_levels(),
-                layers,
+                kind,
                 memory: ImageMemory::Shared,
                 sharing: context.transfer.sharing(),
             },
@@ -105,7 +118,7 @@ impl TextureUpload {
                     offset,
                     mip_level: level,
                     array_layer: layer as u32,
-                    image_offset: vk::Offset2D::default(),
+                    image_offset: vk::Offset3D::default(),
                     extent: vk::Extent2D { width, height },
                 });
                 offset += format.level_size(width, height);

@@ -61,6 +61,11 @@ impl Timeline {
         self.memory.wait_timeline(self.id, value)
     }
 
+    /// The value of the latest submission the GPU has completed, without waiting.
+    pub fn completed(&self) -> Result<u64, MemoryError> {
+        self.memory.timeline_completed(self.id)
+    }
+
     pub(crate) fn semaphore(&self) -> vk::Semaphore {
         self.memory.timeline_semaphore(self.id)
     }

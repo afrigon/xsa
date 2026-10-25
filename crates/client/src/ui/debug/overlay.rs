@@ -1,8 +1,8 @@
 use xsa_units::TimeRate;
 use xui::{Context, EdgeInsets, Text, View};
 
-use super::{CameraReading, ClockReading, SurfaceReading};
-use crate::camera::CameraMode;
+use super::{CameraReading, ClockReading, PositionReading};
+use crate::BuildIdentity;
 use crate::renderer::{FrameStatistics, TerrainLayer};
 use crate::ui::ThemedView;
 
@@ -14,13 +14,15 @@ const MISSING: &str = "–";
 const ANGLE_PRECISION: f64 = 1000.0;
 const FULL_TURN_DEGREES: f64 = 360.0;
 const BYTES_PER_MEBIBYTE: f64 = 1024.0 * 1024.0;
+const MILLISECONDS_PER_SECOND: f64 = 1000.0;
 
 pub struct DebugOverlayView {
     pub frames_per_second: Option<f64>,
     pub gpu_milliseconds: Option<f64>,
+    pub build: BuildIdentity,
     pub statistics: FrameStatistics,
     pub camera: Option<CameraReading>,
-    pub surface: Option<SurfaceReading>,
+    pub position: Option<PositionReading>,
     pub clock: Option<ClockReading>,
 }
 
@@ -29,6 +31,10 @@ impl DebugOverlayView {
         let frames_per_second = self
             .frames_per_second
             .map_or_else(|| MISSING.to_string(), |rate| format!("{rate:.0}"));
+        let frame_milliseconds = self.frames_per_second.map_or_else(
+            || MISSING.to_string(),
+            |rate| format!("{:.2}", MILLISECONDS_PER_SECOND / rate),
+        );
         let gpu_milliseconds = self
             .gpu_milliseconds
             .map_or_else(|| MISSING.to_string(), |milliseconds| format!("{milliseconds:.2}"));
@@ -38,8 +44,10 @@ impl DebugOverlayView {
             .map_or_else(String::new, |depth| format!(" · depth {depth}"));
 
         format!(
-            "FPS: {frames_per_second} · GPU {gpu_milliseconds} ms\n{} faces · {} tiles{depth}",
-            self.statistics.triangles, self.statistics.tiles
+            "FPS: {frames_per_second} · {frame_milliseconds} ms · GPU {gpu_milliseconds} ms\n\
+             build: {}\n\
+             {} faces · {} tiles{depth}",
+            self.build, self.statistics.triangles, self.statistics.tiles
         )
     }
 
@@ -65,9 +73,9 @@ impl DebugOverlayView {
         let Some(camera) = &self.camera else {
             return format!("camera: {MISSING}");
         };
-        let mode = match camera.mode {
-            CameraMode::Orbit => "orbit".to_string(),
-            CameraMode::Debug => format!("debug · {}/s", distance(camera.speed.unwrap_or_default())),
+        let mode = match camera.speed {
+            Some(speed) => format!("{} · {}/s", camera.controls, distance(speed)),
+            None => camera.controls.to_string(),
         };
         format!(
             "camera: {mode}\nrotation: yaw {} · pitch {} · roll {}",
@@ -77,21 +85,21 @@ impl DebugOverlayView {
         )
     }
 
-    fn surface(&self) -> String {
-        let Some(surface) = &self.surface else {
+    fn position(&self) -> String {
+        let Some(position) = &self.position else {
             return format!("target: {MISSING}");
         };
-        let above_ground = surface.above_ground.map_or_else(|| MISSING.to_string(), distance);
+        let above_ground = position.above_ground.map_or_else(|| MISSING.to_string(), distance);
         format!(
             "target: {}\nlat: {} · lon: {}\naltitude: {above_ground} ground · {} sea\n\
              rotation: yaw {} · pitch {} · roll {}",
-            surface.body,
-            angle(surface.latitude),
-            angle(surface.longitude),
-            distance(surface.above_sea),
-            heading(surface.attitude.yaw),
-            angle(surface.attitude.pitch),
-            angle(surface.attitude.roll)
+            position.body,
+            angle(position.latitude),
+            angle(position.longitude),
+            distance(position.above_sea),
+            heading(position.attitude.yaw),
+            angle(position.attitude.pitch),
+            angle(position.attitude.roll)
         )
     }
 
@@ -107,9 +115,12 @@ impl DebugOverlayView {
             .time_flow
             .time_override
             .map_or_else(String::new, |rate| format!(" (override: {})", Self::rate(rate)));
+        let warp = clock.time_flow.warp.map_or_else(String::new, |warp| {
+            format!(" (warp: {:.0}× to {})", clock.rate.multiplier, warp.until)
+        });
 
         format!(
-            "date: {date}\ntime: {} UTC\nrate: {}{time_override}",
+            "date: {date}\ntime: {} UTC\nrate: {}{time_override}{warp}",
             time.trim_end_matches('Z'),
             Self::rate(clock.time_flow.rate)
         )
@@ -152,7 +163,7 @@ impl View for DebugOverlayView {
             self.performance(),
             self.terrain_pages(),
             self.camera(),
-            self.surface(),
+            self.position(),
             self.clock()
         ))
         .text_style("telemetry")

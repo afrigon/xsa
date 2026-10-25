@@ -364,11 +364,7 @@ impl SubmissionThread {
                             .base_array_layer(array_layer)
                             .layer_count(1),
                     )
-                    .image_offset(vk::Offset3D {
-                        x: offset.x,
-                        y: offset.y,
-                        z: 0,
-                    })
+                    .image_offset(offset)
                     .image_extent(extent.into()),
             },
             (UploadTarget::Buffer(buffer), CopyRegion::Buffer { offset }) => TransferCommand::BufferToBuffer {

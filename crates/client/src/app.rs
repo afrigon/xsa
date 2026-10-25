@@ -1,61 +1,87 @@
 mod bind_actions;
 mod body_step;
+mod camera_actions;
 mod camera_controller;
+mod capture_completion;
+mod capture_end;
+mod capture_phase;
 mod client_command_handler;
 mod client_world;
 mod command_handlers;
 mod command_progress;
 mod command_task;
+mod forwarded_command;
+mod frame_clock;
+mod frame_pace;
 mod frame_timing;
+mod glide_motion;
 mod immediate_command_handler;
+mod input_events;
+mod input_glide;
 mod pointer_input;
 mod running_task;
 mod snapshot;
 mod task_status;
+mod update_schedule;
+mod user_directory;
+mod video_capture;
+mod video_captures;
 mod view_controllers;
+mod window_visibility;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use glam::DVec2;
 use resource_vulkan::Resources;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
-use winit::event_loop::ActiveEventLoop;
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
-use xsa_commands::command::{ClientCommand, Overlay, ViewControllerId};
+use xsa_commands::command::{ClientCommand, LocalCommand, Overlay, ViewControllerId};
 use xsa_commands::completion::{CompletionCandidate, CompletionKind};
+use xsa_commands::logging::ShellOutputs;
 use xsa_commands::router::{CommandExecutor, CommandInvocation, CommandReply, CommandRouter, Output};
+use xsa_commands::script::Script;
+use xsa_commands::value::CameraId;
+use xsa_config::ConfigStore;
+use xsa_input::{InputEvent, InputEventKind, InputSource};
 use xsa_packs::PackStack;
-use xsa_proto::event::{ServerEvent, WorldState};
-use xsa_proto::message::{ClientMessage, Leave};
+use xsa_proto::frame::ServerFrame;
+use xsa_proto::network::DisconnectReason;
 use xsa_proto::session::{ServerSession, SessionState};
+use xsa_proto::world::WorldState;
 use xui::{
     Alignment, ColorScheme, ColorSchemeKey, Environment, ForegroundStyleKey, Interface, NavigationController, Point,
     ScaleFactorKey, Size, View, ZStack,
 };
 
-use crate::camera::CameraMode;
+use crate::BuildIdentity;
+use crate::camera::CameraSwitch;
 use crate::config::Config;
-use crate::document::{ConfigDocument, ConfigKey};
 use crate::input::Input;
-use crate::renderer::{PendingCapture, Renderer, ShaderBinaries};
+use crate::renderer::{FrameTarget, Renderer, ShaderBinaries};
 use crate::theme::{Theme, ThemeKey};
 use crate::ui::{
     ClockReading, DebugOverlayView, GameCommands, InputDisabledView, SessionEnvironmentKey, ViewControllerFactory,
 };
 use camera_controller::CameraController;
 use client_command_handler::ClientCommandHandler;
-use client_world::ClientWorld;
+pub(crate) use client_world::ClientWorld;
 use command_progress::CommandProgress;
+use forwarded_command::ForwardedCommand;
+use frame_clock::FrameClock;
 use frame_timing::FrameTiming;
 use running_task::RunningTask;
 use task_status::TaskStatus;
+use update_schedule::UpdateSchedule;
+use video_capture::VideoCapture;
+use window_visibility::WindowVisibility;
 
 const APP_ID: &str = "xsa";
 const BASE_PACK: &str = "base";
@@ -70,17 +96,23 @@ pub struct App {
     session: ServerSession,
     router: CommandRouter,
     invocations: UnboundedReceiver<CommandInvocation>,
+    shell_outputs: ShellOutputs,
     exit_requested: bool,
     tasks: Vec<RunningTask>,
+    forwarded: Vec<ForwardedCommand>,
     packs_directory: PathBuf,
     input: Input,
+    // Counts input resets; a glide started before the latest one stops.
+    input_resets: u64,
+    clock: FrameClock,
+    captures: HashMap<CameraId, VideoCapture>,
     cameras: Option<CameraController>,
-    config_document: ConfigDocument,
+    config_store: ConfigStore<Config>,
     config: Config,
     mouse_captured: bool,
     cursor: Point,
     pointer_moved: bool,
-    last_frame: Option<Instant>,
+    schedule: UpdateSchedule,
     interface: Interface,
     theme: Option<Rc<Theme>>,
     frame_timing: FrameTiming,
@@ -89,14 +121,17 @@ pub struct App {
     commands: GameCommands,
     overlays: HashSet<Overlay>,
     action_replies: Vec<oneshot::Receiver<Output>>,
+    build: BuildIdentity,
 }
 
 impl App {
     pub fn new(
         session: ServerSession,
         invocations: UnboundedReceiver<CommandInvocation>,
+        shell_outputs: ShellOutputs,
         packs_directory: PathBuf,
-        config_document: ConfigDocument,
+        config_store: ConfigStore<Config>,
+        build: BuildIdentity,
     ) -> Self {
         let commands = GameCommands::default();
         let navigation = NavigationController::new();
@@ -114,17 +149,22 @@ impl App {
             session,
             router: CommandRouter::default(),
             invocations,
+            shell_outputs,
             exit_requested: false,
             tasks: Vec::new(),
+            forwarded: Vec::new(),
             packs_directory,
             input: Input::default(),
+            input_resets: 0,
+            clock: FrameClock::new(),
+            captures: HashMap::new(),
             cameras: None,
-            config: config_document.config(),
-            config_document,
+            config: config_store.config().clone(),
+            config_store,
             mouse_captured: false,
             cursor: Point::default(),
             pointer_moved: false,
-            last_frame: None,
+            schedule: UpdateSchedule::new(),
             interface: Interface::new(),
             theme: None,
             frame_timing: FrameTiming::new(),
@@ -133,6 +173,7 @@ impl App {
             commands,
             overlays: HashSet::new(),
             action_replies: Vec::new(),
+            build,
         };
         app.set_view_controller(ViewControllerId::MainMenu);
 
@@ -151,7 +192,7 @@ impl App {
         self.resources = Some(renderer.create_resources());
         self.renderer = Some(renderer);
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
-        self.cameras = Some(CameraController::new(window.inner_size()));
+        self.cameras = Some(CameraController::new(window.inner_size(), &self.config.debug.camera));
         window.request_redraw();
         self.apply_config();
 
@@ -160,21 +201,22 @@ impl App {
 
     fn redraw(&mut self) -> anyhow::Result<()> {
         let now = Instant::now();
-        let delta_seconds = self.last_frame.map_or(0.0, |last| (now - last).as_secs_f64());
-        self.last_frame = Some(now);
-        let gpu_milliseconds = self
-            .renderer
-            .as_ref()
-            .and_then(|renderer| renderer.statistics().gpu_milliseconds);
-        self.frame_timing.record(delta_seconds, gpu_milliseconds);
-        self.offer_pointer_move();
-        let environment = self.environment();
-        self.navigation.advance(delta_seconds as f32, &environment);
+        let advanced = self.update(now)?;
 
-        self.update(delta_seconds)?;
-        self.draw()?;
-        self.poll_tasks();
-        self.input.end_frame();
+        // A frame a capture holds back is not drawn, so it is not a frame either.
+        if advanced {
+            let gpu_milliseconds = self
+                .renderer
+                .as_ref()
+                .and_then(|renderer| renderer.statistics().gpu_milliseconds);
+
+            if let Some(delta_seconds) = self.schedule.record_frame(now) {
+                self.frame_timing.record(delta_seconds, gpu_milliseconds);
+            }
+
+            self.draw_window()?;
+            self.finish_update();
+        }
 
         if let Some(window) = &self.window {
             window.request_redraw();
@@ -183,7 +225,23 @@ impl App {
         Ok(())
     }
 
-    fn update(&mut self, delta_seconds: f64) -> anyhow::Result<()> {
+    fn update_without_window(&mut self, now: Instant) -> anyhow::Result<()> {
+        if !self.update(now)? {
+            return Ok(());
+        }
+
+        if !self.captures.is_empty() || self.tasks.iter().any(|running| running.task.needs_frames()) {
+            self.draw_offscreen()?;
+        }
+
+        self.finish_update();
+
+        Ok(())
+    }
+
+    // Returns whether the update advanced a frame: the connection and commands are polled either way.
+    fn update(&mut self, now: Instant) -> anyhow::Result<bool> {
+        self.schedule.record_update(now);
         self.poll_connection()?;
 
         if let Some(resources) = &self.resources {
@@ -192,9 +250,21 @@ impl App {
 
         self.advance_loading();
         self.poll_invocations();
+        // Every update, drawn or not: frames wait for the encoder, which frees its inputs as frames are read back.
+        self.poll_capture_video();
+
+        if !self.frame_ready() {
+            return Ok(false);
+        }
+
+        let delta_seconds = self.clock.tick().as_secs_f64();
+        self.offer_pointer_move();
+        let environment = self.environment();
+        self.navigation.advance(delta_seconds as f32, &environment);
         self.poll_input();
         self.run_game_commands();
         let idle = Input::default();
+        let mut scrolled_speed = None;
         let input = if self.is_game_active() && self.config.input.enabled {
             &self.input
         } else {
@@ -207,27 +277,52 @@ impl App {
             }
 
             if let Some(cameras) = &mut self.cameras {
-                cameras.update(world, input, delta_seconds);
+                scrolled_speed = cameras.update(world, input, delta_seconds);
             }
         }
 
-        Ok(())
+        self.follow_camera_switch();
+
+        if let Some(meters_per_second) = scrolled_speed {
+            let speed = meters_per_second as f32;
+            let result = self.config_store.update(|config| config.debug.camera.speed = speed);
+            self.reconfigure();
+
+            if let Err(err) = result {
+                tracing::warn!("{err:#}");
+            }
+        }
+
+        // Input arriving from here on, from tasks or the window, belongs to the next update.
+        self.input.end_frame();
+
+        Ok(true)
+    }
+
+    fn finish_update(&mut self) {
+        self.advance_captures();
+        self.poll_tasks();
+    }
+
+    fn conclude(&mut self, event_loop: &ActiveEventLoop, result: anyhow::Result<()>) {
+        if let Err(err) = result {
+            self.error = Some(err);
+            self.shut_down(event_loop);
+        } else if self.exit_requested {
+            self.shut_down(event_loop);
+        }
     }
 
     fn poll_connection(&mut self) -> anyhow::Result<()> {
-        while let Some(event) = self.session.poll()? {
-            self.router.handle_event(&event, &self.session);
+        while let Some(frame) = self.session.poll()? {
+            self.router.handle_frame(&frame, &self.session);
 
-            match event {
-                ServerEvent::JoinAccepted(accepted) => self
-                    .join(&accepted.state)
-                    .with_context(|| format!("joining simulation {}", accepted.state.simulation))?,
-                ServerEvent::JoinDenied(denied) => bail!("the server refused to let us join: {}", denied.reason),
-                ServerEvent::PlayerJoined(_)
-                | ServerEvent::PlayerLeft(_)
-                | ServerEvent::TimeChanged(_)
-                | ServerEvent::Tick(_)
-                | ServerEvent::Reply(_) => {}
+            match frame {
+                ServerFrame::Snapshot(state) => self
+                    .join(&state)
+                    .with_context(|| format!("joining simulation {}", state.simulation))?,
+                ServerFrame::Reply { id, result } => self.handle_capture_reply(id, &result),
+                ServerFrame::Event(_) => {}
             }
         }
 
@@ -242,7 +337,21 @@ impl App {
             router.handle(invocation, self);
         }
 
+        for forwarded in std::mem::take(&mut self.forwarded) {
+            // Nothing waits for the reply of a command a bind ran; it is dropped.
+            let reply = forwarded
+                .reply
+                .unwrap_or_else(|| CommandReply::new(oneshot::channel().0));
+            router.forward(forwarded.command, reply, self);
+        }
+
+        let transcript = self.config.logging.script_transcript();
+        router.advance(self, transcript);
         self.router = router;
+    }
+
+    pub fn start_script(&mut self, script: Script) {
+        self.router.start_script(script);
     }
 
     fn join(&mut self, state: &WorldState) -> anyhow::Result<()> {
@@ -258,7 +367,7 @@ impl App {
     }
 
     fn poll_input(&mut self) {
-        for action in self.config.bind.triggered(&self.input) {
+        for action in self.config.input.bind.triggered(&self.input) {
             self.run_bind_action(action);
         }
 
@@ -280,74 +389,66 @@ impl App {
     }
 
     fn reconfigure(&mut self) {
-        self.config = self.config_document.config();
+        self.config = self.config_store.config().clone();
         self.apply_config();
     }
 
-    fn apply_config_change(&mut self, key: &str, save: bool) -> anyhow::Result<String> {
-        self.reconfigure();
-        let mut description = format!("{key} {}", self.config_document.get(key)?);
+    fn apply_config(&mut self) {
+        self.shell_outputs.apply(&self.config.logging);
 
-        if save && ConfigKey::find(key).is_some_and(|key| !key.persisted) {
-            description.push_str(" (not saved: this setting only lasts for the session)");
-        } else if save {
-            self.config_document.save()?;
-            description.push_str(&format!(" (saved to {})", self.config_document.path().display()));
+        for chord in self.config.input.bind.shared_chords() {
+            tracing::warn!("{} is bound to more than one action", chord.name());
         }
 
-        Ok(description)
-    }
-
-    fn apply_config(&mut self) {
-        let animation_duration_scale = self.config.animations.duration_scale;
-        self.navigation.set_duration_scale(animation_duration_scale);
+        self.navigation
+            .set_duration_scale(self.config.animation.ui_duration_scale());
 
         if let Some(cameras) = &mut self.cameras {
-            cameras.set_animation_duration_scale(f64::from(animation_duration_scale));
+            cameras.set_animation_duration_scale(f64::from(self.config.animation.camera_duration_scale()));
+            cameras.set_debug_camera_config(&self.config.debug.camera);
         }
 
         if let Some(resources) = &self.resources {
-            resources.set_limits(self.config.resources);
+            resources.set_limits(self.config.service.resources.limits());
         }
 
         let Some(renderer) = &mut self.renderer else {
             return;
         };
 
-        renderer.configure(
-            &self.config.render,
-            &self.config.animations,
-            &self.config.terrain_streaming,
-        );
+        renderer.configure(&self.config);
         let skybox = self.world.as_ref().and_then(ClientWorld::skybox);
-        renderer.scene_mut().skybox = if self.config.render.stars { skybox } else { None };
+        renderer.scene_mut().skybox = if self.config.video.stars { skybox } else { None };
     }
 
-    fn capture(&mut self) -> anyhow::Result<PendingCapture> {
-        self.update_user_interface()?;
-        let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
-        let cameras = self.cameras.as_ref().context("the cameras are not ready")?;
+    fn draw_window(&mut self) -> anyhow::Result<()> {
+        self.prepare_frame()?;
+        let (Some(renderer), Some(cameras), Some(window)) = (&mut self.renderer, &self.cameras, &self.window) else {
+            return Ok(());
+        };
 
-        if let Some(world) = &self.world {
-            world.sync(renderer);
-            renderer.set_illuminance(world.illuminance_at(cameras.camera().position) as f32);
-        }
-
-        renderer.capture(cameras.camera())
+        renderer.draw(cameras.camera(), FrameTarget::Window { window }, self.clock.now())
     }
 
-    fn draw(&mut self) -> anyhow::Result<()> {
-        self.update_user_interface()?;
+    fn draw_offscreen(&mut self) -> anyhow::Result<()> {
+        self.prepare_frame()?;
         let (Some(renderer), Some(cameras)) = (&mut self.renderer, &self.cameras) else {
             return Ok(());
         };
 
-        if let Some(world) = &self.world {
-            world.sync(renderer);
-            renderer.set_illuminance(world.illuminance_at(cameras.camera().position) as f32);
-        }
+        renderer.draw(cameras.camera(), FrameTarget::Offscreen, self.clock.now())
+    }
 
-        renderer.draw(cameras.camera())
+    fn prepare_frame(&mut self) -> anyhow::Result<()> {
+        self.update_user_interface()?;
+        let (Some(renderer), Some(cameras), Some(world)) = (&mut self.renderer, &self.cameras, &self.world) else {
+            return Ok(());
+        };
+
+        world.sync(renderer);
+        renderer.set_illuminance(world.illuminance_at(cameras.camera().position) as f32);
+
+        Ok(())
     }
 
     // Keys whose source does not exist yet, such as the theme before the window opens, keep their default.
@@ -381,32 +482,39 @@ impl App {
             height: window_size.height as f32,
         };
         let fill = Some(f32::INFINITY);
-        let surface = self
+        let position = self
             .world
             .as_ref()
             .zip(self.cameras.as_ref())
             .and_then(|(world, cameras)| {
                 let camera = cameras.camera();
                 cameras
-                    .reference_body(world)
-                    .map(|body| world.surface(body, camera.position, camera.orientation))
+                    .anchor()
+                    .map(|anchor| world.position_reading(anchor.body(), camera.position, camera.orientation))
             });
         let debug_overlay = self.overlays.contains(&Overlay::DebugOverlay).then(|| {
             DebugOverlayView {
                 frames_per_second: self.frame_timing.frames_per_second(),
                 gpu_milliseconds: self.frame_timing.gpu_milliseconds(),
+                build: self.build.clone(),
                 statistics: renderer.statistics(),
-                camera: self.cameras.as_ref().map(CameraController::reading),
-                surface,
+                camera: self.cameras.as_ref().and_then(CameraController::reading),
+                position,
                 clock: self.session.state().map(|state| ClockReading {
                     time: state.time(),
                     time_flow: state.time_flow(),
+                    rate: state.rate(),
                 }),
             }
             .max_frame(fill, fill, Alignment::TOP_LEADING)
         });
-        let input_disabled =
-            (!self.config.input.enabled).then(|| InputDisabledView.max_frame(fill, fill, Alignment::TOP));
+        let disabled_sources = self.config.input.disabled_sources();
+        let input_disabled = (!disabled_sources.is_empty()).then(|| {
+            InputDisabledView {
+                sources: disabled_sources,
+            }
+            .max_frame(fill, fill, Alignment::TOP)
+        });
         let root = ZStack::new((self.navigation.view(), debug_overlay, input_disabled));
         let draw_list = self.interface.render(&root, viewport, &environment)?;
         renderer.set_user_interface(draw_list);
@@ -435,14 +543,16 @@ impl App {
         self.mouse_captured = captured;
     }
 
-    fn set_camera_mode(&mut self, mode: CameraMode) {
-        if !self.cameras.as_mut().is_some_and(|cameras| cameras.set_mode(mode)) {
+    fn follow_camera_switch(&mut self) {
+        let Some(switch) = self.cameras.as_mut().and_then(CameraController::take_switch) else {
             return;
-        }
+        };
 
         self.set_mouse_captured(false);
 
-        if let Some(renderer) = &mut self.renderer {
+        if switch == CameraSwitch::Cut
+            && let Some(renderer) = &mut self.renderer
+        {
             renderer.reset_history();
         }
     }
@@ -451,6 +561,7 @@ impl App {
         match progress {
             CommandProgress::Done(result) => App::finish(result, reply),
             CommandProgress::Running(task) => self.tasks.push(RunningTask { task, reply }),
+            CommandProgress::Forward(command) => self.forwarded.push(ForwardedCommand { command, reply }),
         }
     }
 
@@ -486,8 +597,21 @@ impl App {
             App::finish(Err(anyhow::anyhow!("the game is exiting")), running.reply);
         }
 
-        let _ = self.session.send(ClientMessage::Leave(Leave));
+        self.session.close(DisconnectReason::Left);
         event_loop.exit();
+    }
+
+    fn set_window_visibility(&mut self, occluded: bool) {
+        let visibility = if occluded {
+            WindowVisibility::Occluded
+        } else {
+            WindowVisibility::Visible
+        };
+        self.schedule.set_visibility(visibility);
+
+        if let (WindowVisibility::Visible, Some(window)) = (visibility, &self.window) {
+            window.request_redraw();
+        }
     }
 
     fn window_attributes() -> WindowAttributes {
@@ -515,42 +639,43 @@ impl CommandExecutor for App {
                 .as_ref()
                 .map(ClientWorld::body_candidates)
                 .unwrap_or_default(),
-            CompletionKind::ConfigKey => ConfigKey::all()
-                .into_iter()
-                .map(|key| CompletionCandidate::new(key.path))
-                .collect(),
-            CompletionKind::ConfigValue => ConfigKey::all()
-                .into_iter()
-                .flat_map(|key| {
-                    key.kind.values().into_iter().map(|value| CompletionCandidate {
-                        value: value.to_string(),
-                        display: None,
-                        description: None,
-                        scope: Some(key.path.to_string()),
-                    })
-                })
-                .collect(),
+            CompletionKind::ConfigKey | CompletionKind::ConfigValue => {
+                CompletionCandidate::config(kind, self.config_store.keys())
+            }
+        }
+    }
+
+    fn now(&self) -> Instant {
+        self.clock.now()
+    }
+
+    fn run_local(&mut self, command: LocalCommand) -> Output {
+        let result = command.run(&mut self.config_store);
+        self.reconfigure();
+
+        match result {
+            Ok(text) => Output::success(text),
+            Err(err) => Output::failure(format!("{err:#}")),
         }
     }
 
     fn run_client(&mut self, command: ClientCommand, reply: CommandReply) {
         let progress = match command {
-            ClientCommand::CameraMode(command) => command.start(self),
-            ClientCommand::CameraTarget(command) => command.start(self),
-            ClientCommand::CameraTeleport(command) => command.start(self),
-            ClientCommand::CameraLookAt(command) => command.start(self),
-            ClientCommand::CameraSnap(command) => command.start(self),
-            ClientCommand::ConfigGet(command) => command.start(self),
-            ClientCommand::ConfigSet(command) => command.start(self),
-            ClientCommand::ConfigToggle(command) => command.start(self),
-            ClientCommand::ConfigSave(command) => command.start(self),
-            ClientCommand::ConfigReload(command) => command.start(self),
+            ClientCommand::Camera { camera, action } => self.start_camera(camera, action),
             ClientCommand::InterfacePush(command) => command.start(self),
             ClientCommand::InterfacePop(command) => command.start(self),
             ClientCommand::InterfaceSet(command) => command.start(self),
             ClientCommand::InterfaceShow(command) => command.start(self),
             ClientCommand::InterfaceHide(command) => command.start(self),
             ClientCommand::InterfaceToggle(command) => command.start(self),
+            ClientCommand::TimeWarp(command) => command.start(self),
+            ClientCommand::InputDown(command) => command.start(self),
+            ClientCommand::InputUp(command) => command.start(self),
+            ClientCommand::InputPress(command) => command.start(self),
+            ClientCommand::InputReset(command) => command.start(self),
+            ClientCommand::InputCursorSet(command) => command.start(self),
+            ClientCommand::InputCursorMove(command) => command.start(self),
+            ClientCommand::InputScroll(command) => command.start(self),
         };
 
         self.follow(progress, Some(reply));
@@ -582,28 +707,47 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::Focused(false) => self.input.clear(),
-            WindowEvent::KeyboardInput { event, .. } => self.input.handle_key(&event),
-            WindowEvent::MouseInput { state, button, .. } => self.handle_mouse_button(button, state),
-            WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(position),
-            WindowEvent::CursorLeft { .. } => self.handle_cursor_left(),
-            WindowEvent::MouseWheel { delta, .. } => self.input.handle_scroll(delta),
-            WindowEvent::RedrawRequested => {
-                if let Err(err) = self.redraw() {
-                    self.error = Some(err);
-                    self.shut_down(event_loop);
-                } else if self.exit_requested {
-                    self.shut_down(event_loop);
+            WindowEvent::Occluded(occluded) => self.set_window_visibility(occluded),
+            WindowEvent::RedrawRequested if self.schedule.visibility() == WindowVisibility::Visible => {
+                let result = self.redraw();
+                self.conclude(event_loop, result);
+            }
+            event => {
+                if let Some(kind) = InputEventKind::from_window_event(&event) {
+                    self.handle_input(InputEvent {
+                        source: InputSource::Raw,
+                        kind,
+                    });
                 }
             }
-            _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_none() || event_loop.exiting() {
+            return;
+        }
+
+        let now = Instant::now();
+
+        if self.schedule.is_due(now) {
+            let result = self.update_without_window(now);
+            self.conclude(event_loop, result);
+        }
+
+        event_loop.set_control_flow(ControlFlow::WaitUntil(self.schedule.next_wake(Instant::now())));
     }
 
     fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: DeviceId, event: DeviceEvent) {
         if let DeviceEvent::MouseMotion { delta } = event
             && self.mouse_captured
         {
-            self.input.handle_mouse_motion(DVec2::from(delta));
+            self.handle_input(InputEvent {
+                source: InputSource::Raw,
+                kind: InputEventKind::Moved {
+                    delta: DVec2::from(delta),
+                },
+            });
         }
     }
 }

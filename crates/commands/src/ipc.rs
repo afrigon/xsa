@@ -4,6 +4,7 @@ mod ipc_endpoint;
 mod ipc_request;
 mod ipc_response;
 mod process_kind;
+mod sequence_number;
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]

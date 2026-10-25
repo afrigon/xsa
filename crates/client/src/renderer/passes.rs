@@ -7,6 +7,8 @@ mod skybox_pass;
 mod taa_pass;
 mod tonemap_pass;
 mod user_interface_pass;
+mod video_conversion_pass;
+mod window_copy_pass;
 
 pub(super) use bloom_pass::BloomPass;
 pub(super) use capture_pass::{CaptureInputs, CapturePass};
@@ -17,3 +19,5 @@ pub(super) use skybox_pass::SkyboxPass;
 pub(super) use taa_pass::TaaPass;
 pub(super) use tonemap_pass::{TonemapInputs, TonemapPass};
 pub(super) use user_interface_pass::UserInterfacePass;
+pub(super) use video_conversion_pass::VideoConversionPass;
+pub(super) use window_copy_pass::{WindowCopyInputs, WindowCopyPass};
