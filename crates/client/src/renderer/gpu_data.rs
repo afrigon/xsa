@@ -1,5 +1,6 @@
 mod biome_data;
 mod bloom_push_constants;
+mod copy_push_constants;
 mod frame_data;
 mod ghost_data;
 mod histogram_push_constants;
@@ -20,6 +21,7 @@ mod tonemap_push_constants;
 
 pub(super) use biome_data::BiomeData;
 pub(super) use bloom_push_constants::BloomPushConstants;
+pub(super) use copy_push_constants::CopyPushConstants;
 pub(super) use frame_data::FrameData;
 pub(super) use ghost_data::GhostData;
 pub(super) use histogram_push_constants::HistogramPushConstants;

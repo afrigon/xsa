@@ -1,5 +1,7 @@
 #[cfg(feature = "client")]
 mod altitude;
+#[cfg(feature = "client")]
+mod camera_id;
 mod duration;
 #[cfg(feature = "client")]
 mod easing_name;
@@ -16,6 +18,8 @@ mod timestamp;
 
 #[cfg(feature = "client")]
 pub use altitude::Altitude;
+#[cfg(feature = "client")]
+pub use camera_id::CameraId;
 pub use duration::Duration;
 #[cfg(feature = "client")]
 pub use easing_name::EasingName;

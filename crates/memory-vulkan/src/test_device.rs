@@ -1,12 +1,15 @@
 use std::error::Error;
-use std::ffi::{CStr, c_void};
+use std::ffi::{CStr, c_char, c_void};
 use std::mem::ManuallyDrop;
 use std::sync::Mutex;
 
 use ash::{ext, vk};
 use gpu_allocator::MemoryLocation;
 
-use crate::{BindlessTable, Buffer, DeviceObject, Image, MemoryContext, MemoryError, Timeline, TransferQueue};
+use crate::{
+    BindlessTable, Buffer, DeviceObject, Image, MemoryContext, MemoryError, QueueTimeline, TestRequirements, Timeline,
+    TimelineValue, TransferQueue,
+};
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 // Messages from this injected layer are not ours.
@@ -20,18 +23,24 @@ pub struct TestDevice {
     bindless: ManuallyDrop<BindlessTable>,
     transfer: ManuallyDrop<TransferQueue>,
     command_pool: ManuallyDrop<DeviceObject<vk::CommandPool>>,
+    extra_queue: ManuallyDrop<Option<QueueTimeline>>,
     graphics: ManuallyDrop<Timeline>,
     memory: ManuallyDrop<MemoryContext>,
     debug_utils: Option<ext::debug_utils::Instance>,
     messenger: vk::DebugUtilsMessengerEXT,
     messages: Box<Mutex<Vec<String>>>,
     instance: ash::Instance,
-    _entry: ash::Entry,
+    entry: ash::Entry,
 }
 
 impl TestDevice {
     /// Fails when Vulkan is not installed or no GPU supports what the crate requires.
     pub fn new() -> Result<TestDevice, Box<dyn Error>> {
+        TestDevice::with(&TestRequirements::default())
+    }
+
+    /// A test device that also meets `requirements`. Fails when no GPU does, so tests of optional hardware can skip.
+    pub fn with(requirements: &TestRequirements) -> Result<TestDevice, Box<dyn Error>> {
         let entry = unsafe { ash::Entry::load() }?;
         let validation = unsafe { entry.enumerate_instance_layer_properties() }?
             .iter()
@@ -76,7 +85,8 @@ impl TestDevice {
             physical_device,
             queue_family,
             transfer_family,
-        } = TestDevice::pick_device(&instance)?;
+            extra_family,
+        } = TestDevice::pick_device(&instance, requirements)?;
         let priorities = [1.0];
         let mut queue_infos = vec![
             vk::DeviceQueueCreateInfo::default()
@@ -92,7 +102,19 @@ impl TestDevice {
             );
         }
 
-        let device_extensions = [ext::memory_budget::NAME.as_ptr()];
+        if let Some(family) = extra_family {
+            queue_infos.push(
+                vk::DeviceQueueCreateInfo::default()
+                    .queue_family_index(family)
+                    .queue_priorities(&priorities),
+            );
+        }
+
+        let device_extensions: Vec<*const c_char> = [ext::memory_budget::NAME]
+            .into_iter()
+            .chain(requirements.extensions.iter().copied())
+            .map(CStr::as_ptr)
+            .collect();
         let features = vk::PhysicalDeviceFeatures::default().sampler_anisotropy(true);
         let mut vulkan_12_features = vk::PhysicalDeviceVulkan12Features::default()
             .buffer_device_address(true)
@@ -120,6 +142,13 @@ impl TestDevice {
             memory.create_timeline(transfer_queue)?
         };
         let transfer = TransferQueue::new(&memory, transfer_timeline, transfer_family, queue_family)?;
+        let extra_queue = match extra_family {
+            Some(family) => Some(QueueTimeline {
+                family,
+                timeline: memory.create_timeline(unsafe { device.get_device_queue(family, 0) })?,
+            }),
+            None => None,
+        };
         let bindless = BindlessTable::new(&memory, 1.0)?;
         let pool_info = vk::CommandPoolCreateInfo::default()
             .flags(vk::CommandPoolCreateFlags::TRANSIENT)
@@ -130,14 +159,20 @@ impl TestDevice {
             bindless: ManuallyDrop::new(bindless),
             transfer: ManuallyDrop::new(transfer),
             command_pool: ManuallyDrop::new(command_pool),
+            extra_queue: ManuallyDrop::new(extra_queue),
             graphics: ManuallyDrop::new(graphics),
             memory: ManuallyDrop::new(memory),
             debug_utils,
             messenger,
             messages,
             instance,
-            _entry: entry,
+            entry,
         })
+    }
+
+    /// The loader the instance came from, for instance-level extension functions.
+    pub fn entry(&self) -> &ash::Entry {
+        &self.entry
     }
 
     pub fn memory(&self) -> &MemoryContext {
@@ -152,6 +187,11 @@ impl TestDevice {
         &self.bindless
     }
 
+    /// The queue created for `TestRequirements::queue`.
+    pub fn extra_queue(&self) -> Option<&QueueTimeline> {
+        self.extra_queue.as_ref()
+    }
+
     /// Submits an empty frame that uses every copy seen complete, as a frame of the game does, waits for it, and runs
     /// the deletions the GPU has reached.
     pub fn frame(&self) -> Result<(), MemoryError> {
@@ -162,6 +202,19 @@ impl TestDevice {
         self.free(command_buffer);
 
         self.memory.collect()
+    }
+
+    /// Records commands with `record` on the graphics queue, submits them after every copy seen complete and waits for
+    /// them. Returns the point the submission signalled, for work on other queues to wait on.
+    pub fn run(&self, record: impl FnOnce(vk::CommandBuffer)) -> Result<TimelineValue, MemoryError> {
+        let command_buffer = self.command_buffer()?;
+        let recording = self.graphics.begin(command_buffer)?;
+        record(command_buffer);
+        let point = recording.submit(&[self.transfer.visibility_wait()], &[])?;
+        self.graphics.wait(point.value)?;
+        self.free(command_buffer);
+
+        Ok(point)
     }
 
     /// Copies the region of level 0 of `image`, in `layout`, at `offset` and of `extent` back to the CPU: `size` bytes
@@ -241,12 +294,23 @@ impl TestDevice {
     }
 
     // The first GPU with a graphics queue, and its queue family dedicated to transfers if it has one.
-    fn pick_device(instance: &ash::Instance) -> Result<DeviceChoice, Box<dyn Error>> {
+    fn pick_device(instance: &ash::Instance, requirements: &TestRequirements) -> Result<DeviceChoice, Box<dyn Error>> {
         let devices = unsafe { instance.enumerate_physical_devices() }?;
 
         devices
             .into_iter()
             .find_map(|device| {
+                let supported = unsafe { instance.enumerate_device_extension_properties(device) }.ok()?;
+                let has_extensions = requirements.extensions.iter().all(|wanted| {
+                    supported
+                        .iter()
+                        .any(|extension| extension.extension_name_as_c_str() == Ok(*wanted))
+                });
+
+                if !has_extensions {
+                    return None;
+                }
+
                 let families = unsafe { instance.get_physical_device_queue_family_properties(device) };
                 let graphics = families
                     .iter()
@@ -260,14 +324,21 @@ impl TestDevice {
                                 .intersects(vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE)
                     })
                     .unwrap_or(graphics);
+                let extra_family = match requirements.queue {
+                    Some(flags) => Some(families.iter().enumerate().position(|(index, family)| {
+                        index != graphics && index != transfer && family.queue_flags.contains(flags)
+                    })? as u32),
+                    None => None,
+                };
 
                 Some(DeviceChoice {
                     physical_device: device,
                     queue_family: graphics as u32,
                     transfer_family: transfer as u32,
+                    extra_family,
                 })
             })
-            .ok_or_else(|| "no GPU has a graphics queue".into())
+            .ok_or_else(|| "no GPU has a graphics queue and the test's requirements".into())
     }
 
     unsafe extern "system" fn collect_message(
@@ -297,6 +368,7 @@ impl Drop for TestDevice {
             ManuallyDrop::drop(&mut self.bindless);
             ManuallyDrop::drop(&mut self.transfer);
             ManuallyDrop::drop(&mut self.command_pool);
+            ManuallyDrop::drop(&mut self.extra_queue);
             ManuallyDrop::drop(&mut self.graphics);
             ManuallyDrop::drop(&mut self.memory);
 
@@ -314,4 +386,5 @@ struct DeviceChoice {
     physical_device: vk::PhysicalDevice,
     queue_family: u32,
     transfer_family: u32,
+    extra_family: Option<u32>,
 }

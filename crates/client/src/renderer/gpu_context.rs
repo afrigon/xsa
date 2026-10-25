@@ -10,10 +10,11 @@ pub(super) struct GpuContext {
     pub transfer: TransferQueue,
     pub bindless: BindlessTable,
     pub graphics: Timeline,
+    pub encode: Timeline,
     pub memory: MemoryContext,
     pub device: Device,
     pub surface: Surface,
-    _instance: Instance,
+    instance: Instance,
 }
 
 impl GpuContext {
@@ -24,6 +25,7 @@ impl GpuContext {
         let memory = Device::create_memory(&instance, &suitable)?;
         let device = Device::new(&instance, &memory, &suitable);
         let graphics = memory.create_timeline(device.queue())?;
+        let encode = memory.create_timeline(device.encode_queue())?;
         let transfer_timeline = match device.transfer() {
             TransferQueueLocation::SharedGraphicsQueue => graphics.clone(),
             TransferQueueLocation::DedicatedFamily(_) | TransferQueueLocation::SecondGraphicsQueue => {
@@ -42,10 +44,16 @@ impl GpuContext {
             transfer,
             bindless,
             graphics,
+            encode,
             memory,
             device,
             surface,
-            _instance: instance,
+            instance,
         })
+    }
+
+    // Instance-level extension functions, such as the video encoder's capability queries, load through it.
+    pub fn entry(&self) -> &ash::Entry {
+        self.instance.entry()
     }
 }

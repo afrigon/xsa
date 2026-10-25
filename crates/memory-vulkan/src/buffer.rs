@@ -23,13 +23,45 @@ impl Buffer {
         location: MemoryLocation,
         sharing: &QueueSharing,
     ) -> Result<Buffer, MemoryError> {
-        let device = memory.device();
-        let create_info = vk::BufferCreateInfo::default()
+        let create_info = Buffer::create_info(size, usage, sharing);
+
+        Buffer::from_create_info(memory, name, &create_info, location)
+    }
+
+    /// A buffer whose creation also reads `extension`, chained onto its create info: a video profile list, for
+    /// example.
+    pub fn new_extended<T: vk::ExtendsBufferCreateInfo + ?Sized>(
+        memory: &MemoryContext,
+        name: &str,
+        size: u64,
+        usage: vk::BufferUsageFlags,
+        location: MemoryLocation,
+        sharing: &QueueSharing,
+        extension: &mut T,
+    ) -> Result<Buffer, MemoryError> {
+        let create_info = Buffer::create_info(size, usage, sharing).push_next(extension);
+
+        Buffer::from_create_info(memory, name, &create_info, location)
+    }
+
+    fn create_info(size: u64, usage: vk::BufferUsageFlags, sharing: &QueueSharing) -> vk::BufferCreateInfo<'_> {
+        vk::BufferCreateInfo::default()
             .size(size)
             .usage(usage)
             .sharing_mode(sharing.mode())
-            .queue_family_indices(sharing.families());
-        let buffer = DeviceObject::new(memory, unsafe { device.create_buffer(&create_info, None) }?);
+            .queue_family_indices(sharing.families())
+    }
+
+    fn from_create_info(
+        memory: &MemoryContext,
+        name: &str,
+        create_info: &vk::BufferCreateInfo,
+        location: MemoryLocation,
+    ) -> Result<Buffer, MemoryError> {
+        let device = memory.device();
+        let size = create_info.size;
+        let usage = create_info.usage;
+        let buffer = DeviceObject::new(memory, unsafe { device.create_buffer(create_info, None) }?);
         let requirements = unsafe { device.get_buffer_memory_requirements(buffer.handle()) };
         let allocation = memory.allocate(
             name,

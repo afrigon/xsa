@@ -9,6 +9,7 @@ mod frame;
 mod frame_context;
 mod frame_inputs;
 mod frame_output;
+mod frame_role;
 mod frame_statistics;
 mod frame_target;
 mod frustum;
@@ -42,6 +43,9 @@ mod terrain_debug_view;
 mod terrain_draw;
 mod tile_shape;
 mod tonemapper;
+mod video_output;
+mod video_phase;
+mod video_target;
 mod white_balance;
 
 pub use auto_exposure::AutoExposure;
@@ -62,7 +66,8 @@ pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
-use std::time::Duration;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use ash::vk;
 use glam::{DVec3, Mat4, Vec2};
@@ -90,6 +95,7 @@ use frame::Frame;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use frame_output::FrameOutput;
+use frame_role::FrameRole;
 use gpu_context::GpuContext;
 use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TileData, TilePages};
 use graph_textures::GraphTextures;
@@ -110,6 +116,9 @@ use terrain::{PageDetail, TilePageWriter};
 use terrain_draw::TerrainDraw;
 use tile_shape::TileShape;
 use tonemapper::NO_TONEMAPPER;
+use video_output::VideoOutput;
+use video_phase::VideoPhase;
+use video_target::VideoTarget;
 use white_balance::{LUMINANCE_WEIGHTS, WhiteBalance};
 
 const FRAMES_IN_FLIGHT: usize = 2;
@@ -153,6 +162,7 @@ pub struct Renderer {
     captures: Vec<QueuedCapture>,
     // The buffer the frame being recorded copies its output into, on capture frames.
     capture: Option<Buffer>,
+    video: Option<VideoOutput>,
     user_interface: DrawList,
     statistics: FrameStatistics,
     gpu_milliseconds: Option<f32>,
@@ -231,6 +241,7 @@ impl Renderer {
             star_visibility: StarVisibility::new(),
             captures: Vec::new(),
             capture: None,
+            video: None,
             user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
             gpu_milliseconds: None,
@@ -380,7 +391,8 @@ impl Renderer {
         self.swapchain_outdated = true;
     }
 
-    pub fn draw(&mut self, camera: &Camera, target: FrameTarget) -> anyhow::Result<()> {
+    // `now` is the moment the frame shows: adaptations to the light advance by the time since the previous one.
+    pub fn draw(&mut self, camera: &Camera, target: FrameTarget, now: Instant) -> anyhow::Result<()> {
         if self.window_extent.width == 0 || self.window_extent.height == 0 {
             return Ok(());
         }
@@ -407,8 +419,8 @@ impl Renderer {
             FrameTarget::Offscreen => FrameOutput::Offscreen,
         };
 
-        self.render_frame(camera, output)?;
-        self.render_settled_captures(camera);
+        self.render_frame(camera, output, now, FrameRole::Display)?;
+        self.render_settled_captures(camera, now);
 
         Ok(())
     }
@@ -425,25 +437,97 @@ impl Renderer {
         PendingCapture::new(receiver)
     }
 
+    // Every frame displayed from now on is converted, encoded and written to `path` at `fps`, until `stop_video`.
+    pub fn start_video(&mut self, path: PathBuf, fps: u32) -> anyhow::Result<()> {
+        anyhow::ensure!(self.video.is_none(), "a video is already being written");
+        self.video = Some(VideoOutput::new(
+            &self.gpu,
+            path,
+            self.swapchain.extent(),
+            self.swapchain.format(),
+            fps,
+            FRAMES_IN_FLIGHT,
+        )?);
+
+        Ok(())
+    }
+
+    // Stops capturing and deletes the file, for a capture that failed.
+    pub fn abort_video(&mut self) {
+        if let Some(video) = self.video.take() {
+            video.discard();
+        }
+    }
+
+    pub fn stop_video(&mut self) {
+        if let Some(video) = &mut self.video {
+            video.phase = VideoPhase::Closing;
+        }
+    }
+
+    // Whether the next displayed frame can be captured; without a video every frame can.
+    pub fn video_ready(&self) -> bool {
+        self.video.as_ref().is_none_or(VideoOutput::is_ready)
+    }
+
+    // Writes the frames encoded so far. Returns the file once a stopped video is complete, or why it failed.
+    pub fn poll_video(&mut self) -> Option<anyhow::Result<PathBuf>> {
+        let video = self.video.as_mut()?;
+
+        if let Err(error) = video.write_encoded() {
+            if let Some(video) = self.video.take() {
+                video.discard();
+            }
+
+            return Some(Err(error.into()));
+        }
+
+        if !video.is_done() {
+            return None;
+        }
+
+        let video = self.video.take()?;
+
+        Some(video.finish().map_err(Into::into))
+    }
+
+    fn captures_display_frames(&self) -> bool {
+        self.video
+            .as_ref()
+            .is_some_and(|video| video.phase == VideoPhase::Recording)
+    }
+
     pub fn frames_rendered(&self) -> u64 {
         self.frames_rendered
     }
 
-    fn render_frame(&mut self, camera: &Camera, output: FrameOutput) -> anyhow::Result<()> {
+    fn render_frame(
+        &mut self,
+        camera: &Camera,
+        output: FrameOutput,
+        now: Instant,
+        role: FrameRole,
+    ) -> anyhow::Result<()> {
         if self.config.video.antialiasing != Some(AntialiasingKind::Taa) {
             self.temporal.reset();
         }
 
-        self.update_exposure();
-        self.update_white_balance(camera.position);
-        self.update_star_visibility()?;
+        self.update_exposure(now);
+        self.update_white_balance(camera.position, now);
+        self.update_star_visibility(now)?;
         self.update_gpu_time()?;
         self.write_frame_data(camera)?;
-        let recording = self.record_frame(output)?;
+        let captured = self.captures_display_frames() && role == FrameRole::Display;
+        let recording = self.record_frame(output, captured)?;
 
         match output {
             FrameOutput::Window { window, image_index } => self.submit_and_present(window, image_index, recording)?,
             FrameOutput::Offscreen => self.submit_offscreen(recording)?,
+        }
+
+        if captured && let (Some(video), Some(submitted)) = (&mut self.video, &self.frames[self.frame_index].submitted)
+        {
+            video.encode(submitted);
         }
 
         self.frame_index = (self.frame_index + 1) % FRAMES_IN_FLIGHT;
@@ -456,19 +540,19 @@ impl Renderer {
         Ok(())
     }
 
-    fn render_settled_captures(&mut self, camera: &Camera) {
+    fn render_settled_captures(&mut self, camera: &Camera, now: Instant) {
         let (settled, settling): (Vec<_>, Vec<_>) = std::mem::take(&mut self.captures)
             .into_iter()
             .partition(|capture| capture.settling_frames == 0);
         self.captures = settling;
 
         for capture in settled {
-            let readback = self.render_capture(camera);
+            let readback = self.render_capture(camera, now);
             let _ = capture.sender.send(readback);
         }
     }
 
-    fn render_capture(&mut self, camera: &Camera) -> anyhow::Result<CaptureReadback> {
+    fn render_capture(&mut self, camera: &Camera, now: Instant) -> anyhow::Result<CaptureReadback> {
         let extent = self.swapchain.extent();
         let size = u64::from(extent.width) * u64::from(extent.height) * BYTES_PER_PIXEL as u64;
         let buffer = Buffer::new(
@@ -482,7 +566,7 @@ impl Renderer {
         self.wait_for_frame_slot()?;
         let frame = self.frame_index;
         self.capture = Some(buffer);
-        let rendered = self.render_frame(camera, FrameOutput::Offscreen);
+        let rendered = self.render_frame(camera, FrameOutput::Offscreen, now, FrameRole::Snapshot);
         let buffer = self.capture.take().expect("the capture buffer is set while capturing");
         rendered?;
         let submitted = self.frames[frame]
@@ -497,14 +581,14 @@ impl Renderer {
         Ok(CaptureReadback::new(extent, self.swapchain.format(), readback))
     }
 
-    fn update_exposure(&mut self) {
+    fn update_exposure(&mut self, now: Instant) {
         if let Some(illuminance) = self.illuminance {
-            self.exposure.update(illuminance);
+            self.exposure.update(illuminance, now);
         }
     }
 
     // Adapts to the star whose light is strongest at the camera.
-    fn update_white_balance(&mut self, camera_position: DVec3) {
+    fn update_white_balance(&mut self, camera_position: DVec3, now: Instant) {
         let dominant = self
             .scene
             .stars()
@@ -522,16 +606,16 @@ impl Renderer {
             .max_by(|a, b| a.0.total_cmp(&b.0));
 
         if let Some((_, color)) = dominant {
-            self.white_balance.update(color);
+            self.white_balance.update(color, now);
         }
     }
 
-    fn update_star_visibility(&mut self) -> anyhow::Result<()> {
+    fn update_star_visibility(&mut self, now: Instant) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
 
         if frame.submitted.is_some() {
             frame.histogram.read(&mut self.histogram)?;
-            self.star_visibility.update(&self.histogram);
+            self.star_visibility.update(&self.histogram, now);
         }
 
         Ok(())
@@ -870,7 +954,8 @@ impl Renderer {
         }
     }
 
-    fn record_frame(&mut self, output: FrameOutput) -> anyhow::Result<Recording> {
+    // A captured frame renders into an image of its own the video reads, then shows in the window through a copy.
+    fn record_frame(&mut self, output: FrameOutput, captured: bool) -> anyhow::Result<Recording> {
         let GpuContext {
             bindless,
             device,
@@ -892,19 +977,34 @@ impl Renderer {
         }
 
         let mut graph = self.graph.begin_frame();
-        let output: Subresource = match output {
-            FrameOutput::Window { image_index, .. } => graph
-                .import_image(ImportedImage {
-                    name: "swapchain",
-                    image: self.swapchain.image(image_index),
-                    view: self.swapchain.image_view(image_index),
-                    extent: self.swapchain.extent(),
-                    aspect: vk::ImageAspectFlags::COLOR,
-                    initial: SWAPCHAIN_ACQUIRED,
-                    final_state: SWAPCHAIN_PRESENTABLE,
-                })
-                .into(),
-            FrameOutput::Offscreen => graph
+        let window: Option<Subresource> = match output {
+            FrameOutput::Window { image_index, .. } => Some(
+                graph
+                    .import_image(ImportedImage {
+                        name: "swapchain",
+                        image: self.swapchain.image(image_index),
+                        view: self.swapchain.image_view(image_index),
+                        extent: self.swapchain.extent(),
+                        aspect: vk::ImageAspectFlags::COLOR,
+                        initial: SWAPCHAIN_ACQUIRED,
+                        final_state: SWAPCHAIN_PRESENTABLE,
+                    })
+                    .into(),
+            ),
+            FrameOutput::Offscreen => None,
+        };
+        let captured_frame = captured.then(|| {
+            graph.create_image(GraphImageDescription {
+                name: "captured frame",
+                format: self.swapchain.format(),
+                size: ImageSize::Output,
+                mip_levels: 1,
+            })
+        });
+        let output: Subresource = match (captured_frame, window) {
+            (Some(frame), _) => frame.into(),
+            (None, Some(window)) => window,
+            (None, None) => graph
                 .create_image(GraphImageDescription {
                     name: "offscreen output",
                     format: self.swapchain.format(),
@@ -913,6 +1013,7 @@ impl Renderer {
                 })
                 .into(),
         };
+        let video = captured_frame.map(|frame| VideoTarget { frame, window });
         let inputs = FrameInputs {
             output,
             histogram: graph.import_buffer(ImportedBuffer {
@@ -929,6 +1030,7 @@ impl Renderer {
                     final_state: HOST_READABLE,
                 })
             }),
+            video,
             projected_light_count: self.projected_light_data.len() as u32,
             lens_loaded: self.lens.as_ref().and_then(Lens::flare).is_some(),
         };
@@ -951,6 +1053,7 @@ impl Renderer {
             surface_anchor_slots: &self.surface_anchor_slots,
             descriptor_set: bindless.set(),
             user_interface: &self.user_interface,
+            video: video.and(self.video.as_ref()),
             triangles: Cell::new(0),
         };
         compiled.execute(device.handle(), frame.command_buffer, &context)?;

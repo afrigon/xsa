@@ -1,0 +1,12 @@
+[package]
+name = "video-vulkan"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ash.workspace = true
+gpu-allocator.workspace = true
+memory-vulkan.workspace = true
+
+[dev-dependencies]
+memory-vulkan = { workspace = true, features = ["test-device"] }

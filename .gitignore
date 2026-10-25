@@ -3,6 +3,7 @@
 
 # Compiled by the shaders task.
 /crates/xui-vulkan/shaders/*.spv
+/crates/video-vulkan/shaders/*.spv
 
 # Pack binaries come from tasks or pack releases; only pack text files are committed, except the base pack's textures,
 # which no task produces.

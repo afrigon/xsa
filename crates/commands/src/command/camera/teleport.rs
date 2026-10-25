@@ -1,6 +1,5 @@
 use usage::Args;
 
-use crate::command::{ClientCommand, Routable, Route};
 use crate::completion::{complete_body, complete_latitude, complete_longitude};
 use crate::value::{Altitude, Latitude, Longitude};
 
@@ -49,10 +48,4 @@ pub struct CameraTeleportCommand {
         help = "Pitch in degrees above the horizon; defaults to the current one"
     )]
     pub pitch: Option<f64>,
-}
-
-impl Routable for CameraTeleportCommand {
-    fn route(self) -> Route {
-        Route::Client(ClientCommand::CameraTeleport(self))
-    }
 }

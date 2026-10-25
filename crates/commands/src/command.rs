@@ -20,7 +20,8 @@ mod wait;
 
 #[cfg(feature = "client")]
 pub use camera::{
-    CameraAction, CameraCommand, CameraLookAtCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand,
+    CameraAction, CameraCaptureAction, CameraCaptureCommand, CameraCaptureStartCommand, CameraCaptureStopCommand,
+    CameraCommand, CameraLookAtCommand, CameraTargetCommand, CameraTeleportCommand, DEFAULT_CAPTURE_FPS,
     TargetSelection,
 };
 #[cfg(feature = "client")]

@@ -61,7 +61,7 @@ impl CommandRouter {
     // Called once per frame or wake: ends the waits that are due and runs scripts until each waits on a reply.
     pub fn advance(&mut self, executor: &mut impl CommandExecutor, transcript: Transcript) {
         loop {
-            self.end_waits(Instant::now());
+            self.end_waits(executor.now());
             let mut scripts = std::mem::take(&mut self.scripts);
             let mut progressed = false;
             scripts.retain_mut(|script| {
@@ -196,7 +196,7 @@ impl CommandRouter {
             },
             Route::Wait(command) => match command.duration.real_time() {
                 Ok(duration) => {
-                    let deadline = Instant::now() + duration;
+                    let deadline = executor.now() + duration;
                     self.waits.push(PendingWait { deadline, reply });
 
                     return;

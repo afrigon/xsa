@@ -1,15 +1,13 @@
 use super::{
-    CameraLookAtCommand, CameraSnapCommand, CameraTargetCommand, CameraTeleportCommand, InputCursorMoveCommand,
-    InputCursorSetCommand, InputDownCommand, InputPressCommand, InputResetCommand, InputScrollCommand, InputUpCommand,
-    InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand,
-    InterfaceToggleCommand, TimeWarpCommand,
+    CameraAction, InputCursorMoveCommand, InputCursorSetCommand, InputDownCommand, InputPressCommand,
+    InputResetCommand, InputScrollCommand, InputUpCommand, InterfaceHideCommand, InterfacePopCommand,
+    InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand, TimeWarpCommand,
 };
 
+use crate::value::CameraId;
+
 pub enum ClientCommand {
-    CameraTarget(CameraTargetCommand),
-    CameraTeleport(CameraTeleportCommand),
-    CameraLookAt(CameraLookAtCommand),
-    CameraSnap(CameraSnapCommand),
+    Camera { camera: CameraId, action: CameraAction },
     InterfacePush(InterfacePushCommand),
     InterfacePop(InterfacePopCommand),
     InterfaceSet(InterfaceSetCommand),

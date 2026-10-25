@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use xsa_proto::session::ServerSession;
 
 #[cfg(feature = "client")]
@@ -14,6 +16,11 @@ pub trait CommandExecutor {
     fn exit(&mut self);
 
     fn run_local(&mut self, command: LocalCommand) -> Output;
+
+    // The moment waits are measured against: the wall clock, unless the process paces its own time.
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
 
     fn completion_values(&self, _kind: CompletionKind) -> Vec<CompletionCandidate> {
         Vec::new()

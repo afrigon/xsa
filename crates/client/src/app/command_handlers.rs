@@ -1,5 +1,5 @@
+mod camera_capture;
 mod camera_look_at;
-mod camera_snap;
 mod camera_target;
 mod camera_teleport;
 mod input_cursor_move;

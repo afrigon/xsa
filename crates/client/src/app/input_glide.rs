@@ -47,7 +47,7 @@ impl InputGlide {
             held,
             progress: EasedProgress::new(seconds, easing),
             applied: 0.0,
-            last_poll: Instant::now(),
+            last_poll: app.clock.now(),
             resets: app.input_resets,
             summary,
         };
@@ -82,7 +82,7 @@ impl CommandTask for InputGlide {
             return TaskStatus::Done(Err(anyhow!("stopped by input reset")));
         }
 
-        let now = Instant::now();
+        let now = app.clock.now();
         self.progress.advance((now - self.last_poll).as_secs_f64());
         self.last_poll = now;
         let value = self.progress.value();

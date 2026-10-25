@@ -12,6 +12,7 @@ use super::lens_flare::LensFlare;
 use super::material::MaterialBuffer;
 use super::temporal_history::TemporalHistory;
 use super::terrain_draw::TerrainDraw;
+use super::video_output::VideoOutput;
 use super::{MaterialHandle, Scene, TerrainHandle};
 use crate::config::Config;
 use crate::vulkan::GraphicsPipeline;
@@ -34,6 +35,7 @@ pub(super) struct FrameContext<'a> {
     pub surface_anchor_slots: &'a [Option<usize>],
     pub descriptor_set: vk::DescriptorSet,
     pub user_interface: &'a DrawList,
+    pub video: Option<&'a VideoOutput>,
     pub triangles: Cell<u64>,
 }
 

@@ -7,7 +7,8 @@ use super::frame_inputs::FrameInputs;
 use super::gpu_context::GpuContext;
 use super::passes::{
     BloomPass, CaptureInputs, CapturePass, ForwardPass, HistogramInputs, HistogramPass, LensInputs, LensPass,
-    SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass,
+    SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass, VideoConversionPass, WindowCopyInputs,
+    WindowCopyPass,
 };
 use crate::config::{AntialiasingKind, Config};
 
@@ -22,6 +23,8 @@ pub(super) struct RenderPasses {
     tonemap: TonemapPass,
     user_interface: UserInterfacePass,
     capture: CapturePass,
+    video_conversion: VideoConversionPass,
+    window_copy: WindowCopyPass,
 }
 
 impl RenderPasses {
@@ -42,6 +45,8 @@ impl RenderPasses {
             tonemap: TonemapPass::new(gpu, shaders, output_format)?,
             user_interface: UserInterfacePass::new(gpu, output_format, frames_in_flight)?,
             capture: CapturePass,
+            video_conversion: VideoConversionPass,
+            window_copy: WindowCopyPass::new(gpu, shaders, output_format)?,
         })
     }
 
@@ -97,6 +102,20 @@ impl RenderPasses {
                     capture,
                 },
             );
+        }
+
+        if let Some(video) = inputs.video {
+            graph.add(&mut self.video_conversion, video.frame);
+
+            if let Some(window) = video.window {
+                graph.add(
+                    &mut self.window_copy,
+                    WindowCopyInputs {
+                        source: video.frame,
+                        window,
+                    },
+                );
+            }
         }
     }
 }
