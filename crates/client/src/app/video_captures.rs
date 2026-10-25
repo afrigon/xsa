@@ -44,7 +44,7 @@ impl App {
         let id = match self.session.send(request) {
             Ok(id) => id,
             Err(err) => {
-                renderer.stop_video();
+                renderer.abort_video();
 
                 return Err(err);
             }
@@ -222,7 +222,7 @@ impl App {
         };
 
         if let Some(renderer) = &mut self.renderer {
-            renderer.stop_video();
+            renderer.abort_video();
         }
 
         if capture.phase != CapturePhase::Finishing {
@@ -235,7 +235,10 @@ impl App {
             }
         }
 
-        capture.complete(Err(error.context(format!("capturing camera {camera}"))));
+        // Logged whether or not a reply waits for it: a capture started with `start` has none.
+        let error = error.context(format!("capturing camera {camera}"));
+        tracing::error!("{error:#}");
+        capture.complete(Err(error));
         self.follow_capture_pace();
     }
 

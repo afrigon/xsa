@@ -452,6 +452,13 @@ impl Renderer {
         Ok(())
     }
 
+    // Stops capturing and deletes the file, for a capture that failed.
+    pub fn abort_video(&mut self) {
+        if let Some(video) = self.video.take() {
+            video.discard();
+        }
+    }
+
     pub fn stop_video(&mut self) {
         if let Some(video) = &mut self.video {
             video.phase = VideoPhase::Closing;
@@ -468,7 +475,9 @@ impl Renderer {
         let video = self.video.as_mut()?;
 
         if let Err(error) = video.write_encoded() {
-            self.video = None;
+            if let Some(video) = self.video.take() {
+                video.discard();
+            }
 
             return Some(Err(error.into()));
         }

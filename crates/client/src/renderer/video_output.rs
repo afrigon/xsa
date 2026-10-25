@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use ash::vk;
 use memory_vulkan::TimelineValue;
@@ -111,9 +112,30 @@ impl VideoOutput {
         self.phase == VideoPhase::Closing && self.encoder.is_idle()
     }
 
+    // A file that fails to close is incomplete, so it is deleted.
     pub fn finish(self) -> Result<PathBuf, VideoError> {
-        self.writer.finish()?;
+        let path = self.path;
 
-        Ok(self.path)
+        match self.writer.finish() {
+            Ok(()) => Ok(path),
+            Err(error) => {
+                VideoOutput::delete(&path);
+
+                Err(error)
+            }
+        }
+    }
+
+    // Stops at once and deletes the file, which holds a capture that failed.
+    pub fn discard(self) {
+        let path = self.path;
+        drop(self.writer);
+        VideoOutput::delete(&path);
+    }
+
+    fn delete(path: &Path) {
+        if let Err(error) = fs::remove_file(path) {
+            tracing::warn!("deleting the failed capture {}: {error}", path.display());
+        }
     }
 }

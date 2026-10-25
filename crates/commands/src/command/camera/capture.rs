@@ -19,7 +19,10 @@ pub struct CameraCaptureCommand {
         help = "Only this part of a snapshot, as x,y:widthxheight in pixels, e.g. 100,50:800x600"
     )]
     pub region: Option<Region>,
-    #[usage(long, help = "Capture a video this long instead of a snapshot, e.g. 10s")]
+    #[usage(
+        long,
+        help = "Capture a video this long instead of a snapshot, e.g. 10s, replying once the file is written; to drive the game while it records, run start, the commands and stop in one script"
+    )]
     pub duration: Option<Duration>,
     #[usage(
         long,
