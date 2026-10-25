@@ -27,3 +27,4 @@ xsa-units.workspace = true
 xui.workspace = true
 xui-vulkan.workspace = true
 xsa-input = { workspace = true, features = ["winit"] }
+video-vulkan.workspace = true

@@ -23,6 +23,7 @@ mod running_task;
 mod snapshot;
 mod task_status;
 mod update_schedule;
+mod user_directory;
 mod video_capture;
 mod video_captures;
 mod view_controllers;
@@ -294,6 +295,7 @@ impl App {
     }
 
     fn finish_update(&mut self) {
+        self.poll_capture_video();
         self.advance_captures();
         self.poll_tasks();
     }

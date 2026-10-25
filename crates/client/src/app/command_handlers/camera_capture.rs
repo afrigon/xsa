@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, anyhow, ensure};
@@ -12,7 +13,10 @@ use crate::app::command_progress::CommandProgress;
 use crate::app::command_task::CommandTask;
 use crate::app::snapshot::Snapshot;
 use crate::app::task_status::TaskStatus;
+use crate::app::user_directory::UserDirectory;
 use crate::renderer::{CapturedImage, PendingCapture};
+
+const VIDEO_EXTENSION: &str = "mp4";
 
 impl App {
     pub(in crate::app) fn start_capture(&mut self, camera: CameraId, command: CameraCaptureCommand) -> CommandProgress {
@@ -27,9 +31,9 @@ impl App {
             (None, None) => self.start_snapshot(output, region),
             (Some(_), Some(_)) => Err(anyhow!("--duration captures a video on its own, without start or stop")),
             (_, _) if region.is_some() => Err(anyhow!("--region only applies to snapshots")),
-            (None, Some(duration)) => self.start_timed_capture(camera, duration, fps),
-            (Some(CameraCaptureAction::Start(start)), None) => self
-                .start_video_capture(camera.clone(), start.fps, CaptureEnd::OnStop, None)
+            (None, Some(duration)) => self.start_timed_capture(camera, duration, fps, output),
+            (Some(CameraCaptureAction::Start(start)), None) => App::video_path(start.output)
+                .and_then(|path| self.start_video_capture(camera.clone(), start.fps, CaptureEnd::OnStop, path, None))
                 .map(|()| CommandProgress::Done(Ok(format!("capturing camera {camera} at {} fps", start.fps)))),
             (Some(CameraCaptureAction::Stop(_)), None) => self
                 .stop_video_capture(&camera)
@@ -54,13 +58,29 @@ impl App {
         camera: CameraId,
         duration: Duration,
         fps: u32,
+        output: Option<PathBuf>,
     ) -> anyhow::Result<CommandProgress> {
         let frames = (duration.real_time()?.as_secs_f64() * f64::from(fps)).round() as u64;
         ensure!(frames > 0, "the capture is shorter than one frame");
+        let path = App::video_path(output)?;
         let (completion, receiver) = oneshot::channel();
-        self.start_video_capture(camera, fps, CaptureEnd::AfterFrames { frames }, Some(completion))?;
+        let end = CaptureEnd::AfterFrames { frames };
+        self.start_video_capture(camera, fps, end, path, Some(completion))?;
 
         Ok(CommandProgress::Running(Box::new(CaptureCompletion { receiver })))
+    }
+
+    fn video_path(output: Option<PathBuf>) -> anyhow::Result<PathBuf> {
+        let path = match output {
+            Some(path) => path,
+            None => UserDirectory::Videos.new_file(VIDEO_EXTENSION)?,
+        };
+
+        if let Some(directory) = path.parent().filter(|directory| !directory.as_os_str().is_empty()) {
+            fs::create_dir_all(directory).with_context(|| format!("creating {}", directory.display()))?;
+        }
+
+        Ok(path)
     }
 }
 

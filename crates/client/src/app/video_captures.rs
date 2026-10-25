@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, anyhow, ensure};
@@ -14,6 +15,7 @@ use super::capture_end::CaptureEnd;
 use super::capture_phase::CapturePhase;
 use super::frame_pace::FramePace;
 use super::video_capture::VideoCapture;
+use crate::renderer::Renderer;
 
 impl App {
     pub(super) fn start_video_capture(
@@ -21,6 +23,7 @@ impl App {
         camera: CameraId,
         fps: u32,
         end: CaptureEnd,
+        output: PathBuf,
         completion: Option<oneshot::Sender<anyhow::Result<String>>>,
     ) -> anyhow::Result<()> {
         ensure!(fps > 0, "a capture needs at least 1 frame per second");
@@ -36,7 +39,16 @@ impl App {
             .check_session_environment(state.environment())
             .map_err(|error| anyhow!("{error}"))?;
         let previous_override = state.time_flow().time_override;
-        let id = self.session.send(request)?;
+        let renderer = self.renderer.as_mut().context("the renderer is not ready")?;
+        renderer.start_video(output, fps)?;
+        let id = match self.session.send(request) {
+            Ok(id) => id,
+            Err(err) => {
+                renderer.stop_video();
+
+                return Err(err);
+            }
+        };
         self.captures.insert(
             camera,
             VideoCapture {
@@ -47,6 +59,7 @@ impl App {
                 awaiting: Some(id),
                 previous_override,
                 completion,
+                written: None,
             },
         );
         self.follow_capture_pace();
@@ -72,6 +85,7 @@ impl App {
     // A frame waits while a capture waits on the server, so it shows the time the previous step reached.
     pub(super) fn frame_ready(&self) -> bool {
         self.captures.values().all(|capture| capture.awaiting.is_none())
+            && self.renderer.as_ref().is_none_or(Renderer::video_ready)
     }
 
     pub(super) fn handle_capture_reply(&mut self, id: RequestId, result: &Result<Reply, RequestError>) {
@@ -99,13 +113,51 @@ impl App {
             CapturePhase::Starting => capture.phase = CapturePhase::Running,
             CapturePhase::Running if capture.is_done() => self.finish_capture(&camera),
             CapturePhase::Running => {}
-            CapturePhase::Finishing => {
-                let summary = format!("captured {} frames at {} fps", capture.frames, capture.fps);
-                capture.complete(Ok(summary));
-                self.captures.remove(&camera);
-                self.follow_capture_pace();
-            }
+            CapturePhase::Finishing => self.complete_written_capture(&camera),
         }
+    }
+
+    // Writes what the encoder has finished; a capture completes once time is back and its file is closed.
+    pub(super) fn poll_capture_video(&mut self) {
+        let Some(result) = self.renderer.as_mut().and_then(Renderer::poll_video) else {
+            return;
+        };
+        // The renderer draws the main camera only, so its video is that camera's.
+        let camera = CameraId::main();
+
+        match result {
+            Ok(path) => {
+                if let Some(capture) = self.captures.get_mut(&camera) {
+                    capture.written = Some(path);
+                }
+
+                self.complete_written_capture(&camera);
+            }
+            Err(error) => self.fail_capture(&camera, error),
+        }
+    }
+
+    fn complete_written_capture(&mut self, camera: &CameraId) {
+        let Some(capture) = self.captures.get(camera) else {
+            return;
+        };
+
+        if capture.phase != CapturePhase::Finishing || capture.awaiting.is_some() {
+            return;
+        }
+
+        let Some(path) = &capture.written else {
+            return;
+        };
+        let summary = format!(
+            "wrote {}: {} frames at {} fps",
+            path.display(),
+            capture.frames,
+            capture.fps
+        );
+        let mut capture = self.captures.remove(camera).expect("the capture was found above");
+        capture.complete(Ok(summary));
+        self.follow_capture_pace();
     }
 
     // After each frame, the last one included: counts it and steps time by one frame's worth, so a capture of n
@@ -146,6 +198,10 @@ impl App {
     }
 
     fn finish_capture(&mut self, camera: &CameraId) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.stop_video();
+        }
+
         let Some(capture) = self.captures.get_mut(camera) else {
             return;
         };
@@ -164,6 +220,10 @@ impl App {
         let Some(mut capture) = self.captures.remove(camera) else {
             return;
         };
+
+        if let Some(renderer) = &mut self.renderer {
+            renderer.stop_video();
+        }
 
         if capture.phase != CapturePhase::Finishing {
             let restore = Request::SetTimeRateOverride(SetTimeRateOverrideRequest {

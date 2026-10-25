@@ -3291,6 +3291,7 @@ dependencies = [
  "resource-vulkan",
  "tokio",
  "tracing",
+ "video-vulkan",
  "winit",
  "xsa-commands",
  "xsa-config",

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use tokio::sync::oneshot;
 use xsa_proto::frame::RequestId;
 use xsa_units::TimeRate;
@@ -14,6 +16,8 @@ pub(super) struct VideoCapture {
     pub awaiting: Option<RequestId>,
     pub previous_override: Option<TimeRate>,
     pub completion: Option<oneshot::Sender<anyhow::Result<String>>>,
+    // The video file, once every frame is in it.
+    pub written: Option<PathBuf>,
 }
 
 impl VideoCapture {
