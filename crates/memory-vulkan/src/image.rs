@@ -18,8 +18,25 @@ pub struct Image {
 
 impl Image {
     pub fn new(memory: &MemoryContext, description: &ImageDescription) -> Result<Image, MemoryError> {
-        let device = memory.device();
-        let create_info = vk::ImageCreateInfo::default()
+        Image::from_create_info(memory, description, &Image::create_info(description))
+    }
+
+    /// An image described by `description` whose creation also reads `extension`, chained onto its create info: a
+    /// video profile list, for example.
+    pub fn new_extended<T: vk::ExtendsImageCreateInfo + ?Sized>(
+        memory: &MemoryContext,
+        description: &ImageDescription,
+        extension: &mut T,
+    ) -> Result<Image, MemoryError> {
+        Image::from_create_info(
+            memory,
+            description,
+            &Image::create_info(description).push_next(extension),
+        )
+    }
+
+    fn create_info<'a>(description: &'a ImageDescription) -> vk::ImageCreateInfo<'a> {
+        vk::ImageCreateInfo::default()
             .flags(description.kind.create_flags())
             .image_type(description.kind.image_type())
             .format(description.format)
@@ -35,8 +52,16 @@ impl Image {
             .usage(description.usage)
             .sharing_mode(description.sharing.mode())
             .queue_family_indices(description.sharing.families())
-            .initial_layout(vk::ImageLayout::UNDEFINED);
-        let image = DeviceObject::new(memory, unsafe { device.create_image(&create_info, None) }?);
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+    }
+
+    fn from_create_info(
+        memory: &MemoryContext,
+        description: &ImageDescription,
+        create_info: &vk::ImageCreateInfo,
+    ) -> Result<Image, MemoryError> {
+        let device = memory.device();
+        let image = DeviceObject::new(memory, unsafe { device.create_image(create_info, None) }?);
         let requirements = unsafe { device.get_image_memory_requirements(image.handle()) };
         let allocation_scheme = match description.memory {
             ImageMemory::Shared => AllocationScheme::GpuAllocatorManaged,

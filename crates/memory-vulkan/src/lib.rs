@@ -22,6 +22,10 @@ mod memory_error;
 mod queue_sharing;
 #[cfg(feature = "test-device")]
 mod test_device;
+#[cfg(feature = "test-device")]
+mod test_queue;
+#[cfg(feature = "test-device")]
+mod test_requirements;
 mod timeline;
 mod transfer_queue;
 
@@ -44,6 +48,10 @@ pub use memory_error::MemoryError;
 pub use queue_sharing::QueueSharing;
 #[cfg(feature = "test-device")]
 pub use test_device::TestDevice;
+#[cfg(feature = "test-device")]
+pub use test_queue::TestQueue;
+#[cfg(feature = "test-device")]
+pub use test_requirements::TestRequirements;
 pub use timeline::{Recording, Timeline, TimelineValue};
 pub use transfer_queue::{
     GpuUpload, ImageCopy, ImageUpload, ReadbackTicket, TexelBlock, TransferPriority, TransferQueue, TransferStatus,
