@@ -249,7 +249,10 @@ impl VideoEncoder {
                     break;
                 }
 
-                frame.feedback = Some(VideoEncoder::read_feedback(&self.memory, &self.feedback, frame.input)?);
+                match VideoEncoder::read_feedback(&self.memory, &self.feedback, frame.input)? {
+                    Some(feedback) => frame.feedback = Some(feedback),
+                    None => break,
+                }
             }
 
             let bytes = match frame.bitstream.poll() {
@@ -491,26 +494,34 @@ impl VideoEncoder {
         Ok(DeviceObject::new(memory, pool))
     }
 
+    // `None` while the result is not available yet, which can outlast the submission's completion.
     fn read_feedback(
         memory: &MemoryContext,
         pool: &DeviceObject<vk::QueryPool>,
         input: usize,
-    ) -> Result<EncodeFeedback, VideoError> {
+    ) -> Result<Option<EncodeFeedback>, VideoError> {
         let mut results = [EncodeFeedback::default()];
-        unsafe {
+        let read = unsafe {
             memory.device().get_query_pool_results(
                 pool.handle(),
                 input as u32,
                 &mut results,
                 vk::QueryResultFlags::WITH_STATUS_KHR,
             )
-        }?;
+        };
+
+        match read {
+            Ok(()) => {}
+            Err(vk::Result::NOT_READY) => return Ok(None),
+            Err(error) => return Err(error.into()),
+        }
+
         let feedback = results[0];
 
         if feedback.status != vk::QueryResultStatusKHR::COMPLETE.as_raw() {
             return Err(VideoError::Encoding(feedback.status));
         }
 
-        Ok(feedback)
+        Ok(Some(feedback))
     }
 }
