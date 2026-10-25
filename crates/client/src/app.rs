@@ -1,5 +1,6 @@
 mod bind_actions;
 mod body_step;
+mod camera_actions;
 mod camera_controller;
 mod client_command_handler;
 mod client_world;
@@ -624,10 +625,7 @@ impl CommandExecutor for App {
 
     fn run_client(&mut self, command: ClientCommand, reply: CommandReply) {
         let progress = match command {
-            ClientCommand::CameraTarget(command) => command.start(self),
-            ClientCommand::CameraTeleport(command) => command.start(self),
-            ClientCommand::CameraLookAt(command) => command.start(self),
-            ClientCommand::CameraSnap(command) => command.start(self),
+            ClientCommand::Camera { camera, action } => self.start_camera(camera, action),
             ClientCommand::InterfacePush(command) => command.start(self),
             ClientCommand::InterfacePop(command) => command.start(self),
             ClientCommand::InterfaceSet(command) => command.start(self),

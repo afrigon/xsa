@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use xsa_commands::command::CameraSnapCommand;
+use anyhow::anyhow;
+use xsa_commands::command::CameraCaptureCommand;
 use xsa_commands::value::Region;
 
 use crate::app::App;
@@ -11,10 +12,14 @@ use crate::app::snapshot::Snapshot;
 use crate::app::task_status::TaskStatus;
 use crate::renderer::{CapturedImage, PendingCapture};
 
-impl ClientCommandHandler for CameraSnapCommand {
+impl ClientCommandHandler for CameraCaptureCommand {
     fn start(self, app: &mut App) -> CommandProgress {
+        if self.action.is_some() || self.duration.is_some() {
+            return CommandProgress::Done(Err(anyhow!("video captures are not available yet")));
+        }
+
         let Some(renderer) = &mut app.renderer else {
-            return CommandProgress::Done(Err(anyhow::anyhow!("the renderer is not ready")));
+            return CommandProgress::Done(Err(anyhow!("the renderer is not ready")));
         };
 
         CommandProgress::Running(Box::new(SnapTask {

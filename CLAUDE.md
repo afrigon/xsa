@@ -309,7 +309,7 @@ Names in code, data and documents use these words in these meanings only:
   `ImmediateCommandHandler`; binds start tasks too, logging their result.
 - `camera tp` stands the debug camera at an altitude above the ground and holds it there while the heights at that
   spot stream in, replying once the ground there is as fine as it will get.
-- `camera snap [--output <path>] [--region x,y:widthxheight]` keeps rendering
+- `camera capture [--output <path>] [--region x,y:widthxheight]` keeps rendering
   until temporal effects (exposure metering, anti-aliasing history) reflect the
   scene, then renders a frame of its own, copies it back from the GPU and
   writes a PNG before it replies (the game pauses while it encodes). Without
@@ -372,7 +372,7 @@ Always bring the game to a stable state first:
 
 - `camera tp --help` explains how to move the camera.
 - Make the game window fullscreen before taking a snapshot, unless the test is about window sizing.
-- Capture the game with `camera snap`:
+- Capture the game with `camera capture`:
   - `--output <path>` saves the snapshot to your scratchpad.
   - `--region <region>` captures only part of the screen; leave it out to capture the entire screen.
 - When asked for a comparison, build a simple A/B comparison HTML page and open it automatically.
@@ -472,5 +472,5 @@ mouse. Debug toggles are commands (`config toggle video.stars`,
 - On Wayland a window appears only once a frame is presented: an invisible
   window means presentation is broken.
 - Screenshots of the game window taken from outside the game are unreliable
-  (Hyprland retiles it, it may be on another workspace). Use `camera snap`,
+  (Hyprland retiles it, it may be on another workspace). Use `camera capture`,
   which renders its own frame and reads it back from the GPU, even while the window is hidden.

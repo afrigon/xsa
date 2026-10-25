@@ -3,7 +3,6 @@ use usage::Args;
 use xsa_core::simulation::BodyCategory;
 
 use super::TargetSelection;
-use crate::command::{ClientCommand, Routable, Route};
 use crate::completion::{complete_body, complete_body_category};
 use crate::value::Altitude;
 
@@ -50,12 +49,6 @@ impl CameraTargetCommand {
                 "name one body, or one of --next, --previous or --parent; --category goes with --next or --previous"
             ),
         }
-    }
-}
-
-impl Routable for CameraTargetCommand {
-    fn route(self) -> Route {
-        Route::Client(ClientCommand::CameraTarget(self))
     }
 }
 
