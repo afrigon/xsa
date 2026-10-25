@@ -201,16 +201,19 @@ impl App {
 
     fn redraw(&mut self) -> anyhow::Result<()> {
         let now = Instant::now();
-        let gpu_milliseconds = self
-            .renderer
-            .as_ref()
-            .and_then(|renderer| renderer.statistics().gpu_milliseconds);
+        let advanced = self.update(now)?;
 
-        if let Some(delta_seconds) = self.schedule.record_frame(now) {
-            self.frame_timing.record(delta_seconds, gpu_milliseconds);
-        }
+        // A frame a capture holds back is not drawn, so it is not a frame either.
+        if advanced {
+            let gpu_milliseconds = self
+                .renderer
+                .as_ref()
+                .and_then(|renderer| renderer.statistics().gpu_milliseconds);
 
-        if self.update(now)? {
+            if let Some(delta_seconds) = self.schedule.record_frame(now) {
+                self.frame_timing.record(delta_seconds, gpu_milliseconds);
+            }
+
             self.draw_window()?;
             self.finish_update();
         }
@@ -247,6 +250,8 @@ impl App {
 
         self.advance_loading();
         self.poll_invocations();
+        // Every update, drawn or not: frames wait for the encoder, which frees its inputs as frames are read back.
+        self.poll_capture_video();
 
         if !self.frame_ready() {
             return Ok(false);
@@ -295,7 +300,6 @@ impl App {
     }
 
     fn finish_update(&mut self) {
-        self.poll_capture_video();
         self.advance_captures();
         self.poll_tasks();
     }

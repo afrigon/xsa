@@ -58,7 +58,6 @@ pub struct VideoEncoder {
 struct InputSlot {
     image: Image,
     command_buffer: vk::CommandBuffer,
-    done: Option<TimelineValue>,
 }
 
 // The picture the next frame predicts from: its slot in the decoded picture buffer and its order in the stream.
@@ -116,11 +115,7 @@ impl VideoEncoder {
                     input_sharing.clone(),
                 )?;
 
-                Ok(InputSlot {
-                    image,
-                    command_buffer,
-                    done: None,
-                })
+                Ok(InputSlot { image, command_buffer })
             })
             .collect::<Result<Vec<_>, VideoError>>()?;
         let references = (0..REFERENCE_COUNT)
@@ -181,15 +176,15 @@ impl VideoEncoder {
         self.geometry.coded_extent
     }
 
-    /// The image the next frame is written into, or `None` while every input is still being encoded.
+    /// The image the next frame is written into, or `None` while every input still holds a frame not yet read
+    /// back: its feedback query is reused with it.
     pub fn next_input(&self) -> Result<Option<&Image>, VideoError> {
-        let slot = &self.inputs[self.next_input];
-        let free = match &slot.done {
-            Some(done) => done.is_complete()?,
-            None => true,
-        };
+        let unread = self
+            .pending
+            .iter()
+            .any(|frame| frame.input == self.next_input && frame.feedback.is_none());
 
-        Ok(free.then_some(&slot.image))
+        Ok((!unread).then_some(&self.inputs[self.next_input].image))
     }
 
     /// Encodes the image `next_input` returned once `ready`, the submission that wrote it, completes.
@@ -224,7 +219,6 @@ impl VideoEncoder {
         let bitstream = self
             .transfer
             .read_buffer(bitstream, Some(done.clone()), TransferPriority::High);
-        self.inputs[input].done = Some(done.clone());
         self.pending.push_back(PendingFrame {
             input,
             done,
@@ -239,28 +233,35 @@ impl VideoEncoder {
         Ok(())
     }
 
-    /// The frames encoded and read back so far, in order.
+    /// The frames encoded and read back so far, in order. Reading each finished frame's feedback frees its input.
     pub fn poll(&mut self) -> Result<Vec<EncodedFrame>, VideoError> {
+        for frame in &mut self.pending {
+            if frame.feedback.is_some() {
+                continue;
+            }
+
+            // Submissions complete in order: nothing after an unfinished one is finished either.
+            if !frame.done.is_complete()? {
+                break;
+            }
+
+            match VideoEncoder::read_feedback(&self.memory, &self.feedback, frame.input)? {
+                Some(feedback) => frame.feedback = Some(feedback),
+                None => break,
+            }
+        }
+
         let mut finished = Vec::new();
 
         while let Some(frame) = self.pending.front_mut() {
-            if frame.feedback.is_none() {
-                if !frame.done.is_complete()? {
-                    break;
-                }
-
-                match VideoEncoder::read_feedback(&self.memory, &self.feedback, frame.input)? {
-                    Some(feedback) => frame.feedback = Some(feedback),
-                    None => break,
-                }
-            }
-
+            let Some(feedback) = frame.feedback else {
+                break;
+            };
             let bytes = match frame.bitstream.poll() {
                 TransferStatus::Pending => break,
                 TransferStatus::Complete(bytes) => bytes,
                 TransferStatus::Failed(error) => return Err(error.into()),
             };
-            let feedback = frame.feedback.expect("the feedback was read above");
             let start = feedback.offset as usize;
             let end = start + feedback.bytes as usize;
             let keyframe = frame.keyframe;

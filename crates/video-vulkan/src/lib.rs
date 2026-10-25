@@ -226,7 +226,12 @@ mod tests {
             let input = encoder.next_input().unwrap().expect("an input is free");
             let ready = device
                 .run(|command_buffer| {
-                    clear(memory.device(), command_buffer, &source, shade);
+                    clear(
+                        memory.device(),
+                        command_buffer,
+                        &source,
+                        [shade, shade * 0.5, 1.0 - shade, 1.0],
+                    );
                     conversion.record(command_buffer, 0, &rendered, input);
                 })
                 .unwrap();
@@ -275,7 +280,166 @@ mod tests {
         }
     }
 
-    fn clear(device: &ash::Device, command_buffer: vk::CommandBuffer, image: &memory_vulkan::Image, shade: f32) {
+    #[test]
+    fn frames_keep_their_own_bitstream_when_inputs_cycle_before_polling() {
+        let Some(device) = encode_device() else {
+            return;
+        };
+        let memory = device.memory();
+        let queue = device.extra_queue().unwrap();
+        let extent = vk::Extent2D {
+            width: 320,
+            height: 180,
+        };
+        let encode_queue = EncodeQueue {
+            family: queue.family,
+            timeline: queue.timeline.clone(),
+        };
+        let mut encoder =
+            VideoEncoder::new(device.entry(), memory, encode_queue, device.transfer(), 0, extent, 30).unwrap();
+        let conversion = ColorConversion::new(memory, encoder.coded_extent(), 1).unwrap();
+        let source = memory_vulkan::Image::new(
+            memory,
+            &memory_vulkan::ImageDescription {
+                name: "rendered frame",
+                extent,
+                format: vk::Format::B8G8R8A8_SRGB,
+                usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+                aspect: vk::ImageAspectFlags::COLOR,
+                mip_levels: 1,
+                kind: memory_vulkan::ImageKind::Single,
+                memory: memory_vulkan::ImageMemory::Shared,
+                sharing: memory_vulkan::QueueSharing::Exclusive,
+            },
+        )
+        .unwrap();
+        let rendered = ConversionSource {
+            view: source.view(),
+            format: vk::Format::B8G8R8A8_SRGB,
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            extent,
+        };
+        let shades: Vec<f32> = (0..12).map(|index| index as f32 / 11.0).collect();
+        let mut frames = Vec::new();
+
+        // Frames are only polled when no input is free, so inputs come back around before earlier frames are read.
+        for shade in &shades {
+            let input = loop {
+                if let Some(input) = encoder.next_input().unwrap() {
+                    break input;
+                }
+
+                device.frame().unwrap();
+                frames.extend(encoder.poll().unwrap());
+            };
+            let ready = device
+                .run(|command_buffer| {
+                    clear(memory.device(), command_buffer, &source, [*shade, *shade, *shade, 1.0]);
+                    conversion.record(command_buffer, 0, &rendered, input);
+                })
+                .unwrap();
+            encoder.encode(&ready).unwrap();
+        }
+
+        while !encoder.is_idle() {
+            device.frame().unwrap();
+            frames.extend(encoder.poll().unwrap());
+        }
+
+        let path = std::env::temp_dir().join(format!("video-vulkan-cycle-{}.mp4", std::process::id()));
+        let mut writer = Mp4Writer::create(&path, extent, 30, encoder.headers()).unwrap();
+
+        for frame in &frames {
+            writer.write(frame).unwrap();
+        }
+
+        writer.finish().unwrap();
+        let decoded = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-i"])
+            .arg(&path)
+            .args(["-f", "rawvideo", "-pix_fmt", "gray", "-"])
+            .output();
+        std::fs::remove_file(&path).unwrap();
+
+        // An independent decoder reads every frame back, where one is installed: each keeps its own shade.
+        let Ok(decoded) = decoded else {
+            return;
+        };
+        let frame_size = (extent.width * extent.height) as usize;
+        assert_eq!(decoded.stdout.len(), frame_size * shades.len(), "{decoded:?}");
+        let mut previous = 0;
+
+        for (index, frame) in decoded.stdout.chunks(frame_size).enumerate() {
+            let centre = frame[frame_size / 2 + extent.width as usize / 2];
+            assert!(
+                index == 0 || centre > previous,
+                "frame {index} is not brighter than the one before it"
+            );
+            previous = centre;
+        }
+    }
+
+    #[test]
+    fn an_input_comes_back_only_once_its_frame_is_read() {
+        let Some(device) = encode_device() else {
+            return;
+        };
+        let memory = device.memory();
+        let queue = device.extra_queue().unwrap();
+        let extent = vk::Extent2D {
+            width: 320,
+            height: 180,
+        };
+        let encode_queue = EncodeQueue {
+            family: queue.family,
+            timeline: queue.timeline.clone(),
+        };
+        let mut encoder =
+            VideoEncoder::new(device.entry(), memory, encode_queue, device.transfer(), 0, extent, 30).unwrap();
+        let mut last = None;
+
+        while let Some(input) = encoder.next_input().unwrap() {
+            let ready = device
+                .run(|command_buffer| prepare_input(memory.device(), command_buffer, input))
+                .unwrap();
+            encoder.encode(&ready).unwrap();
+            last = Some(queue.timeline.clone());
+        }
+
+        let encode_timeline = last.expect("an input was free at first");
+        let encoded = encode_timeline.completed().unwrap();
+        encode_timeline.wait(encoded + 1).ok();
+        device.frame().unwrap();
+
+        // Every encode is done, but no frame has been read: the inputs still hold their frames' feedback.
+        assert!(encoder.next_input().unwrap().is_none());
+
+        let mut frames = Vec::new();
+
+        while !encoder.is_idle() {
+            device.frame().unwrap();
+            frames.extend(encoder.poll().unwrap());
+        }
+
+        assert!(!frames.is_empty());
+        assert!(encoder.next_input().unwrap().is_some());
+    }
+
+    fn prepare_input(device: &ash::Device, command_buffer: vk::CommandBuffer, input: &memory_vulkan::Image) {
+        let barrier = [vk::ImageMemoryBarrier2::default()
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::VIDEO_ENCODE_SRC_KHR)
+            .image(input.handle())
+            .subresource_range(input.subresource_range())];
+        unsafe {
+            device.cmd_pipeline_barrier2(
+                command_buffer,
+                &vk::DependencyInfo::default().image_memory_barriers(&barrier),
+            )
+        };
+    }
+
+    fn clear(device: &ash::Device, command_buffer: vk::CommandBuffer, image: &memory_vulkan::Image, linear: [f32; 4]) {
         let range = image.subresource_range();
         let to_clear = [vk::ImageMemoryBarrier2::default()
             .dst_stage_mask(vk::PipelineStageFlags2::CLEAR)
@@ -293,9 +457,7 @@ mod tests {
             .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .image(image.handle())
             .subresource_range(range)];
-        let color = vk::ClearColorValue {
-            float32: [shade, shade * 0.5, 1.0 - shade, 1.0],
-        };
+        let color = vk::ClearColorValue { float32: linear };
 
         unsafe {
             device.cmd_pipeline_barrier2(
