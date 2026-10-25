@@ -206,7 +206,8 @@ uint2 pageKey(TileData tile, uint level, uint finer, uint2 part) {
 // From the tile's center to the terrain above a grid point.
 float3 terrainOffset<H : TileHeight>(H heights, TileData tile, ObjectData object, int2 cell) {
     float3 direction = normalize(cubePoint(tile, cell));
-    return sphereOffset(tile, cell) + direction * heights.height(tile, object, cell);
+    return sphereOffset(tile, cell) +
+           direction * heights.height(tile, object, cell) * constants.frame.terrainHeightScale;
 }
 
 // Towards the end of a tile's range, odd grid points slide to the middle of the edge or diagonal joining their two

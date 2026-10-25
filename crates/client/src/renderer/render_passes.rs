@@ -6,9 +6,9 @@ use super::frame_context::FrameContext;
 use super::frame_inputs::FrameInputs;
 use super::gpu_context::GpuContext;
 use super::passes::{
-    BloomPass, CaptureInputs, CapturePass, ForwardPass, HistogramInputs, HistogramPass, LensInputs, LensPass,
-    SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass, VideoConversionPass, WindowCopyInputs,
-    WindowCopyPass,
+    BloomPass, CaptureInputs, CapturePass, ForwardInputs, ForwardPass, HistogramInputs, HistogramPass, LensInputs,
+    LensPass, SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass, VideoConversionPass,
+    WindowCopyInputs, WindowCopyPass,
 };
 use crate::config::{AntialiasingKind, Config};
 
@@ -64,7 +64,12 @@ impl RenderPasses {
         let light_count = inputs.projected_light_count;
         let lens = (config.video.lens.enabled && inputs.lens_loaded && light_count > 0)
             .then(|| graph.add(&mut self.lens, LensInputs { light_count }).lens);
-        let forward = graph.add(&mut self.forward, ());
+        let forward = graph.add(
+            &mut self.forward,
+            ForwardInputs {
+                clear_color: inputs.clear_color.extend(1.0).to_array(),
+            },
+        );
         graph.add(
             &mut self.histogram,
             HistogramInputs {

@@ -1,5 +1,7 @@
+mod forward_inputs;
 mod forward_resources;
 
+pub(in crate::renderer) use forward_inputs::ForwardInputs;
 pub(in crate::renderer) use forward_resources::ForwardResources;
 
 use std::collections::HashMap;
@@ -29,7 +31,7 @@ const TRIANGLES_PER_CELL: u64 = 2;
 pub(in crate::renderer) const HDR_FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 pub(in crate::renderer) const MOTION_FORMAT: vk::Format = vk::Format::R16G16_SFLOAT;
 pub(in crate::renderer) const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
-const CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const ZERO_MOTION: [f32; 4] = [0.0; 4];
 const REVERSE_Z_FAR_DEPTH: f32 = 0.0;
 
 pub(in crate::renderer) struct ForwardPass {
@@ -42,7 +44,7 @@ pub(in crate::renderer) struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(gpu: &GpuContext, binaries: &ShaderBinaries) -> anyhow::Result<ForwardPass> {
-        let grids = GridMesh::new((COARSEST_DETAIL..=0).map(DetailRanges::grid_cells));
+        let grids = GridMesh::new((COARSEST_DETAIL..=0).map(|detail| DetailRanges::grid_cells(0, detail)));
         // Every frame draws the grid, so it is in GPU memory before the first one.
         let vertex_buffer = StaticBuffer::new(
             gpu,
@@ -193,15 +195,15 @@ impl ForwardPass {
 impl<'frame> RenderPass<FrameContext<'frame>> for ForwardPass {
     const NAME: &'static str = "forward";
 
-    type Inputs = ();
+    type Inputs = ForwardInputs;
     type Resources = ForwardResources;
 
-    fn declare(&self, pass: &mut PassDeclaration, _inputs: ()) -> ForwardResources {
+    fn declare(&self, pass: &mut PassDeclaration, inputs: ForwardInputs) -> ForwardResources {
         let hdr = pass.create_image(ForwardPass::target("hdr color", HDR_FORMAT));
         let motion = pass.create_image(ForwardPass::target("motion vectors", MOTION_FORMAT));
         let depth = pass.create_image(ForwardPass::target("depth", DEPTH_FORMAT));
-        pass.color_attachment(hdr, Attachment::ClearColor(CLEAR_COLOR));
-        pass.color_attachment(motion, Attachment::ClearColor(CLEAR_COLOR));
+        pass.color_attachment(hdr, Attachment::ClearColor(inputs.clear_color));
+        pass.color_attachment(motion, Attachment::ClearColor(ZERO_MOTION));
         pass.depth_attachment(depth, Attachment::ClearDepth(REVERSE_Z_FAR_DEPTH));
 
         ForwardResources { hdr, motion, depth }

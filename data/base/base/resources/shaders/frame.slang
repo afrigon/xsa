@@ -23,6 +23,8 @@ struct FrameData {
     float vertexSpacingAngle;
     // The angle one pixel covers at the screen's center.
     float pixelAngle;
-    uint padding[3];
+    // Multiplies the terrain's heights as they are drawn.
+    float terrainHeightScale;
+    uint padding[2];
     float4 whiteBalance[3];
 };

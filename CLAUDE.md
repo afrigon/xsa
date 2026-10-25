@@ -17,6 +17,13 @@ Agency, written in Rust on Vulkan.
 Every decision picks the best option by these priorities. A worse option is
 never preferred because it is easier to implement or already exists.
 
+**Textbook first.** When a problem falls in a domain with an established technique (a published paper, a standard
+algorithm, how engines are known to solve it), implement that technique faithfully and treat every departure from it
+as a design decision to raise, never a convenience. Before proposing a fix, name the reference, list the invariants it
+relies on, and find which one the code breaks: the fix restores that invariant. Adding machinery the reference does
+not have (stitching, skirts, extra passes, clamps, special cases) to make a symptom disappear is a workaround, even
+when it works.
+
 The roadmap, known deferred work and loose ideas live in the `xsa-roadmap` GitHub
 project (https://github.com/users/afrigon/projects/7): milestones, one issue per
 item. Read it before proposing what to build next. Design documents live in

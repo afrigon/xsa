@@ -7,7 +7,8 @@ use xsa_input::{InputChord, Key, Modifier};
 use super::{
     AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
     DebugCameraConfig, DebugConfig, InputConfig, InputSourceConfig, LensConfig, RenderConfig, ResourcesConfig,
-    ServiceConfig, TerrainConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig, WhiteBalanceConfig,
+    ServiceConfig, TerrainConfig, TerrainHeightConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig,
+    WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
@@ -22,6 +23,7 @@ const INPUT_ENABLED: bool = true;
 const DEBUG_CAMERA_SPEED: f32 = 2_000_000.0;
 // A starting point to tune from, not a measured optimum.
 const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
+const TERRAIN_HEIGHT_SCALE: f32 = 1.0;
 
 struct DefaultBind {
     action: BindAction,
@@ -98,6 +100,10 @@ impl Default for Config {
                     freeze: false,
                 },
                 streaming: TerrainStreamingConfig { freeze: false },
+                height: TerrainHeightConfig {
+                    enabled: true,
+                    scale: TERRAIN_HEIGHT_SCALE,
+                },
             },
             animation: AnimationConfig {
                 all: RUNNING_ANIMATIONS,

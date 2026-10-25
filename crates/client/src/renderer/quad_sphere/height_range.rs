@@ -21,6 +21,13 @@ impl HeightRange {
         }
     }
 
+    pub fn scaled(self, scale: f64) -> HeightRange {
+        HeightRange {
+            minimum: self.minimum * scale,
+            maximum: self.maximum * scale,
+        }
+    }
+
     pub fn union(self, other: HeightRange) -> HeightRange {
         HeightRange {
             minimum: self.minimum.min(other.minimum),
