@@ -1,6 +1,5 @@
-use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use anyhow::{Context, bail, ensure};
 
@@ -28,19 +27,26 @@ const SUPERCOMPRESSION_ZSTANDARD: u32 = 2;
 const CUBE_FACE_COUNT: u32 = 6;
 
 /// Reads KTX2 files holding a 2D texture, a cube map or a texture array, uncompressed or with Zstandard
-/// supercompression, with their key/value metadata.
+/// supercompression, with their key/value metadata. Each level is stored apart, so a range of levels reads without the
+/// others.
 pub struct Ktx2Loader;
 
 impl TextureLoader for Ktx2Loader {
     const EXTENSION: &'static str = "ktx2";
 
     fn load(bytes: &[u8]) -> anyhow::Result<TextureImage> {
-        ensure!(
-            bytes.len() >= LEVEL_INDEX_OFFSET && &bytes[..KTX2_IDENTIFIER.len()] == KTX2_IDENTIFIER,
-            "not a KTX2 file"
-        );
+        Ktx2Loader::read(Cursor::new(bytes), 0)
+    }
+}
 
-        let word = |offset: usize| u32::from_le_bytes(bytes[offset..offset + WORD_BYTES].try_into().unwrap());
+impl Ktx2Loader {
+    /// Reads the levels from `first_level` down to the smallest, seeking past the finer levels' data.
+    pub fn read(mut reader: impl Read + Seek, first_level: u32) -> anyhow::Result<TextureImage> {
+        let mut header = [0; LEVEL_INDEX_OFFSET];
+        reader.read_exact(&mut header).context("not a KTX2 file")?;
+        ensure!(&header[..KTX2_IDENTIFIER.len()] == KTX2_IDENTIFIER, "not a KTX2 file");
+
+        let word = |offset: usize| u32::from_le_bytes(header[offset..offset + WORD_BYTES].try_into().unwrap());
         let vulkan_format = VulkanFormat {
             value: word(VK_FORMAT_OFFSET),
         };
@@ -63,18 +69,21 @@ impl TextureLoader for Ktx2Loader {
         // A level count of 0 asks the reader to generate the mip chain below the one level stored.
         let mip_levels = word(LEVEL_COUNT_OFFSET).max(1);
         let supercompression = word(SUPERCOMPRESSION_OFFSET);
+        let level_index = Ktx2Loader::level_index(&mut reader, mip_levels)?;
+        let metadata = Ktx2Loader::metadata(
+            &mut reader,
+            word(KEY_VALUE_OFFSET_OFFSET),
+            word(KEY_VALUE_LENGTH_OFFSET),
+        )?;
         let mut image = TextureImage {
             format,
             kind,
             width: word(PIXEL_WIDTH_OFFSET),
             height: word(PIXEL_HEIGHT_OFFSET),
             mip_levels,
+            first_level,
             layers: Vec::new(),
-            metadata: TextureMetadata::new(Ktx2Loader::metadata(
-                bytes,
-                word(KEY_VALUE_OFFSET_OFFSET),
-                word(KEY_VALUE_LENGTH_OFFSET),
-            )?),
+            metadata: TextureMetadata::new(metadata),
         };
         let layer_size = image.layer_size()?;
         let mut layers = Vec::new();
@@ -87,10 +96,16 @@ impl TextureLoader for Ktx2Loader {
             layers.push(layer);
         }
 
-        for level in 0..mip_levels {
+        for level in first_level..mip_levels {
             let face_size = image.format.level_size(image.width >> level, image.height >> level);
             let level_size = face_size * layer_count as usize;
-            let data = Ktx2Loader::level(bytes, level, level_size, supercompression)?;
+            let data = Ktx2Loader::level(
+                &mut reader,
+                &level_index[level as usize],
+                level,
+                level_size,
+                supercompression,
+            )?;
             ensure!(
                 data.len() == level_size,
                 "level {level} holds {} bytes, expected {level_size}",
@@ -106,16 +121,35 @@ impl TextureLoader for Ktx2Loader {
         image.check_layer_count()?;
         Ok(image)
     }
-}
 
-impl Ktx2Loader {
+    fn level_index(reader: &mut impl Read, mip_levels: u32) -> anyhow::Result<Vec<[u8; LEVEL_INDEX_ENTRY_SIZE]>> {
+        (0..mip_levels)
+            .map(|_| {
+                let mut entry = [0; LEVEL_INDEX_ENTRY_SIZE];
+                reader.read_exact(&mut entry).context("the level index is truncated")?;
+                Ok(entry)
+            })
+            .collect()
+    }
+
     // Each entry is its length, then its key ending with a NUL, then its value, padded to a multiple of 4 bytes.
-    fn metadata(bytes: &[u8], offset: u32, length: u32) -> anyhow::Result<BTreeMap<String, Vec<u8>>> {
-        let start = offset as usize;
-        let mut data = start
-            .checked_add(length as usize)
-            .and_then(|end| bytes.get(start..end))
-            .context("the key/value data is truncated")?;
+    fn metadata(
+        reader: &mut (impl Read + Seek),
+        offset: u32,
+        length: u32,
+    ) -> anyhow::Result<BTreeMap<String, Vec<u8>>> {
+        let mut bytes = Vec::new();
+
+        if length > 0 {
+            reader.seek(SeekFrom::Start(u64::from(offset)))?;
+            reader
+                .take(u64::from(length))
+                .read_to_end(&mut bytes)
+                .context("reading the key/value data")?;
+            ensure!(bytes.len() == length as usize, "the key/value data is truncated");
+        }
+
+        let mut data = bytes.as_slice();
         let mut metadata = BTreeMap::new();
 
         while !data.is_empty() {
@@ -139,43 +173,44 @@ impl Ktx2Loader {
     }
 
     // A level's data, all faces, decompressed; `size` is what the header's shape says it holds.
-    fn level(bytes: &[u8], level: u32, size: usize, supercompression: u32) -> anyhow::Result<Cow<'_, [u8]>> {
-        let entry = LEVEL_INDEX_OFFSET + level as usize * LEVEL_INDEX_ENTRY_SIZE;
-        ensure!(
-            bytes.len() >= entry + LEVEL_INDEX_ENTRY_SIZE,
-            "the level index is truncated"
-        );
-
-        let long = |offset: usize| {
-            u64::from_le_bytes(bytes[entry + offset..entry + offset + LONG_BYTES].try_into().unwrap()) as usize
-        };
-        let start = long(0);
+    fn level(
+        reader: &mut (impl Read + Seek),
+        entry: &[u8; LEVEL_INDEX_ENTRY_SIZE],
+        level: u32,
+        size: usize,
+        supercompression: u32,
+    ) -> anyhow::Result<Vec<u8>> {
+        let long = |offset: usize| u64::from_le_bytes(entry[offset..offset + LONG_BYTES].try_into().unwrap());
         let length = long(LEVEL_BYTE_LENGTH_OFFSET);
-        let data = start
-            .checked_add(length)
-            .and_then(|end| bytes.get(start..end))
-            .with_context(|| format!("level {level} is truncated"))?;
+        reader
+            .seek(SeekFrom::Start(long(0)))
+            .with_context(|| format!("seeking to level {level}"))?;
+        let mut data = reader.take(length);
+        let mut level_data = Vec::new();
+        level_data
+            .try_reserve_exact(size)
+            .with_context(|| format!("level {level}'s {size} bytes cannot be allocated"))?;
 
         match supercompression {
-            SUPERCOMPRESSION_NONE => Ok(Cow::Borrowed(data)),
+            SUPERCOMPRESSION_NONE => {
+                data.read_to_end(&mut level_data)
+                    .with_context(|| format!("reading level {level}"))?;
+                ensure!(level_data.len() as u64 == length, "level {level} is truncated");
+            }
             SUPERCOMPRESSION_ZSTANDARD => {
-                let uncompressed_length = long(LEVEL_UNCOMPRESSED_LENGTH_OFFSET);
+                let uncompressed_length = long(LEVEL_UNCOMPRESSED_LENGTH_OFFSET) as usize;
                 ensure!(
                     uncompressed_length == size,
                     "level {level} decompresses to {uncompressed_length} bytes, expected {size}"
                 );
 
-                let mut level_data = Vec::new();
-                level_data
-                    .try_reserve_exact(size)
-                    .with_context(|| format!("level {level}'s {size} bytes cannot be allocated"))?;
                 zstd::stream::read::Decoder::new(data)
                     .and_then(|decoder| decoder.take(size as u64).read_to_end(&mut level_data))
                     .with_context(|| format!("decompressing level {level}"))?;
-
-                Ok(Cow::Owned(level_data))
             }
             other => bail!("unsupported supercompression scheme {other}"),
         }
+
+        Ok(level_data)
     }
 }

@@ -64,6 +64,7 @@ impl TextureLoader for DdsLoader {
             width: word(WIDTH_OFFSET),
             height: word(HEIGHT_OFFSET),
             mip_levels: word(MIP_COUNT_OFFSET).max(1),
+            first_level: 0,
             layers: Vec::new(),
             metadata: TextureMetadata::default(),
         };
