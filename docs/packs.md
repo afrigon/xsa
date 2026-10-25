@@ -323,14 +323,14 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 
 - **`shader "base:terrain/lambert"`** with **`base-color`** (the average albedo,
   linear red green blue) and optional **`color`** (sRGB albedo), **`normal`**
-  and **`emissive-texture`** (sRGB), each a texture id; color and normal are
+  and **`emissive`** (sRGB), each a texture id; color and normal are
   terrain layers (see Terrain layers). An emissive texture needs
   **`emissive-luminance`** (cd/m² for a texture value of 1). Without a color
   texture the surface takes the base color. A texture no loaded pack provides
   is skipped with a warning.
 - **`shader "base:terrain/hapke"`** for a body's terrain, shaded with Hapke's model
   of particulate surfaces (Hapke 2012, eq. 12.55), with **`base-color`**,
-  **`color`**, **`normal`**, **`emissive-texture`** and **`emissive-luminance`**
+  **`color`**, **`normal`**, **`emissive`** and **`emissive-luminance`**
   as for `base:terrain/lambert`, and two terrain layers holding Hapke's other
   standard parameters, as published, each a texture id: **`scatter`** (the
   particulate medium: phase-function lobe width b, lobe balance c, macroscopic
