@@ -117,3 +117,31 @@ impl EncoderCapabilities {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use memory_vulkan::{TestDevice, TestRequirements};
+
+    use super::*;
+    use crate::VideoEncoder;
+
+    #[test]
+    fn the_gpu_reports_what_the_encoder_relies_on() {
+        let requirements = TestRequirements {
+            extensions: VideoEncoder::DEVICE_EXTENSIONS.to_vec(),
+            queue: Some(VideoEncoder::QUEUE_CAPABILITY),
+        };
+        let Ok(device) = TestDevice::with(&requirements) else {
+            return;
+        };
+        let capabilities = EncoderCapabilities::query(device.entry(), device.memory()).unwrap();
+
+        assert!(capabilities.max_coded_extent.width >= 1920);
+        assert!(!capabilities.ctb_sizes.is_empty());
+        assert!(
+            device.validation_messages().is_empty(),
+            "{:?}",
+            device.validation_messages()
+        );
+    }
+}

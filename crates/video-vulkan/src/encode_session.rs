@@ -279,3 +279,37 @@ impl EncodeSession {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use memory_vulkan::{TestDevice, TestRequirements};
+
+    use super::*;
+    use crate::VideoEncoder;
+
+    #[test]
+    fn a_session_encodes_its_stream_headers() {
+        let requirements = TestRequirements {
+            extensions: VideoEncoder::DEVICE_EXTENSIONS.to_vec(),
+            queue: Some(VideoEncoder::QUEUE_CAPABILITY),
+        };
+        let Ok(device) = TestDevice::with(&requirements) else {
+            return;
+        };
+        let capabilities = EncoderCapabilities::query(device.entry(), device.memory()).unwrap();
+        let extent = vk::Extent2D {
+            width: 1918,
+            height: 1080,
+        };
+        let geometry = PictureGeometry::new(extent, &capabilities).unwrap();
+        let family = device.extra_queue().unwrap().family;
+        let session = EncodeSession::new(device.memory(), &capabilities, family, &geometry, 60).unwrap();
+
+        assert!(session.headers.starts_with(&[0, 0, 0, 1]) || session.headers.starts_with(&[0, 0, 1]));
+        assert!(
+            device.validation_messages().is_empty(),
+            "{:?}",
+            device.validation_messages()
+        );
+    }
+}

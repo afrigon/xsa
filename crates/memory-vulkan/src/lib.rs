@@ -20,10 +20,9 @@ mod image_memory;
 mod memory_context;
 mod memory_error;
 mod queue_sharing;
+mod queue_timeline;
 #[cfg(feature = "test-device")]
 mod test_device;
-#[cfg(feature = "test-device")]
-mod test_queue;
 #[cfg(feature = "test-device")]
 mod test_requirements;
 mod timeline;
@@ -46,10 +45,9 @@ pub use image_memory::ImageMemory;
 pub use memory_context::MemoryContext;
 pub use memory_error::MemoryError;
 pub use queue_sharing::QueueSharing;
+pub use queue_timeline::QueueTimeline;
 #[cfg(feature = "test-device")]
 pub use test_device::TestDevice;
-#[cfg(feature = "test-device")]
-pub use test_queue::TestQueue;
 #[cfg(feature = "test-device")]
 pub use test_requirements::TestRequirements;
 pub use timeline::{Recording, Timeline, TimelineValue};

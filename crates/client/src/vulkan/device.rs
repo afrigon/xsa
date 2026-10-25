@@ -4,10 +4,13 @@ mod transfer_queue_location;
 pub use suitable_device::SuitableDevice;
 pub use transfer_queue_location::TransferQueueLocation;
 
+use std::ffi::CStr;
+
 use anyhow::Context;
 use ash::vk;
 use ash::{ext, khr};
 use memory_vulkan::MemoryContext;
+use video_vulkan::VideoEncoder;
 
 use super::Instance;
 
@@ -58,10 +61,8 @@ impl Device {
             khr::swapchain::NAME.as_ptr(),
             ext::swapchain_maintenance1::NAME.as_ptr(),
             ext::memory_budget::NAME.as_ptr(),
-            khr::video_queue::NAME.as_ptr(),
-            khr::video_encode_queue::NAME.as_ptr(),
-            khr::video_encode_h265::NAME.as_ptr(),
         ];
+        extensions.extend(VideoEncoder::DEVICE_EXTENSIONS.map(CStr::as_ptr));
 
         if dynamic_polygon_mode {
             extensions.push(ext::extended_dynamic_state3::NAME.as_ptr());

@@ -1,17 +1,13 @@
 use std::collections::VecDeque;
-use std::mem;
+use std::ffi::CStr;
 
-use ash::vk;
 use ash::vk::native::{
-    StdVideoEncodeH265PictureInfo, StdVideoEncodeH265ReferenceInfo, StdVideoEncodeH265ReferenceListsInfo,
-    StdVideoEncodeH265SliceSegmentHeader, StdVideoH265PictureType,
     StdVideoH265PictureType_STD_VIDEO_H265_PICTURE_TYPE_IDR, StdVideoH265PictureType_STD_VIDEO_H265_PICTURE_TYPE_P,
-    StdVideoH265ShortTermRefPicSet, StdVideoH265SliceType_STD_VIDEO_H265_SLICE_TYPE_I,
-    StdVideoH265SliceType_STD_VIDEO_H265_SLICE_TYPE_P,
 };
+use ash::{khr, vk};
 use memory_vulkan::{
     Buffer, DeviceObject, Image, ImageDescription, ImageKind, ImageMemory, MemoryContext, MemoryLocation, QueueSharing,
-    ReadbackTicket, TimelineValue, TransferPriority, TransferQueue, TransferStatus,
+    QueueTimeline, ReadbackTicket, TimelineValue, TransferPriority, TransferQueue, TransferStatus,
 };
 
 use crate::encode_feedback::EncodeFeedback;
@@ -19,7 +15,9 @@ use crate::encode_session::EncodeSession;
 use crate::encoder_capabilities::EncoderCapabilities;
 use crate::h265_profile::H265Profile;
 use crate::picture_geometry::PictureGeometry;
-use crate::{EncodeQueue, EncodedFrame, VideoError};
+use crate::picture_syntax::PictureSyntax;
+use crate::reference_picture::ReferencePicture;
+use crate::{EncodedFrame, VideoError};
 
 // Frames being filled or encoded at once; a fourth waits for the oldest to finish.
 const INPUT_COUNT: usize = 3;
@@ -27,17 +25,13 @@ const REFERENCE_COUNT: u32 = 2;
 const KEYFRAME_INTERVAL_SECONDS: u32 = 2;
 // Constant quantization: lower is finer. Rendered scenes keep stars and thin edges at this value.
 const CONSTANT_QP: i32 = 20;
-// H.265: the slice header may name up to five merge candidates, sent as five minus the count.
-const MAX_MERGE_CANDIDATES: u8 = 5;
-// Std reference lists mark unused entries with this index.
-const NO_REFERENCE_PICTURE: u8 = 0xFF;
 
 /// Encodes frames to H.265 on the GPU's encode queue. Each frame is written into the image `next_input` returns, as
 /// NV12 in the `VIDEO_ENCODE_SRC_KHR` layout, by a submission `encode` then waits for; `poll` returns the finished
 /// frames in order without waiting for the GPU.
 pub struct VideoEncoder {
     memory: MemoryContext,
-    queue: EncodeQueue,
+    queue: QueueTimeline,
     transfer: TransferQueue,
     bitstream_sharing: QueueSharing,
     geometry: PictureGeometry,
@@ -60,14 +54,6 @@ struct InputSlot {
     command_buffer: vk::CommandBuffer,
 }
 
-// The picture the next frame predicts from: its slot in the decoded picture buffer and its order in the stream.
-#[derive(Clone, Copy)]
-struct ReferencePicture {
-    slot: u32,
-    order: i32,
-    picture_type: StdVideoH265PictureType,
-}
-
 struct PendingFrame {
     input: usize,
     done: TimelineValue,
@@ -77,12 +63,21 @@ struct PendingFrame {
 }
 
 impl VideoEncoder {
+    /// The device extensions an encoder needs.
+    pub const DEVICE_EXTENSIONS: [&'static CStr; 3] = [
+        khr::video_queue::NAME,
+        khr::video_encode_queue::NAME,
+        khr::video_encode_h265::NAME,
+    ];
+    /// The capability of the queue an encoder encodes on.
+    pub const QUEUE_CAPABILITY: vk::QueueFlags = vk::QueueFlags::VIDEO_ENCODE_KHR;
+
     /// An encoder of `extent` frames, which must be even, at `fps` frames per second. Its inputs are shared with
     /// `graphics_family`, whose submissions fill them.
     pub fn new(
         entry: &ash::Entry,
         memory: &MemoryContext,
-        queue: EncodeQueue,
+        queue: QueueTimeline,
         transfer: &TransferQueue,
         graphics_family: u32,
         extent: vk::Extent2D,
@@ -192,7 +187,7 @@ impl VideoEncoder {
         let input = self.next_input;
         let keyframe = self.frames.is_multiple_of(self.keyframe_interval);
         let reference = if keyframe { None } else { self.reference };
-        let setup = ReferencePicture {
+        let written = ReferencePicture {
             slot: reference.map_or(0, |reference| (reference.slot + 1) % REFERENCE_COUNT),
             order: reference.map_or(0, |reference| reference.order + 1),
             picture_type: if keyframe {
@@ -214,7 +209,7 @@ impl VideoEncoder {
         })?;
         let command_buffer = self.inputs[input].command_buffer;
         let recording = self.queue.timeline.begin(command_buffer)?;
-        self.record(command_buffer, input, &bitstream, &setup, reference.as_ref());
+        self.record(command_buffer, input, &bitstream, &written, reference.as_ref());
         let done = recording.submit(&[ready.wait_info(vk::PipelineStageFlags2::VIDEO_ENCODE_KHR)], &[])?;
         let bitstream = self
             .transfer
@@ -226,7 +221,7 @@ impl VideoEncoder {
             keyframe,
             feedback: None,
         });
-        self.reference = Some(setup);
+        self.reference = Some(written);
         self.next_input = (input + 1) % INPUT_COUNT;
         self.frames += 1;
 
@@ -285,11 +280,10 @@ impl VideoEncoder {
         command_buffer: vk::CommandBuffer,
         input: usize,
         bitstream: &Buffer,
-        setup: &ReferencePicture,
+        written: &ReferencePicture,
         reference: Option<&ReferencePicture>,
     ) {
         let device = self.memory.device();
-        let functions = self.session.functions.fp();
         let first = self.frames == 0;
 
         if first {
@@ -297,47 +291,39 @@ impl VideoEncoder {
         }
 
         unsafe { device.cmd_reset_query_pool(command_buffer, self.feedback.handle(), input as u32, 1) };
-        let coded_extent = self.geometry.coded_extent;
-        let resource = |view: vk::ImageView| {
-            vk::VideoPictureResourceInfoKHR::default()
-                .coded_extent(coded_extent)
-                .image_view_binding(view)
-        };
-        let setup_resource = resource(self.references[setup.slot as usize].view());
-        let reference_resource = reference.map(|reference| resource(self.references[reference.slot as usize].view()));
-        let input_resource = resource(self.inputs[input].image.view());
-        // Zeroed Std structures leave every flag and pointer unset; the fields that matter are set below.
-        let mut setup_info: StdVideoEncodeH265ReferenceInfo = unsafe { mem::zeroed() };
-        setup_info.pic_type = setup.picture_type;
-        setup_info.PicOrderCntVal = setup.order;
-        let mut setup_slot_info = vk::VideoEncodeH265DpbSlotInfoKHR::default().std_reference_info(&setup_info);
-        let mut reference_info: StdVideoEncodeH265ReferenceInfo = unsafe { mem::zeroed() };
+        self.begin_coding(command_buffer, written, reference, first);
 
-        if let Some(reference) = reference {
-            reference_info.pic_type = reference.picture_type;
-            reference_info.PicOrderCntVal = reference.order;
+        if first {
+            self.reset_coding(command_buffer);
         }
 
-        let mut reference_slot_info = vk::VideoEncodeH265DpbSlotInfoKHR::default().std_reference_info(&reference_info);
+        self.encode_picture(command_buffer, input, bitstream, written, reference);
+        let end = vk::VideoEndCodingInfoKHR::default();
+        unsafe { (self.session.functions.fp().cmd_end_video_coding_khr)(command_buffer, &end) };
+    }
+
+    // Binds the slot the frame is written to and the one it predicts from.
+    fn begin_coding(
+        &self,
+        command_buffer: vk::CommandBuffer,
+        written: &ReferencePicture,
+        reference: Option<&ReferencePicture>,
+        first: bool,
+    ) {
+        let written_resource = self.reference_resource(written.slot);
+        let reference_resource = reference.map(|reference| self.reference_resource(reference.slot));
         // The slot being written is bound without an index: it holds nothing yet, or a picture no longer used.
         let mut bound = vec![
             vk::VideoReferenceSlotInfoKHR::default()
                 .slot_index(-1)
-                .picture_resource(&setup_resource),
+                .picture_resource(&written_resource),
         ];
-        let mut references = Vec::new();
 
         if let (Some(reference), Some(resource)) = (reference, &reference_resource) {
             bound.push(
                 vk::VideoReferenceSlotInfoKHR::default()
                     .slot_index(reference.slot as i32)
                     .picture_resource(resource),
-            );
-            references.push(
-                vk::VideoReferenceSlotInfoKHR::default()
-                    .slot_index(reference.slot as i32)
-                    .picture_resource(resource)
-                    .push_next(&mut reference_slot_info),
             );
         }
 
@@ -353,69 +339,70 @@ impl VideoEncoder {
             begin = begin.push_next(&mut rate_control);
         }
 
-        unsafe { (functions.cmd_begin_video_coding_khr)(command_buffer, &begin) };
+        unsafe { (self.session.functions.fp().cmd_begin_video_coding_khr)(command_buffer, &begin) };
+    }
 
-        if first {
-            let mut rate_control = vk::VideoEncodeRateControlInfoKHR::default()
-                .rate_control_mode(vk::VideoEncodeRateControlModeFlagsKHR::DISABLED);
-            let mut quality = vk::VideoEncodeQualityLevelInfoKHR::default().quality_level(self.session.quality_level);
-            let control = vk::VideoCodingControlInfoKHR::default()
-                .flags(
-                    vk::VideoCodingControlFlagsKHR::RESET
-                        | vk::VideoCodingControlFlagsKHR::ENCODE_RATE_CONTROL
-                        | vk::VideoCodingControlFlagsKHR::ENCODE_QUALITY_LEVEL,
-                )
-                .push_next(&mut rate_control)
-                .push_next(&mut quality);
-            unsafe { (functions.cmd_control_video_coding_khr)(command_buffer, &control) };
-        }
+    // Starts the session's state: constant quality at the session's quality level.
+    fn reset_coding(&self, command_buffer: vk::CommandBuffer) {
+        let mut rate_control = vk::VideoEncodeRateControlInfoKHR::default()
+            .rate_control_mode(vk::VideoEncodeRateControlModeFlagsKHR::DISABLED);
+        let mut quality = vk::VideoEncodeQualityLevelInfoKHR::default().quality_level(self.session.quality_level);
+        let control = vk::VideoCodingControlInfoKHR::default()
+            .flags(
+                vk::VideoCodingControlFlagsKHR::RESET
+                    | vk::VideoCodingControlFlagsKHR::ENCODE_RATE_CONTROL
+                    | vk::VideoCodingControlFlagsKHR::ENCODE_QUALITY_LEVEL,
+            )
+            .push_next(&mut rate_control)
+            .push_next(&mut quality);
+        unsafe { (self.session.functions.fp().cmd_control_video_coding_khr)(command_buffer, &control) };
+    }
 
-        let mut slice_header: StdVideoEncodeH265SliceSegmentHeader = unsafe { mem::zeroed() };
-        slice_header.MaxNumMergeCand = MAX_MERGE_CANDIDATES;
-        let mut lists: StdVideoEncodeH265ReferenceListsInfo = unsafe { mem::zeroed() };
-        lists.RefPicList0 = [NO_REFERENCE_PICTURE; 15];
-        lists.RefPicList1 = [NO_REFERENCE_PICTURE; 15];
-        let mut reference_set: StdVideoH265ShortTermRefPicSet = unsafe { mem::zeroed() };
+    // Encodes the input into `bitstream`, reporting where it went in the input's feedback query.
+    fn encode_picture(
+        &self,
+        command_buffer: vk::CommandBuffer,
+        input: usize,
+        bitstream: &Buffer,
+        written: &ReferencePicture,
+        reference: Option<&ReferencePicture>,
+    ) {
+        let device = self.memory.device();
+        let syntax = PictureSyntax::new(written, reference);
+        let picture = syntax.picture();
+        let written_resource = self.reference_resource(written.slot);
+        let reference_resource = reference.map(|reference| self.reference_resource(reference.slot));
+        let input_resource = self.picture_resource(self.inputs[input].image.view());
+        let mut written_slot_info =
+            vk::VideoEncodeH265DpbSlotInfoKHR::default().std_reference_info(&syntax.written_reference);
+        let mut reference_slot_info =
+            vk::VideoEncodeH265DpbSlotInfoKHR::default().std_reference_info(&syntax.reference);
+        let mut references = Vec::new();
 
-        match reference {
-            Some(reference) => {
-                slice_header.slice_type = StdVideoH265SliceType_STD_VIDEO_H265_SLICE_TYPE_P;
-                lists.RefPicList0[0] = reference.slot as u8;
-                // The previous picture, one step back in output order.
-                reference_set.num_negative_pics = 1;
-                reference_set.used_by_curr_pic_s0_flag = 1;
-            }
-            None => slice_header.slice_type = StdVideoH265SliceType_STD_VIDEO_H265_SLICE_TYPE_I,
-        }
-
-        let mut picture: StdVideoEncodeH265PictureInfo = unsafe { mem::zeroed() };
-        picture.pic_type = setup.picture_type;
-        picture.PicOrderCntVal = setup.order;
-        picture.flags.set_is_reference(1);
-        picture.flags.set_pic_output_flag(1);
-        picture.pShortTermRefPicSet = &reference_set;
-
-        if reference.is_some() {
-            picture.pRefLists = &lists;
-        } else {
-            picture.flags.set_IrapPicFlag(1);
+        if let (Some(reference), Some(resource)) = (reference, &reference_resource) {
+            references.push(
+                vk::VideoReferenceSlotInfoKHR::default()
+                    .slot_index(reference.slot as i32)
+                    .picture_resource(resource)
+                    .push_next(&mut reference_slot_info),
+            );
         }
 
         let slices = [vk::VideoEncodeH265NaluSliceSegmentInfoKHR::default()
             .constant_qp(self.qp)
-            .std_slice_segment_header(&slice_header)];
+            .std_slice_segment_header(&syntax.slice_header)];
         let mut h265 = vk::VideoEncodeH265PictureInfoKHR::default()
             .nalu_slice_segment_entries(&slices)
             .std_picture_info(&picture);
-        let setup_slot = vk::VideoReferenceSlotInfoKHR::default()
-            .slot_index(setup.slot as i32)
-            .picture_resource(&setup_resource)
-            .push_next(&mut setup_slot_info);
+        let written_slot = vk::VideoReferenceSlotInfoKHR::default()
+            .slot_index(written.slot as i32)
+            .picture_resource(&written_resource)
+            .push_next(&mut written_slot_info);
         let encode = vk::VideoEncodeInfoKHR::default()
             .dst_buffer(bitstream.handle())
             .dst_buffer_range(bitstream.size())
             .src_picture_resource(input_resource)
-            .setup_reference_slot(&setup_slot)
+            .setup_reference_slot(&written_slot)
             .reference_slots(&references)
             .push_next(&mut h265);
 
@@ -428,8 +415,17 @@ impl VideoEncoder {
             );
             (self.session.encode_functions.fp().cmd_encode_video_khr)(command_buffer, &encode);
             device.cmd_end_query(command_buffer, self.feedback.handle(), input as u32);
-            (functions.cmd_end_video_coding_khr)(command_buffer, &vk::VideoEndCodingInfoKHR::default());
         }
+    }
+
+    fn reference_resource(&self, slot: u32) -> vk::VideoPictureResourceInfoKHR<'static> {
+        self.picture_resource(self.references[slot as usize].view())
+    }
+
+    fn picture_resource(&self, view: vk::ImageView) -> vk::VideoPictureResourceInfoKHR<'static> {
+        vk::VideoPictureResourceInfoKHR::default()
+            .coded_extent(self.geometry.coded_extent)
+            .image_view_binding(view)
     }
 
     // The reference pictures start undefined; the encoder keeps them in the reference layout from then on.

@@ -2,8 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ash::vk;
-use memory_vulkan::TimelineValue;
-use video_vulkan::{ColorConversion, ConversionSource, EncodeQueue, Mp4Writer, VideoEncoder, VideoError};
+use memory_vulkan::{QueueTimeline, TimelineValue};
+use video_vulkan::{ColorConversion, ConversionSource, Mp4Writer, VideoEncoder, VideoError};
 
 use super::gpu_context::GpuContext;
 use super::video_phase::VideoPhase;
@@ -33,7 +33,7 @@ impl VideoOutput {
             width: source_extent.width & !1,
             height: source_extent.height & !1,
         };
-        let queue = EncodeQueue {
+        let queue = QueueTimeline {
             family: gpu.device.encode_family(),
             timeline: gpu.encode.clone(),
         };

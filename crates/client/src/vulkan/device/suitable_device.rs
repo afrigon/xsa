@@ -3,6 +3,8 @@ use ash::vk;
 use ash::{ext, khr};
 
 use super::TransferQueueLocation;
+use video_vulkan::VideoEncoder;
+
 use crate::vulkan::Surface;
 
 #[derive(Clone, Copy)]
@@ -70,9 +72,7 @@ impl SuitableDevice {
         if !supports(khr::swapchain::NAME)
             || !supports(ext::swapchain_maintenance1::NAME)
             || !supports(ext::memory_budget::NAME)
-            || !supports(khr::video_queue::NAME)
-            || !supports(khr::video_encode_queue::NAME)
-            || !supports(khr::video_encode_h265::NAME)
+            || !VideoEncoder::DEVICE_EXTENSIONS.into_iter().all(supports)
         {
             return Ok(None);
         }
@@ -110,7 +110,7 @@ impl SuitableDevice {
         (0..).zip(queue_families).find_map(|(index, family)| {
             let separate = index != graphics_family && index != transfer_family;
 
-            (separate && family.queue_flags.contains(vk::QueueFlags::VIDEO_ENCODE_KHR)).then_some(index)
+            (separate && family.queue_flags.contains(VideoEncoder::QUEUE_CAPABILITY)).then_some(index)
         })
     }
 

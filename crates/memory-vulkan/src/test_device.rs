@@ -7,7 +7,7 @@ use ash::{ext, vk};
 use gpu_allocator::MemoryLocation;
 
 use crate::{
-    BindlessTable, Buffer, DeviceObject, Image, MemoryContext, MemoryError, TestQueue, TestRequirements, Timeline,
+    BindlessTable, Buffer, DeviceObject, Image, MemoryContext, MemoryError, QueueTimeline, TestRequirements, Timeline,
     TimelineValue, TransferQueue,
 };
 
@@ -23,7 +23,7 @@ pub struct TestDevice {
     bindless: ManuallyDrop<BindlessTable>,
     transfer: ManuallyDrop<TransferQueue>,
     command_pool: ManuallyDrop<DeviceObject<vk::CommandPool>>,
-    extra_queue: ManuallyDrop<Option<TestQueue>>,
+    extra_queue: ManuallyDrop<Option<QueueTimeline>>,
     graphics: ManuallyDrop<Timeline>,
     memory: ManuallyDrop<MemoryContext>,
     debug_utils: Option<ext::debug_utils::Instance>,
@@ -143,7 +143,7 @@ impl TestDevice {
         };
         let transfer = TransferQueue::new(&memory, transfer_timeline, transfer_family, queue_family)?;
         let extra_queue = match extra_family {
-            Some(family) => Some(TestQueue {
+            Some(family) => Some(QueueTimeline {
                 family,
                 timeline: memory.create_timeline(unsafe { device.get_device_queue(family, 0) })?,
             }),
@@ -188,7 +188,7 @@ impl TestDevice {
     }
 
     /// The queue created for `TestRequirements::queue`.
-    pub fn extra_queue(&self) -> Option<&TestQueue> {
+    pub fn extra_queue(&self) -> Option<&QueueTimeline> {
         self.extra_queue.as_ref()
     }
 
