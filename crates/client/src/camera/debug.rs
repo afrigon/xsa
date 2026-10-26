@@ -81,6 +81,19 @@ impl DebugControls {
         self.attachment = Attachment::of(nearest, world);
     }
 
+    // Lifts the camera to the eyes of someone standing on the ground below it, wherever it went lower.
+    fn stay_above_ground(&mut self, world: &ClientWorld) {
+        let body = self.attachment.body;
+        let state = world.body_state(body);
+        let offset = self.position - state.position;
+        let direction = state.orientation.inverse() * offset.normalize_or(DVec3::Z);
+        let standing = world.eye_position(body, direction, 0.0);
+
+        if offset.length() < standing.distance(state.position) {
+            self.position = standing;
+        }
+    }
+
     fn take_pending_view(&mut self) {
         match self.pending_view.take() {
             Some(PendingView::Direction(direction)) => {
@@ -130,6 +143,10 @@ impl Controls for DebugControls {
             // the altitude whatever the step's length.
             let travel = DQuat::from_axis_angle(up.cross(horizontal).normalize_or_zero(), horizontal.length() / radius);
             self.position = self.attachment.position + travel * (offset + vertical);
+        }
+
+        if context.camera.collision {
+            self.stay_above_ground(context.world);
         }
 
         CameraPose {
