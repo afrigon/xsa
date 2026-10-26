@@ -166,11 +166,11 @@ fn a_ktx2_cube_map_reads_from_a_coarser_level() {
         key_values: Vec::new(),
         levels,
     };
-    let image = Ktx2Loader::read(std::io::Cursor::new(file.bytes()), 1).unwrap();
+    let image = Ktx2Loader::read(std::io::Cursor::new(file.bytes()), 1..3).unwrap();
 
     assert_eq!((image.width(), image.height()), (4, 4));
     assert_eq!(image.mip_levels(), 3);
-    assert_eq!(image.first_level(), 1);
+    assert_eq!(image.levels(), 1..3);
 
     for (face, layer) in image.layers().iter().enumerate() {
         let mut expected = tagged(1, face as u8, 16);
@@ -180,7 +180,28 @@ fn a_ktx2_cube_map_reads_from_a_coarser_level() {
 }
 
 #[test]
-fn a_ktx2_level_beyond_the_chain_is_refused() {
+fn an_empty_ktx2_level_range_reads_only_the_shape() {
+    let file = Ktx2 {
+        format: VK_FORMAT_R16_UNORM,
+        width: 2,
+        height: 2,
+        faces: 6,
+        layers: 0,
+        supercompression: SUPERCOMPRESSION_ZSTANDARD,
+        key_values: Vec::new(),
+        levels: vec![vec![0; 48], vec![0; 12]],
+    };
+    let image = Ktx2Loader::read(std::io::Cursor::new(file.bytes()), 1..1).unwrap();
+
+    assert_eq!(
+        (image.width(), image.mip_levels(), image.kind()),
+        (2, 2, TextureKind::CubeMap)
+    );
+    assert!(image.layers().iter().all(Vec::is_empty));
+}
+
+#[test]
+fn a_ktx2_level_range_beyond_the_chain_is_refused() {
     let file = Ktx2 {
         format: VK_FORMAT_R16_UNORM,
         width: 2,
@@ -192,7 +213,7 @@ fn a_ktx2_level_beyond_the_chain_is_refused() {
         levels: vec![vec![0; 8], vec![0; 2]],
     };
 
-    assert!(Ktx2Loader::read(std::io::Cursor::new(file.bytes()), 2).is_err());
+    assert!(Ktx2Loader::read(std::io::Cursor::new(file.bytes()), 3..2).is_err());
 }
 
 #[test]

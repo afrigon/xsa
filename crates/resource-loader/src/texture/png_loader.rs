@@ -17,7 +17,7 @@ impl TextureLoader for PngLoader {
             width: rgba.width(),
             height: rgba.height(),
             mip_levels: 1,
-            first_level: 0,
+            levels: 0..1,
             layers: vec![rgba.into_raw()],
             metadata: TextureMetadata::default(),
         })

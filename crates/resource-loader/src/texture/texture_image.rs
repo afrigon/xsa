@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::BufReader;
+use std::ops::Range;
 use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
@@ -10,16 +11,16 @@ use crate::utils::HalfFloat;
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;
 
-/// A decoded texture: one or more layers arranged as its kind says, each holding its mip chain from `first_level`
-/// down to the smallest level, largest first, with the key/value metadata its file carries. `width`, `height` and
-/// `mip_levels` describe the whole texture, level 0 included.
+/// A decoded texture: one or more layers arranged as its kind says, each holding the mip levels `levels` of its chain,
+/// largest first, with the key/value metadata its file carries. `width`, `height` and `mip_levels` describe the whole
+/// texture, level 0 included.
 pub struct TextureImage {
     pub(super) format: TextureFormat,
     pub(super) kind: TextureKind,
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) mip_levels: u32,
-    pub(super) first_level: u32,
+    pub(super) levels: Range<u32>,
     pub(super) layers: Vec<Vec<u8>>,
     pub(super) metadata: TextureMetadata,
 }
@@ -41,7 +42,7 @@ impl TextureImage {
             width,
             height,
             mip_levels,
-            first_level: 0,
+            levels: 0..mip_levels,
             layers,
             metadata: TextureMetadata::default(),
         };
@@ -66,9 +67,9 @@ impl TextureImage {
             .with_context(|| format!("{}", path.display()))
     }
 
-    /// Reads the levels of a KTX2 file from `first_level` down to the smallest, its texels meant in a color space,
-    /// without reading the finer levels' data.
-    pub fn read_levels(path: &Path, color_space: ColorSpace, first_level: u32) -> anyhow::Result<TextureImage> {
+    /// Reads `levels` of a KTX2 file, its texels meant in a color space, without reading the other levels' data. An
+    /// empty range reads only the texture's shape.
+    pub fn read_levels(path: &Path, color_space: ColorSpace, levels: Range<u32>) -> anyhow::Result<TextureImage> {
         let extension = path.extension().and_then(|extension| extension.to_str());
         ensure!(
             extension == Some(Ktx2Loader::EXTENSION),
@@ -77,7 +78,7 @@ impl TextureImage {
         );
 
         let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
-        Ktx2Loader::read(BufReader::new(file), first_level)
+        Ktx2Loader::read(BufReader::new(file), levels)
             .and_then(|image| image.in_color_space(color_space))
             .with_context(|| format!("{}", path.display()))
     }
@@ -127,12 +128,12 @@ impl TextureImage {
         self.mip_levels
     }
 
-    /// The finest level the layers hold.
-    pub fn first_level(&self) -> u32 {
-        self.first_level
+    /// The levels the layers hold.
+    pub fn levels(&self) -> Range<u32> {
+        self.levels.clone()
     }
 
-    /// Each layer's mip chain from `first_level`, largest level first, levels packed without padding.
+    /// Each layer's `levels`, largest first, packed without padding.
     pub fn layers(&self) -> &[Vec<u8>] {
         &self.layers
     }
@@ -191,8 +192,8 @@ impl TextureImage {
         Ok(())
     }
 
-    // The size in bytes of a layer's mip chain from `first_level`, as the file's header declares it, refusing shapes no
-    // valid file has and sizes that overflow, so nothing is allocated from an impossible header.
+    // The size in bytes of a layer's `levels`, as the file's header declares them, refusing shapes no valid file has
+    // and sizes that overflow, so nothing is allocated from an impossible header.
     pub(super) fn layer_size(&self) -> anyhow::Result<usize> {
         ensure!(
             self.width > 0 && self.height > 0,
@@ -210,13 +211,14 @@ impl TextureImage {
             self.height
         );
         ensure!(
-            self.first_level < self.mip_levels,
-            "level {} of {} mip levels",
-            self.first_level,
+            self.levels.start <= self.levels.end && self.levels.end <= self.mip_levels,
+            "levels {:?} of {} mip levels",
+            self.levels,
             self.mip_levels
         );
 
-        (self.first_level..self.mip_levels)
+        self.levels
+            .clone()
             .try_fold(0usize, |size, level| {
                 size.checked_add(
                     self.format

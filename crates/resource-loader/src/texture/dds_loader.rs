@@ -58,13 +58,14 @@ impl TextureLoader for DdsLoader {
         } else {
             (TextureKind::Plane, 1)
         };
+        let mip_levels = word(MIP_COUNT_OFFSET).max(1);
         let mut image = TextureImage {
             format,
             kind,
             width: word(WIDTH_OFFSET),
             height: word(HEIGHT_OFFSET),
-            mip_levels: word(MIP_COUNT_OFFSET).max(1),
-            first_level: 0,
+            mip_levels,
+            levels: 0..mip_levels,
             layers: Vec::new(),
             metadata: TextureMetadata::default(),
         };

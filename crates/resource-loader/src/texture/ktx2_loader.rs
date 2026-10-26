@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::ops::Range;
 
 use anyhow::{Context, bail, ensure};
 
@@ -35,13 +36,13 @@ impl TextureLoader for Ktx2Loader {
     const EXTENSION: &'static str = "ktx2";
 
     fn load(bytes: &[u8]) -> anyhow::Result<TextureImage> {
-        Ktx2Loader::read(Cursor::new(bytes), 0)
+        Ktx2Loader::read(Cursor::new(bytes), 0..u32::MAX)
     }
 }
 
 impl Ktx2Loader {
-    /// Reads the levels from `first_level` down to the smallest, seeking past the finer levels' data.
-    pub fn read(mut reader: impl Read + Seek, first_level: u32) -> anyhow::Result<TextureImage> {
+    /// Reads `levels`, clamped to the file's chain, seeking past the other levels' data.
+    pub fn read(mut reader: impl Read + Seek, levels: Range<u32>) -> anyhow::Result<TextureImage> {
         let mut header = [0; LEVEL_INDEX_OFFSET];
         reader.read_exact(&mut header).context("not a KTX2 file")?;
         ensure!(&header[..KTX2_IDENTIFIER.len()] == KTX2_IDENTIFIER, "not a KTX2 file");
@@ -81,7 +82,7 @@ impl Ktx2Loader {
             width: word(PIXEL_WIDTH_OFFSET),
             height: word(PIXEL_HEIGHT_OFFSET),
             mip_levels,
-            first_level,
+            levels: levels.start..levels.end.min(mip_levels),
             layers: Vec::new(),
             metadata: TextureMetadata::new(metadata),
         };
@@ -96,7 +97,7 @@ impl Ktx2Loader {
             layers.push(layer);
         }
 
-        for level in first_level..mip_levels {
+        for level in image.levels() {
             let face_size = image.format.level_size(image.width >> level, image.height >> level);
             let level_size = face_size * layer_count as usize;
             let data = Ktx2Loader::level(
