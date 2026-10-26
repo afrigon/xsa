@@ -19,7 +19,13 @@ impl ClientCommandHandler for TimeWarpCommand {
             let cameras = app.cameras.as_ref().context("the cameras are not ready")?;
             let body = cameras.anchor().context("the camera is around no body")?.body();
             let pose = cameras.controls_pose();
-            let spot = world.position_reading(body, pose.position, pose.orientation);
+            let reading = world.position_reading(body, pose.position, pose.orientation);
+            let spot = reading.surface.with_context(|| {
+                format!(
+                    "the camera is at the centre of {}, where no time of day applies",
+                    reading.body
+                )
+            })?;
             let star = world.star_for(body, self.star.as_deref())?;
             let now = world.time();
             let until = world

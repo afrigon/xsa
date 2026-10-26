@@ -237,31 +237,54 @@ impl CameraController {
             None => self.anchor().context("the camera is around no body; name one")?.body(),
         };
         let current = world.position_reading(index, self.camera.position, self.camera.orientation);
+        let current_surface = || {
+            current.surface.as_ref().with_context(|| {
+                format!(
+                    "the camera is at the centre of {}, with no latitude, longitude or heading to keep; give --lat, \
+                     --lon, --yaw and --pitch",
+                    world.body(index).id
+                )
+            })
+        };
         let latitude = match command.latitude {
             Some(latitude) => CameraController::latitude(latitude, index, command, world)?,
-            None => current.latitude,
+            None => current_surface()?.latitude,
         };
         let longitude = match command.longitude {
             Some(longitude) => CameraController::longitude(longitude, latitude, index, command, world)?,
-            None => current.longitude,
+            None => current_surface()?.longitude,
         };
         let altitude = command.altitude.map_or_else(
-            || current.above_ground.unwrap_or(current.above_sea),
+            || {
+                current
+                    .surface
+                    .as_ref()
+                    .and_then(|surface| surface.above_ground)
+                    .unwrap_or(current.above_sea)
+            },
             |altitude| altitude.meters,
         );
         // The debug camera never rolls, so the current view is kept by its direction: a compass heading and the angle
         // above the horizon.
         let forward = self.camera.orientation * DVec3::Y;
-        let current_up = (self.camera.position - world.body_state(index).position).normalize();
-        let current_north = world.local_north(index, current.latitude, current.longitude);
-        let current_east = current_north.cross(current_up);
-        let yaw = command.yaw.map_or_else(
-            || forward.dot(current_east).atan2(forward.dot(current_north)),
-            f64::to_radians,
-        );
-        let pitch = command
-            .pitch
-            .map_or_else(|| forward.dot(current_up).clamp(-1.0, 1.0).asin(), f64::to_radians);
+        let current_horizon = || -> anyhow::Result<DMat3> {
+            let surface = current_surface()?;
+            let up = (self.camera.position - world.body_state(index).position).normalize();
+            let north = world.local_north(index, surface.latitude, surface.longitude);
+
+            Ok(DMat3::from_cols(north.cross(up), north, up))
+        };
+        let yaw = match command.yaw {
+            Some(yaw) => yaw.to_radians(),
+            None => {
+                let horizon = current_horizon()?;
+                forward.dot(horizon.x_axis).atan2(forward.dot(horizon.y_axis))
+            }
+        };
+        let pitch = match command.pitch {
+            Some(pitch) => pitch.to_radians(),
+            None => forward.dot(current_horizon()?.z_axis).clamp(-1.0, 1.0).asin(),
+        };
 
         let state = world.body_state(index);
         let direction = DVec3::new(

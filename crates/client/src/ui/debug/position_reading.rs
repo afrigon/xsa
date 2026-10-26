@@ -1,12 +1,9 @@
-use crate::camera::Attitude;
+use super::SurfacePosition;
 
-// The camera against the body it is around. Angles in radians; altitudes in meters at the feet, above the ground
-// only for a body with terrain.
+// The camera against the body it is around. The altitude in meters at the feet; no surface position at the body's
+// centre.
 pub struct PositionReading {
     pub body: String,
-    pub latitude: f64,
-    pub longitude: f64,
-    pub above_ground: Option<f64>,
     pub above_sea: f64,
-    pub attitude: Attitude,
+    pub surface: Option<SurfacePosition>,
 }

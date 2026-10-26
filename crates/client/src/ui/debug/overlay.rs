@@ -93,17 +93,19 @@ impl DebugOverlayView {
         let Some(position) = &self.position else {
             return format!("target: {MISSING}");
         };
-        let above_ground = position.above_ground.map_or_else(|| MISSING.to_string(), distance);
+        let surface = position.surface.as_ref();
+        let missing_or = |value: Option<String>| value.unwrap_or_else(|| MISSING.to_string());
+        let latitude = missing_or(surface.map(|surface| angle(surface.latitude)));
+        let longitude = missing_or(surface.map(|surface| angle(surface.longitude)));
+        let above_ground = missing_or(surface.and_then(|surface| surface.above_ground).map(distance));
+        let yaw = missing_or(surface.map(|surface| heading(surface.attitude.yaw)));
+        let pitch = missing_or(surface.map(|surface| angle(surface.attitude.pitch)));
+        let roll = missing_or(surface.map(|surface| angle(surface.attitude.roll)));
         format!(
-            "target: {}\nlat: {} · lon: {}\naltitude: {above_ground} ground · {} sea\n\
-             rotation: yaw {} · pitch {} · roll {}",
+            "target: {}\nlat: {latitude} · lon: {longitude}\naltitude: {above_ground} ground · {} sea\n\
+             rotation: yaw {yaw} · pitch {pitch} · roll {roll}",
             position.body,
-            angle(position.latitude),
-            angle(position.longitude),
             distance(position.above_sea),
-            heading(position.attitude.yaw),
-            angle(position.attitude.pitch),
-            angle(position.attitude.roll)
         )
     }
 

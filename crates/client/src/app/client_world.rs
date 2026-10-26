@@ -22,7 +22,7 @@ use crate::renderer::{
     ObjectHandle, Renderer, SceneObject, SkyboxMaterial, Star, SurfaceClass, SurfaceTextures, Terrain, TerrainLayer,
     TerrainMaps,
 };
-use crate::ui::PositionReading;
+use crate::ui::{PositionReading, SurfacePosition};
 
 const DEFAULT_NAMESPACE: &str = "base";
 const MAIN_LENS: &str = "main";
@@ -232,19 +232,24 @@ impl ClientWorld {
         let body = self.body(index);
         let state = self.body_state(index);
         let offset = position - state.position;
-        let direction = (state.orientation.inverse() * offset).normalize();
         let above_sea = offset.length() - body.radius - EYE_HEIGHT_METERS;
-        let up = offset.normalize();
-        let latitude = direction.z.clamp(-1.0, 1.0).asin();
-        let longitude = direction.y.atan2(direction.x);
+        let surface = offset.try_normalize().map(|up| {
+            let direction = state.orientation.inverse() * up;
+            let latitude = direction.z.clamp(-1.0, 1.0).asin();
+            let longitude = direction.y.atan2(direction.x);
+
+            SurfacePosition {
+                latitude,
+                longitude,
+                above_ground: self.terrain_height(index, direction).map(|height| above_sea - height),
+                attitude: Attitude::of(orientation, up, self.local_north(index, latitude, longitude)),
+            }
+        });
 
         PositionReading {
             body: body.id.to_string(),
-            latitude,
-            longitude,
-            above_ground: self.terrain_height(index, direction).map(|height| above_sea - height),
             above_sea,
-            attitude: Attitude::of(orientation, up, self.local_north(index, latitude, longitude)),
+            surface,
         }
     }
 
