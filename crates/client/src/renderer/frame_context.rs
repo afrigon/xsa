@@ -2,7 +2,6 @@ use std::cell::Cell;
 
 use ash::vk;
 use render_graph_vulkan::{ImageHandle, PassContext};
-use xui::DrawList;
 
 use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
@@ -34,7 +33,6 @@ pub(super) struct FrameContext<'a> {
     // Each terrain's slot in the frame's surface anchors, by terrain index; None for terrains without surfaces.
     pub surface_anchor_slots: &'a [Option<usize>],
     pub descriptor_set: vk::DescriptorSet,
-    pub user_interface: &'a DrawList,
     pub video: Option<&'a VideoOutput>,
     pub triangles: Cell<u64>,
 }

@@ -1,7 +1,7 @@
 use anyhow::Context;
 use ash::vk;
 use memory_vulkan::MemoryContext;
-use xui::{ATLAS_SIZE, DrawList};
+use xui::{ATLAS_SIZE, AtlasUpdate, DrawList};
 
 use crate::FrameTarget;
 use crate::atlas_image::AtlasImage;
@@ -20,6 +20,8 @@ pub struct Renderer {
     atlas: AtlasImage,
     pipeline: InterfacePipeline,
     instances: Vec<PrimitiveInstance>,
+    draw_list: DrawList,
+    pending_atlas_updates: Vec<AtlasUpdate>,
 }
 
 impl Renderer {
@@ -41,17 +43,27 @@ impl Renderer {
             atlas,
             pipeline,
             instances: Vec::new(),
+            draw_list: DrawList::default(),
+            pending_atlas_updates: Vec::new(),
         })
     }
 
-    /// Uploads the draw list's new glyphs and draws its primitives over the target image, in order.
+    /// Replaces the draw list frames draw. Its atlas updates are kept until a frame records them, so glyphs stay
+    /// whole however many draw lists arrive between recorded frames.
+    pub fn set_draw_list(&mut self, mut draw_list: DrawList) {
+        self.pending_atlas_updates.append(&mut draw_list.atlas_updates);
+        self.draw_list = draw_list;
+    }
+
+    /// Uploads the glyphs no frame has recorded yet and draws the draw list's primitives over the target image, in
+    /// order.
     ///
     /// # Safety
     ///
     /// The target's handles are valid. The image is in `COLOR_ATTACHMENT_OPTIMAL` layout, was last written as a
     /// color attachment, and is left in that layout. The GPU has finished the frame previously recorded with the
     /// same `frame_slot`.
-    pub unsafe fn record(&mut self, target: &FrameTarget, draw_list: &DrawList) -> anyhow::Result<()> {
+    pub unsafe fn record(&mut self, target: &FrameTarget) -> anyhow::Result<()> {
         let device = self.memory.device();
         let command_buffer = target.command_buffer;
         let frame = self
@@ -59,9 +71,9 @@ impl Renderer {
             .get_mut(target.frame_slot)
             .with_context(|| format!("frame slot {} is out of range", target.frame_slot))?;
         let mut pixels = Vec::new();
-        let mut regions = Vec::with_capacity(draw_list.atlas_updates.len());
+        let mut regions = Vec::with_capacity(self.pending_atlas_updates.len());
 
-        for update in &draw_list.atlas_updates {
+        for update in &self.pending_atlas_updates {
             regions.push(
                 vk::BufferImageCopy::default()
                     .buffer_offset(pixels.len() as u64)
@@ -90,9 +102,11 @@ impl Renderer {
                 .record_updates(device, command_buffer, frame.staging(), &regions);
         }
 
+        self.pending_atlas_updates.clear();
+
         self.instances.clear();
         self.instances
-            .extend(draw_list.primitives.iter().map(PrimitiveInstance::new));
+            .extend(self.draw_list.primitives.iter().map(PrimitiveInstance::new));
 
         if self.instances.is_empty() {
             return Ok(());

@@ -174,7 +174,6 @@ pub struct Renderer {
     // The buffer the frame being recorded copies its output into, on capture frames.
     capture: Option<Buffer>,
     video: Option<VideoOutput>,
-    user_interface: DrawList,
     statistics: FrameStatistics,
     gpu_milliseconds: Option<f32>,
     lens_lights: LensLights,
@@ -240,7 +239,6 @@ impl Renderer {
             captures: Vec::new(),
             capture: None,
             video: None,
-            user_interface: DrawList::default(),
             statistics: FrameStatistics::default(),
             gpu_milliseconds: None,
             lens_lights: LensLights::default(),
@@ -288,12 +286,8 @@ impl Renderer {
         self.illuminance = Some(illuminance);
     }
 
-    // Atlas updates no frame has recorded yet carry over, or their glyphs would stay blank.
-    pub fn set_user_interface(&mut self, mut draw_list: DrawList) {
-        draw_list
-            .atlas_updates
-            .splice(0..0, self.user_interface.atlas_updates.drain(..));
-        self.user_interface = draw_list;
+    pub fn set_user_interface(&mut self, draw_list: DrawList) {
+        self.passes.set_user_interface(draw_list);
     }
 
     pub fn configure(&mut self, config: &Config) {
@@ -1091,7 +1085,6 @@ impl Renderer {
             terrain_draws: &self.terrain_draws,
             surface_anchor_slots: &self.surface_anchor_slots,
             descriptor_set: bindless.set(),
-            user_interface: &self.user_interface,
             video: video.and(self.video.as_ref()),
             triangles: Cell::new(0),
         };
@@ -1114,7 +1107,6 @@ impl Renderer {
             deepest_depth: self.selected_tiles.iter().map(|selected| selected.tile.depth).max(),
             gpu_milliseconds: self.gpu_milliseconds,
         };
-        self.user_interface.atlas_updates.clear();
 
         Ok(recording)
     }

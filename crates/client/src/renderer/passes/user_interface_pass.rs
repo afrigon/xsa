@@ -1,5 +1,6 @@
 use ash::vk;
 use render_graph_vulkan::{Attachment, PassContext, PassDeclaration, PassError, RenderPass, Subresource};
+use xui::DrawList;
 use xui_vulkan::FrameTarget;
 
 use crate::renderer::frame_context::FrameContext;
@@ -18,6 +19,10 @@ impl UserInterfacePass {
         let renderer = xui_vulkan::Renderer::new(&gpu.memory, output_format, frames_in_flight)?;
 
         Ok(UserInterfacePass { renderer })
+    }
+
+    pub fn set_draw_list(&mut self, draw_list: DrawList) {
+        self.renderer.set_draw_list(draw_list);
     }
 }
 
@@ -48,7 +53,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for UserInterfacePass {
             frame_slot: frame.frame_slot,
         };
 
-        unsafe { self.renderer.record(&target, frame.user_interface) }?;
+        unsafe { self.renderer.record(&target) }?;
 
         Ok(())
     }
