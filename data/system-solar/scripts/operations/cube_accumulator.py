@@ -9,10 +9,6 @@ from operations.cube_projection import CubeProjection
 from operations.raster import Raster
 from operations.source_band import SourceBand
 
-# Source pixels are split until every texel receives at least this many cells along each axis, so a pixel straddling
-# texels is shared between them in proportion to its ground in each.
-CELLS_PER_TEXEL = 2
-
 logger = logging.getLogger(__name__)
 
 
@@ -29,10 +25,14 @@ class Source(Protocol):
 
 # Each texel is the area-weighted average of the source pixels on the ground it covers, read in the source's own
 # projection. Ground without data, NaN in the source, is counted apart, so a texel knows whether a source covers it.
+# Source pixels are split until every texel receives at least `cells_per_texel` cells along each axis, so a pixel
+# straddling texels is shared between them in proportion to its ground in each; at 1, a pixel finer than a texel goes
+# whole to the texel under its center.
 class CubeAccumulator:
-    def __init__(self, face_size: int, projection: CubeProjection, channels: int):
+    def __init__(self, face_size: int, projection: CubeProjection, channels: int, cells_per_texel: int):
         self.face_size = face_size
         self.projection = projection
+        self.cells_per_texel = cells_per_texel
         texel_count = CUBE_FACE_COUNT * face_size * face_size
         self.sums = np.zeros((texel_count, channels))
         self.weights = np.zeros(texel_count)
@@ -40,7 +40,7 @@ class CubeAccumulator:
 
     def subdivisions(self, source: Source) -> int:
         width = CubeMap.smallest_texel_width(self.face_size, self.projection)
-        return math.ceil(CELLS_PER_TEXEL * source.pixel_angle / width)
+        return math.ceil(self.cells_per_texel * source.pixel_angle / width)
 
     def add(self, source: Source) -> None:
         subdivisions = self.subdivisions(source)

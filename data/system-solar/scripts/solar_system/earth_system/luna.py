@@ -30,6 +30,11 @@ TERRAIN_FACE_SIZE = 4096
 COLOR_FACE_SIZE = 4096
 # The Hapke parameter maps are 1° per pixel: about one pixel per texel.
 HAPKE_FACE_SIZE = 128
+# Heights split each source pixel so texels catch even shares of ground: uneven shares show as ridges in the normals.
+# Colour takes each mosaic pixel whole, which costs a fraction of a level on average.
+TERRAIN_CELLS_PER_TEXEL = 2
+COLOR_CELLS_PER_TEXEL = 1
+HAPKE_CELLS_PER_TEXEL = 2
 CGI_MOON_KIT = SourceLayout(left_edge_longitude=-180.0, north_up=True)
 MOSAIC = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_HAPKE"
 PARAMETER_MAPS = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/WAC_HAPKEPARAMMAP"
@@ -148,7 +153,7 @@ class Luna(Recipe):
 
     # Meters relative to the radius, each texel from the finest elevation model covering it.
     def _heights(self, context: BuildContext) -> CubeMap:
-        terrain = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
+        terrain = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1, TERRAIN_CELLS_PER_TEXEL)
         elevation = self.elevation.fetch(context.cache)
         terrain.add(EquirectangularSource.global_map(elevation, CGI_MOON_KIT, METERS_PER_KILOMETER))
         heights = terrain.cube_map()
@@ -156,7 +161,7 @@ class Luna(Recipe):
         for image, label in self.polar_elevation:
             image.fetch(context.cache)
             source = PolarStereographicSource(label.fetch(context.cache))
-            polar = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
+            polar = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1, TERRAIN_CELLS_PER_TEXEL)
             polar.add(source)
             covered = polar.covered(source)
             polar_heights = polar.cube_map()
@@ -178,7 +183,9 @@ class Luna(Recipe):
         }
 
         for layer, raster in layers.items():
-            cube = CubeAccumulator(HAPKE_FACE_SIZE, CubeProjection.EQUAL_ANGLE, raster.pixels.shape[-1])
+            cube = CubeAccumulator(
+                HAPKE_FACE_SIZE, CubeProjection.EQUAL_ANGLE, raster.pixels.shape[-1], HAPKE_CELLS_PER_TEXEL
+            )
             cube.add(EquirectangularSource.from_raster(raster))
             TextureWriter.values().write(context.texture_path(layer), cube.cube_map().faces)
 
@@ -202,7 +209,7 @@ class Luna(Recipe):
 
         for wavelength, sources in self.mosaic.items():
             parameters = self._parameters(parameter_path, wavelength).extended_toward_poles()
-            cube = CubeAccumulator(COLOR_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
+            cube = CubeAccumulator(COLOR_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1, COLOR_CELLS_PER_TEXEL)
 
             for tile in sources:
                 source = EquirectangularSource.georeferenced(tile.fetch(context.cache))
@@ -249,7 +256,7 @@ class Luna(Recipe):
         )
 
     def _polar_albedo(self, context: BuildContext) -> CubeMap:
-        cube = CubeAccumulator(COLOR_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1)
+        cube = CubeAccumulator(COLOR_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1, COLOR_CELLS_PER_TEXEL)
 
         for image, label in self.polar_albedo:
             image.fetch(context.cache)

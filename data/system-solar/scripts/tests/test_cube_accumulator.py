@@ -37,7 +37,7 @@ def longitudes(width):
 
 
 def accumulated(source, face_size=FACE_SIZE):
-    accumulator = CubeAccumulator(face_size, CubeProjection.EQUAL_ANGLE, 1)
+    accumulator = CubeAccumulator(face_size, CubeProjection.EQUAL_ANGLE, 1, 2)
     accumulator.add(source)
     return accumulator
 
