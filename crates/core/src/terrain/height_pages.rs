@@ -24,7 +24,7 @@ pub trait HeightPages {
         let point = FacePoint::from_direction(direction);
         let (address, page) = self.page(point.page(self.finest_level()))?;
         let page_origin = f64::from(PAGE_INTERIOR);
-        let texel = point.texel_position(address.level)
+        let texel = point.texel_position(PAGE_INTERIOR << address.level)
             - DVec2::new(f64::from(address.key.x()), f64::from(address.key.y())) * page_origin;
         let base = texel.floor();
         let weights_x = HeightPage::spline_weights(texel.x - base.x);
@@ -141,7 +141,7 @@ mod tests {
             face: CubeFace::PositiveX,
             coordinates: DVec2::new(0.3, -0.2),
         };
-        let expected = point.texel_position(0).x * 0.5;
+        let expected = point.texel_position(PAGE_INTERIOR).x * 0.5;
 
         assert!((ramp.height_at(point.direction()).unwrap() - expected).abs() < TOLERANCE_METERS);
     }

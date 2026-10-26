@@ -1,7 +1,7 @@
 use std::f64::consts::FRAC_PI_4;
 
 use glam::{DVec2, DVec3};
-use resource_loader::terrain::{PAGE_INTERIOR, PageAddress, PageKey};
+use resource_loader::terrain::{PageAddress, PageKey};
 use resource_loader::utils::CubeFace;
 
 // A direction on a body as a point of its cube map: the face it falls on and its coordinates there, -1 to 1 along
@@ -52,9 +52,9 @@ impl FacePoint {
         .normalize()
     }
 
-    // Its position on the face's texels at `level`, texel centers at whole coordinates.
-    pub fn texel_position(self, level: u32) -> DVec2 {
-        (self.coordinates + 1.0) / 2.0 * f64::from(PAGE_INTERIOR << level) - 0.5
+    // Its position on a face `extent` texels wide, texel centers at whole coordinates.
+    pub fn texel_position(self, extent: u32) -> DVec2 {
+        (self.coordinates + 1.0) / 2.0 * f64::from(extent) - 0.5
     }
 
     // The page at `level` whose own area holds the point.
@@ -74,6 +74,8 @@ impl FacePoint {
 
 #[cfg(test)]
 mod tests {
+    use resource_loader::terrain::PAGE_INTERIOR;
+
     use super::*;
 
     const TOLERANCE: f64 = 1e-12;
@@ -119,6 +121,6 @@ mod tests {
 
         assert_eq!((page.key.x(), page.key.y()), (0, 3));
         let expected = DVec2::new(0.05 * 128.0 - 0.5, 0.8 * 128.0 - 0.5);
-        assert!(point.texel_position(0).distance(expected) < TOLERANCE);
+        assert!(point.texel_position(PAGE_INTERIOR).distance(expected) < TOLERANCE);
     }
 }
