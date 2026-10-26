@@ -12,7 +12,7 @@ use crate::input::Input;
 const MOUSE_SENSITIVITY: f64 = 0.0015;
 const SPEED_FACTOR_PER_SCROLL_STEP: f64 = 2.0;
 
-// Flies freely with WASD, Space and Shift and mouse look, riding the nearest body's motion and spin.
+// Flies freely with WASD, Space and Shift and mouse look, riding the motion and spin of the body `camera tp` set.
 pub struct DebugControls {
     position: DVec3,
     // Turns the camera's local axes into the local horizontal frame, whose +Z is up. Each update tilts it by the
@@ -70,15 +70,13 @@ impl DebugControls {
     }
 
     // Carries the camera along with its body's motion and spin since the previous frame, so it hovers over the same
-    // ground whatever the simulation's speed, then rides whichever body is nearest from there. Carrying comes first:
-    // after a jump in time, the position the body left behind says nothing about which body is near.
-    fn ride_nearest_body(&mut self, world: &ClientWorld) {
+    // ground whatever the simulation's speed.
+    fn ride_body(&mut self, world: &ClientWorld) {
         let state = world.body_state(self.attachment.body);
         let rotation = state.orientation * self.attachment.orientation.inverse();
         self.position = state.position + rotation * (self.position - self.attachment.position);
         self.frame = (rotation * self.frame).normalize();
-        let nearest = world.nearest_body(self.position).unwrap_or(self.attachment.body);
-        self.attachment = Attachment::of(nearest, world);
+        self.attachment = Attachment::of(self.attachment.body, world);
     }
 
     // How close to its body's centre the camera may come toward `direction`: the eyes of someone standing on the
@@ -117,7 +115,7 @@ impl DebugControls {
 impl Controls for DebugControls {
     fn update(&mut self, context: &ControlsContext) -> CameraPose {
         let input = context.input;
-        self.ride_nearest_body(context.world);
+        self.ride_body(context.world);
         let up = (self.position - self.attachment.position).normalize_or(DVec3::Z);
         self.frame = (DQuat::from_rotation_arc(self.frame * DVec3::Z, up) * self.frame).normalize();
         self.take_pending_view();

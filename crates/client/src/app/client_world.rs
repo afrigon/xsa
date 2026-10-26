@@ -215,17 +215,6 @@ impl ClientWorld {
             .illuminance_at(self.simulation.bodies(), &self.state.bodies, position)
     }
 
-    // The body whose radius the position is closest to.
-    pub fn nearest_body(&self, position: DVec3) -> Option<BodyIndex> {
-        self.bodies()
-            .iter()
-            .zip(&self.state.bodies)
-            .map(|(body, state)| state.position.distance(position) - body.radius)
-            .enumerate()
-            .min_by(|first, second| first.1.total_cmp(&second.1))
-            .map(|(value, _)| BodyIndex { value })
-    }
-
     // The camera against `index`: latitude, longitude and altitudes at the feet, EYE_HEIGHT_METERS below the camera,
     // and its attitude against the local horizon.
     pub fn position_reading(&self, index: BodyIndex, position: DVec3, orientation: DQuat) -> PositionReading {
