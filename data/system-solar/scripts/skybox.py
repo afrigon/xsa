@@ -19,9 +19,8 @@ class Skybox(Recipe):
     credits = [
         Credit(
             "Skybox (system-solar/resources/textures/skyboxes/)",
-            "Deep Star Maps 2020, NASA/Goddard Space Flight Center Scientific Visualization Studio "
-            "(https://svs.gsfc.nasa.gov/4851). Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2, Tycho-2: ESA. Used under the "
-            "NASA media usage guidelines; the cube map is converted from the source EXR.",
+            "Deep Star Maps 2020, NASA/GSFC Scientific Visualization Studio (https://svs.gsfc.nasa.gov/4851), from "
+            "ESA's Gaia DR2, Hipparcos-2 and Tycho-2 catalogues. NASA media usage guidelines.",
         )
     ]
 

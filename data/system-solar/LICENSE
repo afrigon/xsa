@@ -28,33 +28,18 @@ terms.
 
 Data (system-solar/data/)
 
-Orbits, physical properties and rotation of the bodies are facts, taken from:
-
-- NASA/JPL Horizons (https://ssd.jpl.nasa.gov/horizons/) and the JPL planetary
-  satellite mean elements (https://ssd.jpl.nasa.gov/sats/elem/),
-  NASA/JPL-Caltech Solar System Dynamics Group. US government work, public
-  domain. Orbits are fitted to Horizons positions.
-- The IAU WGCCRE report on cartographic coordinates and rotational elements
-  (Archinal et al. 2018, Celestial Mechanics and Dynamical Astronomy 130:22).
-- Sol by RSS-Reborn (https://github.com/RSS-Reborn), for a few values neither
-  source provides.
+Facts from NASA/JPL Horizons and the JPL planetary satellite mean elements
+(NASA/JPL-Caltech, public domain) and the IAU WGCCRE rotational elements
+(Archinal et al. 2018).
 
 Skybox (system-solar/resources/textures/skyboxes/)
 
-Deep Star Maps 2020, NASA/Goddard Space Flight Center Scientific Visualization
-Studio (https://svs.gsfc.nasa.gov/4851). Gaia DR2: ESA/Gaia/DPAC. Hipparcos-2,
-Tycho-2: ESA. Used under the NASA media usage guidelines; the cube map is
-converted from the source EXR.
+Deep Star Maps 2020, NASA/GSFC Scientific Visualization Studio
+(https://svs.gsfc.nasa.gov/4851), from ESA's Gaia DR2, Hipparcos-2 and Tycho-2
+catalogues. NASA media usage guidelines.
 
-Moon textures (system-solar/resources/textures/bodies/luna/)
+Moon surface (system-solar/resources/textures/bodies/luna/, system-solar/data/terrains/luna.ktx2)
 
-Color: the Lunar Reconnaissance Orbiter Camera (LROC) Wide Angle Camera
-Hapke-normalized mosaic (LRO-L-LROC-5-RDR-V1.0, WAC_HAPKE; Sato et al. 2017,
-Icarus 296) and Hapke parameter maps (WAC_HAPKEPARAMMAP; Sato et al. 2014,
-Journal of Geophysical Research: Planets 119), NASA/GSFC/Arizona State
-University; polar latitudes from the Lunar Orbiter Laser Altimeter (LOLA) 1064
-nm albedo maps (LRO-L-LOLA-4-GDR-V1.0; Lemelin et al. 2016, Icarus 273).
-Elevation: LOLA gridded data, through the CGI Moon Kit of NASA's Scientific
-Visualization Studio (https://svs.gsfc.nasa.gov/4720). Public domain NASA data;
-the color is the diffusive reflectance solved from the mosaic with the Hapke
-parameters, the normal map is derived from the elevation.
+NASA Lunar Reconnaissance Orbiter LROC and LOLA data, NASA/GSFC/Arizona State
+University; elevation through NASA's Scientific Visualization Studio CGI Moon
+Kit. Public domain.
