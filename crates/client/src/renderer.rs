@@ -6,6 +6,7 @@ mod culler;
 mod debug_view;
 mod forward_pipeline;
 mod frame;
+mod frame_capacities;
 mod frame_context;
 mod frame_inputs;
 mod frame_output;
@@ -92,6 +93,7 @@ use capture_readback::{BYTES_PER_PIXEL, CaptureReadback};
 use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
+use frame_capacities::FrameCapacities;
 use frame_context::FrameContext;
 use frame_inputs::FrameInputs;
 use frame_output::FrameOutput;
@@ -129,6 +131,14 @@ const INITIAL_STAR_CAPACITY: usize = 4;
 const INITIAL_SURFACE_ANCHOR_CAPACITY: usize = 4;
 const INITIAL_TERRAIN_CAPACITY: usize = 4;
 const INITIAL_LIGHT_CAPACITY: usize = 4;
+const INITIAL_CAPACITIES: FrameCapacities = FrameCapacities {
+    objects: INITIAL_OBJECT_CAPACITY,
+    tiles: INITIAL_TILE_CAPACITY,
+    terrains: INITIAL_TERRAIN_CAPACITY,
+    stars: INITIAL_STAR_CAPACITY,
+    lights: INITIAL_LIGHT_CAPACITY,
+    surface_anchors: INITIAL_SURFACE_ANCHOR_CAPACITY,
+};
 // Far longer than any frame the compositor asks for. Some drivers never return an image while the window is hidden
 // (NVIDIA on Wayland); the frame is skipped rather than the event loop stalled.
 const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
@@ -183,12 +193,7 @@ pub struct Renderer {
     // Each terrain's slot in `surface_anchor_data`, by terrain index; None for terrains without surfaces.
     surface_anchor_slots: Vec<Option<usize>>,
     noise_volume: NoiseVolume,
-    object_capacity: usize,
-    tile_capacity: usize,
-    terrain_capacity: usize,
-    star_capacity: usize,
-    surface_anchor_capacity: usize,
-    light_capacity: usize,
+    capacities: FrameCapacities,
     materials: Vec<MaterialBuffer>,
     lens: Option<Lens>,
     passes: RenderPasses,
@@ -218,18 +223,7 @@ impl Renderer {
             vk::SwapchainKHR::null(),
         )?;
         let frames = (0..FRAMES_IN_FLIGHT)
-            .map(|_| {
-                Frame::new(
-                    &gpu.memory,
-                    &gpu.device,
-                    INITIAL_OBJECT_CAPACITY,
-                    INITIAL_TILE_CAPACITY,
-                    INITIAL_TERRAIN_CAPACITY,
-                    INITIAL_STAR_CAPACITY,
-                    INITIAL_LIGHT_CAPACITY,
-                    INITIAL_SURFACE_ANCHOR_CAPACITY,
-                )
-            })
+            .map(|_| Frame::new(&gpu.memory, &gpu.device, INITIAL_CAPACITIES))
             .collect::<anyhow::Result<_>>()?;
         let mut graph = RenderGraph::new(&gpu.memory, swapchain.extent());
         let passes = RenderPasses::new(&gpu, &mut graph, shaders, swapchain.format(), FRAMES_IN_FLIGHT)?;
@@ -263,12 +257,7 @@ impl Renderer {
             surface_anchor_data: Vec::with_capacity(INITIAL_SURFACE_ANCHOR_CAPACITY),
             surface_anchor_slots: Vec::new(),
             noise_volume,
-            object_capacity: INITIAL_OBJECT_CAPACITY,
-            tile_capacity: INITIAL_TILE_CAPACITY,
-            terrain_capacity: INITIAL_TERRAIN_CAPACITY,
-            star_capacity: INITIAL_STAR_CAPACITY,
-            surface_anchor_capacity: INITIAL_SURFACE_ANCHOR_CAPACITY,
-            light_capacity: INITIAL_LIGHT_CAPACITY,
+            capacities: INITIAL_CAPACITIES,
             materials: Vec::new(),
             lens: None,
             passes,
@@ -1175,14 +1164,14 @@ impl Renderer {
     fn ensure_object_capacity(&mut self) -> anyhow::Result<()> {
         let object_count = self.scene.objects().len();
 
-        if object_count <= self.object_capacity {
+        if object_count <= self.capacities.objects {
             return Ok(());
         }
 
-        self.object_capacity = object_count.next_power_of_two();
+        self.capacities.objects = object_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            frame.objects = Frame::create_object_buffer(&self.gpu.memory, self.object_capacity)?;
+            frame.objects = Frame::create_object_buffer(&self.gpu.memory, self.capacities.objects)?;
         }
 
         Ok(())
@@ -1191,14 +1180,14 @@ impl Renderer {
     fn ensure_tile_capacity(&mut self) -> anyhow::Result<()> {
         let tile_count = self.tile_data.len();
 
-        if tile_count <= self.tile_capacity {
+        if tile_count <= self.capacities.tiles {
             return Ok(());
         }
 
-        self.tile_capacity = tile_count.next_power_of_two();
+        self.capacities.tiles = tile_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            frame.tiles = Frame::create_tile_buffer(&self.gpu.memory, self.tile_capacity)?;
+            frame.tiles = Frame::create_tile_buffer(&self.gpu.memory, self.capacities.tiles)?;
         }
 
         Ok(())
@@ -1207,14 +1196,14 @@ impl Renderer {
     fn ensure_terrain_capacity(&mut self) -> anyhow::Result<()> {
         let terrain_count = self.terrain_data.len();
 
-        if terrain_count <= self.terrain_capacity {
+        if terrain_count <= self.capacities.terrains {
             return Ok(());
         }
 
-        self.terrain_capacity = terrain_count.next_power_of_two();
+        self.capacities.terrains = terrain_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            frame.terrains = Frame::create_terrain_buffer(&self.gpu.memory, self.terrain_capacity)?;
+            frame.terrains = Frame::create_terrain_buffer(&self.gpu.memory, self.capacities.terrains)?;
         }
 
         Ok(())
@@ -1223,15 +1212,15 @@ impl Renderer {
     fn ensure_surface_anchor_capacity(&mut self) -> anyhow::Result<()> {
         let anchor_count = self.surface_anchor_data.len();
 
-        if anchor_count <= self.surface_anchor_capacity {
+        if anchor_count <= self.capacities.surface_anchors {
             return Ok(());
         }
 
-        self.surface_anchor_capacity = anchor_count.next_power_of_two();
+        self.capacities.surface_anchors = anchor_count.next_power_of_two();
 
         for frame in &mut self.frames {
             frame.surface_anchors =
-                Frame::create_surface_anchor_buffer(&self.gpu.memory, self.surface_anchor_capacity)?;
+                Frame::create_surface_anchor_buffer(&self.gpu.memory, self.capacities.surface_anchors)?;
         }
 
         Ok(())
@@ -1240,14 +1229,14 @@ impl Renderer {
     fn ensure_star_capacity(&mut self) -> anyhow::Result<()> {
         let star_count = self.scene.stars().len();
 
-        if star_count <= self.star_capacity {
+        if star_count <= self.capacities.stars {
             return Ok(());
         }
 
-        self.star_capacity = star_count.next_power_of_two();
+        self.capacities.stars = star_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            frame.stars = Frame::create_star_buffer(&self.gpu.memory, self.star_capacity)?;
+            frame.stars = Frame::create_star_buffer(&self.gpu.memory, self.capacities.stars)?;
         }
 
         Ok(())
@@ -1256,14 +1245,14 @@ impl Renderer {
     fn ensure_light_capacity(&mut self) -> anyhow::Result<()> {
         let light_count = self.scene.light_sources().len();
 
-        if light_count <= self.light_capacity {
+        if light_count <= self.capacities.lights {
             return Ok(());
         }
 
-        self.light_capacity = light_count.next_power_of_two();
+        self.capacities.lights = light_count.next_power_of_two();
 
         for frame in &mut self.frames {
-            frame.projected_lights = Frame::create_projected_light_buffer(&self.gpu.memory, self.light_capacity)?;
+            frame.projected_lights = Frame::create_projected_light_buffer(&self.gpu.memory, self.capacities.lights)?;
         }
 
         Ok(())

@@ -1,6 +1,7 @@
 use ash::vk;
 use memory_vulkan::{Buffer, DeviceObject, MemoryContext, MemoryLocation, QueueSharing, TimelineValue};
 
+use super::frame_capacities::FrameCapacities;
 use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TerrainData, TileData};
 use super::gpu_timer::GpuTimer;
 use super::star_visibility::HISTOGRAM_BINS;
@@ -25,23 +26,14 @@ pub(super) struct Frame {
 }
 
 impl Frame {
-    pub fn new(
-        memory: &MemoryContext,
-        device: &Device,
-        object_capacity: usize,
-        tile_capacity: usize,
-        terrain_capacity: usize,
-        star_capacity: usize,
-        light_capacity: usize,
-        surface_anchor_capacity: usize,
-    ) -> anyhow::Result<Self> {
+    pub fn new(memory: &MemoryContext, device: &Device, capacities: FrameCapacities) -> anyhow::Result<Self> {
         let frame_data = Frame::create_shader_buffer(memory, "frame data", size_of::<FrameData>())?;
-        let objects = Frame::create_object_buffer(memory, object_capacity)?;
-        let tiles = Frame::create_tile_buffer(memory, tile_capacity)?;
-        let terrains = Frame::create_terrain_buffer(memory, terrain_capacity)?;
-        let stars = Frame::create_star_buffer(memory, star_capacity)?;
-        let projected_lights = Frame::create_projected_light_buffer(memory, light_capacity)?;
-        let surface_anchors = Frame::create_surface_anchor_buffer(memory, surface_anchor_capacity)?;
+        let objects = Frame::create_object_buffer(memory, capacities.objects)?;
+        let tiles = Frame::create_tile_buffer(memory, capacities.tiles)?;
+        let terrains = Frame::create_terrain_buffer(memory, capacities.terrains)?;
+        let stars = Frame::create_star_buffer(memory, capacities.stars)?;
+        let projected_lights = Frame::create_projected_light_buffer(memory, capacities.lights)?;
+        let surface_anchors = Frame::create_surface_anchor_buffer(memory, capacities.surface_anchors)?;
 
         let histogram = Buffer::new(
             memory,
