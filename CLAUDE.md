@@ -77,7 +77,7 @@ enables only the kinds it reads, and `utils` holds the value types they share
 (`HalfFloat`, `CubeFace`). It only reads: writing files is the job of the tools
 that produce them. `resource-vulkan` depends on no xsa crate
 either, only on `memory-vulkan` and `resource-loader`: the client adds its own
-kinds (terrain layer headers, lens textures) through its `ResourceKind` trait.
+kinds (height maps, lens textures) through its `ResourceKind` and `StreamedMips` traits.
 `config` depends on no xsa crate: `logging`, `commands`, `server` and `client`
 define their settings through it. `video-vulkan` depends on no xsa crate, only on `memory-vulkan`: the client encodes camera captures through it.
 `input` depends only on `config`: it holds input as plain data, with no window
@@ -89,23 +89,23 @@ server's time warps and the client's camera transitions move through it.
 | --- | --- |
 | `animation` | Values that move over time: easing curves (`Easing`, `CubicBezier`), eased progress over a duration (`EasedProgress`) and speed-limited motion (`LimitedMotion`) |
 | `units` | Plain value types shared by every crate: simulation time, time rate |
-| `core` | The pure simulation: orbits, coordinate frames, bodies and their state, terrain heights over the pages a side holds (`HeightPages`) |
-| `packs` | Pack loading (see `docs/packs.md`): reads KDL content into `core` types and plain definitions, and a terrain's height pages (`HeightPageReader`) |
+| `core` | The pure simulation: orbits, coordinate frames, bodies and their state, the heights of a height map level read across its cube faces (`HeightMapLevel`, `CubeTexel`) |
+| `packs` | Pack loading (see `docs/packs.md`): reads KDL content into `core` types and plain definitions |
 | `proto` | Client ↔ server protocol (see Protocol): requests, replies, events, frames, the world state and users, connections and the QUIC transport, the client's session |
 | `commands` | Text commands: the command tree, routing, REPL, IPC, completion; the transcripts of IPC and startup scripts and the `logging` settings every process has |
 | `server` | The authoritative world and tick loop; integrated and dedicated servers |
 | `client` | The game: app, camera, input, config, renderer, Vulkan |
 | `xsa` | The only game binary: `xsa client`, `xsa server`, `xsa ipc` |
-| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`), the converter of terrain layers into `.terrain` files (`terrain create`), their inspector (`terrain inspect`) and their extractor back to KTX2 (`terrain extract`); thin command handlers over a context carrying the output shell, calling operations in `ops` |
+| `launchpad` | `xsa-launchpad`, the `launchpad` binary: the instance and pack manager (`docs/launchpad.md`); thin command handlers over a context carrying the output shell |
 | `logging` | The verbosity flags (`-v`, `-q`), the log filter (a config value) and the `tracing` subscriber shared by `xsa` and `launchpad`, whose filter can change while the process runs |
 | `config` | Config stores (see Config): the session and saved layers over a KDL file, sections that name each key once (`ConfigSection`), value types (`ConfigValue`, `ConfigChoice`) |
 | `input` | Input as plain data: keys and mouse buttons (`Key`, `MouseButton`), chords of them (`InputChord`) that binds and the `input` commands share, and input events (`InputEvent`) tagged with their source (`InputSource`); its `winit` feature converts window events |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
-| `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains; `terrain` defines the `.terrain` format (pages of a cube map at every level) and reads it |
+| `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains, and any range of a KTX2 file's levels without the others |
 | `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue, video memory budget), `DeviceObject`, `Buffer`, `Image` (in shared or dedicated memory), timelines and present fences, the `TransferQueue` every copy between CPU and GPU goes through (whole resources, or regions of an image frames keep sampling), and the `BindlessTable` whose owned slots return once no frame reads them. Its `test-device` feature adds `TestDevice`, a headless device for GPU tests that collects validation messages |
 | `video-vulkan` | H.265 encoding on the GPU's hardware encoder through Vulkan Video: `ColorConversion` turns rendered frames into the encoder's NV12 input on the host's command buffer, `VideoEncoder` encodes them on the encode queue, `Mp4Writer` wraps the bitstream in an MP4 file |
-| `resource-vulkan` | `Resources`: background, reference-counted loading of the files content refers to, on a worker pool of its own; typed `ResourceHandle`s, groups with byte progress, priorities, and a memory budget that evicts unreferenced cached resources least recently used first. Ships the texture and cube map kinds. Its `Streamer` keeps paged data resident: a client registers a `StreamedSet` with its `PageSource`, requests the pages it wants each frame with a score, and reads each page's `PagePlacement` (the page or its nearest resident coarser page); pages live in 2D atlas chunks of about 32 MiB per format that grow and shrink with the shared budget, and stay decoded in RAM once evicted, where clients that also read pages on the CPU (terrain heights) take their bytes |
+| `resource-vulkan` | `Resources`: background, reference-counted loading of the files content refers to, on a worker pool of its own; typed `ResourceHandle`s, groups with byte progress, priorities, and a memory budget that evicts unreferenced cached resources least recently used first. Ships the texture and cube map kinds. A `StreamedMips` kind (cube maps, the client's height maps) keeps resident only the mip levels its `MipHandle`s demand (`MipDemand`): a reload reads the levels it lacks on a worker, and the levels it shares with the current value are copied on the GPU in the frame's command buffer (`Resources::record_mip_copies`); levels no longer wanted stay for the demand's retention, or until the budget needs them |
 | `render-graph-vulkan` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images and transient buffers |
 
 ## Architecture
@@ -130,9 +130,11 @@ server's time warps and the client's camera transitions move through it.
 - **One implementation per action.** Commands (REPL, IPC, in-game console, on
   client or server), UI and key bindings all invoke the same action, so
   behavior never depends on how it was triggered.
-- **Terrain streams by tile.** Quad sphere tiles split each cube face in the same equal-angle coordinates as
-  `.terrain` pages, so a tile at depth d is exactly the page at level d. Each drawn tile requests the pages of every
-  layer it needs at its distance and reads a fixed block of placements; terrain out of view requests nothing.
+- **Terrain maps are cube maps.** A body's heights, colour, normals and Hapke maps are equal-angle KTX2 cube maps,
+  split by quad sphere tiles in the same equal-angle coordinates. Each body states how fine its maps must be from the
+  camera's distance, in view or not: finer levels load as the camera nears and leave once unwanted for
+  `terrain.texture-retention`. Heights are one function of position whichever tile reads them, across face edges
+  (`CubeTexel`, `terrain/cube.slang`), on the CPU and the GPU alike.
 - **One scene at every scale.** 1 m to interplanetary distances in a single
   frame; there is no separate map scene.
 - **The renderer never sees simulation types.** The client copies transforms
@@ -197,6 +199,8 @@ Names in code, data and documents use these words in these meanings only:
 - **Surface:** the materials (textures) of the ground up close.
 - **Biome:** a region's kind of ground.
 - **Scatter:** props placed on the ground: rocks, trees, bushes.
+- **Scatter (Hapke):** in a Hapke material, the map of the particulate medium's scattering properties (b, c, θ̄, K), as
+  KSA and KSP name it.
 - **Vehicle:** an assembled vessel.
 - **Part:** a component of a vehicle.
 - **Site:** a point of interest on a body: a launch site, a building, a base, a landing site.
@@ -316,8 +320,8 @@ Names in code, data and documents use these words in these meanings only:
   rate while it draws none (hidden), rendering frames off-screen for tasks
   that need them (`CommandTask::needs_frames`). Commands that finish at once implement
   `ImmediateCommandHandler`; binds start tasks too, logging their result.
-- `camera tp` stands the debug camera at an altitude above the ground and holds it there while the heights at that
-  spot stream in, replying once the ground there is as fine as it will get.
+- `camera tp` stands the debug camera at an altitude above the ground and holds it there while the body's heights
+  load to the level its distance needs, replying once they have.
 - `camera capture [--output <path>] [--region x,y:widthxheight]` keeps rendering
   until temporal effects (exposure metering, anti-aliasing history) reflect the
   scene, then renders a frame of its own, copies it back from the GPU and
@@ -476,7 +480,7 @@ mouse. Debug toggles are commands (`config toggle video.stars`,
   frame.
 - Every file content refers to loads through `Resources`, never on the thread
   that draws. Whoever uses a resource holds its `ResourceHandle` and derives what
-  it needs (a material's parameters, a terrain layer's header, the lens flare)
+  it needs (a material's parameters, a height map's bounds, the lens flare)
   once the handle is ready; until then it draws its fallback.
 - Validation layers (`vulkan-validation-layers`) are enabled in debug builds and
   logged under the `vulkan` target; any validation message is a bug. Messages mentioning

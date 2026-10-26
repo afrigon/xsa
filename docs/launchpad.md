@@ -56,95 +56,18 @@ launchpad pack package <pack directory> [--bump major|minor|patch] [--output <di
    with its comments and layout kept. Without it, the current version is
    packaged.
 3. Lists the pack's files, leaving out what `.xsaignore` excludes.
-4. Converts every terrain layer the pack's terrain definitions name from its
-   cube map into a `.terrain` file (see Terrain conversion); the archive ships
-   the `.terrain` files in place of the cube maps.
-5. Writes the archive, ready to upload, to the output directory
+4. Writes the archive, ready to upload, to the output directory
    (`<pack directory>/target/` by default) and prints its path, size and
    SHA-256.
 
-`target/` is packaging's own directory, like Cargo's: it holds the archive and
-the converted `.terrain` files, which a later run reuses when their cube map has
-not changed. Authors git-ignore it.
+`target/` is packaging's own directory, like Cargo's: it holds the archive.
+Authors git-ignore it.
 
 Archives are written in Rust (the `tar` and `zstd` crates), so packaging needs
 nothing installed on the system. Compression uses zstd level 19 on every core:
 slow to package, as fast as any level to extract. Entries are sorted, with a
 fixed modification time, owner and permissions, so the same files always
 produce the same archive.
-
-### Terrain conversion
-
-```
-launchpad terrain create [--height] [--output <path>] <input>
-```
-
-Streamed terrain ships as `.terrain` files, one per terrain layer (heights,
-colour, normals, each Hapke map), holding every page of the layer at every
-level. Creators author each layer as a KTX2 cube map and never write a
-`.terrain` file by hand; the format is specified in #299 (Convert terrain cube
-maps into streamed pages). Packaging runs this conversion on every layer; the
-command also runs on its own, so a creator can check their data before
-packaging. system-solar's terrain layers are produced by it.
-
-The input is a KTX2 cube map:
-
-- six square faces, +X, −X, +Y, −Y, +Z, −Z of the body's frame (+X at longitude
-  0, +Z the north pole), in Vulkan's cube-map face order and orientation;
-- a face size that is a power of two, at least 128;
-- its full mip chain, each level the average of the one above;
-- uncompressed texels, since page borders are rotated across face edges and
-  compressed blocks cannot be.
-
-The output is 136×136-texel pages (a 128×128 interior and a 4-texel border
-copied from the neighbouring pages), each compressed with zstd. Without
-`--output`, it is written next to the input, with the same name and the
-`.terrain` extension.
-
-| Layer | Input texels | Pages |
-| --- | --- | --- |
-| Heights (`--height`) | `R32_SFLOAT`, metres relative to the body's radius | `R16_UNORM` over each page's own height range, stored in the table of contents |
-| Any other layer | `R8G8B8A8_SRGB` | `BC7_SRGB_BLOCK` |
-| | `R8G8_UNORM` | `BC5_UNORM_BLOCK` |
-| | `R16G16B16A16_SFLOAT` | `R16G16B16A16_SFLOAT` |
-
-`--height` selects the height encoding, the only one whose pages differ in
-structure; every other layer keeps its texel format, block-compressed when it
-has 8 bits per channel, whatever the layer means. An input that matches no row
-is refused. The page size and border are constants of the format: they match
-4-tap cubic filtering and 4×4 compression blocks, and the game's page
-addressing relies on them.
-
-`launchpad terrain create --help` lists these requirements in full, for the
-artists producing the cube maps.
-
-```
-launchpad terrain inspect [--verify] [--face <face> --level <n> --page <x>,<y>] <file>
-```
-
-Prints what a `.terrain` file holds: its header and size, then each level over
-its six faces (face size, pages present and expected, compressed size and ratio,
-and for heights the range their pages span), and a coverage map of each face of
-a level missing pages. It always checks the index (keys sorted, unique and
-inside their level, page data inside the file); `--verify` also decompresses
-every page. It fails when a check finds a problem. `--face` (`+x` to `-z`),
-`--level` and `--page` together print one page's entry instead, and with
-`--verify` what its data decodes to.
-
-```
-launchpad terrain extract [--face <face>] [--level <n>] [--page <x>,<y>] [--output <path>] <file>
-```
-
-Writes a `.terrain` file back out as KTX2, its pages decoded to the texel
-format the conversion reads (heights to `R32_SFLOAT` metres, `BC7_SRGB_BLOCK`
-to `R8G8B8A8_SRGB`, `BC5_UNORM_BLOCK` to `R8G8_UNORM`), so it can be compared
-with the cube map it came from. Without options it is a cube map with every
-level as a mip level, finest first, down to 128 texels; `--level` keeps one
-level, `--face` one face as a 2D texture, and `--face --level --page` one page
-with its border. Faces are stitched from page interiors, absent pages
-transparent, NaN heights or 0. Without `--output`, it is written next to the
-file, named after what it holds: `luna.extract.ktx2`, `luna.level-3.extract.ktx2`,
-`luna.-x.level-3.page-1-2.extract.ktx2`.
 
 ### `.xsaignore`
 
@@ -302,9 +225,6 @@ it too.
 | `remove <pack>` | Removes the pack from `launchpad.kdl`, resolves and syncs |
 | `upgrade [<pack>]` | Resolves to the latest matching releases and syncs |
 | `pack package <pack directory>` | Packages a pack for release (see Packaging) |
-| `terrain create <input>` | Converts a terrain layer's cube map into a `.terrain` file (see Terrain conversion) |
-| `terrain inspect <file>` | Prints a `.terrain` file's levels and coverage and checks it (see Terrain conversion) |
-| `terrain extract <file>` | Writes a `.terrain` file back out as a KTX2 texture (see Terrain conversion) |
 
 Publishing is not a launchpad command: an author uploads archives to their own
 host and opens a pull request on the repository.
@@ -316,7 +236,7 @@ host and opens a pull request on the repository.
 | `packs` | The manifest (`PackManifest`), with `base` implicit |
 | `repository` | Reads the index, downloads archives and verifies them, the archive cache |
 | `instance` | Instance layout, `launchpad.kdl`, the lockfile and resolution, sync |
-| `launchpad` | `xsa-launchpad`, building the `launchpad` binary: commands, packaging, terrain conversion |
+| `launchpad` | `xsa-launchpad`, building the `launchpad` binary: commands, packaging |
 
 Dependencies point one way: `packs` ← `repository` ← `instance` ← `launchpad`,
 `xsa`. `launchpad` follows the architecture of
