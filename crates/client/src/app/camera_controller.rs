@@ -13,7 +13,7 @@ use crate::camera::{
     Anchor, AnyControls, Attitude, Camera, CameraPose, CameraSwitch, CameraTransition, Controls, ControlsContext,
     DebugControls, OrbitControls,
 };
-use crate::config::DebugCameraConfig;
+use crate::config::{CameraConfig, DebugCameraConfig};
 use crate::input::Input;
 use crate::ui::CameraReading;
 
@@ -46,11 +46,12 @@ pub(super) struct TeleportTarget {
 }
 
 impl CameraController {
-    pub fn new(window_size: PhysicalSize<u32>, debug_camera: &DebugCameraConfig) -> CameraController {
+    pub fn new(window_size: PhysicalSize<u32>, config: &CameraConfig) -> CameraController {
         CameraController {
             camera: Camera::new(
                 HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians(),
                 CameraController::aspect_ratio_of(window_size),
+                config.collision,
             ),
             controls: None,
             transition: None,
@@ -59,7 +60,7 @@ impl CameraController {
                 orientation: DQuat::IDENTITY,
             },
             switched: None,
-            debug_camera: debug_camera.clone(),
+            debug_camera: config.debug.clone(),
             animation_duration_scale: 1.0,
         }
     }
@@ -109,8 +110,9 @@ impl CameraController {
         self.switched.take()
     }
 
-    pub fn set_debug_camera_config(&mut self, debug_camera: &DebugCameraConfig) {
-        self.debug_camera = debug_camera.clone();
+    pub fn set_camera_config(&mut self, config: &CameraConfig) {
+        self.camera.collision = config.collision;
+        self.debug_camera = config.debug.clone();
     }
 
     pub fn wants_mouse_capture(&self, input: &Input) -> Option<bool> {

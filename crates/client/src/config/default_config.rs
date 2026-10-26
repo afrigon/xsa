@@ -6,7 +6,7 @@ use xsa_commands::logging::LoggingConfig;
 use xsa_input::{InputChord, Key, Modifier};
 
 use super::{
-    AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
+    AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, CameraConfig, Config,
     DebugCameraConfig, DebugConfig, InputConfig, InputSourceConfig, LensConfig, RenderConfig, ResourcesConfig,
     ServiceConfig, TerrainConfig, TerrainHeightConfig, TerrainLodConfig, VideoConfig, WhiteBalanceConfig,
 };
@@ -20,6 +20,7 @@ const RUNNING_ANIMATIONS: AnimationGroupConfig = AnimationGroupConfig {
     duration_scale: 1.0,
 };
 const INPUT_ENABLED: bool = true;
+const CAMERA_COLLISION: bool = true;
 const DEBUG_CAMERA_SPEED: f32 = 2_000_000.0;
 // A starting point to tune from, not a measured optimum.
 const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
@@ -121,12 +122,13 @@ impl Default for Config {
                 terrain_shader_override: None,
                 surface_shader_override: None,
             },
-            debug: DebugConfig {
-                wireframe: false,
-                camera: DebugCameraConfig {
+            camera: CameraConfig {
+                collision: CAMERA_COLLISION,
+                debug: DebugCameraConfig {
                     speed: DEBUG_CAMERA_SPEED,
                 },
             },
+            debug: DebugConfig { wireframe: false },
             logging: LoggingConfig::default(),
         }
     }

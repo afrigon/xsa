@@ -74,7 +74,7 @@ mod tests {
     fn projection() -> LightProjection {
         let aspect_ratio = EXTENT.width as f32 / EXTENT.height as f32;
 
-        LightProjection::new(&Camera::new(FRAC_PI_2, aspect_ratio), EXTENT)
+        LightProjection::new(&Camera::new(FRAC_PI_2, aspect_ratio, false), EXTENT)
     }
 
     #[test]

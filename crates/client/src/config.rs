@@ -5,6 +5,7 @@ mod antialiasing_kind_choice;
 mod bind_action;
 mod bind_config;
 mod bloom_config;
+mod camera_config;
 mod debug_camera_config;
 mod debug_config;
 mod debug_view_choice;
@@ -30,6 +31,7 @@ pub use antialiasing_kind::AntialiasingKind;
 pub use bind_action::BindAction;
 pub use bind_config::BindConfig;
 pub use bloom_config::BloomConfig;
+pub use camera_config::CameraConfig;
 pub use debug_camera_config::DebugCameraConfig;
 pub use debug_config::DebugConfig;
 pub use input_config::InputConfig;
@@ -62,6 +64,7 @@ pub struct Config {
     pub animation: AnimationConfig,
     pub service: ServiceConfig,
     pub render: RenderConfig,
+    pub camera: CameraConfig,
     pub debug: DebugConfig,
     pub logging: LoggingConfig,
 }
@@ -86,6 +89,7 @@ impl ConfigSection for Config {
         visitor.section("animation", &mut self.animation);
         visitor.section("service", &mut self.service);
         visitor.section("render", &mut self.render);
+        visitor.section("camera", &mut self.camera);
         visitor.section("debug", &mut self.debug);
         self.logging.visit(visitor);
     }
@@ -127,6 +131,8 @@ mod tests {
             "service.resources.workers.max-count",
             "service.resources.read-delay",
             "render.shader.terrain.override",
+            "camera.collision",
+            "camera.debug.speed",
             "debug.wireframe",
             "logging.filter",
             "logging.shell.ipc.input.enabled",
