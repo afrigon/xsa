@@ -9,12 +9,15 @@ use crate::renderer::BiomeSurfaces;
 use crate::renderer::gpu_data::{BiomeData, SurfaceData};
 use crate::renderer::surface::SURFACE_CLASSES;
 
-// A terrain shaded with Hapke 2012. Its albedo, normals and Hapke parameters are terrain layers the tiles read; where
-// a tile has no Hapke parameters, it is shaded with Lambert. Up close, its biome's surfaces add to the layers.
+// A terrain shaded with Hapke 2012. Its albedo, normals and the Hapke parameters varying over the ground are terrain
+// layers the tiles read; without both Hapke layers, it is shaded with Lambert. The macroscopic roughness (radians) and
+// porosity coefficient hold over the whole body. Up close, its biome's surfaces add to the layers.
 pub struct HapkeMaterial {
     pub base_color: Vec3,
     pub emissive: Option<ResourceHandle<Texture>>,
     pub emissive_luminance: f32,
+    pub macroscopic_roughness: f32,
+    pub porosity: f32,
     pub surfaces: Option<Arc<BiomeSurfaces>>,
 }
 
@@ -27,7 +30,8 @@ impl Material for HapkeMaterial {
             emissive_texture: texture_index(self.emissive.as_ref()),
             emissive_luminance: self.emissive_luminance,
             surfaces_loaded: u32::from(surfaces.is_some()),
-            padding: [0; 2],
+            macroscopic_roughness: self.macroscopic_roughness,
+            porosity: self.porosity,
             biome: self
                 .surfaces
                 .as_deref()

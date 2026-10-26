@@ -43,7 +43,7 @@ impl TerrainMaps {
             let path = paths.next().flatten()?;
             let color_space = match layer {
                 TerrainLayer::Color => ColorSpace::Srgb,
-                TerrainLayer::Normal | TerrainLayer::Scatter | TerrainLayer::Surge => ColorSpace::Linear,
+                TerrainLayer::Normal | TerrainLayer::Scattering | TerrainLayer::Surge => ColorSpace::Linear,
             };
             let handle = resources.load_mips(LoadRequest::new(path, format!("{body} {}", layer.name())), color_space);
             group.add_mips(&handle);

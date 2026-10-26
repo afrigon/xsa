@@ -1,6 +1,6 @@
 import draw;
 
-// Where a pixel samples a material's maps, with the screen-space derivatives that pick the mip level.
+// Where a pixel samples a material's equirectangular maps, with the screen-space derivatives that pick the mip level.
 struct TextureCoordinates {
     float2 uv;
     float2 uvPerPixelX;
@@ -31,26 +31,6 @@ TextureCoordinates equirectangularCoordinates(float3 direction) {
 float4 sampleTexture(uint texture, TextureCoordinates coordinates) {
     return textures[texture].SampleGrad(
         wrappingSampler, coordinates.uv, coordinates.uvPerPixelX, coordinates.uvPerPixelY);
-}
-
-float3 mappedNormal(uint normalTexture, float3 modelNormal, TextureCoordinates coordinates) {
-    if (normalTexture == noTexture) {
-        return modelNormal;
-    }
-
-    float2 tangent = sampleTexture(normalTexture, coordinates).rg * 2.0 - 1.0;
-    float outward = sqrt(saturate(1.0 - dot(tangent, tangent)));
-    float3 east = normalize(float3(-modelNormal.y, modelNormal.x, 0.0) + float3(1e-7, 0.0, 0.0));
-    float3 north = cross(modelNormal, east);
-    return normalize(-east * tangent.x + north * tangent.y + modelNormal * outward);
-}
-
-float3 mappedColor(uint colorTexture, float3 baseColor, TextureCoordinates coordinates) {
-    if (colorTexture == noTexture) {
-        return baseColor;
-    }
-
-    return sampleTexture(colorTexture, coordinates).rgb;
 }
 
 float3 mappedEmission(uint emissiveTexture, float emissiveLuminance, TextureCoordinates coordinates) {

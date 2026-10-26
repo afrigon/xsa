@@ -431,16 +431,21 @@ impl ClientWorld {
             MaterialDefinition::Hapke {
                 color,
                 normal,
-                scatter,
+                scattering,
                 surge,
                 ..
             } => TerrainLayer::ALL.map(|layer| match layer {
                 TerrainLayer::Color => color.clone(),
                 TerrainLayer::Normal => normal.clone(),
-                TerrainLayer::Scatter => scatter.clone(),
+                TerrainLayer::Scattering => scattering.clone(),
                 TerrainLayer::Surge => surge.clone(),
             }),
-            MaterialDefinition::Lambert { .. } | MaterialDefinition::Emissive { .. } => Default::default(),
+            MaterialDefinition::Lambert { color, normal, .. } => TerrainLayer::ALL.map(|layer| match layer {
+                TerrainLayer::Color => color.clone(),
+                TerrainLayer::Normal => normal.clone(),
+                TerrainLayer::Scattering | TerrainLayer::Surge => None,
+            }),
+            MaterialDefinition::Emissive { .. } => Default::default(),
         };
 
         if heights.is_none() && layers.iter().all(Option::is_none) {
@@ -515,15 +520,12 @@ impl ClientWorld {
         match definition {
             MaterialDefinition::Lambert {
                 base_color,
-                color,
-                normal,
                 emissive,
                 emissive_luminance,
+                ..
             } => {
                 let material = LambertMaterial {
                     base_color,
-                    color: color.map(|path| load("color", &path, ColorSpace::Srgb)),
-                    normal: normal.map(|path| load("normal", &path, ColorSpace::Linear)),
                     emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
                     emissive_luminance,
                 };
@@ -533,12 +535,16 @@ impl ClientWorld {
                 base_color,
                 emissive,
                 emissive_luminance,
+                macroscopic_roughness_degrees,
+                porosity,
                 ..
             } => {
                 let material = HapkeMaterial {
                     base_color,
                     emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
                     emissive_luminance,
+                    macroscopic_roughness: macroscopic_roughness_degrees.to_radians(),
+                    porosity,
                     surfaces,
                 };
                 renderer.add_material(&name, material)

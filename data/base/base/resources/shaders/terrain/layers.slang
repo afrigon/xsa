@@ -6,7 +6,7 @@ TextureCube cubeTextures[];
 
 static const int colorLayer = 0;
 static const int normalLayer = 1;
-static const int scatterLayer = 2;
+static const int scatteringLayer = 2;
 static const int surgeLayer = 3;
 
 // Where a point of the terrain reads its layers: the direction to sample their equal-angle cube maps at, and the face

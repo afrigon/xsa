@@ -199,8 +199,6 @@ Names in code, data and documents use these words in these meanings only:
 - **Surface:** the materials (textures) of the ground up close.
 - **Biome:** a region's kind of ground.
 - **Scatter:** props placed on the ground: rocks, trees, bushes.
-- **Scatter (Hapke):** in a Hapke material, the map of the particulate medium's scattering properties (b, c, θ̄, K), as
-  KSA and KSP name it.
 - **Vehicle:** an assembled vessel.
 - **Part:** a component of a vehicle.
 - **Site:** a point of interest on a body: a launch site, a building, a base, a landing site.

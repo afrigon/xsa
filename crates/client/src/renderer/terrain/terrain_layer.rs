@@ -3,7 +3,7 @@
 pub enum TerrainLayer {
     Color,
     Normal,
-    Scatter,
+    Scattering,
     Surge,
 }
 
@@ -11,7 +11,7 @@ impl TerrainLayer {
     pub const ALL: [TerrainLayer; 4] = [
         TerrainLayer::Color,
         TerrainLayer::Normal,
-        TerrainLayer::Scatter,
+        TerrainLayer::Scattering,
         TerrainLayer::Surge,
     ];
 
@@ -23,7 +23,7 @@ impl TerrainLayer {
         match self {
             TerrainLayer::Color => "color",
             TerrainLayer::Normal => "normal",
-            TerrainLayer::Scatter => "scatter",
+            TerrainLayer::Scattering => "scattering",
             TerrainLayer::Surge => "surge",
         }
     }

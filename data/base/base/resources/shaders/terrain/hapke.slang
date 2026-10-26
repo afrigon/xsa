@@ -25,7 +25,9 @@ struct HapkeData {
     uint emissiveTexture;
     float emissiveLuminance;
     uint surfacesLoaded;
-    uint padding[2];
+    // Radians.
+    float macroscopicRoughness;
+    float porosity;
     BiomeData biome;
     SurfaceData surfaces[surfaceClasses];
 };
@@ -45,15 +47,16 @@ HapkeVaryings vertexMain(VertexInput input) {
     return output;
 }
 
-// Hapke 2012's parameters at this point: w from the calibrated color layer, the rest from the scatter and surge
-// layers, stored as published (θ̄ in degrees).
-HapkeParameters hapkeParameters(float4 scatter, float4 surge, float3 diffusiveReflectance) {
+// Hapke 2012's parameters at this point: w from the calibrated color layer, the phase function from the scattering
+// layer and the opposition effects from the surge layer, as published; θ̄ and K from the material, which holds them
+// over the whole body.
+HapkeParameters hapkeParameters(HapkeData *material, float4 scattering, float4 surge, float3 diffusiveReflectance) {
     HapkeParameters parameters;
     parameters.singleScatteringAlbedo = singleScatteringAlbedo(diffusiveReflectance);
-    parameters.lobeWidth = scatter.r;
-    parameters.lobeBalance = scatter.g;
-    parameters.roughness = radians(scatter.b);
-    parameters.porosity = scatter.a;
+    parameters.lobeWidth = scattering.r;
+    parameters.lobeBalance = scattering.g;
+    parameters.roughness = material.macroscopicRoughness;
+    parameters.porosity = material.porosity;
     parameters.shadowHidingAmplitude = surge.r;
     parameters.shadowHidingWidth = surge.g;
     parameters.backscatterAmplitude = surge.b;
@@ -136,7 +139,7 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, float3 direc
     }
 }
 
-// Without both its scatter and surge layers, the terrain is shaded with Lambert.
+// Without both its scattering and surge layers, the terrain is shaded with Lambert.
 [shader("fragment")]
 FragmentOutput fragmentMain(HapkeVaryings varyings, uint primitive: SV_PrimitiveID) {
     TerrainVaryings input = varyings.terrain;
@@ -144,7 +147,7 @@ FragmentOutput fragmentMain(HapkeVaryings varyings, uint primitive: SV_Primitive
     float3 modelNormal = normalize(input.draw.modelNormal);
     LayerCoordinates coordinates = layerCoordinates(modelNormal);
     LayerRead color = readLayer(coordinates, colorLayer);
-    LayerRead scatter = readLayer(coordinates, scatterLayer);
+    LayerRead scattering = readLayer(coordinates, scatteringLayer);
     LayerRead surge = readLayer(coordinates, surgeLayer);
     float3 normal = layerNormal(readLayer(coordinates, normalLayer), coordinates, modelNormal);
     float3 albedo = color.resident ? color.value.rgb : material.baseColor;
@@ -167,8 +170,8 @@ FragmentOutput fragmentMain(HapkeVaryings varyings, uint primitive: SV_Primitive
     float3 geometricNormal = normalize(input.draw.normal);
     float3 luminance = starlightLuminance(albedo);
 
-    if (scatter.resident && surge.resident) {
-        HapkeParameters parameters = hapkeParameters(scatter.value, surge.value, albedo);
+    if (scattering.resident && surge.resident) {
+        HapkeParameters parameters = hapkeParameters(material, scattering.value, surge.value, albedo);
 
         for (uint index = 0; index < constants.frame.starCount; index++) {
             luminance += reflectedLuminance(constants.frame.stars[index], parameters, input.draw, worldNormal);
@@ -185,6 +188,6 @@ FragmentOutput fragmentMain(HapkeVaryings varyings, uint primitive: SV_Primitive
     luminance += mappedEmission(material.emissiveTexture, material.emissiveLuminance, emissionCoordinates);
     MaterialSample sample;
     sample.albedo = albedo;
-    sample.roughness = scatter.resident ? radians(scatter.value.b) : 0.0;
+    sample.roughness = scattering.resident ? material.macroscopicRoughness : 0.0;
     return terrainOutput(luminance, sample, input, primitive);
 }

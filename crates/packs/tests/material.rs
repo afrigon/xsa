@@ -10,8 +10,10 @@ const MATERIAL: &str = r#"shader "base:terrain/hapke"
 base-color 0.25 0.5 0.75
 color "rock/color"
 normal "rock/normal"
-scatter "rock/scatter"
+scattering "rock/scattering"
 surge "rock/surge"
+macroscopic-roughness 23.5
+porosity 1.0
 "#;
 
 fn test_pack(name: &str, maps: &[&str]) -> PathBuf {
@@ -46,7 +48,7 @@ fn a_hapke_material_loads_without_its_maps() {
         base_color,
         color,
         normal,
-        scatter,
+        scattering,
         surge,
         ..
     } = load("missing", &[])
@@ -55,7 +57,7 @@ fn a_hapke_material_loads_without_its_maps() {
     };
 
     assert_eq!(base_color.to_array(), [0.25, 0.5, 0.75]);
-    assert!(color.is_none() && normal.is_none() && scatter.is_none() && surge.is_none());
+    assert!(color.is_none() && normal.is_none() && scattering.is_none() && surge.is_none());
 }
 
 #[test]
@@ -63,14 +65,28 @@ fn a_hapke_material_finds_the_maps_it_names() {
     let MaterialDefinition::Hapke {
         color,
         normal,
-        scatter,
+        scattering,
         surge,
         ..
-    } = load("complete", &["color", "normal", "scatter", "surge"])
+    } = load("complete", &["color", "normal", "scattering", "surge"])
     else {
         panic!("not a hapke material");
     };
 
     assert!(color.unwrap().ends_with("resources/textures/rock/color.ktx2"));
-    assert!(normal.is_some() && scatter.is_some() && surge.is_some());
+    assert!(normal.is_some() && scattering.is_some() && surge.is_some());
+}
+
+#[test]
+fn a_hapke_material_holds_its_whole_body_parameters() {
+    let MaterialDefinition::Hapke {
+        macroscopic_roughness_degrees,
+        porosity,
+        ..
+    } = load("values", &[])
+    else {
+        panic!("not a hapke material");
+    };
+
+    assert_eq!((macroscopic_roughness_degrees, porosity), (23.5, 1.0));
 }
