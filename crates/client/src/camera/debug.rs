@@ -116,7 +116,17 @@ impl Controls for DebugControls {
         let direction = forward * input.axis(Key::W, Key::S)
             + right * input.axis(Key::D, Key::A)
             + up * input.axis(Key::Space, Key::ShiftLeft);
-        self.position += direction.normalize_or_zero() * f64::from(context.debug_camera.speed) * context.delta_seconds;
+        let step = direction.normalize_or_zero() * f64::from(context.debug_camera.speed) * context.delta_seconds;
+        let vertical = up * step.dot(up);
+        let horizontal = step - vertical;
+        let offset = self.position - self.attachment.position;
+        // A straight step along the tangent plane climbs by d²/2r each frame; travelling the great circle keeps
+        // the altitude whatever the step's length.
+        let travel = DQuat::from_axis_angle(
+            up.cross(horizontal).normalize_or_zero(),
+            horizontal.length() / offset.length(),
+        );
+        self.position = self.attachment.position + travel * (offset + vertical);
 
         CameraPose {
             position: self.position,
