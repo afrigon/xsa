@@ -24,12 +24,32 @@ float texelSpacing(TerrainData *terrain, uint level) {
     return pi / 2.0 / float(terrain.heightExtent) * exp2(float(level));
 }
 
-// A point of the tile on the texels of `level`, texel centers at whole coordinates. The tile's center comes from its
-// whole column and row, exact at every depth, and is not taken back to the face's center before the offset is added.
-float2 levelTexel(TerrainData *terrain, TileData tile, uint level, float2 offset) {
-    float extent = float(max(terrain.heightExtent >> level, 1u));
-    float2 fromCorner = (float2(tile.x, tile.y) * 2.0 + 1.0) * tile.halfSize + offset;
-    return fromCorner * 0.5 * extent - 0.5;
+// A point of the tile on the texels of `level`: a whole texel index and a position from it, texel centers at whole
+// positions. The index of the tile's left and top edge comes from its column, row and depth in integers, exact at
+// every depth; only the offset within the tile is a float, so positions keep their precision on the deepest tiles,
+// where a float spanning the face would round several vertices onto one position.
+struct LevelTexel {
+    int2 edge;
+    float2 position;
+};
+
+LevelTexel levelTexel(TerrainData *terrain, TileData tile, uint level, float2 offset) {
+    uint extent = max(terrain.heightExtent >> level, 1u);
+    int extentBits = int(firstbithigh(extent));
+    uint2 column = uint2(tile.x, tile.y);
+    LevelTexel texel;
+    float2 edgeFraction = float2(0.0);
+
+    if (extentBits >= int(tile.depth)) {
+        texel.edge = int2(column << uint(extentBits - int(tile.depth)));
+    } else {
+        uint shift = tile.depth - uint(extentBits);
+        texel.edge = int2(column >> shift);
+        edgeFraction = float2(column & ((1u << shift) - 1u)) * exp2(-float(shift));
+    }
+
+    texel.position = edgeFraction + (offset + tile.halfSize) * 0.5 * float(extent) - 0.5;
+    return texel;
 }
 
 // The cubic B-spline's value and Laplacian (in values per texel squared) over the 4×4 texels around a point, weighted
@@ -41,9 +61,9 @@ struct SplineShape {
 };
 
 SplineShape heightSpline(TerrainData *terrain, TileData tile, uint level, float2 offset) {
-    float2 texel = levelTexel(terrain, tile, level, offset);
-    float2 base = floor(texel);
-    float2 f = texel - base;
+    LevelTexel texel = levelTexel(terrain, tile, level, offset);
+    float2 base = floor(texel.position);
+    float2 f = texel.position - base;
     float2 f2 = f * f;
     float2 f3 = f2 * f;
     float2 weights[4] = {
@@ -53,7 +73,7 @@ SplineShape heightSpline(TerrainData *terrain, TileData tile, uint level, float2
         f3 / 6.0,
     };
     float2 curvatures[4] = { 1.0 - f, 3.0 * f - 2.0, 1.0 - 3.0 * f, f };
-    int2 first = int2(base) - 1;
+    int2 first = texel.edge + int2(base) - 1;
     SplineShape shape;
     shape.value = 0.0;
     shape.laplacian = 0.0;
