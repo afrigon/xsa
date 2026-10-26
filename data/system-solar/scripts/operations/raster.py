@@ -5,11 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-import rasterio.warp
-from rasterio.crs import CRS
-from rasterio.transform import from_origin
-
-from operations import srgb
 
 ROWS_PER_READ = 512
 DEGREES_PER_TURN = 360.0
@@ -39,39 +34,11 @@ class Raster:
     def height(self) -> int:
         return self.pixels.shape[0]
 
-    @staticmethod
-    def native_width(path: Path) -> int:
-        with Raster._open(path) as source:
-            return source.width
-
     # Global maps often ship without georeferencing; the recipe's layout describes them instead.
     @staticmethod
     def _open(path: Path):
         with warnings.catch_warnings(category=rasterio.errors.NotGeoreferencedWarning, action="ignore"):
             return rasterio.open(path)
-
-    # Reads a global map, area-averaged down to `width` in linear values, then put in the game's layout.
-    @staticmethod
-    def read(path: Path, width: int, layout: SourceLayout, encoded_srgb: bool = False, scale: float = 1.0) -> "Raster":
-        with Raster._open(path) as source:
-            if width > source.width:
-                raise ValueError(f"{path.name}: {width} is wider than the source's {source.width}")
-
-            maximum = np.iinfo(source.dtypes[0]).max if np.issubdtype(source.dtypes[0], np.integer) else 1.0
-            rows = []
-
-            for top in range(0, source.height, ROWS_PER_READ):
-                window = rasterio.windows.Window(0, top, source.width, min(ROWS_PER_READ, source.height - top))
-                band = np.moveaxis(source.read(window=window), 0, -1).astype(np.float64) / maximum
-
-                if encoded_srgb:
-                    band = srgb.to_linear(band)
-
-                rows.append(Raster._area_resample(band * scale, 1, width).astype(np.float32))
-                logger.debug("%s: read rows %d to %d", path.name, top, top + band.shape[0])
-
-        pixels = Raster._area_resample(np.concatenate(rows), 0, width // 2)
-        return Raster(Raster._game_layout(pixels, layout))
 
     # Georeferenced tiles of one global map, in meters on a sphere, placed on a global grid at their own resolution;
     # their no-data becomes NaN, which resampling leaves out.
@@ -100,54 +67,26 @@ class Raster:
 
         return Raster(Raster._game_layout(Raster._resampled(grid, width), SourceLayout(left_edge_longitude=0.0)))
 
-    # A map in any projection rasterio reads (polar stereographic, …), interpolated onto the global grid: for maps
-    # whose pixels are no larger than the grid's where they have data, such as polar maps.
-    @staticmethod
-    def read_reprojected(path: Path, width: int) -> "Raster":
-        with rasterio.open(path) as source:
-            height = width // 2
-            target_crs = CRS.from_proj4(f"+proj=longlat +R={Raster._radius(source)} +no_defs")
-            pixels = np.full((height, width), np.nan, np.float32)
-            rasterio.warp.reproject(
-                source.read(1, masked=True).astype(np.float32).filled(np.nan) * source.scales[0],
-                pixels,
-                src_transform=source.transform,
-                src_crs=source.crs,
-                src_nodata=np.nan,
-                dst_transform=from_origin(0.0, 90.0, DEGREES_PER_TURN / width, 180.0 / height),
-                dst_crs=target_crs,
-                dst_nodata=np.nan,
-                resampling=rasterio.warp.Resampling.bilinear,
-            )
-
-        return Raster(Raster._game_layout(pixels[..., None], SourceLayout(left_edge_longitude=0.0)))
-
-    @property
-    def latitudes(self) -> np.ndarray:
-        return np.degrees(self._latitudes())
-
     # Rows without data take the nearest row that has some, column by column.
     def extended_toward_poles(self) -> "Raster":
         valid_rows = np.flatnonzero(~np.isnan(self.pixels).all(axis=(1, 2)))
         nearest = valid_rows[np.abs(np.arange(self.height)[:, None] - valid_rows[None, :]).argmin(axis=1)]
         return Raster(self.pixels[nearest])
 
-    # Bilinear interpolation onto a finer grid, for smooth fields such as fitted parameters, whose values between
-    # samples are estimates either way: the area average would turn each sample into a visible square.
-    def interpolated(self, width: int) -> "Raster":
-        height = width // 2
-        x = (np.arange(width) + 0.5) * self.width / width - 0.5
-        y = np.clip((np.arange(height) + 0.5) * self.height / height - 0.5, 0, self.height - 1)
+    # Bilinear interpolation at any latitude and longitude, in radians, broadcast together: for smooth fields such as
+    # fitted parameters, evaluated where another map's pixels sit.
+    def interpolated_at(self, latitudes: np.ndarray, longitudes: np.ndarray) -> np.ndarray:
+        x = (0.25 - longitudes / (2 * np.pi)) * self.width - 0.5
+        y = np.clip((latitudes / np.pi + 0.5) * self.height - 0.5, 0, self.height - 1)
+        x, y = np.broadcast_arrays(x, y)
         x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
-        fx, fy = (x - x0)[None, :, None], (y - y0)[:, None, None]
+        fx, fy = (x - x0)[..., None], (y - y0)[..., None]
         x1, y1 = (x0 + 1) % self.width, np.minimum(y0 + 1, self.height - 1)
         x0 %= self.width
-        top = self.pixels[y0][:, x0] * (1 - fx) + self.pixels[y0][:, x1] * fx
-        bottom = self.pixels[y1][:, x0] * (1 - fx) + self.pixels[y1][:, x1] * fx
-        return Raster((top * (1 - fy) + bottom * fy).astype(np.float32))
-
-    def resampled(self, width: int) -> "Raster":
-        return Raster(Raster._resampled(self.pixels, width))
+        pixels = self.pixels.astype(np.float64)
+        top = pixels[y0, x0] * (1 - fx) + pixels[y0, x1] * fx
+        bottom = pixels[y1, x0] * (1 - fx) + pixels[y1, x1] * fx
+        return top * (1 - fy) + bottom * fy
 
     def mipmaps(self) -> list[np.ndarray]:
         levels = [self.pixels]
@@ -164,28 +103,6 @@ class Raster:
             levels.append(level)
 
         return levels
-
-    # Equirectangular rows cover less area toward the poles, in proportion to the cosine of their latitude.
-    def area_mean(self) -> np.ndarray:
-        weights = np.cos(self._latitudes())
-        rows = self.pixels.astype(np.float64).mean(axis=1)
-        return (rows * weights[:, None]).sum(axis=0) / weights.sum()
-
-    # From a height map in meters: the material shaders' tangent-space normal, whose x is the normal's westward
-    # component and y its northward one.
-    def normals(self, radius: float) -> "Raster":
-        heights = self.pixels[..., 0].astype(np.float64)
-        meters_per_column = 2 * np.pi * radius / self.width * np.cos(self._latitudes())[:, None]
-        meters_per_row = np.pi * radius / self.height
-        # Columns grow westward and rows northward.
-        east_slope = (np.roll(heights, 1, axis=1) - np.roll(heights, -1, axis=1)) / (2 * meters_per_column)
-        padded = np.pad(heights, ((1, 1), (0, 0)), mode="edge")
-        north_slope = (padded[2:] - padded[:-2]) / (2 * meters_per_row)
-        length = np.sqrt(east_slope**2 + north_slope**2 + 1)
-        return Raster(np.stack([east_slope / length, -north_slope / length], axis=-1).astype(np.float32))
-
-    def _latitudes(self) -> np.ndarray:
-        return (np.arange(self.height) + 0.5) / self.height * np.pi - np.pi / 2
 
     @staticmethod
     def _radius(source) -> float:

@@ -1,19 +1,26 @@
-import logging
 from pathlib import Path
 
 import numpy as np
 import OpenEXR
-import rasterio
 
 from operations.cube_projection import CubeProjection
-from operations.raster import Raster, SourceLayout
+from operations.raster import Raster
 
 CUBE_FACE_COUNT = 6
-ROWS_PER_READ = 64
-# Each source pixel is split this many times per axis, so a pixel straddling texels is shared between them.
-SUBDIVISIONS = 2
-
-logger = logging.getLogger(__name__)
+# Each face's outward normal, the axis its columns run along left to right and the one its rows run along top to
+# bottom: Vulkan's face order and orientation in the body's frame.
+FACE_BASES = np.array(
+    [
+        [[1, 0, 0], [0, 0, -1], [0, -1, 0]],
+        [[-1, 0, 0], [0, 0, 1], [0, -1, 0]],
+        [[0, 1, 0], [1, 0, 0], [0, 0, 1]],
+        [[0, -1, 0], [1, 0, 0], [0, 0, -1]],
+        [[0, 0, 1], [1, 0, 0], [0, -1, 0]],
+        [[0, 0, -1], [-1, 0, 0], [0, -1, 0]],
+    ]
+)
+NORMAL, COLUMN_AXIS, ROW_AXIS = range(3)
+ROWS_PER_NORMAL_BAND = 256
 
 
 class CubeMap:
@@ -21,48 +28,165 @@ class CubeMap:
         self.faces = faces
         self.projection = projection
 
-    # Each texel is the area-weighted average of the equirectangular source's ground it covers, so no texel depends
-    # on the source's rows shrinking toward the poles.
+    @property
+    def face_size(self) -> int:
+        return self.faces[0].width
+
+    # The mean over the sphere, each texel weighted by the ground it covers.
+    def area_mean(self) -> np.ndarray:
+        angles = CubeMap.texel_solid_angles(self.face_size, self.projection)[..., None]
+        total = sum((face.pixels.astype(np.float64) * angles).sum(axis=(0, 1)) for face in self.faces)
+        return total / (4 * np.pi)
+
+    # The faces with `border` texels around each, taken across face edges from the adjacent face. Three faces meet at
+    # a cube corner and no diagonal neighbour exists: a texel there is the average of the three texels as far from
+    # the corner on each face.
+    def padded(self, border: int) -> np.ndarray:
+        size = self.face_size
+        faces = np.stack([face.pixels for face in self.faces])
+        padded = np.empty((CUBE_FACE_COUNT, size + 2 * border, size + 2 * border, faces.shape[-1]), faces.dtype)
+        padded[:, border:-border, border:-border] = faces
+        coordinates = np.arange(-border, size + border)
+        x, y = [axis.ravel() for axis in np.meshgrid(coordinates, coordinates)]
+        beyond = (x < 0) | (x >= size) | (y < 0) | (y >= size)
+        x, y = x[beyond], y[beyond]
+
+        for face in range(CUBE_FACE_COUNT):
+            normal, column_axis, row_axis = FACE_BASES[face]
+            point = size * normal + (2 * x + 1 - size)[:, None] * column_axis + (2 * y + 1 - size)[:, None] * row_axis
+            column_edge = column_axis * np.sign(2 * x + 1 - size)[:, None]
+            row_edge = row_axis * np.sign(2 * y + 1 - size)[:, None]
+            normals = np.broadcast_to(normal, point.shape)
+            across_column = (x < 0) | (x >= size)
+            across_row = (y < 0) | (y >= size)
+            values = np.empty((len(x), faces.shape[-1]), faces.dtype)
+
+            only_column = across_column & ~across_row
+            folded, folded_normals = CubeMap._folded(point, normals, column_edge, size)
+            values[only_column] = CubeMap._texels_at(faces, folded[only_column], folded_normals[only_column], size)
+
+            only_row = across_row & ~across_column
+            folded, folded_normals = CubeMap._folded(point, normals, row_edge, size)
+            values[only_row] = CubeMap._texels_at(faces, folded[only_row], folded_normals[only_row], size)
+
+            corner = across_column & across_row
+            column_excess = (point * column_edge).sum(axis=-1, keepdims=True) - size
+            row_excess = (point * row_edge).sum(axis=-1, keepdims=True) - size
+            reflected = point - column_edge * 2 * column_excess - row_edge * 2 * row_excess
+            by_column, by_column_normals = CubeMap._folded(point, normals, column_edge, size)
+            by_column, by_column_normals = CubeMap._folded(by_column, by_column_normals, row_edge, size)
+            by_row, by_row_normals = CubeMap._folded(point, normals, row_edge, size)
+            by_row, by_row_normals = CubeMap._folded(by_row, by_row_normals, column_edge, size)
+            values[corner] = (
+                CubeMap._texels_at(faces, reflected[corner], normals[corner], size).astype(np.float64)
+                + CubeMap._texels_at(faces, by_column[corner], by_column_normals[corner], size)
+                + CubeMap._texels_at(faces, by_row[corner], by_row_normals[corner], size)
+            ) / 3
+
+            padded[face, y + border, x + border] = values
+
+        return padded
+
+    # Texel centers sit at odd integer positions on a cube spanning -size to size: a point beyond a face's edge,
+    # folded over that edge onto the adjacent face, whose normal is the edge's direction.
     @staticmethod
-    def from_equirectangular(
-        path: Path, face_size: int, projection: CubeProjection, layout: SourceLayout, scale: float = 1.0
-    ) -> "CubeMap":
-        texel_count = CUBE_FACE_COUNT * face_size * face_size
-        sums = np.zeros(texel_count)
-        weights = np.zeros(texel_count)
+    def _folded(
+        point: np.ndarray, normals: np.ndarray, edge: np.ndarray, size: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        excess = (point * edge).sum(axis=-1, keepdims=True) - size
+        return point - edge * excess - normals * excess, edge
 
-        with Raster._open(path) as source:
-            columns = (np.arange(source.width * SUBDIVISIONS) + 0.5) / (source.width * SUBDIVISIONS)
-            longitudes = np.radians(layout.left_edge_longitude) + columns * 2 * np.pi
+    @staticmethod
+    def _texels_at(faces: np.ndarray, point: np.ndarray, normals: np.ndarray, size: int) -> np.ndarray:
+        face = CubeMap._face_of(normals)
+        column = ((point * FACE_BASES[face, COLUMN_AXIS]).sum(axis=-1) + size - 1) // 2
+        row = ((point * FACE_BASES[face, ROW_AXIS]).sum(axis=-1) + size - 1) // 2
+        return faces[face, row, column]
 
-            for top in range(0, source.height, ROWS_PER_READ):
-                window = rasterio.windows.Window(0, top, source.width, min(ROWS_PER_READ, source.height - top))
-                band = source.read(1, window=window).astype(np.float64) * scale
-                rows = (top * SUBDIVISIONS + np.arange(band.shape[0] * SUBDIVISIONS) + 0.5) / (
-                    source.height * SUBDIVISIONS
-                )
-                latitudes = (0.5 - rows if layout.north_up else rows - 0.5) * np.pi
-                direction = np.stack(
-                    np.broadcast_arrays(
-                        np.cos(latitudes)[:, None] * np.cos(longitudes)[None, :],
-                        np.cos(latitudes)[:, None] * np.sin(longitudes)[None, :],
-                        np.sin(latitudes)[:, None],
-                    ),
-                    axis=-1,
-                )
-                face, column, row = CubeMap._texel(direction, face_size, projection)
-                texels = ((face * face_size + row) * face_size + column).ravel()
-                area = np.broadcast_to(np.cos(latitudes)[:, None], face.shape).ravel()
-                values = band.repeat(SUBDIVISIONS, axis=0).repeat(SUBDIVISIONS, axis=1).ravel()
-                sums += np.bincount(texels, values * area, texel_count)
-                weights += np.bincount(texels, area, texel_count)
-                logger.debug("%s: read rows %d to %d", path.name, top, top + band.shape[0])
+    @staticmethod
+    def _face_of(normals: np.ndarray) -> np.ndarray:
+        axis = np.abs(normals).argmax(axis=-1)
+        negative = np.take_along_axis(normals, axis[:, None], axis=-1)[:, 0] < 0
+        return 2 * axis + negative
 
-        if not weights.all():
-            raise ValueError(f"{path.name}: too coarse for {face_size}-texel faces, some texels cover no pixel")
+    # From a height map in meters: the planet shader's tangent-space normal in each face's own frame, x along the
+    # face's columns and y along its rows, both projected onto the sphere. The slope comes from the neighbours' height
+    # differences over their offsets in the texel's tangent plane, neighbours across a face edge sitting where their
+    # own face puts them, so a sphere is upright everywhere and slopes stay continuous over edges.
+    def normals(self, radius: float) -> "CubeMap":
+        size = self.face_size
+        directions = np.stack(
+            [CubeMap.texel_directions(face, size, self.projection).astype(np.float32) for face in range(CUBE_FACE_COUNT)]
+        )
+        heights = np.stack([face.pixels[..., :1].astype(np.float32) for face in self.faces])
+        both = CubeMap([Raster(face) for face in np.concatenate([directions, heights], axis=-1)], self.projection)
+        padded = both.padded(1)
+        faces = []
 
-        faces = (sums / weights).astype(np.float32).reshape(CUBE_FACE_COUNT, face_size, face_size, 1)
-        return CubeMap([Raster(face) for face in faces], projection)
+        centers = (np.arange(size) + 0.5) / size * 2 - 1
+
+        for face in range(CUBE_FACE_COUNT):
+            normals = np.empty((size, size, 2), np.float32)
+            column_axis = FACE_BASES[face, COLUMN_AXIS]
+
+            for top in range(0, size, ROWS_PER_NORMAL_BAND):
+                count = min(ROWS_PER_NORMAL_BAND, size - top)
+                around = padded[face, top : top + count + 2].astype(np.float64)
+                neighbours = around[..., :3] / np.linalg.norm(around[..., :3], axis=-1, keepdims=True)
+                direction = CubeMap._direction(face, centers[None, :], centers[top : top + count, None], self.projection)
+                tangent = column_axis - (direction @ column_axis)[..., None] * direction
+                tangent /= np.linalg.norm(tangent, axis=-1, keepdims=True)
+                bitangent = np.cross(tangent, direction)
+                frame = np.stack([tangent, bitangent], axis=-2)
+                heights = around[1:-1, 1:-1, 3]
+
+                # Meters along the tangent plane from each texel to a neighbour, and the height gained.
+                def step(row: int, column: int) -> tuple[np.ndarray, np.ndarray]:
+                    rows = slice(1 + row, count + 1 + row)
+                    columns = slice(1 + column, size + 1 + column)
+                    other = neighbours[rows, columns]
+                    offset = radius * (other / (other * direction).sum(-1, keepdims=True) - direction)
+                    return (frame @ offset[..., None])[..., 0], around[rows, columns, 3] - heights
+
+                right, rise_right = step(0, 1)
+                left, rise_left = step(0, -1)
+                down, rise_down = step(1, 0)
+                up, rise_up = step(-1, 0)
+                offsets = np.stack([right - left, down - up], axis=-2)
+                rises = np.stack([rise_right - rise_left, rise_down - rise_up], axis=-1)
+                slope = np.linalg.solve(offsets, rises[..., None])[..., 0] * (radius / (radius + heights))[..., None]
+                tilted = np.concatenate([-slope, np.ones(slope.shape[:-1] + (1,))], axis=-1)
+                tilted /= np.linalg.norm(tilted, axis=-1, keepdims=True)
+                normals[top : top + count] = tilted[..., :2]
+
+            faces.append(Raster(normals))
+
+        return CubeMap(faces, self.projection)
+
+    # Each texel center's direction on one face, rows top to bottom.
+    @staticmethod
+    def texel_directions(face: int, face_size: int, projection: CubeProjection) -> np.ndarray:
+        centers = (np.arange(face_size) + 0.5) / face_size * 2 - 1
+        return CubeMap._direction(face, centers[None, :], centers[:, None], projection)
+
+    # The solid angle each texel covers, the same on every face: the gnomonic plane's rectangle between its edges,
+    # integrated in closed form.
+    @staticmethod
+    def texel_solid_angles(face_size: int, projection: CubeProjection) -> np.ndarray:
+        edges = projection.to_plane(np.linspace(-1, 1, face_size + 1))
+        corner = np.arctan2(edges[:, None] * edges[None, :], np.sqrt(1 + edges[:, None] ** 2 + edges[None, :] ** 2))
+        return corner[1:, 1:] - corner[1:, :-1] - corner[:-1, 1:] + corner[:-1, :-1]
+
+    # The shortest angle any texel edge spans. Texels shrink toward a face's border in both projections, so the
+    # outermost row holds the shortest edge.
+    @staticmethod
+    def smallest_texel_width(face_size: int, projection: CubeProjection) -> float:
+        edges = np.linspace(-1, 1, face_size + 1)
+        outer = CubeMap._direction(0, edges, np.full_like(edges, -1.0), projection)
+        inner = CubeMap._direction(0, edges, np.full_like(edges, edges[1]), projection)
+        along_row = np.arccos(np.clip((outer[1:] * outer[:-1]).sum(axis=-1), -1, 1))
+        along_column = np.arccos(np.clip((outer * inner).sum(axis=-1), -1, 1))
+        return float(min(along_row.min(), along_column.min()))
 
     # A sky map holds right ascension 0 at its center, growing to the left, and the celestial north pole on row 0.
     @staticmethod
@@ -92,16 +216,8 @@ class CubeMap:
     @staticmethod
     def _direction(face: int, s: np.ndarray, t: np.ndarray, projection: CubeProjection) -> np.ndarray:
         s, t = np.broadcast_arrays(projection.to_plane(s), projection.to_plane(t))
-        one = np.ones_like(s)
-        x, y, z = [
-            (one, -t, -s),
-            (-one, -t, s),
-            (s, one, t),
-            (s, -one, -t),
-            (s, -t, one),
-            (-s, -t, -one),
-        ][face]
-        direction = np.stack([x, y, z], axis=-1)
+        normal, column_axis, row_axis = FACE_BASES[face]
+        direction = normal + s[..., None] * column_axis + t[..., None] * row_axis
         return direction / np.linalg.norm(direction, axis=-1, keepdims=True)
 
     # The cube map face selection table in the Vulkan specification: the face and the texel a direction falls in.
@@ -115,8 +231,8 @@ class CubeMap:
         on_y = ~on_x & (ay >= az)
         face = np.where(on_x, np.where(x > 0, 0, 1), np.where(on_y, np.where(y > 0, 2, 3), np.where(z > 0, 4, 5)))
         major = np.where(on_x, ax, np.where(on_y, ay, az))
-        s = projection.from_plane(np.choose(face, [-z, z, x, x, x, -x]) / major)
-        t = projection.from_plane(np.choose(face, [-y, -y, z, -z, -y, -y]) / major)
+        s = projection.from_plane((direction * FACE_BASES[face, COLUMN_AXIS]).sum(axis=-1) / major)
+        t = projection.from_plane((direction * FACE_BASES[face, ROW_AXIS]).sum(axis=-1) / major)
         column = np.minimum(((s + 1) / 2 * face_size).astype(np.int64), face_size - 1)
         row = np.minimum(((t + 1) / 2 * face_size).astype(np.int64), face_size - 1)
         return face, column, row

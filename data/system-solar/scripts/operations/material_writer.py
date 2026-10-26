@@ -19,17 +19,18 @@ class MaterialWriter:
         self,
         body: str,
         base_color: np.ndarray,
-        color_texture: str,
-        normal_texture: str,
+        color: str,
+        normal: str,
         hapke: HapkeMaterial | None = None,
     ) -> Path:
         path = self.materials / f"{body}.kdl"
         shader = "lambert" if hapke is None else "hapke"
         text = self.header(shader, base_color)
-        text += f'color-texture "{color_texture}"\nnormal-texture "{normal_texture}"\n'
+        text += f'color "{color}"\nnormal "{normal}"\n'
 
         if hapke is not None:
-            text += f'medium-texture "{hapke.medium_texture}"\nopposition-texture "{hapke.opposition_texture}"\n'
+            text += f'scattering "{hapke.scattering}"\nsurge "{hapke.surge}"\n'
+            text += f"macroscopic-roughness {hapke.macroscopic_roughness:.4f}\nporosity {hapke.porosity:.4f}\n"
 
         path.write_text(text)
         return path
@@ -37,4 +38,4 @@ class MaterialWriter:
     @staticmethod
     def header(shader: str, base_color: Sequence[float]) -> str:
         color = " ".join(f"{component:.4f}" for component in base_color)
-        return f'shader "base:{shader}"\nbase-color {color}\n'
+        return f'shader "base:terrain/{shader}"\nbase-color {color}\n'

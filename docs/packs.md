@@ -240,26 +240,29 @@ A body's shape: its heights. A body names its terrain with `terrain "<id>"`.
 
 ```kdl
 height-map "luna"
-minimum -9117
-maximum 10755
 biome "luna/regolith-plains"
+minimum -9129
+maximum 10787
 ```
 
 - **`height-map`:** the heights, relative to `data/terrains/` like every
   reference is relative to its kind's folder: `luna` is
-  `data/terrains/luna.ktx2`, a terrain map (below) of 16-bit values.
-- **`minimum`**, **`maximum`:** the heights a value of 0 and of 65535 stand
-  for, in meters relative to the body's `radius`.
+  `data/terrains/luna.ktx2`, a terrain layer (below) of heights relative to
+  the body's `radius`.
+- **`minimum`**, **`maximum`** (m): the range the height map spans, relative to
+  the body's `radius`: its 16-bit values run from `minimum` at 0 to `maximum` at
+  65535.
 - **`biome`** (optional): the body's kind of ground, an id in `data/biomes/`. A
   terrain names at most one.
 
 The heights are data, so the server and every client share one terrain
 whatever texture tier a player installs.
 
-#### Terrain maps
+#### Terrain layers
 
-A body's heights, and the colour, normals and Hapke maps its material shades
-with, are KTX2 cube maps the game reads as they are. Each holds:
+Every terrain layer (the heights, colour, normals and Hapke maps) is a KTX2
+cube map. The heights live in `data/terrains/`; the other layers are textures
+in `resources/textures/`, referenced by the body's material. Each layer has:
 
 - six square faces in Vulkan's face order and orientation, +X, −X, +Y, −Y,
   +Z, −Z of the body's frame (+X at longitude 0, +Z the north pole);
@@ -268,18 +271,20 @@ with, are KTX2 cube maps the game reads as they are. Each holds:
   their ground size varies far less than on a plain (gnomonic) cube;
 - a face size that is a power of two, at least 4;
 - its full mip chain, each level the average of the one above;
-- texels in the map's format:
+- texels in the layer's format:
 
-| Map | Texels |
+| Layer | Texels |
 | --- | --- |
-| Heights | `R16_UNORM`, from the terrain's `minimum` to its `maximum` |
-| Colour | `BC7_SRGB_BLOCK` |
-| Normals | `BC5_UNORM_BLOCK`, tangent space in each face's frame (see Materials) |
-| Hapke maps | `R16G16B16A16_SFLOAT` |
+| Heights | `R16_UNORM`, over the terrain's `minimum` to `maximum` |
+| Colour | `BC7_SRGB` |
+| Normals | `BC5_UNORM`, tangent space in each face's frame (see Materials) |
+| Scattering | `R16G16_SFLOAT` |
+| Surge | `R16G16B16A16_SFLOAT` |
 
-Each level is compressed on its own (KTX2's Zstandard supercompression or
-none), so the game reads only the levels it keeps resident: the finer ones
-load as the camera nears the body and leave a while after it moves away.
+The game loads each layer as it is stored. Each level is compressed on its own
+(KTX2's Zstandard supercompression or none), so the game reads only the levels
+it keeps resident: the finer ones load as the camera nears the body and leave a
+while after it moves away.
 
 ### Biomes — `<namespace>/data/biomes/`
 
@@ -321,37 +326,33 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 (cd/m²), and emissive values are luminances in cd/m².
 
 - **`shader "base:terrain/lambert"`** with **`base-color`** (the average albedo,
-  linear red green blue) and optional **`color`** (sRGB albedo),
-  **`normal`** and **`emissive-texture`** (sRGB), each a texture id;
-  an emissive texture needs **`emissive-luminance`** (cd/m² for a texture
-  value of 1). Without a color texture the surface takes the base color. A
-  texture no loaded pack provides is skipped with a warning.
+  linear red green blue) and optional **`color`** (sRGB albedo), **`normal`**
+  and **`emissive`** (sRGB), each a texture id; color and normal are
+  terrain layers (see Terrain layers). An emissive texture needs
+  **`emissive-luminance`** (cd/m² for a texture value of 1). Without a color
+  texture the surface takes the base color. A texture no loaded pack provides
+  is skipped with a warning.
 - **`shader "base:terrain/hapke"`** for a body's terrain, shaded with Hapke's model
   of particulate surfaces (Hapke 2012, eq. 12.55), with **`base-color`**,
-  optional **`emissive-texture`** and **`emissive-luminance`** as for
-  `base:terrain/lambert`, and its maps, each a texture id of a terrain map (see
-  Terrain maps): **`color`** (sRGB albedo), **`normal`**, and two maps
-  holding Hapke's other standard parameters, as published: **`scatter`** (the
-  particulate medium: phase-function lobe width b, lobe balance c,
-  macroscopic roughness θ̄ in degrees, porosity coefficient K) and
-  **`surge`** (the opposition surge: shadow-hiding amplitude B_S0 and width
-  h_S, coherent-backscatter amplitude B_C0 and width h_C), channels in that
-  order. The color map's linear values are the diffusive reflectance r0, from
-  which the shader derives the single-scattering albedo w. A map no loaded
-  pack provides is skipped with a warning: without color the surface takes
-  the base color, and without both Hapke maps it is shaded with Lambert.
-  Normal maps are tangent space in the frame of the face they lie on: red
-  along the face's columns and green across them, both on the sphere's
-  tangent plane; z is reconstructed.
+  **`color`**, **`normal`**, **`emissive`** and **`emissive-luminance`**
+  as for `base:terrain/lambert`, and Hapke's other standard parameters, as
+  published. Those varying over the ground are two terrain layers, each a
+  texture id: **`scattering`** (the phase function: lobe width b and lobe
+  balance c) and **`surge`** (the opposition effects: shadow-hiding amplitude
+  B_S0 and width h_S, coherent-backscatter amplitude B_C0 and width h_C),
+  channels in that order. Those holding over the whole body are values:
+  **`macroscopic-roughness`** (θ̄, °) and **`porosity`** (the porosity
+  coefficient K, 1 when grains fill a vanishing share of the volume).
+  The color layer's linear values are the diffusive reflectance r0, from which
+  the shader derives the single-scattering albedo w. Without both Hapke layers
+  the surface is shaded with Lambert.
+
+Normal layers are tangent space in the frame of the face they lie on: red
+along the face's columns and green across them, both on the sphere's tangent
+plane; z is reconstructed.
 - **`shader "base:terrain/emissive"`** with optional **`color`** (a tint, white by
   default) and **`luminance`** (cd/m²). A star takes its luminance and color
   from its data and needs neither.
-
-A `base:terrain/lambert` material's textures are equirectangular with the
-first row at the south pole, longitude 0 at u = 0.25 and u growing westward
-(the convention of KSP's Kopernicus and Parallax). Normal textures are
-tangent-space with red toward west and green toward north; z is
-reconstructed.
 
 ### Lenses — `<namespace>/resources/lenses/`
 

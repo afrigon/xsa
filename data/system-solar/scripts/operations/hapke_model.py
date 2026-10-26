@@ -4,7 +4,10 @@ import numpy as np
 
 MAXIMUM_ALBEDO = 0.999
 MINIMUM_COSINE = 1e-4
-BISECTION_STEPS = 40
+# The inversion table's resolution along each of its axes, and the albedo samples its curves are interpolated from.
+ALBEDO_SAMPLES = 8192
+SINGLE_SCATTERING_SAMPLES = 64
+RADIANCE_FACTOR_SAMPLES = 4096
 
 
 @dataclass(frozen=True)
@@ -28,36 +31,65 @@ class HapkeModel:
     roughness: float
 
     def reflectance(self, albedo: np.ndarray, geometry: Geometry) -> np.ndarray:
+        factor, multiple = self._albedo_terms(albedo, geometry)
+        return factor * (self._single_scattering(geometry.phase) + multiple)
+
+    # The single-scattering albedo whose radiance factor (I/F, π times the reflectance) matches the measurement, read
+    # from a table over the per-pixel single-scattering term and the radiance factor. Reflectance grows with the
+    # albedo, so each of the table's rows inverts one increasing curve.
+    def single_scattering_albedo(self, radiance_factor: np.ndarray, geometry: Geometry) -> np.ndarray:
+        single = np.broadcast_to(self._single_scattering(geometry.phase), radiance_factor.shape)
+        albedos = np.linspace(0, MAXIMUM_ALBEDO, ALBEDO_SAMPLES)
+        factor, multiple = self._albedo_terms(albedos, geometry)
+        singles = np.linspace(np.min(single), np.max(single), SINGLE_SCATTERING_SAMPLES)
+        curves = np.pi * factor * (singles[:, None] + multiple)
+        radiance_factors = np.linspace(0, curves[:, -1].max(), RADIANCE_FACTOR_SAMPLES)
+        table = np.stack([np.interp(radiance_factors, curve, albedos) for curve in curves])
+        measured = np.isfinite(radiance_factor)
+        rows = HapkeModel._fractional_index(single, singles)
+        columns = HapkeModel._fractional_index(np.where(measured, radiance_factor, 0), radiance_factors)
+        return np.where(measured, HapkeModel._bilinear(table, rows, columns), np.nan)
+
+    # Where each value falls along evenly spaced samples, in samples, held to the samples' span.
+    @staticmethod
+    def _fractional_index(values: np.ndarray, samples: np.ndarray) -> np.ndarray:
+        span = samples[-1] - samples[0]
+
+        if span == 0:
+            return np.zeros_like(values)
+
+        return np.clip((values - samples[0]) / span * (len(samples) - 1), 0, len(samples) - 1)
+
+    @staticmethod
+    def _bilinear(table: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
+        row = np.minimum(rows.astype(int), table.shape[0] - 2)
+        column = np.minimum(columns.astype(int), table.shape[1] - 2)
+        down, right = rows - row, columns - column
+        top = table[row, column] * (1 - right) + table[row, column + 1] * right
+        bottom = table[row + 1, column] * (1 - right) + table[row + 1, column + 1] * right
+        return top * (1 - down) + bottom * down
+
+    # The single-scattering term, phase function with the shadow-hiding surge: the only one holding the parameters
+    # that vary per pixel.
+    def _single_scattering(self, phase: float) -> np.ndarray:
+        # A zero surge width divides by zero; the limit, no surge away from opposition, is exact.
+        with np.errstate(divide="ignore"):
+            shadow_hiding = 1 / (1 + np.tan(phase / 2) / self.shadow_hiding_width)
+
+        return self._phase_function(phase) * (1 + self.shadow_hiding_amplitude * shadow_hiding)
+
+    # The reflectance is factor × (single scattering + multiple), both depending only on the albedo and the
+    # parameters held constant over the body.
+    def _albedo_terms(self, albedo: np.ndarray, geometry: Geometry) -> tuple[np.ndarray, np.ndarray]:
         w = np.clip(albedo, 0.0, MAXIMUM_ALBEDO)
         r0 = HapkeModel.diffusive_reflectance(w)
         incidence_cosine, emission_cosine, shadowing = self._roughness_correction(geometry)
         mu0 = max(incidence_cosine, MINIMUM_COSINE)
         mu = max(emission_cosine, MINIMUM_COSINE)
-        g = geometry.phase
-        # A zero surge width divides by zero; the limit, no surge away from opposition, is exact.
-        with np.errstate(divide="ignore"):
-            shadow_hiding = 1 / (1 + np.tan(g / 2) / self.shadow_hiding_width)
-
-        phase_and_shadow_hiding = self._phase_function(g) * (1 + self.shadow_hiding_amplitude * shadow_hiding)
         multiple = self._chandrasekhar(mu0 / self.porosity, w, r0) * self._chandrasekhar(mu / self.porosity, w, r0) - 1
-        backscatter = 1 + self.backscatter_amplitude * self._coherent_backscatter(g)
-        return (
-            self.porosity * w / (4 * np.pi) * mu0 / (mu0 + mu) * (phase_and_shadow_hiding + multiple) * backscatter
-        ) * shadowing
-
-    # The single-scattering albedo whose radiance factor (I/F, π times the reflectance) matches the measurement.
-    # Reflectance grows with the albedo, so a bisection converges everywhere.
-    def single_scattering_albedo(self, radiance_factor: np.ndarray, geometry: Geometry) -> np.ndarray:
-        low = np.zeros_like(radiance_factor)
-        high = np.full_like(radiance_factor, MAXIMUM_ALBEDO)
-
-        for _ in range(BISECTION_STEPS):
-            middle = (low + high) / 2
-            too_bright = np.pi * self.reflectance(middle, geometry) > radiance_factor
-            high = np.where(too_bright, middle, high)
-            low = np.where(too_bright, low, middle)
-
-        return np.where(np.isnan(radiance_factor), np.nan, (low + high) / 2)
+        backscatter = 1 + self.backscatter_amplitude * self._coherent_backscatter(geometry.phase)
+        factor = self.porosity * w / (4 * np.pi) * mu0 / (mu0 + mu) * backscatter * shadowing
+        return factor, multiple
 
     # Hapke's diffusive reflectance r₀ (eq. 8.25), the albedo a body shows under light from every direction.
     @staticmethod

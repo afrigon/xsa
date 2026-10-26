@@ -11,7 +11,6 @@ from pack_credits import PACK_CREDITS
 SCRIPTS = Path(__file__).resolve().parent
 PACK = SCRIPTS.parent
 RECIPE_ROOTS = [SCRIPTS / "skybox.py", SCRIPTS / "solar_system"]
-TIER_WIDTH = 8192
 
 
 def recipes() -> dict[str, Recipe]:
@@ -41,7 +40,7 @@ def main() -> None:
     if arguments.verbose:
         logging.getLogger("operations").setLevel(logging.DEBUG)
 
-    context = BuildContext(PACK, TIER_WIDTH)
+    context = BuildContext(PACK)
 
     for name in arguments.recipes or sorted(known):
         print(f"building {name}")
