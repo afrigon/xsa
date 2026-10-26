@@ -81,12 +81,18 @@ impl DebugControls {
         self.attachment = Attachment::of(nearest, world);
     }
 
-    // How far from its body's centre the eyes of someone standing on the ground toward `direction` are.
-    fn standing_distance(&self, direction: DVec3, world: &ClientWorld) -> f64 {
-        let body = self.attachment.body;
-        let state = world.body_state(body);
+    // How close to its body's centre the camera may come toward `direction`: the eyes of someone standing on the
+    // ground there with collision, the centre itself without.
+    fn lowest_distance(&self, direction: DVec3, context: &ControlsContext) -> f64 {
+        if !context.camera.collision {
+            return 0.0;
+        }
 
-        world
+        let body = self.attachment.body;
+        let state = context.world.body_state(body);
+
+        context
+            .world
             .eye_position(body, state.orientation.inverse() * direction, 0.0)
             .distance(state.position)
     }
@@ -133,19 +139,15 @@ impl Controls for DebugControls {
 
         // At the body's centre there is no great circle to follow, and nothing lower to descend to.
         if radius == 0.0 {
-            self.position += horizontal + up * climb.max(0.0);
+            self.position += horizontal + up * climb.max(self.lowest_distance(up, context));
         } else {
             // A straight step along the tangent plane climbs by d²/2r each frame; travelling the great circle keeps
             // the altitude whatever the step's length. Climbing changes only the distance from the centre, so a
             // descent longer than the radius cannot tunnel through the body.
             let travel = DQuat::from_axis_angle(up.cross(horizontal).normalize_or_zero(), horizontal.length() / radius);
             let direction = travel * up;
-            let lowest = if context.camera.collision {
-                self.standing_distance(direction, context.world)
-            } else {
-                0.0
-            };
-            self.position = self.attachment.position + direction * (radius + climb).max(lowest);
+            self.position =
+                self.attachment.position + direction * (radius + climb).max(self.lowest_distance(direction, context));
         }
 
         CameraPose {
