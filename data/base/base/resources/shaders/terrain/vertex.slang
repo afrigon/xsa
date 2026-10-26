@@ -11,11 +11,11 @@ enum TileShape : uint {
 const uint tileShape = 0;
 
 struct SmoothHeight : TileHeight {
-    float height(TileData tile, ObjectData object, int2 cell) {
+    float height(TileData tile, int2 cell, float morph) {
         return 0.0;
     }
 
-    TerrainShape shape(TileData tile, ObjectData object, int2 cell) {
+    TerrainShape shape(TileData tile, int2 cell, float morph) {
         TerrainShape shape;
         shape.height = 0.0;
         shape.curvature = 0.0;

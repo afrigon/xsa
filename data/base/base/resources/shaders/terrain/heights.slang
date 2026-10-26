@@ -94,57 +94,41 @@ LevelShape levelShape(TerrainData *terrain, TileData tile, uint level, float2 of
     return shape;
 }
 
-// The levels a vertex reads at `distance` meters: the level whose texels are as far apart as the vertices there, a
-// fraction of the way to the next coarser one, within the resident levels. Mirrored by `TexelFootprint::height_level`.
-struct HeightLevels {
-    uint finer;
-    uint coarser;
-    float blend;
-};
-
-HeightLevels heightLevels(TerrainData *terrain, float distance, float radius) {
-    float vertexSpacing = distance / radius * constants.frame.vertexSpacingAngle;
-    float level = log2(vertexSpacing / texelSpacing(terrain, 0));
-    float clamped = clamp(level, float(terrain.heightFirstLevel), float(terrain.heightLevels - 1));
-    HeightLevels levels;
-    levels.finer = uint(clamped);
-    levels.coarser = min(levels.finer + 1, terrain.heightLevels - 1);
-    levels.blend = clamped - float(levels.finer);
-    return levels;
+// A tile's height in radii, relative to the radius, at a grid point of a level.
+float levelHeight(TerrainData *terrain, TileData tile, uint level, float2 offset) {
+    return terrain.heightMinimum + heightSpline(terrain, tile, level, offset).value * terrain.heightSpan;
 }
 
-// In radii, relative to the radius: the same function of the vertex's place for every tile, whichever tile, face or
-// depth it belongs to, so neighbouring tiles meet.
+// In radii, relative to the radius: the same function of a vertex's place for every tile of a level, whichever face it
+// belongs to, so neighbouring tiles meet.
 struct TerrainHeight : TileHeight {
     TerrainData *terrain;
 
-    float height(TileData tile, ObjectData object, int2 cell) {
-        HeightLevels levels = vertexLevels(tile, object, cell);
+    float height(TileData tile, int2 cell, float morph) {
+        TileHeightLevels levels = tileHeightLevels(terrain, tile);
         float2 offset = faceOffset(tile, cell);
-        return lerp(levelShape(terrain, tile, levels.finer, offset).height,
-                    levelShape(terrain, tile, levels.coarser, offset).height,
-                    levels.blend);
+        float finer = levelHeight(terrain, tile, levels.finer, offset);
+
+        if (morph == 0.0 || levels.coarser == levels.finer) {
+            return finer;
+        }
+
+        return lerp(finer, levelHeight(terrain, tile, levels.coarser, offset), morph);
     }
 
     // The height, the curvature and the height above the ground two levels coarser, over that level's texel spacing:
     // ground below its surroundings reads as low.
-    TerrainShape shape(TileData tile, ObjectData object, int2 cell) {
-        HeightLevels levels = vertexLevels(tile, object, cell);
+    TerrainShape shape(TileData tile, int2 cell, float morph) {
+        TileHeightLevels levels = tileHeightLevels(terrain, tile);
         float2 offset = faceOffset(tile, cell);
         LevelShape fine = levelShape(terrain, tile, levels.finer, offset);
         LevelShape coarse = levelShape(terrain, tile, levels.coarser, offset);
         uint surroundingLevel = min(levels.coarser + 2, terrain.heightLevels - 1);
         LevelShape surroundings = levelShape(terrain, tile, surroundingLevel, offset);
         TerrainShape shape;
-        shape.height = lerp(fine.height, coarse.height, levels.blend);
-        shape.curvature = lerp(fine.curvature, coarse.curvature, levels.blend);
+        shape.height = lerp(fine.height, coarse.height, morph);
+        shape.curvature = lerp(fine.curvature, coarse.curvature, morph);
         shape.relativeHeight = (shape.height - surroundings.height) / texelSpacing(terrain, surroundingLevel);
         return shape;
-    }
-
-    HeightLevels vertexLevels(TileData tile, ObjectData object, int2 cell) {
-        float radius = length(object.worldFromModel[0].xyz);
-        float distance = length(tile.center + mul(object.worldFromModel, float4(sphereOffset(tile, cell), 0.0)).xyz);
-        return heightLevels(terrain, distance, radius);
     }
 }

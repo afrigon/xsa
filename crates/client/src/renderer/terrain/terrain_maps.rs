@@ -10,7 +10,11 @@ use resource_vulkan::{
 use xsa_packs::HeightMapDefinition;
 
 use super::{MapStatistics, TerrainLayer, TerrainMapStatistics, TexelFootprint};
+use crate::renderer::quad_sphere::DetailRanges;
 use crate::resource_kinds::{HeightMap, HeightMapOptions};
+
+// How many levels finer than the camera needs a map keeps resident, loading each before it is read.
+const LEVELS_AHEAD: u32 = 1;
 
 // A terrain's maps: its heights and the layers its material shades with, each a cube map whose resident levels follow
 // how close the camera is. Shared by the renderer, which states their demands and draws them, and the world, which
@@ -75,19 +79,27 @@ impl TerrainMaps {
         self.layers[layer.index()].as_ref()?.get()
     }
 
-    // The finest levels a camera `distance` meters from the nearest ground needs: heights whose texels are as far
-    // apart as the vertices there, layers whose texels are a pixel wide. A map's first levels load before it has a
-    // demand, since its size is unknown until then.
-    pub(in crate::renderer) fn demand(&self, distance: f64, footprint: &TexelFootprint, retention: Duration) {
+    // The levels a camera `distance` meters from the nearest ground needs, one level finer still, so a level is
+    // resident before the ground nearing the camera reads it and every transition stays a morph: the height level of
+    // the finest detail drawn there, and layers whose texels are a pixel wide. A map's first levels load before it has
+    // a demand, since its size is unknown until then.
+    pub(in crate::renderer) fn demand(
+        &self,
+        distance: f64,
+        ranges: &DetailRanges,
+        footprint: &TexelFootprint,
+        retention: Duration,
+    ) {
         let demand = |level: f64| MipDemand {
-            finest_level: level.floor().max(0.0) as u32,
+            finest_level: (level.floor() - f64::from(LEVELS_AHEAD)).max(0.0) as u32,
             retention,
         };
 
         if let Some(handle) = &self.heights
             && let Some(heights) = handle.get()
         {
-            handle.set_demand(demand(footprint.height_level(heights.extent(), distance)));
+            let detail = ranges.finest_detail(distance);
+            handle.set_demand(demand(f64::from(DetailRanges::height_level(detail, heights.extent()))));
         }
 
         for handle in self.layers.iter().flatten() {
