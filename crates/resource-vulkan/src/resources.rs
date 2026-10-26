@@ -126,8 +126,9 @@ impl Resources {
     }
 
     /// Records, into a frame's command buffer on the graphics queue, the copy of the levels each finished reload of a
-    /// mip-streamed resource shares with its current levels, then makes the reloads current. Call it before the frame
-    /// reads any handle, so the frame samples what it copied; the copies order after earlier frames' sampling.
+    /// mip-streamed resource shares with its current levels, then makes the reloads current. The copies order after
+    /// earlier frames' sampling; a frame that read a handle before this call samples the previous levels, which stay
+    /// valid until no recording open now can read them.
     pub fn record_mip_copies(&self, command_buffer: vk::CommandBuffer) {
         let mip_entries: Vec<_> = self.shared.registry().mip_entries.values().cloned().collect();
         let device = self.shared.environment.memory.device();

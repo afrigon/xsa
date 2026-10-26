@@ -1,6 +1,5 @@
+import terrain.debug.height_levels;
 import terrain.debug.lod;
-import terrain.debug.page_fallback;
-import terrain.debug.page_levels;
 import terrain.debug.scale;
 import terrain.tile;
 
@@ -9,8 +8,7 @@ enum TerrainDebugView : uint {
     None = 0,
     Lod = 1,
     Scale = 2,
-    PageLevels = 3,
-    PageFallback = 4,
+    HeightLevels = 3,
 }
 
 [vk::constant_id(2)]
@@ -26,9 +24,7 @@ float3 terrainDebugViewColor(TerrainVaryings input) {
         return lodColor(input);
     case uint(TerrainDebugView.Scale):
         return scaleColor(input);
-    case uint(TerrainDebugView.PageLevels):
-        return pageLevelsColor(input);
     default:
-        return pageFallbackColor(input);
+        return heightLevelsColor(input);
     }
 }

@@ -20,7 +20,7 @@ use crate::camera::Attitude;
 use crate::renderer::{
     BiomeSurfaces, ColorSpace, EmissiveMaterial, HapkeMaterial, LambertMaterial, LightSource, MaterialHandle,
     ObjectHandle, Renderer, SceneObject, SkyboxMaterial, Star, SurfaceClass, SurfaceTextures, Terrain, TerrainLayer,
-    TerrainPages,
+    TerrainMaps,
 };
 use crate::ui::PositionReading;
 
@@ -38,7 +38,7 @@ pub(crate) struct ClientWorld {
     illumination: Illumination,
     body_objects: Vec<ObjectHandle>,
     // One per body; None for a smooth body without layers. Its ground is the sea until its heights load.
-    terrains: Vec<Option<Arc<TerrainPages>>>,
+    terrains: Vec<Option<Arc<TerrainMaps>>>,
     skybox: Option<MaterialHandle>,
     // Every file the scene needs, for its progress.
     resources: ResourceGroup,
@@ -129,7 +129,7 @@ impl ClientWorld {
                 scene.add_terrain(Terrain {
                     object,
                     material,
-                    pages: terrain.clone(),
+                    maps: terrain.clone(),
                     surfaces: surfaces.clone(),
                 });
                 scene.add_occluder(object);
@@ -265,12 +265,12 @@ impl ClientWorld {
         self.terrain_height(index, direction).unwrap_or(0.0)
     }
 
-    // Whether the ground toward `direction` is as fine as it will get: its heights loaded to the finest level, or
-    // nothing finer on its way.
-    pub fn is_ground_settled(&self, index: BodyIndex, direction: DVec3) -> bool {
+    // Whether the body's ground is as fine as the camera needs: its heights resident to the level the camera's distance
+    // asks for, with nothing finer on its way.
+    pub fn is_ground_settled(&self, index: BodyIndex) -> bool {
         self.terrains[index.value]
             .as_ref()
-            .is_none_or(|terrain| terrain.is_ground_settled(direction))
+            .is_none_or(|terrain| terrain.is_ground_settled())
     }
 
     // Where the eyes are when the feet stand `altitude` above the ground at `direction`, in the body's frame.
@@ -425,8 +425,8 @@ impl ClientWorld {
         material: &MaterialDefinition,
         resources: &Resources,
         group: &mut ResourceGroup,
-    ) -> Option<TerrainPages> {
-        let heights = terrain.and_then(|definition| Some(definition.height_map.as_ref()?.path.clone()));
+    ) -> Option<TerrainMaps> {
+        let heights = terrain.and_then(|definition| definition.height_map.as_ref());
         let layers = match material {
             MaterialDefinition::Hapke {
                 color,
@@ -437,8 +437,8 @@ impl ClientWorld {
             } => TerrainLayer::ALL.map(|layer| match layer {
                 TerrainLayer::Color => color.clone(),
                 TerrainLayer::Normal => normal.clone(),
-                TerrainLayer::Medium => scatter.clone(),
-                TerrainLayer::Opposition => surge.clone(),
+                TerrainLayer::Scatter => scatter.clone(),
+                TerrainLayer::Surge => surge.clone(),
             }),
             MaterialDefinition::Lambert { .. } | MaterialDefinition::Emissive { .. } => Default::default(),
         };
@@ -447,7 +447,7 @@ impl ClientWorld {
             return None;
         }
 
-        Some(TerrainPages::new(resources, group, &body.to_string(), heights, layers))
+        Some(TerrainMaps::new(resources, group, &body.to_string(), heights, layers))
     }
 
     // The surfaces of the body's biome, for ground shaded with Hapke; None without a biome, and while a surface's

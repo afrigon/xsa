@@ -51,22 +51,24 @@ impl DebugOverlayView {
         )
     }
 
-    // Each terrain set's pages in atlas cells, those wanted but not yet in one, and the decoded pages kept in RAM.
-    fn terrain_pages(&self) -> String {
-        let pages = &self.statistics.terrain_pages;
-        let sets = std::iter::once(("heights", &pages.heights))
-            .chain(TerrainLayer::ALL.map(|layer| (layer.name(), &pages.layers[layer.index()])));
+    // Each kind of terrain map over every terrain: the memory its resident levels hold, and how many maps still load
+    // toward the levels the camera needs.
+    fn terrain_maps(&self) -> String {
+        let maps = &self.statistics.terrain_maps;
+        let kinds = std::iter::once(("heights", &maps.heights))
+            .chain(TerrainLayer::ALL.map(|layer| (layer.name(), &maps.layers[layer.index()])));
 
-        sets.map(|(name, set)| {
-            format!(
-                "{name}: {} pages · {} loading · {:.1} MiB",
-                set.resident,
-                set.pending,
-                set.ram_bytes as f64 / BYTES_PER_MEBIBYTE
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+        kinds
+            .map(|(name, map)| {
+                format!(
+                    "{name}: {:.1} MiB video · {:.1} MiB RAM · {} loading",
+                    map.video_bytes as f64 / BYTES_PER_MEBIBYTE,
+                    map.ram_bytes as f64 / BYTES_PER_MEBIBYTE,
+                    map.loading
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn camera(&self) -> String {
@@ -161,7 +163,7 @@ impl View for DebugOverlayView {
         Text::new(format!(
             "{}\n\n{}\n\n{}\n\n{}\n\n{}",
             self.performance(),
-            self.terrain_pages(),
+            self.terrain_maps(),
             self.camera(),
             self.position(),
             self.clock()

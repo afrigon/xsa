@@ -1,13 +1,12 @@
 use glam::{DVec2, DVec3};
-use resource_loader::terrain::{PageAddress, PageKey};
 use resource_loader::utils::CubeFace;
 use xsa_core::terrain::FacePoint;
 
 const CHILDREN_PER_SIDE: u32 = 2;
 
 // A tile's identity: stable from frame to frame, so data computed for a tile can be cached under it. Tiles split their
-// face evenly in its equal-angle coordinates, columns `x` and rows `y` along the face's: a tile at depth d is exactly
-// the area of the terrain page at level d with the same column and row.
+// face evenly in its equal-angle coordinates, columns `x` and rows `y` along the face's, as the terrain's cube maps
+// split their faces into texels.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(in crate::renderer) struct QuadSphereTile {
     pub face: CubeFace,
@@ -78,29 +77,6 @@ impl QuadSphereTile {
             .fold(0.0, f64::max)
     }
 
-    // The page at `level`, no finer than the tile, whose area holds the tile.
-    pub fn page(self, level: u32) -> PageAddress {
-        let shift = self.depth - level;
-
-        PageAddress {
-            face: self.face,
-            level,
-            key: PageKey::from_coordinates(self.x >> shift, self.y >> shift),
-        }
-    }
-
-    // The pages at `level`, no coarser than the tile, that split its area, row by row.
-    pub fn pages(self, level: u32) -> impl Iterator<Item = PageAddress> {
-        let shift = level - self.depth;
-        let side = 1 << shift;
-
-        (0..side * side).map(move |index| PageAddress {
-            face: self.face,
-            level,
-            key: PageKey::from_coordinates((self.x << shift) + index % side, (self.y << shift) + index / side),
-        })
-    }
-
     fn cube_point(self, coordinates: DVec2) -> DVec3 {
         let direction = FacePoint {
             face: self.face,
@@ -135,38 +111,6 @@ mod tests {
                 .iter()
                 .all(|child| child.half_size() == parent.half_size() / 2.0)
         );
-    }
-
-    #[test]
-    fn a_tile_is_the_area_of_its_page_at_its_depth() {
-        let tile = QuadSphereTile {
-            face: CubeFace::NegativeZ,
-            depth: 3,
-            x: 5,
-            y: 2,
-        };
-        let page = tile.page(3);
-        let corner = FacePoint {
-            face: tile.face,
-            coordinates: tile.face_center() - tile.half_size() * 0.999,
-        };
-
-        assert_eq!((page.key.x(), page.key.y()), (5, 2));
-        assert_eq!(corner.page(3), page);
-        assert_eq!(tile.page(1).key, PageKey::from_coordinates(1, 0));
-    }
-
-    #[test]
-    fn finer_pages_split_a_tile_row_by_row() {
-        let tile = QuadSphereTile {
-            face: CubeFace::PositiveX,
-            depth: 1,
-            x: 1,
-            y: 0,
-        };
-        let keys: Vec<(u32, u32)> = tile.pages(2).map(|page| (page.key.x(), page.key.y())).collect();
-
-        assert_eq!(keys, [(2, 0), (3, 0), (2, 1), (3, 1)]);
     }
 
     #[test]

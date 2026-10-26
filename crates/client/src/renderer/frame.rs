@@ -1,7 +1,7 @@
 use ash::vk;
 use memory_vulkan::{Buffer, DeviceObject, MemoryContext, MemoryLocation, QueueSharing, TimelineValue};
 
-use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TileData, TilePages};
+use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TerrainData, TileData};
 use super::gpu_timer::GpuTimer;
 use super::star_visibility::HISTOGRAM_BINS;
 use crate::vulkan::Device;
@@ -13,7 +13,7 @@ pub(super) struct Frame {
     pub frame_data: Buffer,
     pub objects: Buffer,
     pub tiles: Buffer,
-    pub tile_pages: Buffer,
+    pub terrains: Buffer,
     pub stars: Buffer,
     pub projected_lights: Buffer,
     pub surface_anchors: Buffer,
@@ -30,6 +30,7 @@ impl Frame {
         device: &Device,
         object_capacity: usize,
         tile_capacity: usize,
+        terrain_capacity: usize,
         star_capacity: usize,
         light_capacity: usize,
         surface_anchor_capacity: usize,
@@ -37,7 +38,7 @@ impl Frame {
         let frame_data = Frame::create_shader_buffer(memory, "frame data", size_of::<FrameData>())?;
         let objects = Frame::create_object_buffer(memory, object_capacity)?;
         let tiles = Frame::create_tile_buffer(memory, tile_capacity)?;
-        let tile_pages = Frame::create_tile_pages_buffer(memory, tile_capacity)?;
+        let terrains = Frame::create_terrain_buffer(memory, terrain_capacity)?;
         let stars = Frame::create_star_buffer(memory, star_capacity)?;
         let projected_lights = Frame::create_projected_light_buffer(memory, light_capacity)?;
         let surface_anchors = Frame::create_surface_anchor_buffer(memory, surface_anchor_capacity)?;
@@ -74,7 +75,7 @@ impl Frame {
             frame_data,
             objects,
             tiles,
-            tile_pages,
+            terrains,
             stars,
             projected_lights,
             surface_anchors,
@@ -92,8 +93,8 @@ impl Frame {
         Frame::create_shader_buffer(memory, "tile data", capacity * size_of::<TileData>())
     }
 
-    pub fn create_tile_pages_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
-        Frame::create_shader_buffer(memory, "tile pages", capacity * size_of::<TilePages>())
+    pub fn create_terrain_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(memory, "terrain data", capacity * size_of::<TerrainData>())
     }
 
     pub fn create_star_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {

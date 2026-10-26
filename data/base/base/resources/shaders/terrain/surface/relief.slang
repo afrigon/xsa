@@ -23,8 +23,8 @@ struct SurfaceRelief : TileRelief {
         float distance = length(world);
         float pixelFootprint = distance * constants.frame.pixelAngle;
         float vertexSpacing = distance * constants.frame.vertexSpacingAngle;
-        LayerCoordinates coordinates = magnifiedLayerCoordinates(tile, faceOffset);
-        float3 normal = layerNormal(readLayer(coordinates, normalLayer), coordinates.tile, modelNormal);
+        LayerCoordinates coordinates = layerCoordinates(modelNormal);
+        float3 normal = layerNormal(readMagnifiedLayer(coordinates, normalLayer), coordinates, modelNormal);
         SurfaceAnchors *anchors = surfaceAnchors();
         float2 weights =
             surfaceClassWeights(*biome, anchors, offset, normal, modelNormal, shape.curvature, shape.relativeHeight);

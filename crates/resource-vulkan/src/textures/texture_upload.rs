@@ -43,6 +43,21 @@ impl TextureUpload {
         self.upload(context, BindlessBinding::CubeMap, ImageKind::Cube, levels)
     }
 
+    // A cube map's faces as a six-layer array of `levels`, read texel by texel rather than sampled by direction; the
+    // levels beyond the decoded ones are left for a copy, as `cube_map_levels` leaves them.
+    pub fn faces(self, context: &LoadContext, levels: Range<u32>) -> anyhow::Result<PendingTexture> {
+        ensure!(
+            self.image.kind() == TextureKind::CubeMap,
+            "expected a cube map, found a {}",
+            self.image.kind()
+        );
+        let kind = ImageKind::Array {
+            count: self.image.layers().len() as u32,
+        };
+
+        self.upload(context, BindlessBinding::TextureArray, kind, levels)
+    }
+
     pub fn array(self, context: &LoadContext) -> anyhow::Result<PendingTexture> {
         ensure!(
             self.image.kind() == TextureKind::Array,

@@ -4,7 +4,8 @@ use resource_loader::utils::CubeFace;
 
 use super::{CubeTexel, FacePoint, TexelSource};
 
-const SPLINE_TEXELS: i32 = 4;
+// The B-spline reads four texels per axis, reaching two past an edge into the adjacent face, which must hold them.
+pub const SPLINE_TEXELS: i32 = 4;
 const CORNER_TEXELS: f64 = 3.0;
 
 // One mip level of a body's height map, held on the CPU: six equal-angle faces `extent` texels wide, of 16-bit values
@@ -27,6 +28,10 @@ impl HeightMapLevel {
         minimum: f64,
         maximum: f64,
     ) -> anyhow::Result<HeightMapLevel> {
+        ensure!(
+            extent >= SPLINE_TEXELS as u32,
+            "a {extent}-texel face is narrower than the B-spline's {SPLINE_TEXELS} texels"
+        );
         let expected = CubeFace::ALL.len() * (extent * extent) as usize;
         ensure!(
             texels.len() == expected,
@@ -203,6 +208,11 @@ mod tests {
 
             assert!((MINIMUM..=MAXIMUM).contains(&height), "{height}");
         }
+    }
+
+    #[test]
+    fn a_face_narrower_than_the_spline_is_rejected() {
+        assert!(HeightMapLevel::new(0, 2, vec![0; 24], MINIMUM, MAXIMUM).is_err());
     }
 
     #[test]

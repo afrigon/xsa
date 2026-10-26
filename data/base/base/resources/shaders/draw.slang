@@ -38,8 +38,8 @@ struct PushConstants {
     uint objectIndex;
     uint firstTile;
     void *tiles;
-    // The pages each tile reads, by tile index.
-    void *tilePages;
+    // The maps of the terrain drawn.
+    void *terrain;
     // Where the camera stands in the terrain's surfaces; null for a terrain without surfaces.
     void *surfaceAnchors;
 };

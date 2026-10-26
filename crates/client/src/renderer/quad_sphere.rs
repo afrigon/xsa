@@ -36,15 +36,16 @@ pub(in crate::renderer) struct QuadSphere<'a> {
 impl QuadSphere<'_> {
     pub fn select(&self, ranges: &DetailRanges, culler: &Culler, tiles: &mut Vec<SelectedTile>) {
         let camera = self.orientation.inverse() * -self.center;
-        let lowest = self
+        let overall = self
             .height
             .and_then(|height| height.overall_range())
-            .map_or(0.0, |range| range.scaled(self.height_scale).minimum)
-            - self.relief;
-        let horizon = HorizonCuller::new(camera, self.radius + lowest);
+            .unwrap_or(HeightRange::SMOOTH)
+            .scaled(self.height_scale)
+            .widened(self.relief);
+        let horizon = HorizonCuller::new(camera, self.radius + overall.minimum);
 
         for root in QuadSphereTile::roots() {
-            self.select_tile(root, camera, ranges, culler, &horizon, tiles);
+            self.select_tile(root, camera, overall, ranges, culler, &horizon, tiles);
         }
     }
 
@@ -52,6 +53,7 @@ impl QuadSphere<'_> {
         &self,
         tile: QuadSphereTile,
         camera: DVec3,
+        overall: HeightRange,
         ranges: &DetailRanges,
         culler: &Culler,
         horizon: &HorizonCuller,
@@ -60,10 +62,12 @@ impl QuadSphere<'_> {
         let direction = tile.cube_center().normalize();
         let chord_radius = tile.chord_radius();
         let angular_radius = 2.0 * (chord_radius / 2.0).asin();
+        let farthest_possible =
+            self.bounding_center(direction, overall).length() + self.bounding_radius(chord_radius, overall);
 
         let height = self
             .height
-            .and_then(|height| height.tile_range(tile))
+            .and_then(|height| height.tile_range(tile, farthest_possible))
             .unwrap_or(HeightRange::SMOOTH)
             .scaled(self.height_scale)
             .widened(self.relief);
@@ -85,17 +89,12 @@ impl QuadSphere<'_> {
             .or((tile.depth == DEEPEST_DEPTH).then_some(DEEPEST_DEPTH as i32));
 
         if let Some(detail) = detail {
-            tiles.push(SelectedTile {
-                tile,
-                detail,
-                nearest,
-                farthest: center.length() + bounding_radius,
-            });
+            tiles.push(SelectedTile { tile, detail, nearest });
             return;
         }
 
         for child in tile.children() {
-            self.select_tile(child, camera, ranges, culler, horizon, tiles);
+            self.select_tile(child, camera, overall, ranges, culler, horizon, tiles);
         }
     }
 
@@ -162,7 +161,7 @@ mod tests {
             })
         }
 
-        fn tile_range(&self, _: QuadSphereTile) -> Option<HeightRange> {
+        fn tile_range(&self, _: QuadSphereTile, _: f64) -> Option<HeightRange> {
             Some(self.tile)
         }
     }

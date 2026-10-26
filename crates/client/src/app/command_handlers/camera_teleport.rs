@@ -8,8 +8,8 @@ use crate::app::command_progress::CommandProgress;
 use crate::app::command_task::CommandTask;
 use crate::app::task_status::TaskStatus;
 
-// Tiles drawn around the new position request their pages in the frame after it is placed, and the streamer counts
-// them as loading in the frame after that.
+// The renderer states the heights' demand for the new position in the frame after it is placed, and the reload it
+// starts shows in the frame after that.
 const FRAMES_BEFORE_REQUESTS_SHOW: u64 = 2;
 
 impl ClientCommandHandler for CameraTeleportCommand {
@@ -56,7 +56,7 @@ impl CommandTask for TeleportTask {
 
         let frames = renderer.frames_rendered() - self.first_frame;
 
-        if frames > FRAMES_BEFORE_REQUESTS_SHOW && world.is_ground_settled(self.target.body, self.target.direction) {
+        if frames > FRAMES_BEFORE_REQUESTS_SHOW && world.is_ground_settled(self.target.body) {
             return TaskStatus::Done(Ok(std::mem::take(&mut self.reply)));
         }
 

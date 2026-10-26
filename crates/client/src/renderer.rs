@@ -61,7 +61,7 @@ pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, S
 pub use shader_binaries::ShaderBinaries;
 pub use surface::{BiomeSurfaces, SurfaceClass, SurfaceTextures};
 pub use surface_debug_view::SurfaceDebugView;
-pub use terrain::{TerrainLayer, TerrainPageStatistics, TerrainPages};
+pub use terrain::{TerrainLayer, TerrainMapStatistics, TerrainMaps};
 pub use terrain_debug_view::TerrainDebugView;
 pub use tonemapper::Tonemapper;
 
@@ -81,7 +81,7 @@ use winit::window::Window;
 use xsa_core::light::BACKGROUND_ILLUMINANCE;
 use xui::DrawList;
 
-use resource_vulkan::{Residency, ResourceHandle, Resources};
+use resource_vulkan::{ResourceHandle, Resources, StreamedMips};
 use xsa_packs::LensDefinition;
 
 use crate::camera::Camera;
@@ -97,12 +97,12 @@ use frame_inputs::FrameInputs;
 use frame_output::FrameOutput;
 use frame_role::FrameRole;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TileData, TilePages};
+use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TerrainData, TileData};
 use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
 use light_projection::LightProjection;
-use material::MaterialBuffer;
+use material::{MaterialBuffer, NO_TEXTURE};
 use noise_volume::NoiseVolume;
 use object_pose::ObjectPose;
 use passes::TaaPass;
@@ -112,7 +112,7 @@ use render_passes::RenderPasses;
 use shading_range::ShadingRange;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
-use terrain::{PageDetail, TilePageWriter};
+use terrain::{TerrainHeights, TexelFootprint};
 use terrain_draw::TerrainDraw;
 use tile_shape::TileShape;
 use tonemapper::NO_TONEMAPPER;
@@ -127,6 +127,7 @@ const INITIAL_OBJECT_CAPACITY: usize = 1024;
 const INITIAL_TILE_CAPACITY: usize = 4096;
 const INITIAL_STAR_CAPACITY: usize = 4;
 const INITIAL_SURFACE_ANCHOR_CAPACITY: usize = 4;
+const INITIAL_TERRAIN_CAPACITY: usize = 4;
 const INITIAL_LIGHT_CAPACITY: usize = 4;
 // Far longer than any frame the compositor asks for. Some drivers never return an image while the window is hidden
 // (NVIDIA on Wayland); the frame is skipped rather than the event loop stalled.
@@ -176,16 +177,15 @@ pub struct Renderer {
     selected_tiles: Vec<SelectedTile>,
     terrain_draws: Vec<TerrainDraw>,
     tile_data: Vec<TileData>,
-    tile_pages: Vec<TilePages>,
+    // By terrain index.
+    terrain_data: Vec<TerrainData>,
     surface_anchor_data: Vec<SurfaceAnchorData>,
     // Each terrain's slot in `surface_anchor_data`, by terrain index; None for terrains without surfaces.
     surface_anchor_slots: Vec<Option<usize>>,
     noise_volume: NoiseVolume,
-    page_writer: TilePageWriter,
-    // Whether terrain pages follow what tiles request, or stay as they are.
-    terrain_residency: Residency,
     object_capacity: usize,
     tile_capacity: usize,
+    terrain_capacity: usize,
     star_capacity: usize,
     surface_anchor_capacity: usize,
     light_capacity: usize,
@@ -201,6 +201,8 @@ pub struct Renderer {
     swapchain: Swapchain,
     swapchain_outdated: bool,
     window_extent: vk::Extent2D,
+    // Before the GPU context, so every resource drops before the device.
+    resources: Resources,
     gpu: GpuContext,
 }
 
@@ -222,6 +224,7 @@ impl Renderer {
                     &gpu.device,
                     INITIAL_OBJECT_CAPACITY,
                     INITIAL_TILE_CAPACITY,
+                    INITIAL_TERRAIN_CAPACITY,
                     INITIAL_STAR_CAPACITY,
                     INITIAL_LIGHT_CAPACITY,
                     INITIAL_SURFACE_ANCHOR_CAPACITY,
@@ -231,6 +234,7 @@ impl Renderer {
         let mut graph = RenderGraph::new(&gpu.memory, swapchain.extent());
         let passes = RenderPasses::new(&gpu, &mut graph, shaders, swapchain.format(), FRAMES_IN_FLIGHT)?;
         let noise_volume = NoiseVolume::new(&gpu)?;
+        let resources = Resources::new(&gpu.memory, &gpu.transfer, &gpu.bindless);
 
         Ok(Self {
             scene: Scene::default(),
@@ -255,14 +259,13 @@ impl Renderer {
             selected_tiles: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             terrain_draws: Vec::new(),
             tile_data: Vec::with_capacity(INITIAL_TILE_CAPACITY),
-            tile_pages: Vec::with_capacity(INITIAL_TILE_CAPACITY),
+            terrain_data: Vec::with_capacity(INITIAL_TERRAIN_CAPACITY),
             surface_anchor_data: Vec::with_capacity(INITIAL_SURFACE_ANCHOR_CAPACITY),
             surface_anchor_slots: Vec::new(),
             noise_volume,
-            page_writer: TilePageWriter::new(),
-            terrain_residency: Residency::Live,
             object_capacity: INITIAL_OBJECT_CAPACITY,
             tile_capacity: INITIAL_TILE_CAPACITY,
+            terrain_capacity: INITIAL_TERRAIN_CAPACITY,
             star_capacity: INITIAL_STAR_CAPACITY,
             surface_anchor_capacity: INITIAL_SURFACE_ANCHOR_CAPACITY,
             light_capacity: INITIAL_LIGHT_CAPACITY,
@@ -278,6 +281,7 @@ impl Renderer {
             swapchain,
             swapchain_outdated: false,
             window_extent,
+            resources,
             gpu,
         })
     }
@@ -305,11 +309,6 @@ impl Renderer {
 
     pub fn configure(&mut self, config: &Config) {
         self.config = config.clone();
-        self.terrain_residency = if config.terrain.streaming.freeze {
-            Residency::Frozen
-        } else {
-            Residency::Live
-        };
         let adaptation_duration_scale = config.animation.camera_duration_scale();
         self.exposure.configure(adaptation_duration_scale);
         self.white_balance.configure(adaptation_duration_scale);
@@ -342,9 +341,10 @@ impl Renderer {
         self.gpu.device.extended_dynamic_state3().is_some()
     }
 
-    // Loads into the same GPU memory, transfer queue and bindless table the renderer draws from.
-    pub fn create_resources(&self) -> Resources {
-        Resources::new(&self.gpu.memory, &self.gpu.transfer, &self.gpu.bindless)
+    // Loads into the same GPU memory, transfer queue and bindless table the renderer draws from; the renderer records
+    // the copies its mip-streamed resources need into each frame.
+    pub fn resources(&self) -> &Resources {
+        &self.resources
     }
 
     pub fn add_material<M: Material + 'static>(&mut self, name: &str, material: M) -> anyhow::Result<MaterialHandle> {
@@ -368,15 +368,6 @@ impl Renderer {
     fn poll_uploads(&mut self) -> anyhow::Result<()> {
         for material in &mut self.materials {
             material.refresh(&self.gpu)?;
-        }
-
-        for pages in self
-            .scene
-            .terrains()
-            .iter()
-            .filter_map(|terrain| terrain.pages.as_ref())
-        {
-            pages.update(self.terrain_residency);
         }
 
         if let Some(lens) = &mut self.lens {
@@ -777,12 +768,16 @@ impl Renderer {
             }
         }
 
+        self.demand_terrain_maps(camera);
+
         if !self.config.terrain.lod.freeze {
             self.select_tiles(camera);
         }
 
         self.write_tiles(camera);
         self.ensure_tile_capacity()?;
+        self.write_terrain_data();
+        self.ensure_terrain_capacity()?;
         self.write_surface_anchors(camera);
         self.ensure_surface_anchor_capacity()?;
 
@@ -790,7 +785,7 @@ impl Renderer {
         frame.frame_data.write(&[frame_data])?;
         frame.objects.write(&self.object_data)?;
         frame.tiles.write(&self.tile_data)?;
-        frame.tile_pages.write(&self.tile_pages)?;
+        frame.terrains.write(&self.terrain_data)?;
         frame.stars.write(&self.star_data)?;
         frame.surface_anchors.write(&self.surface_anchor_data)?;
         Ok(frame.projected_lights.write(&self.projected_light_data)?)
@@ -815,7 +810,9 @@ impl Renderer {
             let object = self.scene.object(terrain.object);
             let center = object.position - camera.position;
 
-            let heights = terrain.pages.as_ref().and_then(|pages| pages.heights());
+            let footprint = self.texel_footprint(object.scale);
+            let heights = terrain.maps.as_ref().and_then(|maps| maps.heights());
+            let heights = heights.as_deref().map(|map| TerrainHeights { map, footprint });
             let height_scale = f64::from(self.config.terrain.height.drawn_scale());
             let shape = if heights.is_some() {
                 TileShape::Displaced
@@ -842,22 +839,17 @@ impl Renderer {
                 orientation: object.orientation,
             };
             let ranges = self.detail_ranges(object.scale);
-            let detail = PageDetail {
-                radius: object.scale,
-                focal_length_pixels: f64::from(self.focal_length_pixels),
-                vertex_spacing_angle: ranges.vertex_spacing_angle(),
-            };
-            let finest_color = terrain
-                .pages
+            let color_extent = terrain
+                .maps
                 .as_ref()
-                .and_then(|pages| pages.layer(TerrainLayer::Color))
-                .map(|(_, finest)| finest);
+                .and_then(|maps| maps.layer(TerrainLayer::Color))
+                .map(|color| TerrainMaps::extent(color.as_ref()));
             let surfaces = terrain
                 .surfaces
                 .as_deref()
                 .filter(|_| self.noise_volume.index().is_some());
-            let range = |tile: &SelectedTile| match (surfaces, finest_color) {
-                (Some(_), Some(level)) if detail.magnifies(level, tile.nearest) => ShadingRange::Near,
+            let range = |tile: &SelectedTile| match (surfaces, color_extent) {
+                (Some(_), Some(extent)) if footprint.magnifies(extent, tile.nearest) => ShadingRange::Near,
                 _ => ShadingRange::Far,
             };
             let draw_key = |tile: &SelectedTile| (range(tile), DetailRanges::grid_cells(tile.tile.depth, tile.detail));
@@ -881,12 +873,9 @@ impl Renderer {
         }
     }
 
-    // Tile centers are placed in f64, relative to each frame's camera, so only offsets within a tile reach f32. Each
-    // tile's pages are written beside it, and the pages tiles need are requested.
+    // Tile centers are placed in f64, relative to each frame's camera, so only offsets within a tile reach f32.
     fn write_tiles(&mut self, camera: &Camera) {
         self.tile_data.clear();
-        self.tile_pages.clear();
-        self.page_writer.begin(self.scene.terrains().len());
         let previous_camera_position = self.temporal.previous_camera_position();
 
         for draw in &self.terrain_draws {
@@ -894,11 +883,6 @@ impl Renderer {
             let object = self.scene.object(terrain.object);
             let previous = self.temporal.previous_pose(terrain.object.index);
             let ranges = self.detail_ranges(object.scale);
-            let detail = PageDetail {
-                radius: object.scale,
-                focal_length_pixels: f64::from(self.focal_length_pixels),
-                vertex_spacing_angle: ranges.vertex_spacing_angle(),
-            };
             let first_tile = draw.first_tile as usize;
 
             for selected in &self.selected_tiles[first_tile..first_tile + draw.tile_count as usize] {
@@ -921,17 +905,78 @@ impl Renderer {
                     x: tile.x,
                     y: tile.y,
                     depth: tile.depth,
-                    layer_finest_levels: terrain.pages.as_ref().map_or(0, |pages| pages.layer_finest_levels()),
+                    face: tile.face.index() as u32,
                 });
-                self.tile_pages
-                    .push(terrain.pages.as_ref().map_or(TilePages::NONE, |pages| {
-                        self.page_writer.write(draw.terrain.index, pages, selected, &detail)
-                    }));
             }
         }
+    }
 
-        self.page_writer
-            .submit(self.scene.terrains().iter().map(|terrain| terrain.pages.as_deref()));
+    // Each terrain's maps as its tiles read them, heights in radii.
+    fn write_terrain_data(&mut self) {
+        self.terrain_data.clear();
+
+        for terrain in self.scene.terrains() {
+            let radius = self.scene.object(terrain.object).scale;
+            let maps = terrain.maps.as_deref();
+            let heights = maps.and_then(TerrainMaps::heights);
+            let color = maps.and_then(|maps| maps.layer(TerrainLayer::Color));
+            let mut data = TerrainData {
+                height_texture: NO_TEXTURE,
+                height_extent: 0,
+                height_levels: 0,
+                height_first_level: 0,
+                height_minimum: 0.0,
+                height_span: 0.0,
+                layer_textures: TerrainLayer::ALL.map(|layer| {
+                    maps.and_then(|maps| maps.layer(layer))
+                        .map_or(NO_TEXTURE, |map| map.index())
+                }),
+                color_extent: color.map_or(0, |color| TerrainMaps::extent(color.as_ref())),
+                padding: 0,
+            };
+
+            if let Some(heights) = heights {
+                let level = heights.level();
+                data.height_texture = heights.index();
+                data.height_extent = heights.extent();
+                data.height_levels = heights.mip_levels();
+                data.height_first_level = heights.first_level();
+                data.height_minimum = (level.minimum() / radius) as f32;
+                data.height_span = ((level.maximum() - level.minimum()) / radius) as f32;
+            }
+
+            self.terrain_data.push(data);
+        }
+    }
+
+    // Each terrain's maps keep resident the levels its nearest ground needs from the camera, whether it is in view or
+    // not: the highest ground is no nearer than the sphere through it.
+    fn demand_terrain_maps(&self, camera: &Camera) {
+        let height_scale = f64::from(self.config.terrain.height.drawn_scale());
+
+        for terrain in self.scene.terrains() {
+            let Some(maps) = &terrain.maps else {
+                continue;
+            };
+            let object = self.scene.object(terrain.object);
+            let highest = maps
+                .heights()
+                .map_or(0.0, |heights| heights.level().maximum() * height_scale);
+            let distance = ((camera.position - object.position).length() - object.scale - highest).max(0.0);
+            maps.demand(
+                distance,
+                &self.texel_footprint(object.scale),
+                self.config.terrain.texture_retention,
+            );
+        }
+    }
+
+    fn texel_footprint(&self, radius: f64) -> TexelFootprint {
+        TexelFootprint {
+            radius,
+            focal_length_pixels: f64::from(self.focal_length_pixels),
+            vertex_spacing_angle: self.detail_ranges(radius).vertex_spacing_angle(),
+        }
     }
 
     // Where the camera stands in each terrain's surfaces, computed in f64 in the body's frame. Surfaces are drawn only
@@ -974,6 +1019,7 @@ impl Renderer {
         }
 
         let recording = graphics.begin(frame.command_buffer)?;
+        self.resources.record_mip_copies(frame.command_buffer);
 
         if let Some(timer) = &frame.timer {
             timer.begin(device, frame.command_buffer);
@@ -1066,19 +1112,14 @@ impl Renderer {
             timer.end(device, frame.command_buffer);
         }
 
-        let mut terrain_pages = TerrainPageStatistics::default();
+        let mut terrain_maps = TerrainMapStatistics::default();
 
-        for pages in self
-            .scene
-            .terrains()
-            .iter()
-            .filter_map(|terrain| terrain.pages.as_ref())
-        {
-            terrain_pages.add(&pages.statistics());
+        for maps in self.scene.terrains().iter().filter_map(|terrain| terrain.maps.as_ref()) {
+            terrain_maps.add(&maps.statistics());
         }
 
         self.statistics = FrameStatistics {
-            terrain_pages,
+            terrain_maps,
             triangles: context.triangles.get(),
             tiles: self.selected_tiles.len(),
             deepest_depth: self.selected_tiles.iter().map(|selected| selected.tile.depth).max(),
@@ -1158,7 +1199,22 @@ impl Renderer {
 
         for frame in &mut self.frames {
             frame.tiles = Frame::create_tile_buffer(&self.gpu.memory, self.tile_capacity)?;
-            frame.tile_pages = Frame::create_tile_pages_buffer(&self.gpu.memory, self.tile_capacity)?;
+        }
+
+        Ok(())
+    }
+
+    fn ensure_terrain_capacity(&mut self) -> anyhow::Result<()> {
+        let terrain_count = self.terrain_data.len();
+
+        if terrain_count <= self.terrain_capacity {
+            return Ok(());
+        }
+
+        self.terrain_capacity = terrain_count.next_power_of_two();
+
+        for frame in &mut self.frames {
+            frame.terrains = Frame::create_terrain_buffer(&self.gpu.memory, self.terrain_capacity)?;
         }
 
         Ok(())

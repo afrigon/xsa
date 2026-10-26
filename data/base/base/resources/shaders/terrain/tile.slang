@@ -5,16 +5,13 @@ struct VertexInput {
     uint instance : SV_InstanceID;
 };
 
-// Everything a tile's vertex stage computes; each terrain program passes on the part its fragment stage reads. The
-// face offset is in the face's equal-angle coordinates from the tile's center, which the tile's pages are read at.
+// Everything a tile's vertex stage computes; each terrain program passes on the part its fragment stage reads.
 struct TileVertex {
     DrawVaryings draw;
     float2 cell;
     int detail;
     uint gridCells;
     float heightMeters;
-    uint tile;
-    float2 faceOffset;
     // The change in slope across one texel of the heights, and the height above the ground two levels coarser over
     // that level's texel spacing.
     float curvature;
@@ -23,8 +20,7 @@ struct TileVertex {
 
 // A quad sphere tile: centers are relative to their frame's camera, the cube center is on the cube spanning -1 to 1,
 // the axes are its face's unit column and row axes, and the half size is in the face's equal-angle coordinates.
-// `x`, `y` and `depth` are its place in its face's quadtree, which its pages are found from; the finest level of each
-// shading layer takes five bits, the first layer lowest.
+// `face`, `x`, `y` and `depth` are its place in its face's quadtree, which its heights are read at.
 struct TileData {
     float3 center;
     int detail;
@@ -39,55 +35,23 @@ struct TileData {
     uint x;
     uint y;
     uint depth;
-    uint layerFinestLevels;
+    uint face;
 };
 
-// Where a tile reads one page of a layer: the bindless slot of its atlas chunk with the level of the page it holds,
-// which is the page asked for or a coarser one standing in, and the page's texel offset in the chunk.
-struct TileLayerPage {
-    uint slotAndLevel;
-    uint offset;
+// A terrain's maps, mirroring `TerrainData` in the renderer. Slots are `noTexture` for a map the terrain lacks or has
+// not loaded; heights are in radii relative to the radius, from their level 0, `heightExtent` texels wide, through
+// `heightLevels` levels, of which those from `heightFirstLevel` are resident.
+struct TerrainData {
+    uint heightTexture;
+    uint heightExtent;
+    uint heightLevels;
+    uint heightFirstLevel;
+    float heightMinimum;
+    float heightSpan;
+    uint layerTextures[4];
+    uint colorExtent;
+    uint padding;
 };
-
-// Heights at one level, with the range the page's 16-bit values span, in radii relative to the radius.
-struct TileHeightPage {
-    TileLayerPage page;
-    float minimum;
-    float span;
-};
-
-// Mirrors `TilePages` in the renderer: heights at four levels ending one coarser than the tile's depth, and each
-// shading layer at the tile's depth and the two levels below it, one page, four, then sixteen, row by row.
-static const int heightLevels = 4;
-static const int layerLevels = 3;
-static const int layerPages = 21;
-static const int layers = 4;
-
-struct TilePages {
-    TileHeightPage heights[heightLevels];
-    TileLayerPage layers[layers][layerPages];
-};
-
-static const uint noPage = 0xFFFFFFFF;
-static const uint levelShift = 27;
-static const float pageInterior = 128.0;
-static const float pageBorder = 4.0;
-
-bool isResident(TileLayerPage page) {
-    return page.slotAndLevel != noPage;
-}
-
-uint pageSlot(TileLayerPage page) {
-    return page.slotAndLevel & ((1u << levelShift) - 1u);
-}
-
-uint pageLevel(TileLayerPage page) {
-    return page.slotAndLevel >> levelShift;
-}
-
-int2 pageOffset(TileLayerPage page) {
-    return int2(page.offset & 0xFFFFu, page.offset >> 16u);
-}
 
 // What every terrain program's fragment stage reads, its debug views included.
 struct TerrainVaryings {
@@ -96,8 +60,6 @@ struct TerrainVaryings {
     nointerpolation int detail;
     nointerpolation uint gridCells;
     float heightMeters;
-    nointerpolation uint tile;
-    float2 faceOffset;
 };
 
 TerrainVaryings terrainVaryings(TileVertex vertex) {
@@ -107,8 +69,6 @@ TerrainVaryings terrainVaryings(TileVertex vertex) {
     varyings.detail = vertex.detail;
     varyings.gridCells = vertex.gridCells;
     varyings.heightMeters = vertex.heightMeters;
-    varyings.tile = vertex.tile;
-    varyings.faceOffset = vertex.faceOffset;
     return varyings;
 }
 
@@ -143,8 +103,8 @@ TileData tileData(uint tile) {
     return ((TileData *)constants.tiles)[tile];
 }
 
-TilePages *tilePages(uint tile) {
-    return ((TilePages *)constants.tilePages) + tile;
+TerrainData *terrainData() {
+    return (TerrainData *)constants.terrain;
 }
 
 // Exact in f32 down to the deepest tiles, so tiles sharing a grid point find it alike.
@@ -186,21 +146,6 @@ float3 sphereOffset(TileData tile, int2 cell) {
     float pointLength = sqrt(centerLengthSquared + growth);
     return alongFace / pointLength -
            tile.cubeCenter * (growth / (centerLength * pointLength * (centerLength + pointLength)));
-}
-
-// A point of the tile on the texels of a page at `level` holding it, texel centers at whole coordinates from the
-// page's first stored texel. The tile's center comes from its whole column and row, exact at every level.
-float2 pageTexel(TileData tile, uint level, uint2 pageKey, float2 offset) {
-    float scale = exp2(float(int(level) - int(tile.depth)));
-    float2 center =
-        (float2(tile.x, tile.y) * 2.0 + 1.0) * (pageInterior / 2.0) * scale - float2(pageKey) * pageInterior;
-    return center + offset * (pageInterior / 2.0) * exp2(float(level)) + pageBorder - 0.5;
-}
-
-// The key, at its own level, of a page holding the tile's part `part` split `finer` levels below it.
-uint2 pageKey(TileData tile, uint level, uint finer, uint2 part) {
-    uint2 key = (uint2(tile.x, tile.y) << finer) + part;
-    return key >> (tile.depth + finer - level);
 }
 
 // From the tile's center to the terrain above a grid point.
@@ -256,7 +201,5 @@ TileVertex transformTile<H : TileHeight, R : TileRelief>(H heights, R relief, Ve
     output.heightMeters = shape.height * radius;
     output.curvature = shape.curvature;
     output.relativeHeight = shape.relativeHeight;
-    output.tile = tileIndex;
-    output.faceOffset = vertexFaceOffset;
     return output;
 }

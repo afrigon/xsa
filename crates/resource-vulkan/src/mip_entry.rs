@@ -79,6 +79,16 @@ impl<K: StreamedMips> MipEntry<K> {
         self.residency().current.clone()
     }
 
+    // Whether the resident levels reach `demand`'s finest, with nothing reloading; any levels once nothing is demanded.
+    pub fn is_settled(&self, demand: Option<MipDemand>) -> bool {
+        let residency = self.residency();
+        let Some(current) = residency.current.as_deref() else {
+            return false;
+        };
+
+        matches!(residency.reload, Reload::Idle) && current.first_level() <= MipEntry::wanted_level(demand, current)
+    }
+
     pub fn add_demand(&self, demand: &Arc<Mutex<Option<MipDemand>>>) {
         self.demands().push(Arc::downgrade(demand));
     }

@@ -28,6 +28,13 @@ impl<K: StreamedMips> MipHandle<K> {
         self.entry.current()
     }
 
+    /// Whether the resident levels reach the finest this handle demands, with no reload toward it under way.
+    pub fn is_settled(&self) -> bool {
+        let demand = *self.demand.lock().expect("a mip demand's lock is poisoned");
+
+        self.entry.is_settled(demand)
+    }
+
     pub fn set_demand(&self, demand: MipDemand) {
         *self.demand.lock().expect("a mip demand's lock is poisoned") = Some(demand);
     }

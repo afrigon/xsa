@@ -13,10 +13,8 @@ mod star_data;
 mod surface_anchor_data;
 mod surface_data;
 mod taa_push_constants;
+mod terrain_data;
 mod tile_data;
-mod tile_height_page;
-mod tile_layer_page;
-mod tile_pages;
 mod tonemap_push_constants;
 
 pub(super) use biome_data::BiomeData;
@@ -34,10 +32,8 @@ pub(super) use star_data::StarData;
 pub(super) use surface_anchor_data::SurfaceAnchorData;
 pub(super) use surface_data::SurfaceData;
 pub(super) use taa_push_constants::TaaPushConstants;
+pub(super) use terrain_data::TerrainData;
 pub(super) use tile_data::TileData;
-pub(super) use tile_height_page::TileHeightPage;
-pub(super) use tile_layer_page::TileLayerPage;
-pub(super) use tile_pages::{HEIGHT_LEVELS, LAYER_LEVELS, LAYER_PAGES, TilePages};
 pub(super) use tonemap_push_constants::TonemapPushConstants;
 
 /// # Safety

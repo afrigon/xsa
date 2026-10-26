@@ -1,10 +1,9 @@
-// What a terrain draw shows instead of its shaded color, from its tiles and their pages.
+// What a terrain draw shows instead of its shaded color, from its tiles and the heights they read.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum TerrainDebugView {
     Lod,
     Scale,
-    PageLevels,
-    PageFallback,
+    HeightLevels,
 }
 
 impl TerrainDebugView {
@@ -13,8 +12,7 @@ impl TerrainDebugView {
         match self {
             TerrainDebugView::Lod => 1,
             TerrainDebugView::Scale => 2,
-            TerrainDebugView::PageLevels => 3,
-            TerrainDebugView::PageFallback => 4,
+            TerrainDebugView::HeightLevels => 3,
         }
     }
 }
