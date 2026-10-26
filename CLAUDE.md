@@ -358,13 +358,11 @@ Names in code, data and documents use these words in these meanings only:
   `herdr pane split --direction down --ratio 0.8 --no-focus`.
 - The pane is named `xsa-agent` (`herdr pane rename <pane_id> xsa-agent` after creating it). Never use an existing
   pane that does not carry that name.
-- If the game is already running in the pane, stop it with `mise run ipc -- --name agent-<workspace> exit` and start
-  a fresh instance. When IPC cannot reach it (started under another name), send
-  `herdr pane send-keys <pane_id> ctrl+c ctrl+c`: the first clears the prompt's line, the second exits. Never type into the pane with `send-text`.
+- If the game is already running in the pane, send it `exit` and start a fresh instance.
 
 ### IPC
 
-- Always interact with the game through the `mise run ipc` task, never through stdin, `exit` included.
+- Always interact with the game through the `mise run ipc` task, never through stdin.
 - Always pass `--name agent-<workspace>` so commands reach your own instance: other game instances may be running at
   the same time.
 
@@ -397,8 +395,7 @@ Always bring the game to a stable state first:
 
 ### After testing
 
-- Inside herdr, leave the game running so I can try the implementation by hand; outside herdr, close it with
-  `mise run ipc -- --name agent-<workspace> exit`.
+- Inside herdr, leave the game running so I can try the implementation by hand; outside herdr, close it with `exit`.
 - Release anything a test left held with `input reset`.
 - Re-enable player input with `config set input.raw.enabled true`.
 
