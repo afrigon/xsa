@@ -120,13 +120,17 @@ impl Controls for DebugControls {
         let vertical = up * step.dot(up);
         let horizontal = step - vertical;
         let offset = self.position - self.attachment.position;
-        // A straight step along the tangent plane climbs by d²/2r each frame; travelling the great circle keeps
-        // the altitude whatever the step's length.
-        let travel = DQuat::from_axis_angle(
-            up.cross(horizontal).normalize_or_zero(),
-            horizontal.length() / offset.length(),
-        );
-        self.position = self.attachment.position + travel * (offset + vertical);
+        let radius = offset.length();
+
+        // At the body's centre there is no great circle to follow.
+        if radius == 0.0 {
+            self.position += step;
+        } else {
+            // A straight step along the tangent plane climbs by d²/2r each frame; travelling the great circle keeps
+            // the altitude whatever the step's length.
+            let travel = DQuat::from_axis_angle(up.cross(horizontal).normalize_or_zero(), horizontal.length() / radius);
+            self.position = self.attachment.position + travel * (offset + vertical);
+        }
 
         CameraPose {
             position: self.position,
