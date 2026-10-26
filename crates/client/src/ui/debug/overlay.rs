@@ -12,6 +12,8 @@ const METERS_PER_KILOMETER: f64 = 1000.0;
 const KILOMETER_THRESHOLD_METERS: f64 = 10_000.0;
 const MISSING: &str = "–";
 const ANGLE_PRECISION: f64 = 1000.0;
+const METER_PRECISION: f64 = 10.0;
+const KILOMETER_PRECISION: f64 = 100.0;
 const FULL_TURN_DEGREES: f64 = 360.0;
 const BYTES_PER_MEBIBYTE: f64 = 1024.0 * 1024.0;
 const MILLISECONDS_PER_SECOND: f64 = 1000.0;
@@ -150,11 +152,16 @@ fn heading(yaw: f64) -> String {
     format!("{:.3}", rounded.rem_euclid(FULL_TURN_DEGREES) + 0.0)
 }
 
+// A tenth of a meter or a hundredth of a kilometer, rounded first like `angle` so it never prints -0.0.
 fn distance(meters: f64) -> String {
     if meters.abs() < KILOMETER_THRESHOLD_METERS {
-        format!("{meters:.1} m")
+        format!("{:.1} m", (meters * METER_PRECISION).round() / METER_PRECISION + 0.0)
     } else {
-        format!("{:.2} km", meters / METERS_PER_KILOMETER)
+        let kilometers = meters / METERS_PER_KILOMETER;
+        format!(
+            "{:.2} km",
+            (kilometers * KILOMETER_PRECISION).round() / KILOMETER_PRECISION + 0.0
+        )
     }
 }
 
