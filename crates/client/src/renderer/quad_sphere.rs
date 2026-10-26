@@ -46,7 +46,6 @@ impl QuadSphere<'_> {
             .widened(self.relief);
         let selection = TileSelection {
             camera,
-            overall,
             ranges,
             culler,
             horizon: HorizonCuller::new(camera, self.radius + overall.minimum),
@@ -61,12 +60,10 @@ impl QuadSphere<'_> {
         let direction = tile.cube_center().normalize();
         let chord_radius = tile.chord_radius();
         let angular_radius = 2.0 * (chord_radius / 2.0).asin();
-        let farthest_possible = self.bounding_center(direction, selection.overall).length()
-            + self.bounding_radius(chord_radius, selection.overall);
 
         let height = self
             .height
-            .and_then(|height| height.tile_range(tile, farthest_possible))
+            .and_then(|height| height.tile_range(tile))
             .unwrap_or(HeightRange::SMOOTH)
             .scaled(self.height_scale)
             .widened(self.relief);
@@ -164,7 +161,7 @@ mod tests {
             })
         }
 
-        fn tile_range(&self, _: QuadSphereTile, _: f64) -> Option<HeightRange> {
+        fn tile_range(&self, _: QuadSphereTile) -> Option<HeightRange> {
             Some(self.tile)
         }
     }

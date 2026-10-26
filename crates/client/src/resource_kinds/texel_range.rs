@@ -18,6 +18,14 @@ impl TexelRange {
         }
     }
 
+    // What both bound; both hold every value, so the narrower of each side does too.
+    pub fn intersection(self, other: TexelRange) -> TexelRange {
+        TexelRange {
+            minimum: self.minimum.max(other.minimum),
+            maximum: self.maximum.min(other.maximum),
+        }
+    }
+
     pub fn union(self, other: TexelRange) -> TexelRange {
         TexelRange {
             minimum: self.minimum.min(other.minimum),

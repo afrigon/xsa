@@ -7,16 +7,9 @@ use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_2};
 pub(in crate::renderer) struct TexelFootprint {
     pub radius: f64,
     pub focal_length_pixels: f64,
-    // The angle between a tile's vertices on screen.
-    pub vertex_spacing_angle: f64,
 }
 
 impl TexelFootprint {
-    // The level whose texels are as far apart as the vertices at `distance`; mirrored by `terrain/heights.slang`.
-    pub fn height_level(&self, extent: u32, distance: f64) -> f64 {
-        (distance * self.vertex_spacing_angle / self.radius / TexelFootprint::texel_angle(extent)).log2()
-    }
-
     // The level whose texels are a pixel wide at `distance`.
     pub fn layer_level(&self, extent: u32, distance: f64) -> f64 {
         (distance / (self.radius * self.focal_length_pixels) / TexelFootprint::texel_angle(extent)).log2()
@@ -43,13 +36,12 @@ mod tests {
     const FOOTPRINT: TexelFootprint = TexelFootprint {
         radius: 1.7e6,
         focal_length_pixels: 1000.0,
-        vertex_spacing_angle: 0.008,
     };
 
     #[test]
     fn twice_as_far_is_one_level_coarser() {
-        let near = FOOTPRINT.height_level(EXTENT, 1.0e4);
-        let far = FOOTPRINT.height_level(EXTENT, 2.0e4);
+        let near = FOOTPRINT.layer_level(EXTENT, 1.0e4);
+        let far = FOOTPRINT.layer_level(EXTENT, 2.0e4);
 
         assert!((far - near - 1.0).abs() < 1e-12);
     }

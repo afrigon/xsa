@@ -17,7 +17,6 @@ pub struct HeightMap {
     first_level: u32,
     mip_levels: u32,
     extent: u32,
-    level: HeightMapLevel,
     bounds: HeightBounds,
 }
 
@@ -34,7 +33,7 @@ impl HeightMap {
 
     // The finest level resident, on the CPU as on the GPU.
     pub fn level(&self) -> &HeightMapLevel {
-        &self.level
+        self.bounds.heights()
     }
 
     pub fn bounds(&self) -> &HeightBounds {
@@ -87,11 +86,10 @@ impl StreamedMips for HeightMap {
             HeightMap::level_texels(&image, level_extent as usize * level_extent as usize)
         };
         let level = HeightMapLevel::new(first_level, level_extent, texels, options.minimum, options.maximum)?;
-        let bounds = HeightBounds::new(&level);
 
         Ok(Box::new(PendingHeightMap {
             texture: Texture::upload_faces(context, image, first_level..mip_levels)?,
-            heights: Some(ResidentHeights { level, bounds }),
+            bounds: Some(HeightBounds::new(level)),
             first_level,
             mip_levels,
             extent,
@@ -111,7 +109,8 @@ impl StreamedMips for HeightMap {
     }
 
     fn memory(&self) -> MemoryUsage {
-        let texels = (self.level.extent() * self.level.extent()) as usize * CubeFace::ALL.len();
+        let extent = self.level().extent();
+        let texels = (extent * extent) as usize * CubeFace::ALL.len();
 
         MemoryUsage {
             video: self.texture.image().size(),
@@ -120,15 +119,10 @@ impl StreamedMips for HeightMap {
     }
 }
 
-// The CPU's part of a height map, moved into it once the upload completes.
-struct ResidentHeights {
-    level: HeightMapLevel,
-    bounds: HeightBounds,
-}
-
 struct PendingHeightMap {
     texture: PendingTexture,
-    heights: Option<ResidentHeights>,
+    // Moved into the height map once the upload completes.
+    bounds: Option<HeightBounds>,
     first_level: u32,
     mip_levels: u32,
     extent: u32,
@@ -139,15 +133,14 @@ impl PendingResource<HeightMap> for PendingHeightMap {
         let Some(texture) = self.texture.poll(bindless)? else {
             return Ok(None);
         };
-        let heights = self.heights.take().expect("a pending height map completes once");
+        let bounds = self.bounds.take().expect("a pending height map completes once");
 
         Ok(Some(HeightMap {
             texture,
             first_level: self.first_level,
             mip_levels: self.mip_levels,
             extent: self.extent,
-            level: heights.level,
-            bounds: heights.bounds,
+            bounds,
         }))
     }
 

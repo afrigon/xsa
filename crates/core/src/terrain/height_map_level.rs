@@ -1,5 +1,5 @@
 use anyhow::ensure;
-use glam::DVec3;
+use glam::{DVec2, DVec3};
 use resource_loader::utils::CubeFace;
 
 use super::{CubeTexel, FacePoint, TexelSource};
@@ -79,7 +79,14 @@ impl HeightMapLevel {
     // Meters relative to the body's radius toward `direction`, a unit vector in the body's frame.
     pub fn height_at(&self, direction: DVec3) -> f64 {
         let point = FacePoint::from_direction(direction);
-        let texel = point.texel_position(self.extent);
+        let value = self.spline_value(point.face, point.texel_position(self.extent));
+
+        self.minimum + value * (self.maximum - self.minimum)
+    }
+
+    // The B-spline from 0 to 1 over the range at `texel` on `face`, texel centers at whole coordinates; texels beyond
+    // the face are read across its edges.
+    pub fn spline_value(&self, face: CubeFace, texel: DVec2) -> f64 {
         let base = texel.floor();
         let weights_x = HeightMapLevel::spline_weights(texel.x - base.x);
         let weights_y = HeightMapLevel::spline_weights(texel.y - base.y);
@@ -90,7 +97,7 @@ impl HeightMapLevel {
 
             for column in 0..SPLINE_TEXELS {
                 let texel = CubeTexel {
-                    face: point.face,
+                    face,
                     column: base.x as i32 - 1 + column,
                     row: base.y as i32 - 1 + row,
                 };
@@ -100,7 +107,7 @@ impl HeightMapLevel {
             sum += weights_y[row as usize] * row_sum;
         }
 
-        self.minimum + sum * (self.maximum - self.minimum)
+        sum
     }
 
     // A texel's value from 0 to 1 over the range, read across face edges.
@@ -133,8 +140,6 @@ impl HeightMapLevel {
 
 #[cfg(test)]
 mod tests {
-    use glam::DVec2;
-
     use super::*;
 
     const EXTENT: u32 = 16;

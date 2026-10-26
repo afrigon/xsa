@@ -1,5 +1,7 @@
 use std::f64::consts::SQRT_2;
 
+use super::DEEPEST_DEPTH;
+
 const TILE_GRID_CELLS: u32 = 32;
 // Roots of distant bodies are drawn with 16, 8, 4 and down to 2 cells per side.
 pub(in crate::renderer) const COARSEST_DETAIL: i32 = -4;
@@ -15,7 +17,6 @@ const MINIMUM_RANGE_RADII: f64 = 2.0 * SQRT_2;
 // vertices under the target spacing on screen. Every coarser level reaches twice as far.
 pub(in crate::renderer) struct DetailRanges {
     root_distance: f64,
-    vertex_spacing_angle: f64,
 }
 
 impl DetailRanges {
@@ -25,13 +26,7 @@ impl DetailRanges {
 
         Self {
             root_distance: target_distance.max(MINIMUM_RANGE_RADII * radius),
-            vertex_spacing_angle: vertex_spacing_pixels / focal_length_pixels,
         }
-    }
-
-    // The angle the target vertex spacing covers on screen; the shader picks height mip levels from the same angle.
-    pub fn vertex_spacing_angle(&self) -> f64 {
-        self.vertex_spacing_angle
     }
 
     pub fn fine_distance(&self, detail: i32) -> f64 {
@@ -42,10 +37,25 @@ impl DetailRanges {
     // distance allows, so a tile lying beyond its depth's range is drawn as that part of its parent is, and morphs as
     // its parent's neighbors do.
     pub fn detail(&self, depth: u32, nearest: f64) -> Option<i32> {
-        let depth = depth as i32;
-        let coarsest = if depth == 0 { COARSEST_DETAIL } else { depth - 1 };
+        (DetailRanges::coarsest_detail(depth)..=depth as i32).find(|&detail| nearest >= self.fine_distance(detail))
+    }
 
-        (coarsest..=depth).find(|&detail| nearest >= self.fine_distance(detail))
+    // The coarsest detail a tile at `depth` is drawn at: its parent's, or for a root the coarsest grid.
+    pub fn coarsest_detail(depth: u32) -> i32 {
+        if depth == 0 { COARSEST_DETAIL } else { depth as i32 - 1 }
+    }
+
+    // The finest detail drawn `distance` meters from the camera, no deeper than the deepest tiles.
+    pub fn finest_detail(&self, distance: f64) -> i32 {
+        let detail = (self.root_distance / distance).log2().floor();
+
+        detail.clamp(f64::from(COARSEST_DETAIL), f64::from(DEEPEST_DEPTH)) as i32
+    }
+
+    // The level of a height map `extent` texels wide per face whose texels are as far apart as the vertices of
+    // `detail`; finer than the map's level 0 below zero. Mirrored by `tileHeightLevels` in `terrain/tile.slang`.
+    pub fn height_level(detail: i32, extent: u32) -> i32 {
+        extent.ilog2() as i32 - TILE_GRID_CELLS.ilog2() as i32 - detail
     }
 
     // Each level coarser than its depth halves a tile's cells per side, so its vertices are as far apart as the
@@ -138,6 +148,23 @@ mod tests {
         assert_eq!(DetailRanges::grid_cells(0, 0), TILE_GRID_CELLS);
         assert_eq!(DetailRanges::grid_cells(0, -1), TILE_GRID_CELLS / 2);
         assert_eq!(DetailRanges::grid_cells(0, COARSEST_DETAIL), 2);
+    }
+
+    #[test]
+    fn a_detail_reads_the_height_level_its_vertex_spacing_matches() {
+        assert_eq!(DetailRanges::height_level(0, 4096), 7);
+        assert_eq!(DetailRanges::height_level(7, 4096), 0);
+        assert_eq!(DetailRanges::height_level(COARSEST_DETAIL, 4096), 11);
+        assert_eq!(DetailRanges::height_level(9, 4096), -2);
+    }
+
+    #[test]
+    fn the_finest_detail_at_a_distance_is_the_one_whose_range_starts_there() {
+        let ranges = ranges();
+
+        assert_eq!(ranges.finest_detail(ranges.fine_distance(5)), 5);
+        assert_eq!(ranges.finest_detail(ranges.fine_distance(5) * 1.5), 4);
+        assert_eq!(ranges.finest_detail(0.0), DEEPEST_DEPTH as i32);
     }
 
     #[test]

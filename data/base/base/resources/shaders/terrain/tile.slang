@@ -16,6 +16,9 @@ struct TileVertex {
     // that level's texel spacing.
     float curvature;
     float relativeHeight;
+    // The height level the vertex reads, its blend toward the coarser one included, and the level matching its tile.
+    float heightLevel;
+    int matchingHeightLevel;
 };
 
 // A quad sphere tile: centers are relative to their frame's camera, the cube center is on the cube spanning -1 to 1,
@@ -60,6 +63,8 @@ struct TerrainVaryings {
     nointerpolation int detail;
     nointerpolation uint gridCells;
     float heightMeters;
+    float heightLevel;
+    nointerpolation int matchingHeightLevel;
 };
 
 TerrainVaryings terrainVaryings(TileVertex vertex) {
@@ -69,6 +74,8 @@ TerrainVaryings terrainVaryings(TileVertex vertex) {
     varyings.detail = vertex.detail;
     varyings.gridCells = vertex.gridCells;
     varyings.heightMeters = vertex.heightMeters;
+    varyings.heightLevel = vertex.heightLevel;
+    varyings.matchingHeightLevel = vertex.matchingHeightLevel;
     return varyings;
 }
 
@@ -79,12 +86,32 @@ struct TerrainShape {
     float relativeHeight;
 };
 
-// The height of a tile's ground above the unit sphere.
+// The height of a tile's ground above the unit sphere, in radii relative to the radius: at the tile's own level,
+// blended toward its parent's by `morph`.
 interface TileHeight {
-    // In radii, relative to the radius.
-    float height(TileData tile, ObjectData object, int2 cell);
+    float height(TileData tile, int2 cell, float morph);
 
-    TerrainShape shape(TileData tile, ObjectData object, int2 cell);
+    TerrainShape shape(TileData tile, int2 cell, float morph);
+}
+
+// The height levels a tile reads: the one whose texels are as far apart as its vertices, which it shows, and the next
+// coarser, its parent's, which it morphs toward; both within the resident levels. `matching` is the level its vertices
+// would read with every level resident. Mirrored by `DetailRanges::height_level`.
+struct TileHeightLevels {
+    uint finer;
+    uint coarser;
+    int matching;
+};
+
+TileHeightLevels tileHeightLevels(TerrainData *terrain, TileData tile) {
+    int extentLevels = int(firstbithigh(max(terrain.heightExtent, 1u)));
+    int gridLevels = int(firstbithigh(tile.gridCells));
+    int coarsest = int(terrain.heightLevels) - 1;
+    TileHeightLevels levels;
+    levels.matching = extentLevels - int(tile.depth) - gridLevels;
+    levels.finer = uint(clamp(levels.matching, int(terrain.heightFirstLevel), coarsest));
+    levels.coarser = uint(clamp(levels.matching + 1, int(terrain.heightFirstLevel), coarsest));
+    return levels;
 }
 
 // How far a tile's ground moves along the sphere's normal beyond its heights (m), at a vertex `world` from the camera
@@ -148,21 +175,26 @@ float3 sphereOffset(TileData tile, int2 cell) {
            tile.cubeCenter * (growth / (centerLength * pointLength * (centerLength + pointLength)));
 }
 
-// From the tile's center to the terrain above a grid point.
-float3 terrainOffset<H : TileHeight>(H heights, TileData tile, ObjectData object, int2 cell) {
+// From the tile's center to the terrain above a grid point, its height blended toward the parent level by `morph`.
+float3 terrainOffset<H : TileHeight>(H heights, TileData tile, int2 cell, float morph) {
     float3 direction = normalize(cubePoint(tile, cell));
     return sphereOffset(tile, cell) +
-           direction * heights.height(tile, object, cell) * constants.frame.terrainHeightScale;
+           direction * heights.height(tile, cell, morph) * constants.frame.terrainHeightScale;
 }
 
-// Towards the end of a tile's range, odd grid points slide to the middle of the edge or diagonal joining their two
-// even neighbors: the tile becomes exactly its parent's triangles, and matches neighbors on faces whose grids run
-// the other way.
-float3 morphedOffset<H : TileHeight>(H heights, TileData tile, ObjectData object, int2 cell) {
-    float3 offset = terrainOffset(heights, tile, object, cell);
+// How far toward its parent's grid a vertex has morphed, by its distance with the height of the tile's own level.
+float vertexMorph<H : TileHeight>(H heights, TileData tile, ObjectData object, int2 cell) {
+    float3 offset = terrainOffset(heights, tile, cell, 0.0);
     float distance = length(tile.center + mul(object.worldFromModel, float4(offset, 0.0)).xyz);
-    float morph =
-        distance < tile.morphStart ? 0.0 : saturate((distance - tile.morphStart) / (tile.morphEnd - tile.morphStart));
+    return distance < tile.morphStart ? 0.0
+                                      : saturate((distance - tile.morphStart) / (tile.morphEnd - tile.morphStart));
+}
+
+// Towards the end of a tile's range, its heights blend into its parent level's and odd grid points slide to the
+// middle of the edge or diagonal joining their two even neighbors: the tile becomes exactly its parent's triangles,
+// and matches neighbors on faces whose grids run the other way.
+float3 morphedOffset<H : TileHeight>(H heights, TileData tile, int2 cell, float morph) {
+    float3 offset = terrainOffset(heights, tile, cell, morph);
     int2 odd = cell & 1;
 
     if (morph == 0.0 || all(odd == 0)) {
@@ -170,7 +202,7 @@ float3 morphedOffset<H : TileHeight>(H heights, TileData tile, ObjectData object
     }
 
     float3 parentMidpoint =
-        (terrainOffset(heights, tile, object, cell - odd) + terrainOffset(heights, tile, object, cell + odd)) * 0.5;
+        (terrainOffset(heights, tile, cell - odd, morph) + terrainOffset(heights, tile, cell + odd, morph)) * 0.5;
     return lerp(offset, parentMidpoint, morph);
 }
 
@@ -179,15 +211,17 @@ TileVertex transformTile<H : TileHeight, R : TileRelief>(H heights, R relief, Ve
     uint tileIndex = constants.firstTile + input.instance;
     TileData tile = tileData(tileIndex);
     int2 cell = int2(input.cell);
-    float3 offset = morphedOffset(heights, tile, object, cell);
+    float morph = vertexMorph(heights, tile, object, cell);
+    float3 offset = morphedOffset(heights, tile, cell, morph);
     float3 modelNormal = normalize(normalize(tile.cubeCenter) + offset);
-    TerrainShape shape = heights.shape(tile, object, cell);
+    TerrainShape shape = heights.shape(tile, cell, morph);
     float2 vertexFaceOffset = faceOffset(tile, cell);
     float radius = length(object.worldFromModel[0].xyz);
     float3 ground = tile.center + mul(object.worldFromModel, float4(offset, 0.0)).xyz;
     offset += modelNormal * relief.relief(tileIndex, ground, modelNormal, vertexFaceOffset, shape) / radius;
     float3 world = tile.center + mul(object.worldFromModel, float4(offset, 0.0)).xyz;
     float3 previousWorld = tile.previousCenter + mul(object.previousWorldFromModel, float4(offset, 0.0)).xyz;
+    TileHeightLevels levels = tileHeightLevels(terrainData(), tile);
     TileVertex output;
     output.draw.position = mul(constants.frame.viewProjection, float4(world, 1.0));
     output.draw.currentClip = unjittered(output.draw.position);
@@ -201,5 +235,7 @@ TileVertex transformTile<H : TileHeight, R : TileRelief>(H heights, R relief, Ve
     output.heightMeters = shape.height * radius;
     output.curvature = shape.curvature;
     output.relativeHeight = shape.relativeHeight;
+    output.heightLevel = lerp(float(levels.finer), float(levels.coarser), morph);
+    output.matchingHeightLevel = levels.matching;
     return output;
 }

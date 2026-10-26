@@ -801,7 +801,7 @@ impl Renderer {
 
             let footprint = self.texel_footprint(object.scale);
             let heights = terrain.maps.as_ref().and_then(|maps| maps.heights());
-            let heights = heights.as_deref().map(|map| TerrainHeights { map, footprint });
+            let heights = heights.as_deref().map(|map| TerrainHeights { map });
             let height_scale = f64::from(self.config.terrain.height.drawn_scale());
             let shape = if heights.is_some() {
                 TileShape::Displaced
@@ -954,6 +954,7 @@ impl Renderer {
             let distance = ((camera.position - object.position).length() - object.scale - highest).max(0.0);
             maps.demand(
                 distance,
+                &self.detail_ranges(object.scale),
                 &self.texel_footprint(object.scale),
                 self.config.terrain.texture_retention,
             );
@@ -964,7 +965,6 @@ impl Renderer {
         TexelFootprint {
             radius,
             focal_length_pixels: f64::from(self.focal_length_pixels),
-            vertex_spacing_angle: self.detail_ranges(radius).vertex_spacing_angle(),
         }
     }
 
