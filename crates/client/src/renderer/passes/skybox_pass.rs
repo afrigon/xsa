@@ -4,13 +4,10 @@ use render_graph_vulkan::{Attachment, PassContext, PassDeclaration, PassError, R
 use super::ForwardResources;
 use super::forward_pass::{DEPTH_FORMAT, HDR_FORMAT, MOTION_FORMAT};
 use crate::renderer::ShaderBinaries;
-use crate::renderer::frame_context::FrameContext;
+use crate::renderer::frame_context::{FrameContext, NO_ADDRESS};
 use crate::renderer::gpu_context::GpuContext;
 use crate::renderer::gpu_data::PushConstants;
 use crate::vulkan::{GraphicsPipeline, GraphicsPipelineDescription};
-
-const NO_OBJECT: usize = 0;
-const NO_TILES: u32 = 0;
 
 pub(in crate::renderer) struct SkyboxPass {
     pipeline: GraphicsPipeline,
@@ -68,7 +65,7 @@ impl<'frame> RenderPass<FrameContext<'frame>> for SkyboxPass {
             && frame.is_drawable(skybox)
         {
             frame.recorder.bind_graphics(&self.pipeline, frame.descriptor_set);
-            frame.push_draw_constants(&self.pipeline, NO_OBJECT, skybox, NO_TILES, None);
+            frame.push_draw_constants(&self.pipeline, skybox, NO_ADDRESS);
             frame.recorder.draw_fullscreen();
         }
 

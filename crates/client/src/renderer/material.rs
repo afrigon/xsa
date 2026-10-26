@@ -1,23 +1,26 @@
-mod emissive_data;
-mod emissive_material;
 mod hapke_data;
 mod hapke_material;
-mod lambert_data;
-mod lambert_material;
 mod material_buffer;
 mod material_data;
 mod shader;
 mod shader_data;
 mod skybox_data;
 mod skybox_material;
+mod terrain_emissive_data;
+mod terrain_emissive_material;
+mod terrain_hapke_data;
+mod terrain_hapke_material;
+mod terrain_lambert_data;
+mod terrain_lambert_material;
 
-pub use emissive_material::EmissiveMaterial;
 pub use hapke_material::HapkeMaterial;
-pub use lambert_material::LambertMaterial;
 pub(super) use material_buffer::MaterialBuffer;
 pub use material_data::MaterialData;
 pub use shader::Shader;
 pub use skybox_material::SkyboxMaterial;
+pub use terrain_emissive_material::TerrainEmissiveMaterial;
+pub use terrain_hapke_material::TerrainHapkeMaterial;
+pub use terrain_lambert_material::TerrainLambertMaterial;
 
 use resource_vulkan::{ResourceHandle, Texture};
 

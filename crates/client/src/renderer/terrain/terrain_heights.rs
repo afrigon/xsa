@@ -1,6 +1,8 @@
 use resource_vulkan::StreamedMips;
 
-use crate::renderer::quad_sphere::{DetailRanges, HeightRange, QuadSphereTile, TileHeightBounds};
+use xsa_core::terrain::QuadSphereTile;
+
+use crate::renderer::quad_sphere::{DetailRanges, HeightRange, TileHeightBounds};
 use crate::resource_kinds::{HeightMap, TexelRange};
 
 // A terrain's resident heights as tile selection bounds them, in meters relative to the body's radius.

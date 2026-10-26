@@ -1,0 +1,2 @@
+mesh "cube"
+material "grey" node="Cube"

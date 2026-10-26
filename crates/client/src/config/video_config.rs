@@ -1,6 +1,6 @@
 use xsa_config::{ConfigSection, ConfigVisitor};
 
-use super::{AntialiasingKind, BloomConfig, LensConfig, WhiteBalanceConfig};
+use super::{AntialiasingKind, BloomConfig, FadeConfig, LensConfig, WhiteBalanceConfig};
 use crate::renderer::Tonemapper;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -11,6 +11,7 @@ pub struct VideoConfig {
     pub bloom: BloomConfig,
     pub lens: LensConfig,
     pub white_balance: WhiteBalanceConfig,
+    pub fade: FadeConfig,
 }
 
 impl ConfigSection for VideoConfig {
@@ -21,5 +22,6 @@ impl ConfigSection for VideoConfig {
         visitor.section("bloom", &mut self.bloom);
         visitor.section("lens", &mut self.lens);
         visitor.section("white-balance", &mut self.white_balance);
+        visitor.section("fade", &mut self.fade);
     }
 }

@@ -1,3 +1,4 @@
+import light.bounce;
 import light.hapke;
 import light.lambert;
 import light.star;
@@ -19,8 +20,8 @@ struct HapkeVaryings {
     float relativeHeight;
 };
 
-// Mirrors `HapkeData` in the renderer. Its surfaces are read only once every class's arrays are loaded.
-struct HapkeData {
+// Mirrors `TerrainHapkeData` in the renderer. Its surfaces are read only once every class's arrays are loaded.
+struct TerrainHapkeData {
     float3 baseColor;
     uint emissiveTexture;
     float emissiveLuminance;
@@ -34,7 +35,7 @@ struct HapkeData {
 
 [shader("vertex")]
 HapkeVaryings vertexMain(VertexInput input) {
-    HapkeData *material = currentMaterialAddress<HapkeData>();
+    TerrainHapkeData *material = currentMaterialAddress<TerrainHapkeData>();
     SurfaceRelief relief;
     relief.biome = &material.biome;
     relief.surfaces = &material.surfaces[0];
@@ -50,7 +51,8 @@ HapkeVaryings vertexMain(VertexInput input) {
 // Hapke 2012's parameters at this point: w from the calibrated color layer, the phase function from the scattering
 // layer and the opposition effects from the surge layer, as published; θ̄ and K from the material, which holds them
 // over the whole body.
-HapkeParameters hapkeParameters(HapkeData *material, float4 scattering, float4 surge, float3 diffusiveReflectance) {
+HapkeParameters hapkeParameters(TerrainHapkeData *material, float4 scattering, float4 surge,
+                                float3 diffusiveReflectance) {
     HapkeParameters parameters;
     parameters.singleScatteringAlbedo = singleScatteringAlbedo(diffusiveReflectance);
     parameters.lobeWidth = scattering.r;
@@ -84,7 +86,7 @@ float3 reflectedLuminance(StarData star, HapkeParameters parameters, DrawVarying
 // The ground up close: the flat and slope surfaces weighed at the pixel and blended by height where both show,
 // brightening or darkening the colour layer and adding their relief to the normal layer's, fading in as the colour
 // layer is magnified past its texels. `debugColor` is what the surface debug view shows.
-void addSurfaces(HapkeData *material, LayerCoordinates coordinates, float3 direction, SurfacePoint point,
+void addSurfaces(TerrainHapkeData *material, LayerCoordinates coordinates, float3 direction, SurfacePoint point,
                  HapkeVaryings shape, float3 up, inout float3 albedo, inout float3 normal, out float3 debugColor) {
     debugColor = float3(0.0);
 
@@ -143,7 +145,7 @@ void addSurfaces(HapkeData *material, LayerCoordinates coordinates, float3 direc
 [shader("fragment")]
 FragmentOutput fragmentMain(HapkeVaryings varyings, uint primitive: SV_PrimitiveID) {
     TerrainVaryings input = varyings.terrain;
-    HapkeData *material = currentMaterialAddress<HapkeData>();
+    TerrainHapkeData *material = currentMaterialAddress<TerrainHapkeData>();
     float3 modelNormal = normalize(input.draw.modelNormal);
     LayerCoordinates coordinates = layerCoordinates(modelNormal);
     LayerRead color = readLayer(coordinates, colorLayer);
@@ -182,6 +184,13 @@ FragmentOutput fragmentMain(HapkeVaryings varyings, uint primitive: SV_Primitive
             float cosine = mappedCosine(star, input.draw.worldPosition, geometricNormal, worldNormal);
             luminance += lambertLuminance(albedo, starIlluminance(star, input.draw.worldPosition), cosine);
         }
+    }
+
+    // Neighbouring ground reflects light onto slopes as onto the pixel itself: the pixel's albedo stands for it.
+    for (uint index = 0; index < constants.frame.starCount; index++) {
+        StarData star = constants.frame.stars[index];
+        float3 bounce = groundBounceIlluminance(star, input.draw.worldPosition, worldNormal, geometricNormal, albedo);
+        luminance += lambertLuminance(albedo, bounce, 1.0);
     }
 
     TextureCoordinates emissionCoordinates = equirectangularCoordinates(modelNormal);

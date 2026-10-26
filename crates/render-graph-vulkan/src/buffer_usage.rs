@@ -14,12 +14,17 @@ pub enum BufferUsage {
     StorageReadWrite(Stage),
     TransferSource,
     TransferDestination,
+    /// Read as the arguments of indirect draws or dispatches.
+    IndirectRead,
 }
 
 impl BufferUsage {
     pub(crate) fn reads(self) -> bool {
         match self {
-            BufferUsage::StorageRead(_) | BufferUsage::StorageReadWrite(_) | BufferUsage::TransferSource => true,
+            BufferUsage::StorageRead(_)
+            | BufferUsage::StorageReadWrite(_)
+            | BufferUsage::TransferSource
+            | BufferUsage::IndirectRead => true,
             BufferUsage::StorageWrite(_) | BufferUsage::TransferDestination => false,
         }
     }
@@ -27,7 +32,7 @@ impl BufferUsage {
     pub(crate) fn writes(self) -> bool {
         match self {
             BufferUsage::StorageWrite(_) | BufferUsage::StorageReadWrite(_) | BufferUsage::TransferDestination => true,
-            BufferUsage::StorageRead(_) | BufferUsage::TransferSource => false,
+            BufferUsage::StorageRead(_) | BufferUsage::TransferSource | BufferUsage::IndirectRead => false,
         }
     }
 
@@ -38,6 +43,7 @@ impl BufferUsage {
             }
             BufferUsage::TransferSource => vk::BufferUsageFlags::TRANSFER_SRC,
             BufferUsage::TransferDestination => vk::BufferUsageFlags::TRANSFER_DST,
+            BufferUsage::IndirectRead => vk::BufferUsageFlags::INDIRECT_BUFFER,
         }
     }
 
@@ -51,6 +57,10 @@ impl BufferUsage {
             ),
             BufferUsage::TransferSource => (vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_READ),
             BufferUsage::TransferDestination => (TRANSFER_WRITE_STAGES, vk::AccessFlags2::TRANSFER_WRITE),
+            BufferUsage::IndirectRead => (
+                vk::PipelineStageFlags2::DRAW_INDIRECT,
+                vk::AccessFlags2::INDIRECT_COMMAND_READ,
+            ),
         };
 
         Access {

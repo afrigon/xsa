@@ -1,14 +1,15 @@
-use std::collections::HashMap;
 use std::time::Duration;
 
 use resource_vulkan::ResourceLimits;
 use xsa_commands::logging::LoggingConfig;
-use xsa_input::{InputChord, Key, Modifier};
+use xsa_config::ConfigValue;
+use xsa_input::InputChord;
 
 use super::{
-    AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
-    DebugCameraConfig, DebugConfig, InputConfig, InputSourceConfig, LensConfig, RenderConfig, ResourcesConfig,
-    ServiceConfig, TerrainConfig, TerrainHeightConfig, TerrainLodConfig, VideoConfig, WhiteBalanceConfig,
+    AnimationConfig, AnimationGroupConfig, AntialiasingKind, Bind, BindCommand, BindConfig, BloomConfig, CameraConfig,
+    Config, DebugCameraConfig, DebugConfig, FadeConfig, InputConfig, InputSourceConfig, LensConfig, NamedBind,
+    RenderConfig, ResourcesConfig, ServiceConfig, TerrainConfig, TerrainHeightConfig, TerrainLodConfig,
+    TerrainScatterConfig, VideoConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
@@ -21,62 +22,73 @@ const RUNNING_ANIMATIONS: AnimationGroupConfig = AnimationGroupConfig {
 };
 const INPUT_ENABLED: bool = true;
 const DEBUG_CAMERA_SPEED: f32 = 2_000_000.0;
+const CAMERA_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
+const CAMERA_ZOOM: f32 = 1.0;
 // A starting point to tune from, not a measured optimum.
 const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
 const TERRAIN_HEIGHT_SCALE: f32 = 1.0;
 // Long enough for a camera to look from one body to another and back without reloading either.
 const TERRAIN_TEXTURE_RETENTION: Duration = Duration::from_secs(30);
 
+// A bind the game starts with: `down` runs as its key goes down, `up`, if any, as it is released.
 struct DefaultBind {
-    action: BindAction,
-    chord: InputChord,
+    category: &'static str,
+    name: &'static str,
+    key: &'static str,
+    down: &'static str,
+    up: Option<&'static str>,
 }
 
 impl DefaultBind {
-    fn keys() -> HashMap<BindAction, InputChord> {
-        DefaultBind::all()
-            .into_iter()
-            .map(|bind| (bind.action, bind.chord))
-            .collect()
+    const ALL: [DefaultBind; 8] = [
+        DefaultBind::new("camera", "target-next", "tab", "camera target --next"),
+        DefaultBind::new("camera", "target-previous", "shift+tab", "camera target --previous"),
+        DefaultBind {
+            up: Some("config unset camera.zoom"),
+            ..DefaultBind::new("camera", "zoom", "c", "config set camera.zoom 4")
+        },
+        DefaultBind::new("interface", "pause-menu", "escape", "ui toggle pause-menu"),
+        DefaultBind::new("interface", "debug-overlay", "f3", "ui toggle debug-overlay"),
+        DefaultBind::new("time", "faster", ".", "time faster"),
+        DefaultBind::new("time", "slower", ",", "time slower"),
+        DefaultBind::new("time", "real-time", "/", "time resume"),
+    ];
+
+    const fn new(category: &'static str, name: &'static str, key: &'static str, down: &'static str) -> DefaultBind {
+        DefaultBind {
+            category,
+            name,
+            key,
+            down,
+            up: None,
+        }
     }
 
-    fn all() -> [DefaultBind; 7] {
-        [
-            DefaultBind {
-                action: BindAction::CameraTargetNext,
-                chord: InputChord::key(Key::Tab),
-            },
-            DefaultBind {
-                action: BindAction::CameraTargetPrevious,
-                chord: InputChord::with_modifier(Modifier::Shift, Key::Tab),
-            },
-            DefaultBind {
-                action: BindAction::InterfacePauseMenu,
-                chord: InputChord::key(Key::Escape),
-            },
-            DefaultBind {
-                action: BindAction::InterfaceDebugOverlay,
-                chord: InputChord::key(Key::F3),
-            },
-            DefaultBind {
-                action: BindAction::TimeFaster,
-                chord: InputChord::key(Key::Period),
-            },
-            DefaultBind {
-                action: BindAction::TimeSlower,
-                chord: InputChord::key(Key::Comma),
-            },
-            DefaultBind {
-                action: BindAction::TimeRealTime,
-                chord: InputChord::key(Key::Slash),
-            },
-        ]
+    fn binds() -> Vec<NamedBind> {
+        let command = |text: &str| BindCommand::parse(text).expect("default binds run valid commands");
+
+        DefaultBind::ALL
+            .into_iter()
+            .map(|default| NamedBind {
+                category: default.category,
+                name: default.name,
+                bind: Bind {
+                    key: InputChord::from_name(default.key).expect("default binds name valid keys"),
+                    down: command(default.down),
+                    up: default.up.map(command),
+                },
+            })
+            .collect()
     }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
+            camera: CameraConfig {
+                fov: CAMERA_FIELD_OF_VIEW_DEGREES,
+                zoom: CAMERA_ZOOM,
+            },
             video: VideoConfig {
                 tonemapper: Some(Tonemapper::Agx),
                 stars: true,
@@ -87,13 +99,14 @@ impl Default for Config {
                 },
                 lens: LensConfig { enabled: true },
                 white_balance: WhiteBalanceConfig { enabled: true },
+                fade: FadeConfig { enabled: true },
             },
             input: InputConfig {
                 enabled: INPUT_ENABLED,
                 raw: InputSourceConfig { enabled: INPUT_ENABLED },
                 commands: InputSourceConfig { enabled: INPUT_ENABLED },
                 bind: BindConfig {
-                    keys: DefaultBind::keys(),
+                    binds: DefaultBind::binds(),
                 },
             },
             terrain: TerrainConfig {
@@ -105,6 +118,7 @@ impl Default for Config {
                     enabled: true,
                     scale: TERRAIN_HEIGHT_SCALE,
                 },
+                scatter: TerrainScatterConfig { enabled: true },
                 texture_retention: TERRAIN_TEXTURE_RETENTION,
             },
             animation: AnimationConfig {

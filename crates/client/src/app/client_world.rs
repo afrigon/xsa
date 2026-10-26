@@ -9,18 +9,19 @@ use xsa_core::daylight::{Daylight, SkyPosition};
 use xsa_core::light::{Illumination, StarLight};
 use xsa_core::simulation::{Body, BodyCategory, BodyId, BodyIndex, BodyState, Simulation, SimulationState};
 use xsa_packs::{
-    BiomeSurfacesDefinition, Id, LensDefinition, MaterialDefinition, PackStack, SimulationDefinition, SkyboxDefinition,
-    SurfaceDefinition, TerrainDefinition,
+    BiomeSurfacesDefinition, Id, LensDefinition, PackStack, SimulationDefinition, SkyboxDefinition, SurfaceDefinition,
+    TerrainDefinition, TerrainMaterialDefinition,
 };
 use xsa_proto::world::WorldState;
 use xsa_units::SimulationTime;
 
 use super::body_step::BodyStep;
+use super::scatter_loader::ScatterLoader;
 use crate::camera::Attitude;
 use crate::renderer::{
-    BiomeSurfaces, ColorSpace, EmissiveMaterial, HapkeMaterial, LambertMaterial, LightSource, MaterialHandle,
-    ObjectHandle, Renderer, SceneObject, SkyboxMaterial, Star, SurfaceClass, SurfaceTextures, Terrain, TerrainLayer,
-    TerrainMaps,
+    BiomeSurfaces, ColorSpace, LightSource, MaterialHandle, ObjectHandle, Renderer, SceneObject, SkyboxMaterial, Star,
+    SurfaceClass, SurfaceTextures, Terrain, TerrainEmissiveMaterial, TerrainHandle, TerrainHapkeMaterial,
+    TerrainLambertMaterial, TerrainLayer, TerrainMaps,
 };
 use crate::ui::PositionReading;
 
@@ -73,10 +74,12 @@ impl ClientWorld {
         let mut materials = Vec::new();
         let mut terrains = Vec::new();
         let mut surfaces = Vec::new();
+        let mut biomes = Vec::new();
+        let mut ground_albedos = Vec::new();
 
         for (value, body) in simulation.bodies().iter().enumerate() {
             let id = Id::parse(&body.id.value, DEFAULT_NAMESPACE)?;
-            let definition = MaterialDefinition::load_for_body(&stack, &id)
+            let definition = TerrainMaterialDefinition::load_for_body(&stack, &id)
                 .with_context(|| format!("loading the material of {}", body.id))?;
             let terrain_definition = TerrainDefinition::load_for_body(&stack, &id)
                 .with_context(|| format!("loading the terrain of {}", body.id))?;
@@ -92,6 +95,7 @@ impl ClientWorld {
             )
             .with_context(|| format!("loading the surfaces of {}", body.id))?
             .map(Arc::new);
+            ground_albedos.push(ClientWorld::ground_albedo(&definition));
             let star_light = illumination.star_light(BodyIndex { value });
             let material = ClientWorld::create_material(
                 renderer,
@@ -106,13 +110,14 @@ impl ClientWorld {
             materials.push(material);
             terrains.push(terrain.map(Arc::new));
             surfaces.push(body_surfaces);
+            biomes.push(terrain_definition.and_then(|definition| definition.biomes.first().cloned()));
         }
 
         let mut state = SimulationState::default();
         simulation.state_at(world.time, &mut state);
 
         let scene = renderer.scene_mut();
-        let body_objects: Vec<ObjectHandle> = simulation
+        let (body_objects, body_terrains): (Vec<ObjectHandle>, Vec<TerrainHandle>) = simulation
             .bodies()
             .iter()
             .zip(&materials)
@@ -126,16 +131,16 @@ impl ClientWorld {
                     scale: body.radius,
                     bounding_radius: body.radius,
                 });
-                scene.add_terrain(Terrain {
+                let terrain = scene.add_terrain(Terrain {
                     object,
                     material,
                     maps: terrain.clone(),
                     surfaces: surfaces.clone(),
                 });
                 scene.add_occluder(object);
-                object
+                (object, terrain)
             })
-            .collect();
+            .unzip();
 
         for (value, &object) in body_objects.iter().enumerate() {
             if let Some(star_light) = illumination.star_light(BodyIndex { value }) {
@@ -144,6 +149,18 @@ impl ClientWorld {
                     intensity: star_light.color * star_light.luminous_intensity as f32,
                 });
                 scene.add_star(Star { light });
+            }
+        }
+
+        let mut scatters = ScatterLoader::new(&stack, resources, &mut group);
+
+        let grounds = body_terrains.iter().zip(&biomes).zip(&ground_albedos);
+
+        for (body, ((&terrain, biome), &ground_albedo)) in simulation.bodies().iter().zip(grounds) {
+            if let Some(biome) = biome {
+                scatters
+                    .load_body(renderer, body, terrain, biome, ground_albedo)
+                    .with_context(|| format!("loading the scatters of {}", body.id))?;
             }
         }
 
@@ -422,13 +439,13 @@ impl ClientWorld {
     fn load_terrain(
         body: &Id,
         terrain: Option<&TerrainDefinition>,
-        material: &MaterialDefinition,
+        material: &TerrainMaterialDefinition,
         resources: &Resources,
         group: &mut ResourceGroup,
     ) -> Option<TerrainMaps> {
         let heights = terrain.and_then(|definition| definition.height_map.as_ref());
         let layers = match material {
-            MaterialDefinition::Hapke {
+            TerrainMaterialDefinition::Hapke {
                 color,
                 normal,
                 scattering,
@@ -440,12 +457,12 @@ impl ClientWorld {
                 TerrainLayer::Scattering => scattering.clone(),
                 TerrainLayer::Surge => surge.clone(),
             }),
-            MaterialDefinition::Lambert { color, normal, .. } => TerrainLayer::ALL.map(|layer| match layer {
+            TerrainMaterialDefinition::Lambert { color, normal, .. } => TerrainLayer::ALL.map(|layer| match layer {
                 TerrainLayer::Color => color.clone(),
                 TerrainLayer::Normal => normal.clone(),
                 TerrainLayer::Scattering | TerrainLayer::Surge => None,
             }),
-            MaterialDefinition::Emissive { .. } => Default::default(),
+            TerrainMaterialDefinition::Emissive { .. } => Default::default(),
         };
 
         if heights.is_none() && layers.iter().all(Option::is_none) {
@@ -461,11 +478,11 @@ impl ClientWorld {
         stack: &PackStack,
         body: &Body,
         terrain: Option<&TerrainDefinition>,
-        material: &MaterialDefinition,
+        material: &TerrainMaterialDefinition,
         resources: &Resources,
         group: &mut ResourceGroup,
     ) -> anyhow::Result<Option<BiomeSurfaces>> {
-        let MaterialDefinition::Hapke { .. } = material else {
+        let TerrainMaterialDefinition::Hapke { .. } = material else {
             return Ok(None);
         };
         let Some(biome) = terrain.and_then(|definition| definition.biomes.first()) else {
@@ -500,12 +517,21 @@ impl ClientWorld {
         Ok(Some(BiomeSurfaces::new([flat?, slope?], &definition, seed)))
     }
 
+    // The ground's average albedo, linear; black for a body that only emits light.
+    fn ground_albedo(definition: &TerrainMaterialDefinition) -> Vec3 {
+        match definition {
+            TerrainMaterialDefinition::Lambert { base_color, .. }
+            | TerrainMaterialDefinition::Hapke { base_color, .. } => *base_color,
+            TerrainMaterialDefinition::Emissive { .. } => Vec3::ZERO,
+        }
+    }
+
     fn create_material(
         renderer: &mut Renderer,
         resources: &Resources,
         group: &mut ResourceGroup,
         body: &BodyId,
-        definition: MaterialDefinition,
+        definition: TerrainMaterialDefinition,
         surfaces: Option<Arc<BiomeSurfaces>>,
         star_light: Option<&StarLight>,
     ) -> anyhow::Result<MaterialHandle> {
@@ -518,20 +544,20 @@ impl ClientWorld {
         };
 
         match definition {
-            MaterialDefinition::Lambert {
+            TerrainMaterialDefinition::Lambert {
                 base_color,
                 emissive,
                 emissive_luminance,
                 ..
             } => {
-                let material = LambertMaterial {
+                let material = TerrainLambertMaterial {
                     base_color,
                     emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
                     emissive_luminance,
                 };
                 renderer.add_material(&name, material)
             }
-            MaterialDefinition::Hapke {
+            TerrainMaterialDefinition::Hapke {
                 base_color,
                 emissive,
                 emissive_luminance,
@@ -539,7 +565,7 @@ impl ClientWorld {
                 porosity,
                 ..
             } => {
-                let material = HapkeMaterial {
+                let material = TerrainHapkeMaterial {
                     base_color,
                     emissive: emissive.map(|path| load("emissive", &path, ColorSpace::Srgb)),
                     emissive_luminance,
@@ -549,7 +575,7 @@ impl ClientWorld {
                 };
                 renderer.add_material(&name, material)
             }
-            MaterialDefinition::Emissive { color, luminance } => {
+            TerrainMaterialDefinition::Emissive { color, luminance } => {
                 let luminance = match star_light {
                     Some(star_light) => star_light.color * star_light.surface_luminance as f32,
                     None => Vec3::splat(luminance.context("an emissive material needs a `luminance` in cd/m²")?),
@@ -557,7 +583,7 @@ impl ClientWorld {
 
                 renderer.add_material(
                     &name,
-                    EmissiveMaterial {
+                    TerrainEmissiveMaterial {
                         luminance: color * luminance,
                     },
                 )

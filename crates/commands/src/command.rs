@@ -34,8 +34,8 @@ pub use config::{
 pub use exit::ExitCommand;
 #[cfg(feature = "client")]
 pub use input::{
-    InputAction, InputCommand, InputCursorAction, InputCursorCommand, InputCursorMoveCommand, InputCursorSetCommand,
-    InputDownCommand, InputPressCommand, InputResetCommand, InputScrollCommand, InputUpCommand,
+    InputAction, InputBindCommand, InputCommand, InputCursorAction, InputCursorCommand, InputCursorMoveCommand,
+    InputCursorSetCommand, InputDownCommand, InputPressCommand, InputResetCommand, InputScrollCommand, InputUpCommand,
 };
 pub use local_command::LocalCommand;
 pub use routable::Routable;
@@ -51,8 +51,8 @@ pub use time::{
 pub use time::{TimeWarpCommand, TimeWarpRequestCommand};
 #[cfg(feature = "client")]
 pub use ui::{
-    InterfaceAction, InterfaceCommand, InterfaceHideCommand, InterfacePopCommand, InterfacePushCommand,
-    InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
+    InterfaceAction, InterfaceCommand, InterfaceElement, InterfaceHideCommand, InterfacePopCommand,
+    InterfacePushCommand, InterfaceSetCommand, InterfaceShowCommand, InterfaceToggleCommand, Overlay, ViewControllerId,
 };
 pub use wait::WaitCommand;
 

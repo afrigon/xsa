@@ -5,7 +5,7 @@ TerrainVaryings vertexMain(VertexInput input) {
     return terrainVaryings(terrainVertex(input, NoRelief()));
 }
 
-struct EmissiveData {
+struct TerrainEmissiveData {
     float3 luminance;
     uint padding;
 };
@@ -15,5 +15,5 @@ FragmentOutput fragmentMain(TerrainVaryings input, uint primitive: SV_PrimitiveI
     MaterialSample sample;
     sample.albedo = float3(0.0);
     sample.roughness = 0.0;
-    return terrainOutput(currentMaterial<EmissiveData>().luminance, sample, input, primitive);
+    return terrainOutput(currentMaterial<TerrainEmissiveData>().luminance, sample, input, primitive);
 }

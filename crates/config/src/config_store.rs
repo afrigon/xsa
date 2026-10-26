@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, bail};
 use kdl::KdlValue;
 
+use crate::ConfigChange;
 use crate::config_layer::ConfigLayer;
 use crate::edit_visitor::{Edit, EditVisitor};
 use crate::key_path::KeyPath;
@@ -92,6 +93,21 @@ impl<T: ConfigSection + Default + Clone> ConfigStore<T> {
         let value = self.edit(path, Edit::Parse(text))?;
 
         self.store(&[(path.to_string(), value)], save)
+    }
+
+    // Every change is checked before any is set: one refused leaves every key as it was.
+    pub fn set_all(&mut self, changes: &[ConfigChange], save: bool) -> anyhow::Result<()> {
+        let values = changes
+            .iter()
+            .map(|change| {
+                Ok((
+                    change.path.to_string(),
+                    self.edit(change.path, Edit::Parse(change.text))?,
+                ))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        self.store(&values, save)
     }
 
     pub fn toggle(&mut self, path: &str, save: bool) -> anyhow::Result<()> {
@@ -447,6 +463,29 @@ mod tests {
         store.set("video.stars", "off", false).unwrap();
         assert!(!store.config().stars);
         assert!(!store.path().exists());
+    }
+
+    #[test]
+    fn set_all_changes_every_key_or_none() {
+        let directory = TestDirectory::new("set-all");
+        let mut store = store(&directory, None);
+        let change = |path, text| ConfigChange { path, text };
+
+        store
+            .set_all(
+                &[change("video.stars", "off"), change("video.glow.strength", "0.5")],
+                false,
+            )
+            .unwrap();
+        assert!(!store.config().stars);
+        assert_eq!(store.config().glow.strength, 0.5);
+
+        let refused = store.set_all(
+            &[change("video.stars", "on"), change("video.glow.strength", "-1")],
+            false,
+        );
+        assert!(refused.is_err());
+        assert!(!store.config().stars);
     }
 
     #[test]

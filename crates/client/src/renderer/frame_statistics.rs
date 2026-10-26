@@ -1,11 +1,8 @@
-use super::TerrainMapStatistics;
+use super::{ScatterStatistics, TerrainStatistics};
 
 #[derive(Clone, Copy, Default)]
 pub struct FrameStatistics {
-    pub terrain_maps: TerrainMapStatistics,
-    pub triangles: u64,
-    pub tiles: usize,
-    // The finest terrain tiles drawn; None without terrain.
-    pub deepest_depth: Option<u32>,
+    pub terrain: TerrainStatistics,
+    pub scatter: ScatterStatistics,
     pub gpu_milliseconds: Option<f32>,
 }

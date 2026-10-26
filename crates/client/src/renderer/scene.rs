@@ -1,15 +1,23 @@
+mod body_scatter;
 mod light_source;
 mod light_source_handle;
 mod material_handle;
+mod model;
+mod model_handle;
+mod node_material;
 mod object_handle;
 mod scene_object;
 mod star;
 mod terrain;
 mod terrain_handle;
 
+pub use body_scatter::BodyScatter;
 pub use light_source::LightSource;
 pub use light_source_handle::LightSourceHandle;
 pub use material_handle::MaterialHandle;
+pub use model::Model;
+pub use model_handle::ModelHandle;
+pub use node_material::NodeMaterial;
 pub use object_handle::ObjectHandle;
 pub use scene_object::SceneObject;
 pub use star::Star;
@@ -23,6 +31,8 @@ pub struct Scene {
     stars: Vec<Star>,
     terrains: Vec<Terrain>,
     occluders: Vec<ObjectHandle>,
+    models: Vec<Model>,
+    scatters: Vec<BodyScatter>,
     pub skybox: Option<MaterialHandle>,
 }
 
@@ -82,6 +92,29 @@ impl Scene {
 
     pub fn terrains(&self) -> &[Terrain] {
         &self.terrains
+    }
+
+    pub fn add_model(&mut self, model: Model) -> ModelHandle {
+        self.models.push(model);
+        ModelHandle {
+            index: self.models.len() - 1,
+        }
+    }
+
+    pub fn model(&self, handle: ModelHandle) -> &Model {
+        &self.models[handle.index]
+    }
+
+    pub fn models(&self) -> &[Model] {
+        &self.models
+    }
+
+    pub fn add_scatter(&mut self, scatter: BodyScatter) {
+        self.scatters.push(scatter);
+    }
+
+    pub fn scatters(&self) -> &[BodyScatter] {
+        &self.scatters
     }
 
     // Objects whose sphere (of radius `scale`) hides the stars behind it.

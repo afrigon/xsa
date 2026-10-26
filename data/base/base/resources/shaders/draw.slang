@@ -26,22 +26,12 @@ struct DrawVaryings {
     float4 previousClip;
 };
 
-struct ObjectData {
-    float4x4 worldFromModel;
-    float4x4 previousWorldFromModel;
-};
-
+// What every program reads. `draw` is the draw's record, laid out by its geometry family; null for a family without
+// one.
 struct PushConstants {
     FrameData *frame;
-    ObjectData *objects;
     void *material;
-    uint objectIndex;
-    uint firstTile;
-    void *tiles;
-    // The maps of the terrain drawn.
-    void *terrain;
-    // Where the camera stands in the terrain's surfaces; null for a terrain without surfaces.
-    void *surfaceAnchors;
+    void *draw;
 };
 
 [[vk::push_constant]]
@@ -52,10 +42,6 @@ static const float pi = 3.14159265358979;
 // The jitter shifts every clip-space position by the same fraction of the viewport.
 float4 unjittered(float4 clip) {
     return float4(clip.xy - constants.frame.jitter * clip.w, clip.zw);
-}
-
-ObjectData currentObject() {
-    return constants.objects[constants.objectIndex];
 }
 
 T currentMaterial<T>() {

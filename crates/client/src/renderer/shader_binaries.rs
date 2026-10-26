@@ -4,7 +4,7 @@ use std::fs;
 use anyhow::Context;
 use xsa_packs::{Id, PackStack};
 
-use super::Shader;
+use super::{GeometryFamily, Shader};
 
 const BASE_NAMESPACE: &str = "base";
 const SHADERS: &str = "shaders";
@@ -17,9 +17,11 @@ const BLOOM_UPSAMPLE_SHADER_PATH: &str = "post/bloom/upsample";
 const TAA_SHADER_PATH: &str = "post/taa";
 const LENS_LIGHT_SHADER_PATH: &str = "post/lens/light";
 const LENS_GHOSTS_SHADER_PATH: &str = "post/lens/ghosts";
+const SCATTER_CULL_SHADER_PATH: &str = "scatter/cull";
+const SCATTER_DRAWS_SHADER_PATH: &str = "scatter/draws";
 
 pub struct ShaderBinaries {
-    // Each terrain program, by the shader it compiles.
+    // Each program the forward pass draws, by the shader it compiles.
     pub(in crate::renderer) forward: HashMap<Shader, Vec<u8>>,
     pub skybox: Vec<u8>,
     pub tonemap: Vec<u8>,
@@ -30,6 +32,8 @@ pub struct ShaderBinaries {
     pub taa: Vec<u8>,
     pub lens_light: Vec<u8>,
     pub lens_ghosts: Vec<u8>,
+    pub scatter_cull: Vec<u8>,
+    pub scatter_draws: Vec<u8>,
 }
 
 impl ShaderBinaries {
@@ -47,10 +51,9 @@ impl ShaderBinaries {
         };
 
         Ok(ShaderBinaries {
-            // The skybox is drawn by its own pass.
             forward: Shader::ALL
                 .iter()
-                .filter(|shader| **shader != Shader::Skybox)
+                .filter(|shader| shader.family() != GeometryFamily::Sky)
                 .map(|shader| Ok((*shader, read(shader.path())?)))
                 .collect::<anyhow::Result<_>>()?,
             skybox: read(Shader::Skybox.path())?,
@@ -62,6 +65,8 @@ impl ShaderBinaries {
             taa: read(TAA_SHADER_PATH)?,
             lens_light: read(LENS_LIGHT_SHADER_PATH)?,
             lens_ghosts: read(LENS_GHOSTS_SHADER_PATH)?,
+            scatter_cull: read(SCATTER_CULL_SHADER_PATH)?,
+            scatter_draws: read(SCATTER_DRAWS_SHADER_PATH)?,
         })
     }
 }

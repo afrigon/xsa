@@ -8,7 +8,7 @@ anyhow.workspace = true
 glam.workspace = true
 kdl = "6.7.1"
 semver = "1.0.28"
-resource-loader = { workspace = true, features = ["texture"] }
+resource-loader = { workspace = true, features = ["mesh", "texture"] }
 tracing.workspace = true
 xsa-core.workspace = true
 xsa-units.workspace = true

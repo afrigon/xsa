@@ -1,0 +1,3 @@
+mesh "tree"
+material "bark" node="trunk"
+material "foliage" node="leaves"

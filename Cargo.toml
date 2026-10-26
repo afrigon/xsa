@@ -12,6 +12,7 @@ anyhow = "1.0.104"
 ash = "0.38.0"
 bitcode = "0.6.9"
 glam = "0.33.11"
+gltf = { version = "1.4.1", default-features = false, features = ["names", "utils"] }
 gpu-allocator = { version = "0.28.0", default-features = false, features = ["std", "vulkan"] }
 memory-vulkan = { path = "crates/memory-vulkan" }
 image = { version = "0.25.10", default-features = false, features = ["exr"] }

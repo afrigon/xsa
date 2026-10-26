@@ -1,4 +1,5 @@
 import draw;
+import terrain.tile;
 import terrain.surface.blend;
 import terrain.surface.normal_blend;
 __exported import terrain.surface.surface_data;

@@ -5,13 +5,19 @@ edition.workspace = true
 
 [features]
 texture = ["dep:image", "dep:zstd"]
+mesh = ["dep:gltf"]
 
 [dependencies]
 anyhow.workspace = true
 image = { workspace = true, features = ["png"], optional = true }
 glam.workspace = true
 zstd = { workspace = true, optional = true }
+gltf = { workspace = true, optional = true }
 
 [[test]]
 name = "texture"
 required-features = ["texture"]
+
+[[test]]
+name = "mesh"
+required-features = ["mesh"]

@@ -3,9 +3,37 @@ use tokio::sync::oneshot;
 use xsa_commands::command::{Overlay, ViewControllerId};
 
 use super::App;
-use crate::ui::{GameViewController, LoadingViewController, PauseViewController};
+use anyhow::ensure;
+
+use crate::ui::{
+    ConfigViewController, GameViewController, LoadViewController, LoadingViewController, MainMenuViewController,
+    PauseViewController,
+};
 
 impl App {
+    // The pause menu opens over the game only.
+    pub(super) fn check_push(&self, id: ViewControllerId) -> anyhow::Result<()> {
+        ensure!(
+            id != ViewControllerId::PauseMenu || self.is_game_active(),
+            "the pause menu opens over the game only"
+        );
+
+        Ok(())
+    }
+
+    pub(super) fn is_on_top(&self, id: ViewControllerId) -> bool {
+        let top = self.navigation.top();
+        let on_top = match id {
+            ViewControllerId::MainMenu => top.is::<MainMenuViewController>(),
+            ViewControllerId::Config => top.is::<ConfigViewController>(),
+            ViewControllerId::Load => top.is::<LoadViewController>(),
+            ViewControllerId::Game => top.is::<GameViewController>(),
+            ViewControllerId::PauseMenu => top.is::<PauseViewController>(),
+        };
+
+        on_top && !self.navigation.is_transitioning()
+    }
+
     pub(super) fn push_view_controller(&mut self, id: ViewControllerId) {
         let environment = self.environment();
         self.navigation.push(self.view_controllers.build(id), &environment);
@@ -54,10 +82,6 @@ impl App {
     // camera gets input and may capture the mouse.
     pub(super) fn is_game_active(&self) -> bool {
         self.navigation.top().is::<GameViewController>() && !self.navigation.is_transitioning()
-    }
-
-    pub(super) fn is_pause_menu_active(&self) -> bool {
-        self.navigation.top().is::<PauseViewController>() && !self.navigation.is_transitioning()
     }
 
     // Runs what view controllers asked of the game this frame, through the router like any other command.

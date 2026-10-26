@@ -8,13 +8,14 @@ use super::frame_inputs::FrameInputs;
 use super::gpu_context::GpuContext;
 use super::passes::{
     BloomPass, CaptureInputs, CapturePass, ForwardInputs, ForwardPass, HistogramInputs, HistogramPass, LensInputs,
-    LensPass, SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass, VideoConversionPass,
+    LensPass, ScatterPass, SkyboxPass, TaaPass, TonemapInputs, TonemapPass, UserInterfacePass, VideoConversionPass,
     WindowCopyInputs, WindowCopyPass,
 };
 use crate::config::{AntialiasingKind, Config};
 
 // Every pass of the renderer, and the order a frame runs them in.
 pub(super) struct RenderPasses {
+    scatter: ScatterPass,
     forward: ForwardPass,
     histogram: HistogramPass,
     skybox: SkyboxPass,
@@ -37,6 +38,7 @@ impl RenderPasses {
         frames_in_flight: usize,
     ) -> anyhow::Result<RenderPasses> {
         Ok(RenderPasses {
+            scatter: ScatterPass::new(gpu, shaders)?,
             forward: ForwardPass::new(gpu, shaders)?,
             histogram: HistogramPass::new(gpu, shaders)?,
             skybox: SkyboxPass::new(gpu, shaders)?,
@@ -69,10 +71,12 @@ impl RenderPasses {
         let light_count = inputs.projected_light_count;
         let lens = (config.video.lens.enabled && inputs.lens_loaded && light_count > 0)
             .then(|| graph.add(&mut self.lens, LensInputs { light_count }).lens);
+        let scatter = inputs.scatter.map(|scatter| graph.add(&mut self.scatter, scatter));
         let forward = graph.add(
             &mut self.forward,
             ForwardInputs {
                 clear_color: inputs.clear_color.extend(1.0).to_array(),
+                scatter,
             },
         );
         graph.add(

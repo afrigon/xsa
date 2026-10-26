@@ -1,4 +1,5 @@
 mod byte_size;
+mod config_change;
 mod config_choice;
 mod config_constraint;
 mod config_key;
@@ -20,6 +21,7 @@ mod unconstrained;
 mod value_origin;
 
 pub use byte_size::ByteSize;
+pub use config_change::ConfigChange;
 pub use config_choice::ConfigChoice;
 pub use config_constraint::ConfigConstraint;
 pub use config_key::ConfigKey;

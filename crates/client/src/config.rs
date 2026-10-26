@@ -2,16 +2,20 @@ mod animation_config;
 mod animation_group_config;
 mod antialiasing_kind;
 mod antialiasing_kind_choice;
-mod bind_action;
+mod bind;
+mod bind_command;
 mod bind_config;
 mod bloom_config;
+mod camera_config;
 mod debug_camera_config;
 mod debug_config;
 mod debug_view_choice;
 mod default_config;
+mod fade_config;
 mod input_config;
 mod input_source_config;
 mod lens_config;
+mod named_bind;
 mod render_config;
 mod resources_config;
 mod service_config;
@@ -20,6 +24,7 @@ mod terrain_config;
 mod terrain_debug_view_choice;
 mod terrain_height_config;
 mod terrain_lod_config;
+mod terrain_scatter_config;
 mod tonemapper_choice;
 mod video_config;
 mod white_balance_config;
@@ -27,20 +32,25 @@ mod white_balance_config;
 pub use animation_config::AnimationConfig;
 pub use animation_group_config::AnimationGroupConfig;
 pub use antialiasing_kind::AntialiasingKind;
-pub use bind_action::BindAction;
+pub use bind::Bind;
+pub use bind_command::BindCommand;
 pub use bind_config::BindConfig;
 pub use bloom_config::BloomConfig;
+pub use camera_config::CameraConfig;
 pub use debug_camera_config::DebugCameraConfig;
 pub use debug_config::DebugConfig;
+pub use fade_config::FadeConfig;
 pub use input_config::InputConfig;
 pub use input_source_config::InputSourceConfig;
 pub use lens_config::LensConfig;
+pub use named_bind::NamedBind;
 pub use render_config::RenderConfig;
 pub use resources_config::ResourcesConfig;
 pub use service_config::ServiceConfig;
 pub use terrain_config::TerrainConfig;
 pub use terrain_height_config::TerrainHeightConfig;
 pub use terrain_lod_config::TerrainLodConfig;
+pub use terrain_scatter_config::TerrainScatterConfig;
 pub use video_config::VideoConfig;
 pub use white_balance_config::WhiteBalanceConfig;
 
@@ -57,6 +67,7 @@ const FILE_NAME: &str = "config.kdl";
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
     pub video: VideoConfig,
+    pub camera: CameraConfig,
     pub input: InputConfig,
     pub terrain: TerrainConfig,
     pub animation: AnimationConfig,
@@ -81,6 +92,7 @@ impl Config {
 impl ConfigSection for Config {
     fn visit<V: ConfigVisitor>(&mut self, visitor: &mut V) {
         visitor.section("video", &mut self.video);
+        visitor.section("camera", &mut self.camera);
         visitor.section("input", &mut self.input);
         visitor.section("terrain", &mut self.terrain);
         visitor.section("animation", &mut self.animation);
@@ -118,7 +130,13 @@ mod tests {
             "input.enabled",
             "input.raw.enabled",
             "input.commands.enabled",
-            "input.bind.camera.target-next",
+            "input.bind.camera.target-next.key",
+            "input.bind.camera.zoom.down",
+            "input.bind.camera.zoom.up",
+            "camera.fov",
+            "terrain.scatter.enabled",
+            "video.fade.enabled",
+            "camera.zoom",
             "terrain.lod.vertex-spacing",
             "terrain.texture-retention",
             "animation.duration-scale",
@@ -142,10 +160,10 @@ mod tests {
     fn binds_with_symbol_keys_survive_a_save() {
         let mut store = store("binds");
         let binds = [
-            "input.bind.camera.target-next",
-            "input.bind.camera.target-previous",
-            "input.bind.interface.pause-menu",
-            "input.bind.interface.debug-overlay",
+            "input.bind.camera.target-next.key",
+            "input.bind.camera.target-previous.key",
+            "input.bind.interface.pause-menu.key",
+            "input.bind.interface.debug-overlay.key",
         ];
         let keys = ["\\", "=", "[", "ctrl+'"];
 
@@ -161,6 +179,16 @@ mod tests {
 
         assert_eq!(reloaded.config().input.bind, store.config().input.bind);
         let _ = fs::remove_file(store.path());
+    }
+
+    #[test]
+    fn a_bind_refuses_a_command_that_does_not_parse() {
+        let mut store = store("bind-command");
+        let down = "input.bind.camera.zoom.down";
+
+        assert!(store.set(down, "camera fly", false).is_err());
+        store.set(down, "config set camera.zoom 2", false).unwrap();
+        assert_eq!(store.get(down).unwrap(), "config set camera.zoom 2");
     }
 
     #[test]

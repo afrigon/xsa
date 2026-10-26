@@ -1,3 +1,4 @@
+mod bind;
 mod cursor;
 mod cursor_action;
 mod cursor_move;
@@ -9,6 +10,7 @@ mod reset;
 mod scroll;
 mod up;
 
+pub use bind::InputBindCommand;
 pub use cursor::InputCursorCommand;
 pub use cursor_action::InputCursorAction;
 pub use cursor_move::InputCursorMoveCommand;

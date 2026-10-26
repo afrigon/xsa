@@ -1,12 +1,14 @@
 use usage::Args;
 
-use super::Overlay;
+use super::InterfaceElement;
 use crate::command::{ClientCommand, Routable, Route};
 
 #[derive(Args)]
 pub struct InterfaceToggleCommand {
-    #[usage(value_enum)]
-    pub overlay: Overlay,
+    #[usage(
+        help = "An overlay to show or hide, or a view controller to push over the others or pop when it is on top: debug-overlay, pause-menu, …"
+    )]
+    pub element: InterfaceElement,
 }
 
 impl Routable for InterfaceToggleCommand {

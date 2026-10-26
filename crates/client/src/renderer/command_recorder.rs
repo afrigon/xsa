@@ -68,6 +68,19 @@ impl<'a> CommandRecorder<'a> {
         };
     }
 
+    // One draw whose `VkDrawIndexedIndirectCommand` lies at `offset` in `arguments`.
+    pub fn draw_indexed_indirect(&self, arguments: vk::Buffer, offset: u64) {
+        unsafe {
+            self.device.handle().cmd_draw_indexed_indirect(
+                self.command_buffer,
+                arguments,
+                offset,
+                1,
+                size_of::<vk::DrawIndexedIndirectCommand>() as u32,
+            )
+        };
+    }
+
     pub fn draw_fullscreen(&self) {
         unsafe {
             self.device
@@ -100,6 +113,24 @@ impl<'a> CommandRecorder<'a> {
                 extent.height.div_ceil(workgroup_size),
                 1,
             )
+        };
+    }
+
+    pub fn dispatch_groups(&self, group_count: u32) {
+        unsafe {
+            self.device
+                .handle()
+                .cmd_dispatch(self.command_buffer, group_count, 1, 1)
+        };
+    }
+
+    pub fn copy_buffer(&self, source: vk::Buffer, destination: vk::Buffer, size: u64) {
+        let region = vk::BufferCopy::default().size(size);
+
+        unsafe {
+            self.device
+                .handle()
+                .cmd_copy_buffer(self.command_buffer, source, destination, &[region])
         };
     }
 

@@ -2,7 +2,7 @@
 //!
 //! `Resources` loads each file once on a worker pool of its own, hands out typed handles at once, and frees a
 //! resource once its last handle is dropped, or later when memory is needed. Each kind of file is a `ResourceKind`;
-//! this crate provides textures and cube maps, and users add their own.
+//! this crate provides textures, cube maps and meshes, and users add their own.
 //!
 //! A `StreamedMips` kind keeps only the mip levels its holders demand resident: a `MipHandle` states its holder's
 //! demand, and reloads read only the levels they lack, copying the rest on the GPU.
@@ -22,6 +22,7 @@ mod load_priority;
 mod load_request;
 mod memory_budget;
 mod memory_usage;
+mod meshes;
 mod mip_demand;
 mod mip_entry;
 mod mip_handle;
@@ -67,6 +68,7 @@ pub use load_context::LoadContext;
 pub use load_priority::LoadPriority;
 pub use load_request::LoadRequest;
 pub use memory_usage::MemoryUsage;
+pub use meshes::{Mesh, PendingMesh};
 pub use mip_demand::MipDemand;
 pub use mip_handle::MipHandle;
 pub use pending_resource::PendingResource;

@@ -54,6 +54,10 @@ impl Input {
             .any(|press| press.button == InputButton::Mouse(button))
     }
 
+    pub fn released(&self) -> impl Iterator<Item = &InputButton> {
+        self.released.iter()
+    }
+
     pub fn was_button_released(&self, button: MouseButton) -> bool {
         self.released.contains(&InputButton::Mouse(button))
     }

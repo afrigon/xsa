@@ -1,5 +1,7 @@
+use crate::renderer::GeometryFamily;
+
 macro_rules! shaders {
-    ($($variant:ident => $file:literal),+ $(,)?) => {
+    ($($variant:ident => $file:literal in $family:ident),+ $(,)?) => {
         #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
         pub enum Shader {
             $($variant),+
@@ -13,13 +15,20 @@ macro_rules! shaders {
                     $(Shader::$variant => $file),+
                 }
             }
+
+            pub fn family(self) -> GeometryFamily {
+                match self {
+                    $(Shader::$variant => GeometryFamily::$family),+
+                }
+            }
         }
     };
 }
 
 shaders! {
-    Lambert => "terrain/lambert",
-    Hapke => "terrain/hapke",
-    Emissive => "terrain/emissive",
-    Skybox => "skybox",
+    TerrainLambert => "terrain/lambert" in Terrain,
+    TerrainHapke => "terrain/hapke" in Terrain,
+    TerrainEmissive => "terrain/emissive" in Terrain,
+    Hapke => "hapke" in Mesh,
+    Skybox => "skybox" in Sky,
 }

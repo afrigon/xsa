@@ -1,0 +1,6 @@
+scatter "debug:rocks" {
+    density 0.6
+}
+scatter "debug:pebbles" {
+    tint 0.55 0.52 0.5
+}

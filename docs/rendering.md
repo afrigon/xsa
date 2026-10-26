@@ -13,7 +13,19 @@ to the fragment stage.
 - **Terrain:** quad sphere tiles of a body, from a shared grid mesh and each
   tile's data. Every body is drawn as tiles. A tile's shape is smooth (on its
   sphere, while its heights are not loaded) or displaced by its heights.
-- **Meshes** (planned): vessels and their parts, from vertex buffers.
+- **Meshes:** models, from their meshes' vertex buffers (position, tangent
+  frame as a quaternion, texture coordinates): one draw per node, placed in its
+  model, over a list of instances, each with its transform, its previous
+  frame's, a tint and a visibility. Scattered props fill their lists on the GPU
+  (see Scatters); a vessel's parts will be lists the CPU writes.
+- **Sky:** a fullscreen triangle, drawn by its own pass.
+
+A draw passes every program the same push constants: the frame's data, its
+material's parameters and the address of its family's record for the draw. A
+terrain draw's record holds its body, tiles, maps and surfaces; a mesh draw's
+holds its node's place in its model and its instance list. A program reads only
+its family's record, and a new family brings its own record without touching
+the others.
 
 ## Programs
 
@@ -32,7 +44,7 @@ shader root.
 | `base:terrain/hapke` | terrain | a body's ground reflecting light by Hapke: its terrain layers, and its surfaces up close |
 | `base:terrain/lambert` | terrain | a body's ground reflecting light by Lambert, from textures |
 | `base:terrain/emissive` | terrain | a body that only emits light, such as a star |
-| `base:hapke` (planned) | meshes | objects on regolith ground, such as scattered rocks |
+| `base:hapke` | meshes | objects on regolith ground, such as scattered rocks, every parameter constant over the mesh |
 | physically based programs (planned) | meshes | a vessel's metal, paint and glass |
 
 The light models themselves are modules in `shaders/light/`, shared by every
@@ -113,6 +125,39 @@ The surface debug views show how these choices land:
   blue.
 - **`fade`:** how far surfaces have faded in, black to white.
 
+## Scatters
+
+Props placed on a body's ground (`docs/packs.md`), drawn from the CPU's
+placement and the GPU's heights:
+
+- **Pages:** each scatter's cells group into pages of 16 × 16, quad sphere
+  tiles. A worker places a page's props within reach of the camera and uploads
+  them once, as offsets in the face's coordinates with a yaw, a scale and a
+  model; a page out of reach is dropped.
+- **Culling:** every frame, a compute pass gives each page a workgroup. It
+  stands each prop on the finest resident level of the heights, without the
+  surfaces' relief, along the ground's normal or away from the body's center;
+  fades it; drops it past the scatter's range, outside the view or below the
+  horizon; and appends it to its model's instance list.
+- **Drawing:** a second step copies each list's count into the indirect
+  arguments of its model's node draws, and the forward pass draws them. The
+  counters are copied back, so the debug overlay reads how many props were
+  drawn of those in range.
+
+## Dithered fade
+
+A mesh instance fades by dropping pixels, keeping depth and motion exact where
+it shows: its visibility runs from 0 to 1, uniform over the instance, and a
+cell shows where it exceeds the cell's threshold in a 16 × 16 Bayer matrix
+fixed to the screen. A cell spans one pixel per 360 rows of the output, so the
+pattern looks alike at every resolution: a fade starts with sparse holes and
+fills in between them. Visibility is the smallest of three fades: the far one
+over the last tenth of a scatter's range, the near one as the instance's
+bounding box comes within half a meter of the near plane, gone before it would
+be clipped, and the size one as the box shrinks from 4 to 2 pixels across.
+With `video.fade.enabled` off, instances pop where their visibility reaches
+half instead.
+
 ## Shader files
 
 ```
@@ -125,6 +170,9 @@ shaders/
                                its views
     hapke.slang  lambert.slang  emissive.slang    its programs
     surface/                   surfaces and their views
+  mesh/                        the mesh family: instances and draw records, vertex stage, output and fade
+  hapke.slang                  the mesh programs
+  scatter/                     the scatter pass: page records, culling, indirect arguments
   skybox.slang
   post/
 ```

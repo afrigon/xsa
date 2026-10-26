@@ -7,4 +7,6 @@ pub(super) struct FrameCapacities {
     pub stars: usize,
     pub lights: usize,
     pub surface_anchors: usize,
+    pub terrain_draws: usize,
+    pub mesh_draws: usize,
 }
