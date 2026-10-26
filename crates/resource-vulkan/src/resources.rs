@@ -3,15 +3,17 @@ use std::io::ErrorKind;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::available_parallelism;
+use std::time::Instant;
 
 use anyhow::bail;
+use ash::vk;
 use memory_vulkan::{BindlessTable, MemoryContext, TransferQueue};
 
 use crate::streaming::{PageFormat, PageSource, StreamedSet, Streamer};
 use crate::{
     AnyEntry, AvailableMemory, BudgetReading, Entry, EntryId, Events, Job, JobOwner, LoadEnvironment, LoadPriority,
-    LoadRequest, MemoryBudget, Registry, ResourceGroup, ResourceHandle, ResourceKey, ResourceKind, ResourceLimits,
-    ResourceState, SoftOwner, SoftUsage, Unavailable, WorkerPool,
+    LoadRequest, MemoryBudget, MipEntry, MipHandle, Registry, ResourceGroup, ResourceHandle, ResourceKey, ResourceKind,
+    ResourceLimits, ResourceState, SoftOwner, SoftUsage, StreamedMips, Unavailable, WorkerPool,
 };
 
 // Page reads queued ahead per worker: enough to keep every worker busy, few enough that the order follows each frame's
@@ -84,6 +86,57 @@ impl Resources {
         handle
     }
 
+    /// Starts loading a mip-streamed resource, or shares the one already loaded from the same file with the same
+    /// options. Its first load reads only the smallest level until a handle states a demand.
+    pub fn load_mips<K: StreamedMips>(&self, request: LoadRequest, options: K::Options) -> MipHandle<K> {
+        let shared = &self.shared;
+        let mut registry = shared.registry();
+        let key = ResourceKey::<K::Options> {
+            path: request.path.clone(),
+            options,
+        };
+
+        if let Some(entry) = registry.mip_kind::<K>().get(&key).cloned() {
+            entry.join(&request);
+
+            return MipHandle::new(entry, None);
+        }
+
+        let metadata = std::fs::metadata(&request.path);
+        let size = metadata.as_ref().map_or(0, |metadata| metadata.len());
+        let id = registry.next_id();
+        let entry = Arc::new(MipEntry::<K>::new(
+            id,
+            request,
+            key.options,
+            size,
+            Arc::clone(&shared.events),
+        ));
+        registry.insert_mips(Arc::clone(&entry));
+        let handle = MipHandle::new(Arc::clone(&entry), None);
+        drop(registry);
+
+        match metadata {
+            Err(err) if err.kind() == ErrorKind::NotFound => entry.settle_unavailable(Unavailable::Missing),
+            Err(err) => entry.settle_unavailable(Unavailable::Failed(Arc::new(err.into()))),
+            Ok(_) => {}
+        }
+
+        handle
+    }
+
+    /// Records, into a frame's command buffer on the graphics queue, the copy of the levels each finished reload of a
+    /// mip-streamed resource shares with its current levels, then makes the reloads current. Call it before the frame
+    /// reads any handle, so the frame samples what it copied; the copies order after earlier frames' sampling.
+    pub fn record_mip_copies(&self, command_buffer: vk::CommandBuffer) {
+        let mip_entries: Vec<_> = self.shared.registry().mip_entries.values().cloned().collect();
+        let device = self.shared.environment.memory.device();
+
+        for entry in mip_entries {
+            entry.record_copies(device, command_buffer);
+        }
+    }
+
     /// Registers paged data that streams through `source` in pages of `format`, named `name` in messages. The set's
     /// pages load and evict in `update`, by what it requests and what the memory budget allows.
     pub fn stream<S: PageSource>(&self, source: S, format: PageFormat, name: impl Into<String>) -> StreamedSet<S> {
@@ -135,6 +188,7 @@ impl Resources {
         registry.compact();
         drop(registry);
         self.finish_uploads();
+        self.update_mip_residency(now);
         let max_reads = Resources::worker_count(shared.budget().limits) * READS_PER_WORKER;
         shared
             .streamer()
@@ -151,7 +205,7 @@ impl Resources {
     fn request<K: ResourceKind>(&self, request: LoadRequest, options: K::Options) -> ResourceHandle<K> {
         let shared = &self.shared;
         let mut registry = shared.registry();
-        let key = ResourceKey::<K> {
+        let key = ResourceKey::<K::Options> {
             path: request.path.clone(),
             options,
         };
@@ -227,6 +281,16 @@ impl Resources {
         self.shared.uploading().extend(uploading);
     }
 
+    fn update_mip_residency(&self, update: u64) {
+        let shared = &self.shared;
+        let mip_entries: Vec<_> = shared.registry().mip_entries.values().cloned().collect();
+        let now = Instant::now();
+
+        for entry in mip_entries {
+            entry.update_residency(update, now, &shared.environment, &shared.uploading, &shared.pool);
+        }
+    }
+
     fn keep_within_budget(&self, now: u64) {
         let shared = &self.shared;
         let mut reading = self.budget_reading();
@@ -259,6 +323,7 @@ impl Resources {
 
         let mut registry = shared.registry();
         let mut soft: Vec<SoftUsage> = registry.unreferenced_usage().collect();
+        soft.extend(registry.mip_entries.values().filter_map(|entry| entry.retained_usage()));
 
         if overage.video > 0 {
             soft.extend(streamer.chunk_usage());
@@ -288,6 +353,11 @@ impl Resources {
                     }
                 }
                 SoftOwner::PageBytes(page) => streamer.evict_page_bytes(page),
+                SoftOwner::RetainedLevels(id) => {
+                    if let Some(entry) = registry.mip_entries.get(&id) {
+                        entry.release_retained();
+                    }
+                }
             }
         }
     }
@@ -373,7 +443,7 @@ mod tests {
 
     use super::*;
     use crate::streaming::PagePool;
-    use crate::{PageRequest, Residency};
+    use crate::{PageRequest, Residency, StreamedMips};
 
     const PAGE_EXTENT: u32 = 64;
     const TEXEL_SIZE: u32 = 4;
@@ -718,5 +788,140 @@ mod tests {
         harness.set.set_residency(Residency::Live);
         harness.run_until(&levels(3..=3), |harness| harness.all_resident(&levels(3..=3)));
         harness.assert_clean();
+    }
+
+    const KTX2_IDENTIFIER: &[u8; 12] = b"\xabKTX 20\xbb\r\n\x1a\n";
+    const KTX2_HEADER_SIZE: usize = 80;
+    const KTX2_LEVEL_ENTRY_SIZE: usize = 24;
+    const VK_FORMAT_R8G8B8A8_UNORM: u32 = 37;
+    const CUBE_FACES: usize = 6;
+    const CUBE_SIDE: u32 = 4;
+    const CUBE_LEVELS: u32 = 3;
+
+    // An uncompressed RGBA8 cube map whose every texel of a level holds that level's number.
+    fn write_tagged_cube(path: &std::path::Path) {
+        let levels: Vec<Vec<u8>> = (0..CUBE_LEVELS)
+            .map(|level| {
+                let side = (CUBE_SIDE >> level) as usize;
+                vec![level as u8; side * side * TEXEL_SIZE as usize * CUBE_FACES]
+            })
+            .collect();
+        let mut bytes = KTX2_IDENTIFIER.to_vec();
+
+        for word in [
+            VK_FORMAT_R8G8B8A8_UNORM,
+            1,
+            CUBE_SIDE,
+            CUBE_SIDE,
+            0,
+            0,
+            CUBE_FACES as u32,
+            CUBE_LEVELS,
+            0,
+        ] {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+
+        bytes.resize(KTX2_HEADER_SIZE, 0);
+        let mut offset = KTX2_HEADER_SIZE + levels.len() * KTX2_LEVEL_ENTRY_SIZE;
+
+        for level in &levels {
+            for long in [offset, level.len(), level.len()] {
+                bytes.extend_from_slice(&(long as u64).to_le_bytes());
+            }
+            offset += level.len();
+        }
+
+        for level in &levels {
+            bytes.extend_from_slice(level);
+        }
+
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    fn demand(finest_level: u32) -> crate::MipDemand {
+        crate::MipDemand {
+            finest_level,
+            retention: Duration::ZERO,
+        }
+    }
+
+    // Updates and records each frame's copies until the resident first level is `level`.
+    fn run_mips_until(
+        resources: &Resources,
+        device: &TestDevice,
+        handle: &MipHandle<crate::CubeMap>,
+        level: u32,
+    ) -> Arc<crate::CubeMap> {
+        for _ in 0..MAX_FRAMES {
+            resources.update().unwrap();
+            device
+                .run(|command_buffer| resources.record_mip_copies(command_buffer))
+                .unwrap();
+
+            if let Some(current) = handle.get()
+                && current.first_level() == level
+            {
+                return current;
+            }
+
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        panic!("the levels from {level} did not become resident in {MAX_FRAMES} frames");
+    }
+
+    #[test]
+    fn mip_levels_stream_in_and_out_keeping_the_levels_they_share() {
+        let _gpu = GPU.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let device = TestDevice::new().unwrap();
+        let resources = Resources::new(device.memory(), device.transfer(), device.bindless());
+        let path = std::env::temp_dir().join(format!("xsa-mips-{}.ktx2", std::process::id()));
+        write_tagged_cube(&path);
+        let handle = resources.load_mips::<crate::CubeMap>(
+            LoadRequest::new(&path, "tagged cube"),
+            resource_loader::texture::ColorSpace::Linear,
+        );
+        handle.set_demand(demand(2));
+        run_mips_until(&resources, &device, &handle, 2);
+        handle.set_demand(demand(0));
+        let finest = run_mips_until(&resources, &device, &handle, 0);
+        assert_eq!(finest.image().subresource_range().level_count, CUBE_LEVELS);
+        drop(finest);
+        handle.set_demand(demand(1));
+        let coarser = run_mips_until(&resources, &device, &handle, 1);
+        let side = CUBE_SIDE >> 1;
+        let to_copy_source = vk::ImageMemoryBarrier2::default()
+            .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+            .dst_stage_mask(vk::PipelineStageFlags2::COPY)
+            .dst_access_mask(vk::AccessFlags2::TRANSFER_READ)
+            .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .image(coarser.image().handle())
+            .subresource_range(coarser.image().subresource_range());
+        device
+            .run(|command_buffer| unsafe {
+                device.memory().device().cmd_pipeline_barrier2(
+                    command_buffer,
+                    &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&to_copy_source)),
+                );
+            })
+            .unwrap();
+        let bytes = device
+            .read_region(
+                coarser.image(),
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                vk::Offset2D::default(),
+                vk::Extent2D {
+                    width: side,
+                    height: side,
+                },
+                (side * side * TEXEL_SIZE) as usize,
+            )
+            .unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(bytes, vec![1; (side * side * TEXEL_SIZE) as usize]);
+        assert_eq!(device.validation_messages(), Vec::<String>::new());
     }
 }

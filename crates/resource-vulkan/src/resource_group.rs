@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{AnyEntry, AnyHandle, GroupProgress, ResourceHandle, ResourceKind};
+use crate::{AnyEntry, AnyHandle, GroupProgress, MipHandle, ResourceHandle, ResourceKind, StreamedMips};
 
 /// A set of resources owned by whoever needs them together, such as a scene: its progress, and one place to raise
 /// their priority. It holds its resources as a handle would.
@@ -15,6 +15,11 @@ impl ResourceGroup {
     }
 
     pub fn add<K: ResourceKind>(&mut self, handle: &ResourceHandle<K>) {
+        self.members
+            .push(AnyHandle::new(Arc::clone(&handle.entry) as Arc<dyn AnyEntry>));
+    }
+
+    pub fn add_mips<K: StreamedMips>(&mut self, handle: &MipHandle<K>) {
         self.members
             .push(AnyHandle::new(Arc::clone(&handle.entry) as Arc<dyn AnyEntry>));
     }

@@ -31,7 +31,7 @@ impl<K: ResourceKind> Entry<K> {
         }
     }
 
-    pub fn key(&self) -> ResourceKey<K> {
+    pub fn key(&self) -> ResourceKey<K::Options> {
         ResourceKey {
             path: self.status.path().to_path_buf(),
             options: self.options.clone(),
