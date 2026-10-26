@@ -20,17 +20,17 @@ pub enum MaterialDefinition {
         color: Vec3,
         luminance: Option<f32>,
     },
-    // A body's terrain shaded with Hapke 2012; `color`, `normal`, `medium` and `opposition` are terrain layers. The
-    // albedo comes from the color layer; the particulate medium layer holds b, c, θ̄ in degrees and porosity K, the
-    // opposition layer B_S0, h_S, B_C0 and h_C. Without both of those two, it is shaded with Lambert.
+    // A body's terrain shaded with Hapke 2012, its maps cube maps. The albedo comes from the color map; the scatter map
+    // holds the particulate medium's b, c, θ̄ in degrees and porosity K, the surge map the opposition surge's B_S0,
+    // h_S, B_C0 and h_C. Without both of those two, it is shaded with Lambert.
     Hapke {
         base_color: Vec3,
         color: Option<PathBuf>,
         normal: Option<PathBuf>,
         emissive: Option<PathBuf>,
         emissive_luminance: f32,
-        medium: Option<PathBuf>,
-        opposition: Option<PathBuf>,
+        scatter: Option<PathBuf>,
+        surge: Option<PathBuf>,
     },
 }
 
@@ -69,13 +69,6 @@ impl MaterialDefinition {
                 None => Ok(None),
             }
         };
-
-        let layer = |name: &str| -> anyhow::Result<Option<PathBuf>> {
-            match document.optional_node(name) {
-                Some(node) => context.available_terrain_layer(node.string_argument()?),
-                None => Ok(None),
-            }
-        };
         let emission = || -> anyhow::Result<(Option<PathBuf>, f32)> {
             let emissive = texture("emissive-texture")?;
             let emissive_luminance = number("emissive-luminance")?;
@@ -102,32 +95,32 @@ impl MaterialDefinition {
 
                 Ok(MaterialDefinition::Lambert {
                     base_color: color("base-color")?,
-                    color: texture("color-texture")?,
-                    normal: texture("normal-texture")?,
+                    color: texture("color")?,
+                    normal: texture("normal")?,
                     emissive,
                     emissive_luminance,
                 })
             }
             "base:terrain/hapke" => {
                 let (emissive, emissive_luminance) = emission()?;
-                let medium = layer("medium-terrain")?;
-                let opposition = layer("opposition-terrain")?;
+                let scatter = texture("scatter")?;
+                let surge = texture("surge")?;
 
-                if medium.is_none() || opposition.is_none() {
+                if scatter.is_none() || surge.is_none() {
                     tracing::warn!(
-                        "{}: without both Hapke layers, the terrain is shaded with Lambert",
+                        "{}: without both its scatter and surge maps, the terrain is shaded with Lambert",
                         context.id
                     );
                 }
 
                 Ok(MaterialDefinition::Hapke {
                     base_color: color("base-color")?,
-                    color: layer("color-terrain")?,
-                    normal: layer("normal-terrain")?,
+                    color: texture("color")?,
+                    normal: texture("normal")?,
                     emissive,
                     emissive_luminance,
-                    medium,
-                    opposition,
+                    scatter,
+                    surge,
                 })
             }
             _ => bail!("shader {shader} is not supported by materials yet"),

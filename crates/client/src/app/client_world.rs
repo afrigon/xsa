@@ -426,19 +426,19 @@ impl ClientWorld {
         resources: &Resources,
         group: &mut ResourceGroup,
     ) -> Option<TerrainPages> {
-        let heights = terrain.and_then(|definition| definition.height_map.clone());
+        let heights = terrain.and_then(|definition| Some(definition.height_map.as_ref()?.path.clone()));
         let layers = match material {
             MaterialDefinition::Hapke {
                 color,
                 normal,
-                medium,
-                opposition,
+                scatter,
+                surge,
                 ..
             } => TerrainLayer::ALL.map(|layer| match layer {
                 TerrainLayer::Color => color.clone(),
                 TerrainLayer::Normal => normal.clone(),
-                TerrainLayer::Medium => medium.clone(),
-                TerrainLayer::Opposition => opposition.clone(),
+                TerrainLayer::Medium => scatter.clone(),
+                TerrainLayer::Opposition => surge.clone(),
             }),
             MaterialDefinition::Lambert { .. } | MaterialDefinition::Emissive { .. } => Default::default(),
         };
