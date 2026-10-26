@@ -1,14 +1,12 @@
-use std::path::PathBuf;
-
 use anyhow::{Context, ensure};
 use xsa_core::simulation::BodyDescription;
 
-use crate::{BiomeDefinition, Document, Id, NodeExtension, PackData, PackStack, ParseContext};
+use crate::{BiomeDefinition, Document, HeightMapDefinition, Id, NodeExtension, PackData, PackStack, ParseContext};
 
-const HEIGHT_MAP_EXTENSION: &str = "terrain";
+const HEIGHT_MAP_EXTENSION: &str = "ktx2";
 
 pub struct TerrainDefinition {
-    pub height_map: Option<PathBuf>,
+    pub height_map: Option<HeightMapDefinition>,
     // The kinds of ground the body has, each with its file in `data/biomes/`.
     pub biomes: Vec<Id>,
 }
@@ -37,13 +35,23 @@ impl PackData for TerrainDefinition {
 
     fn parse(document: &Document, context: &ParseContext) -> anyhow::Result<TerrainDefinition> {
         let height_map = context.parse_id(document.node("height-map")?.string_argument()?)?;
+        let minimum = document.node("minimum")?.number_argument()?;
+        let maximum = document.node("maximum")?.number_argument()?;
+        ensure!(
+            minimum <= maximum,
+            "the minimum height {minimum} is above the maximum {maximum}"
+        );
 
         // A missing height map leaves a smooth body, so content loads before its generated files exist.
         let height_map = match context
             .stack
             .data_file(TerrainDefinition::KIND, &height_map, HEIGHT_MAP_EXTENSION)
         {
-            Ok(path) => Some(path.to_path_buf()),
+            Ok(path) => Some(HeightMapDefinition {
+                path: path.to_path_buf(),
+                minimum,
+                maximum,
+            }),
             Err(err) => {
                 tracing::warn!("{}: {err:#}", context.id);
                 None

@@ -72,7 +72,12 @@ fn remove(directory: &Path) {
 
 #[test]
 fn a_terrain_names_its_biome() {
-    let pack = TestPack::new("named", "height-map \"rock\"\nbiome \"rock/plains\"\n", BODY, &TEXTURES);
+    let pack = TestPack::new(
+        "named",
+        "height-map \"rock\"\nminimum -100\nmaximum 100\nbiome \"rock/plains\"\n",
+        BODY,
+        &TEXTURES,
+    );
     let terrain = pack
         .stack
         .load_data::<TerrainDefinition>(&TestPack::id("rock"))
@@ -83,7 +88,7 @@ fn a_terrain_names_its_biome() {
 
 #[test]
 fn a_terrain_holds_a_single_biome() {
-    let terrain = "height-map \"rock\"\nbiome \"rock/plains\"\nbiome \"rock/hills\"\n";
+    let terrain = "height-map \"rock\"\nminimum -100\nmaximum 100\nbiome \"rock/plains\"\nbiome \"rock/hills\"\n";
     let pack = TestPack::new("several", terrain, BODY, &TEXTURES);
 
     assert!(

@@ -20,7 +20,6 @@ mod terrain_config;
 mod terrain_debug_view_choice;
 mod terrain_height_config;
 mod terrain_lod_config;
-mod terrain_streaming_config;
 mod tonemapper_choice;
 mod video_config;
 mod white_balance_config;
@@ -42,7 +41,6 @@ pub use service_config::ServiceConfig;
 pub use terrain_config::TerrainConfig;
 pub use terrain_height_config::TerrainHeightConfig;
 pub use terrain_lod_config::TerrainLodConfig;
-pub use terrain_streaming_config::TerrainStreamingConfig;
 pub use video_config::VideoConfig;
 pub use white_balance_config::WhiteBalanceConfig;
 
@@ -122,7 +120,7 @@ mod tests {
             "input.commands.enabled",
             "input.bind.camera.target-next",
             "terrain.lod.vertex-spacing",
-            "terrain.streaming.freeze",
+            "terrain.texture-retention",
             "animation.duration-scale",
             "animation.camera.enabled",
             "service.resources.video-memory.max-usage",

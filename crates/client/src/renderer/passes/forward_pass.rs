@@ -140,7 +140,7 @@ impl ForwardPass {
                     terrain.object.index,
                     terrain.material,
                     draw.first_tile,
-                    frame.surface_anchors(draw.terrain),
+                    Some(draw.terrain),
                 );
                 recorder.draw_indexed(self.grids.indices(draw.grid_cells), draw.tile_count);
                 let cells = u64::from(draw.grid_cells).pow(2);

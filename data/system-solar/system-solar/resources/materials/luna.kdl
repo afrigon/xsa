@@ -1,6 +1,8 @@
 shader "base:terrain/hapke"
 base-color 0.0987 0.0950 0.0912
-color-terrain "bodies/luna/color"
-normal-terrain "bodies/luna/normal"
-medium-terrain "bodies/luna/hapke-medium"
-opposition-terrain "bodies/luna/hapke-opposition"
+color "bodies/luna/color"
+normal "bodies/luna/normal"
+scattering "bodies/luna/scattering"
+surge "bodies/luna/surge"
+macroscopic-roughness 23.6566
+porosity 1.0000

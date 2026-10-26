@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use resource_vulkan::ResourceLimits;
 use xsa_commands::logging::LoggingConfig;
@@ -7,8 +8,7 @@ use xsa_input::{InputChord, Key, Modifier};
 use super::{
     AnimationConfig, AnimationGroupConfig, AntialiasingKind, BindAction, BindConfig, BloomConfig, Config,
     DebugCameraConfig, DebugConfig, InputConfig, InputSourceConfig, LensConfig, RenderConfig, ResourcesConfig,
-    ServiceConfig, TerrainConfig, TerrainHeightConfig, TerrainLodConfig, TerrainStreamingConfig, VideoConfig,
-    WhiteBalanceConfig,
+    ServiceConfig, TerrainConfig, TerrainHeightConfig, TerrainLodConfig, VideoConfig, WhiteBalanceConfig,
 };
 
 use crate::renderer::Tonemapper;
@@ -24,6 +24,8 @@ const DEBUG_CAMERA_SPEED: f32 = 2_000_000.0;
 // A starting point to tune from, not a measured optimum.
 const TERRAIN_VERTEX_SPACING_PIXELS: f32 = 16.0;
 const TERRAIN_HEIGHT_SCALE: f32 = 1.0;
+// Long enough for a camera to look from one body to another and back without reloading either.
+const TERRAIN_TEXTURE_RETENTION: Duration = Duration::from_secs(30);
 
 struct DefaultBind {
     action: BindAction,
@@ -99,11 +101,11 @@ impl Default for Config {
                     vertex_spacing_pixels: TERRAIN_VERTEX_SPACING_PIXELS,
                     freeze: false,
                 },
-                streaming: TerrainStreamingConfig { freeze: false },
                 height: TerrainHeightConfig {
                     enabled: true,
                     scale: TERRAIN_HEIGHT_SCALE,
                 },
+                texture_retention: TERRAIN_TEXTURE_RETENTION,
             },
             animation: AnimationConfig {
                 all: RUNNING_ANIMATIONS,

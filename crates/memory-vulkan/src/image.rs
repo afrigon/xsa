@@ -11,6 +11,7 @@ pub struct Image {
     image: DeviceObject<vk::Image>,
     allocation: DeviceObject<Allocation>,
     format: vk::Format,
+    extent: vk::Extent2D,
     aspect: vk::ImageAspectFlags,
     mip_levels: u32,
     kind: ImageKind,
@@ -90,6 +91,7 @@ impl Image {
             image,
             allocation,
             format: description.format,
+            extent: description.extent,
             aspect: description.aspect,
             mip_levels: description.mip_levels,
             kind: description.kind,
@@ -98,6 +100,11 @@ impl Image {
 
     pub fn handle(&self) -> vk::Image {
         self.image.handle()
+    }
+
+    /// The width and height of its largest level.
+    pub fn extent(&self) -> vk::Extent2D {
+        self.extent
     }
 
     /// The bytes of memory it occupies.

@@ -6,7 +6,7 @@ use xui::DrawList;
 
 use super::command_recorder::CommandRecorder;
 use super::frame::Frame;
-use super::gpu_data::{PushConstants, SurfaceAnchorData};
+use super::gpu_data::{PushConstants, SurfaceAnchorData, TerrainData};
 use super::graph_textures::GraphTextures;
 use super::lens_flare::LensFlare;
 use super::material::MaterialBuffer;
@@ -46,7 +46,7 @@ impl FrameContext<'_> {
         object_index: usize,
         material: MaterialHandle,
         first_tile: u32,
-        surface_anchors: vk::DeviceAddress,
+        terrain: Option<TerrainHandle>,
     ) {
         self.recorder.push_graphics_constants(
             pipeline,
@@ -60,8 +60,11 @@ impl FrameContext<'_> {
                 object_index: object_index as u32,
                 first_tile,
                 tiles: self.frame.tiles.device_address(),
-                tile_pages: self.frame.tile_pages.device_address(),
-                surface_anchors,
+                terrain: terrain.map_or(NO_ADDRESS, |terrain| {
+                    self.frame.terrains.device_address()
+                        + (terrain.index * size_of::<TerrainData>()) as vk::DeviceAddress
+                }),
+                surface_anchors: terrain.map_or(NO_ADDRESS, |terrain| self.surface_anchors(terrain)),
             },
         );
     }

@@ -189,7 +189,7 @@ impl App {
         let base = PackStack::load(&self.packs_directory, &[BASE_PACK.to_string()])?;
         let shaders = ShaderBinaries::load(&base)?;
         let renderer = Renderer::new(window, &shaders, &self.config)?;
-        self.resources = Some(renderer.create_resources());
+        self.resources = Some(renderer.resources().clone());
         self.renderer = Some(renderer);
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
         self.cameras = Some(CameraController::new(window.inner_size(), &self.config.debug.camera));

@@ -3,7 +3,7 @@ mod data;
 mod dependency;
 mod document;
 mod from_node;
-mod height_page_reader;
+mod height_map_definition;
 mod id;
 mod lens;
 mod manifest;
@@ -21,7 +21,7 @@ pub use biome::{BiomeDefinition, BiomeSurfacesDefinition, CurvatureBias, Handove
 pub use dependency::Dependency;
 pub use document::{Document, NodeExtension};
 pub use from_node::FromNode;
-pub use height_page_reader::HeightPageReader;
+pub use height_map_definition::HeightMapDefinition;
 pub use id::{Id, NAMESPACE_SEPARATOR};
 pub use lens::{GhostDefinition, GlareDefinition, LensDefinition, OffAxisFalloffDefinition, StarburstDefinition};
 pub use manifest::Manifest;

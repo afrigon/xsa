@@ -269,7 +269,7 @@ in `resources/textures/`, referenced by the body's material. Each layer has:
 - equal-angle faces: a face coordinate s from −1 to 1 lies at the angle
   π/4 · s from the face's center, so texels are evenly spaced by angle and
   their ground size varies far less than on a plain (gnomonic) cube;
-- a face size that is a power of two, at least 128;
+- a face size that is a power of two, at least 4;
 - its full mip chain, each level the average of the one above;
 - texels in the layer's format:
 
@@ -281,7 +281,10 @@ in `resources/textures/`, referenced by the body's material. Each layer has:
 | Scattering | `R16G16_SFLOAT` |
 | Surge | `R16G16B16A16_SFLOAT` |
 
-The game loads each layer as it is stored.
+The game loads each layer as it is stored. Each level is compressed on its own
+(KTX2's Zstandard supercompression or none), so the game reads only the levels
+it keeps resident: the finer ones load as the camera nears the body and leave a
+while after it moves away.
 
 ### Biomes — `<namespace>/data/biomes/`
 

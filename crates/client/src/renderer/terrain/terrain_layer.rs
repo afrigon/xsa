@@ -1,19 +1,18 @@
-// A layer of a terrain that shading reads, each streamed from its own `.terrain` file; its index is its place in a
-// tile's pages.
+// A map of a terrain that shading reads, besides its heights; its index is its slot in the terrain's data.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum TerrainLayer {
     Color,
     Normal,
-    Medium,
-    Opposition,
+    Scattering,
+    Surge,
 }
 
 impl TerrainLayer {
     pub const ALL: [TerrainLayer; 4] = [
         TerrainLayer::Color,
         TerrainLayer::Normal,
-        TerrainLayer::Medium,
-        TerrainLayer::Opposition,
+        TerrainLayer::Scattering,
+        TerrainLayer::Surge,
     ];
 
     pub fn index(self) -> usize {
@@ -24,8 +23,8 @@ impl TerrainLayer {
         match self {
             TerrainLayer::Color => "color",
             TerrainLayer::Normal => "normal",
-            TerrainLayer::Medium => "hapke medium",
-            TerrainLayer::Opposition => "hapke opposition",
+            TerrainLayer::Scattering => "scattering",
+            TerrainLayer::Surge => "surge",
         }
     }
 }

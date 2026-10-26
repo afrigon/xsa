@@ -4,6 +4,7 @@ mod horizon_culler;
 mod quad_sphere_tile;
 mod selected_tile;
 mod tile_height_bounds;
+mod tile_selection;
 
 pub(in crate::renderer) use detail_ranges::{COARSEST_DETAIL, DetailRanges};
 pub(in crate::renderer) use height_range::HeightRange;
@@ -11,6 +12,7 @@ pub(in crate::renderer) use horizon_culler::HorizonCuller;
 pub(in crate::renderer) use quad_sphere_tile::QuadSphereTile;
 pub(in crate::renderer) use selected_tile::SelectedTile;
 pub(in crate::renderer) use tile_height_bounds::TileHeightBounds;
+use tile_selection::TileSelection;
 
 use glam::{DQuat, DVec3};
 
@@ -36,66 +38,66 @@ pub(in crate::renderer) struct QuadSphere<'a> {
 impl QuadSphere<'_> {
     pub fn select(&self, ranges: &DetailRanges, culler: &Culler, tiles: &mut Vec<SelectedTile>) {
         let camera = self.orientation.inverse() * -self.center;
-        let lowest = self
+        let overall = self
             .height
             .and_then(|height| height.overall_range())
-            .map_or(0.0, |range| range.scaled(self.height_scale).minimum)
-            - self.relief;
-        let horizon = HorizonCuller::new(camera, self.radius + lowest);
+            .unwrap_or(HeightRange::SMOOTH)
+            .scaled(self.height_scale)
+            .widened(self.relief);
+        let selection = TileSelection {
+            camera,
+            overall,
+            ranges,
+            culler,
+            horizon: HorizonCuller::new(camera, self.radius + overall.minimum),
+        };
 
         for root in QuadSphereTile::roots() {
-            self.select_tile(root, camera, ranges, culler, &horizon, tiles);
+            self.select_tile(root, &selection, tiles);
         }
     }
 
-    fn select_tile(
-        &self,
-        tile: QuadSphereTile,
-        camera: DVec3,
-        ranges: &DetailRanges,
-        culler: &Culler,
-        horizon: &HorizonCuller,
-        tiles: &mut Vec<SelectedTile>,
-    ) {
+    fn select_tile(&self, tile: QuadSphereTile, selection: &TileSelection, tiles: &mut Vec<SelectedTile>) {
         let direction = tile.cube_center().normalize();
         let chord_radius = tile.chord_radius();
         let angular_radius = 2.0 * (chord_radius / 2.0).asin();
+        let farthest_possible = self.bounding_center(direction, selection.overall).length()
+            + self.bounding_radius(chord_radius, selection.overall);
 
         let height = self
             .height
-            .and_then(|height| height.tile_range(tile))
+            .and_then(|height| height.tile_range(tile, farthest_possible))
             .unwrap_or(HeightRange::SMOOTH)
             .scaled(self.height_scale)
             .widened(self.relief);
 
-        if horizon.is_hidden(direction, angular_radius, self.radius + height.maximum) {
+        if selection
+            .horizon
+            .is_hidden(direction, angular_radius, self.radius + height.maximum)
+        {
             return;
         }
 
         let center = self.bounding_center(direction, height);
         let bounding_radius = self.bounding_radius(chord_radius, height);
 
-        if !culler.is_visible(center, bounding_radius) {
+        if !selection.culler.is_visible(center, bounding_radius) {
             return;
         }
 
-        let nearest = self.nearest_distance(camera, direction, angular_radius, height);
-        let detail = ranges
+        let nearest = self.nearest_distance(selection.camera, direction, angular_radius, height);
+        let detail = selection
+            .ranges
             .detail(tile.depth, nearest)
             .or((tile.depth == DEEPEST_DEPTH).then_some(DEEPEST_DEPTH as i32));
 
         if let Some(detail) = detail {
-            tiles.push(SelectedTile {
-                tile,
-                detail,
-                nearest,
-                farthest: center.length() + bounding_radius,
-            });
+            tiles.push(SelectedTile { tile, detail, nearest });
             return;
         }
 
         for child in tile.children() {
-            self.select_tile(child, camera, ranges, culler, horizon, tiles);
+            self.select_tile(child, selection, tiles);
         }
     }
 
@@ -162,7 +164,7 @@ mod tests {
             })
         }
 
-        fn tile_range(&self, _: QuadSphereTile) -> Option<HeightRange> {
+        fn tile_range(&self, _: QuadSphereTile, _: f64) -> Option<HeightRange> {
             Some(self.tile)
         }
     }

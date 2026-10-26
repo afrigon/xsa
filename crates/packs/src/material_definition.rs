@@ -9,6 +9,7 @@ const MATERIALS: &str = "materials";
 const BODY_OBJECTS: &str = "objects/bodies";
 
 pub enum MaterialDefinition {
+    // `color` and `normal` are terrain layers.
     Lambert {
         base_color: Vec3,
         color: Option<PathBuf>,
@@ -20,17 +21,20 @@ pub enum MaterialDefinition {
         color: Vec3,
         luminance: Option<f32>,
     },
-    // A body's terrain shaded with Hapke 2012; `color`, `normal`, `medium` and `opposition` are terrain layers. The
-    // albedo comes from the color layer; the particulate medium layer holds b, c, θ̄ in degrees and porosity K, the
-    // opposition layer B_S0, h_S, B_C0 and h_C. Without both of those two, it is shaded with Lambert.
+    // A body's terrain shaded with Hapke 2012, its maps terrain layers. The albedo comes from the color layer; the
+    // scattering layer holds the phase function's b and c, the surge layer the opposition effects' B_S0, h_S, B_C0
+    // and h_C. The macroscopic roughness θ̄ (degrees) and the porosity coefficient K hold over the whole body. Without
+    // both layers, it is shaded with Lambert.
     Hapke {
         base_color: Vec3,
         color: Option<PathBuf>,
         normal: Option<PathBuf>,
         emissive: Option<PathBuf>,
         emissive_luminance: f32,
-        medium: Option<PathBuf>,
-        opposition: Option<PathBuf>,
+        scattering: Option<PathBuf>,
+        surge: Option<PathBuf>,
+        macroscopic_roughness_degrees: f32,
+        porosity: f32,
     },
 }
 
@@ -69,19 +73,12 @@ impl MaterialDefinition {
                 None => Ok(None),
             }
         };
-
-        let layer = |name: &str| -> anyhow::Result<Option<PathBuf>> {
-            match document.optional_node(name) {
-                Some(node) => context.available_terrain_layer(node.string_argument()?),
-                None => Ok(None),
-            }
-        };
         let emission = || -> anyhow::Result<(Option<PathBuf>, f32)> {
-            let emissive = texture("emissive-texture")?;
+            let emissive = texture("emissive")?;
             let emissive_luminance = number("emissive-luminance")?;
             ensure!(
                 emissive.is_none() || emissive_luminance.is_some(),
-                "an `emissive-texture` needs an `emissive-luminance` in cd/m²"
+                "an `emissive` texture needs an `emissive-luminance` in cd/m²"
             );
 
             Ok((emissive, emissive_luminance.unwrap_or(0.0)))
@@ -102,32 +99,34 @@ impl MaterialDefinition {
 
                 Ok(MaterialDefinition::Lambert {
                     base_color: color("base-color")?,
-                    color: texture("color-texture")?,
-                    normal: texture("normal-texture")?,
+                    color: texture("color")?,
+                    normal: texture("normal")?,
                     emissive,
                     emissive_luminance,
                 })
             }
             "base:terrain/hapke" => {
                 let (emissive, emissive_luminance) = emission()?;
-                let medium = layer("medium-terrain")?;
-                let opposition = layer("opposition-terrain")?;
+                let scattering = texture("scattering")?;
+                let surge = texture("surge")?;
 
-                if medium.is_none() || opposition.is_none() {
+                if scattering.is_none() || surge.is_none() {
                     tracing::warn!(
-                        "{}: without both Hapke layers, the terrain is shaded with Lambert",
+                        "{}: without both its scattering and surge layers, the terrain is shaded with Lambert",
                         context.id
                     );
                 }
 
                 Ok(MaterialDefinition::Hapke {
                     base_color: color("base-color")?,
-                    color: layer("color-terrain")?,
-                    normal: layer("normal-terrain")?,
+                    color: texture("color")?,
+                    normal: texture("normal")?,
                     emissive,
                     emissive_luminance,
-                    medium,
-                    opposition,
+                    scattering,
+                    surge,
+                    macroscopic_roughness_degrees: document.node("macroscopic-roughness")?.number_argument()? as f32,
+                    porosity: document.node("porosity")?.number_argument()? as f32,
                 })
             }
             _ => bail!("shader {shader} is not supported by materials yet"),

@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io::BufReader;
+use std::ops::Range;
 use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
@@ -8,14 +11,16 @@ use crate::utils::HalfFloat;
 const HALF_BYTES: usize = 2;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 4 * HALF_BYTES;
 
-/// A decoded texture: one or more layers arranged as its kind says, each holding its full mip chain, largest level
-/// first, with the key/value metadata its file carries.
+/// A decoded texture: one or more layers arranged as its kind says, each holding the mip levels `levels` of its chain,
+/// largest first, with the key/value metadata its file carries. `width`, `height` and `mip_levels` describe the whole
+/// texture, level 0 included.
 pub struct TextureImage {
     pub(super) format: TextureFormat,
     pub(super) kind: TextureKind,
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) mip_levels: u32,
+    pub(super) levels: Range<u32>,
     pub(super) layers: Vec<Vec<u8>>,
     pub(super) metadata: TextureMetadata,
 }
@@ -37,6 +42,7 @@ impl TextureImage {
             width,
             height,
             mip_levels,
+            levels: 0..mip_levels,
             layers,
             metadata: TextureMetadata::default(),
         };
@@ -58,6 +64,22 @@ impl TextureImage {
     pub fn read(path: &Path, color_space: ColorSpace) -> anyhow::Result<TextureImage> {
         TextureImage::read_stored(path)?
             .in_color_space(color_space)
+            .with_context(|| format!("{}", path.display()))
+    }
+
+    /// Reads `levels` of a KTX2 file, its texels meant in a color space, without reading the other levels' data. An
+    /// empty range reads only the texture's shape.
+    pub fn read_levels(path: &Path, color_space: ColorSpace, levels: Range<u32>) -> anyhow::Result<TextureImage> {
+        let extension = path.extension().and_then(|extension| extension.to_str());
+        ensure!(
+            extension == Some(Ktx2Loader::EXTENSION),
+            "{}: only KTX2 files store their levels apart",
+            path.display()
+        );
+
+        let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+        Ktx2Loader::read(BufReader::new(file), levels)
+            .and_then(|image| image.in_color_space(color_space))
             .with_context(|| format!("{}", path.display()))
     }
 
@@ -106,7 +128,12 @@ impl TextureImage {
         self.mip_levels
     }
 
-    /// Each layer's mip chain, largest level first, levels packed without padding.
+    /// The levels the layers hold.
+    pub fn levels(&self) -> Range<u32> {
+        self.levels.clone()
+    }
+
+    /// Each layer's `levels`, largest first, packed without padding.
     pub fn layers(&self) -> &[Vec<u8>] {
         &self.layers
     }
@@ -165,7 +192,7 @@ impl TextureImage {
         Ok(())
     }
 
-    // The size in bytes of a layer's mip chain as the file's header declares it, refusing shapes no valid file has
+    // The size in bytes of a layer's `levels`, as the file's header declares them, refusing shapes no valid file has
     // and sizes that overflow, so nothing is allocated from an impossible header.
     pub(super) fn layer_size(&self) -> anyhow::Result<usize> {
         ensure!(
@@ -183,8 +210,15 @@ impl TextureImage {
             self.width,
             self.height
         );
+        ensure!(
+            self.levels.start <= self.levels.end && self.levels.end <= self.mip_levels,
+            "levels {:?} of {} mip levels",
+            self.levels,
+            self.mip_levels
+        );
 
-        (0..self.mip_levels)
+        self.levels
+            .clone()
             .try_fold(0usize, |size, level| {
                 size.checked_add(
                     self.format

@@ -74,7 +74,7 @@ saved) of that level:
 | Key | Views | Shown on |
 | --- | --- | --- |
 | `render.shader.override` | `normals`, `depth`, `motion`, `lighting`, `triangles`, `albedo`, `roughness` | every draw, from its vertices and material sample |
-| `render.shader.terrain.override` | `lod`, `scale`, `page-levels`, `page-fallback` | every terrain program |
+| `render.shader.terrain.override` | `lod`, `scale`, `height-levels` | every terrain program |
 | `render.shader.surface.override` | `classes`, `planes`, `fade` | terrain programs with surfaces |
 
 Where several are set, a draw shows the most specific one it supports: its
@@ -121,7 +121,8 @@ shaders/
   light/                       light models shared by every program: star, lambert, hapke, roughness
   noise.slang                  seeded noise
   debug/                       generic views
-  terrain/                     the terrain family: vertex stage, heights, terrain layers, output, its views
+  terrain/                     the terrain family: vertex stage, cube map addressing, heights, terrain layers, output,
+                               its views
     hapke.slang  lambert.slang  emissive.slang    its programs
     surface/                   surfaces and their views
   skybox.slang

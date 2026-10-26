@@ -11,8 +11,8 @@ pub(in crate::renderer) struct PushConstants {
     pub object_index: u32,
     pub first_tile: u32,
     pub tiles: vk::DeviceAddress,
-    // The pages each tile reads, by tile index.
-    pub tile_pages: vk::DeviceAddress,
+    // The maps of the terrain drawn.
+    pub terrain: vk::DeviceAddress,
     // Where the camera stands in the terrain's surfaces; 0 for a terrain without surfaces.
     pub surface_anchors: vk::DeviceAddress,
 }

@@ -9,6 +9,7 @@ const BC4_BLOCK_BYTES: usize = 8;
 const BC5_BC7_BLOCK_BYTES: usize = 16;
 const RGBA8_TEXEL_BYTES: usize = 4;
 const RGBA16_FLOAT_TEXEL_BYTES: usize = 8;
+const RG16_FLOAT_TEXEL_BYTES: usize = 4;
 const R16_TEXEL_BYTES: usize = 2;
 const RG16_TEXEL_BYTES: usize = 4;
 const RG8_TEXEL_BYTES: usize = 2;
@@ -18,6 +19,7 @@ const VK_FORMAT_R8G8B8A8_UNORM: u32 = 37;
 const VK_FORMAT_R8G8B8A8_SRGB: u32 = 43;
 const VK_FORMAT_R16_UNORM: u32 = 70;
 const VK_FORMAT_R16G16_UNORM: u32 = 77;
+const VK_FORMAT_R16G16_SFLOAT: u32 = 83;
 const VK_FORMAT_R16G16B16A16_SFLOAT: u32 = 97;
 const VK_FORMAT_R32_SFLOAT: u32 = 100;
 const VK_FORMAT_BC4_UNORM_BLOCK: u32 = 139;
@@ -36,13 +38,14 @@ pub enum TextureFormat {
     Rgba8Unorm,
     Rgba8Srgb,
     Rgba16Float,
+    Rg16Float,
     R16Unorm,
     Rg16Unorm,
     R32Float,
 }
 
 impl TextureFormat {
-    const ALL: [TextureFormat; 11] = [
+    const ALL: [TextureFormat; 12] = [
         TextureFormat::Bc4Unorm,
         TextureFormat::Bc5Unorm,
         TextureFormat::Bc7Unorm,
@@ -51,6 +54,7 @@ impl TextureFormat {
         TextureFormat::Rgba8Unorm,
         TextureFormat::Rgba8Srgb,
         TextureFormat::Rgba16Float,
+        TextureFormat::Rg16Float,
         TextureFormat::R16Unorm,
         TextureFormat::Rg16Unorm,
         TextureFormat::R32Float,
@@ -74,6 +78,7 @@ impl TextureFormat {
             TextureFormat::Rgba8Unorm => VK_FORMAT_R8G8B8A8_UNORM,
             TextureFormat::Rgba8Srgb => VK_FORMAT_R8G8B8A8_SRGB,
             TextureFormat::Rgba16Float => VK_FORMAT_R16G16B16A16_SFLOAT,
+            TextureFormat::Rg16Float => VK_FORMAT_R16G16_SFLOAT,
             TextureFormat::R16Unorm => VK_FORMAT_R16_UNORM,
             TextureFormat::Rg16Unorm => VK_FORMAT_R16G16_UNORM,
             TextureFormat::R32Float => VK_FORMAT_R32_SFLOAT,
@@ -116,6 +121,7 @@ impl TextureFormat {
             | TextureFormat::Rgba8Unorm
             | TextureFormat::Rgba8Srgb
             | TextureFormat::Rgba16Float
+            | TextureFormat::Rg16Float
             | TextureFormat::R16Unorm
             | TextureFormat::Rg16Unorm
             | TextureFormat::R32Float => false,
@@ -130,6 +136,7 @@ impl TextureFormat {
             TextureFormat::Rg8Unorm => RG8_TEXEL_BYTES,
             TextureFormat::Rgba8Unorm | TextureFormat::Rgba8Srgb => RGBA8_TEXEL_BYTES,
             TextureFormat::Rgba16Float => RGBA16_FLOAT_TEXEL_BYTES,
+            TextureFormat::Rg16Float => RG16_FLOAT_TEXEL_BYTES,
             TextureFormat::R16Unorm => R16_TEXEL_BYTES,
             TextureFormat::Rg16Unorm => RG16_TEXEL_BYTES,
             TextureFormat::R32Float => R32_FLOAT_TEXEL_BYTES,
@@ -163,6 +170,7 @@ impl Display for TextureFormat {
             TextureFormat::Rgba8Unorm => "R8G8B8A8_UNORM",
             TextureFormat::Rgba8Srgb => "R8G8B8A8_SRGB",
             TextureFormat::Rgba16Float => "R16G16B16A16_SFLOAT",
+            TextureFormat::Rg16Float => "R16G16_SFLOAT",
             TextureFormat::R16Unorm => "R16_UNORM",
             TextureFormat::Rg16Unorm => "R16G16_UNORM",
             TextureFormat::R32Float => "R32_SFLOAT",

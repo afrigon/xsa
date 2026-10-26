@@ -11,10 +11,6 @@ path = "src/main.rs"
 anstream = "1.0.0"
 anstyle = "1.0.14"
 anyhow.workspace = true
-block_compression = { version = "0.10.1", default-features = false, features = ["bc15", "bc7"] }
-glam.workspace = true
-resource-loader = { workspace = true, features = ["terrain"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 usage = { workspace = true, features = ["completions"] }
 xsa-logging.workspace = true
-zstd.workspace = true

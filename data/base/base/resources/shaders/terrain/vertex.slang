@@ -27,7 +27,7 @@ struct SmoothHeight : TileHeight {
 TileVertex terrainVertex<R : TileRelief>(VertexInput input, R relief) {
     if (tileShape == uint(TileShape.Displaced)) {
         TerrainHeight heights;
-        heights.pages = tilePages(constants.firstTile + input.instance);
+        heights.terrain = terrainData();
         return transformTile(heights, relief, input);
     }
 

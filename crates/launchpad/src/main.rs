@@ -1,8 +1,6 @@
 mod cli;
 mod launchpad_context;
-mod ops;
 mod shell;
-mod terrain;
 
 use std::io;
 use std::process::ExitCode;

@@ -4,7 +4,7 @@ pub(crate) use budget_reading::BudgetReading;
 
 use crate::{MemoryUsage, ResourceLimits};
 
-// Decides how far usage is over budget and which soft usage goes. Resources and streamed pages fill memory up to what
+// Decides how far usage is over budget and which soft usage goes. Resources fill memory up to what
 // the system reports; the limits only lower that.
 #[derive(Default)]
 pub(crate) struct MemoryBudget {
@@ -22,13 +22,6 @@ impl MemoryBudget {
             video: self.video_in_use(reading).saturating_sub(self.video_budget(reading)),
             ram,
         }
-    }
-
-    // The video memory that can be taken without going over budget once `reclaimable` bytes of soft usage go.
-    pub fn video_room(&self, reading: &BudgetReading, reclaimable: u64) -> u64 {
-        let in_use = self.video_in_use(reading).saturating_sub(reclaimable);
-
-        self.video_budget(reading).saturating_sub(in_use)
     }
 
     // `soft` lists what may go, in the order it should; picks from it until `overage` is covered.
@@ -175,14 +168,5 @@ mod tests {
         over.held_ram = 150 * MIB;
 
         assert!(evicted(&MemoryBudget::default(), &over, vec![entry(0, 0, 80 * MIB)]).is_empty());
-    }
-
-    #[test]
-    fn room_counts_reclaimable_usage_as_free() {
-        let budget = MemoryBudget::default();
-        let full = reading(1000 * MIB, 1000 * MIB);
-
-        assert_eq!(budget.video_room(&full, 0), 0);
-        assert_eq!(budget.video_room(&full, 64 * MIB), 64 * MIB);
     }
 }

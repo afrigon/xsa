@@ -1,7 +1,7 @@
-use crate::JobOwner;
+use crate::EntryId;
 
-// Loads one entry's file, or reads one streamed page, on a worker.
+// Loads one entry's file on a worker; the entry can be reprioritized while its job waits.
 pub(crate) struct Job {
-    pub owner: JobOwner,
+    pub entry: EntryId,
     pub run: Box<dyn FnOnce() + Send>,
 }

@@ -2,9 +2,13 @@ use std::any::{Any, TypeId};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use crate::{AnyEntry, Entry, EntryId, ResourceKey, ResourceKind, SoftOwner, SoftUsage, UnreferencedEntry};
+use crate::{
+    AnyEntry, AnyMipEntry, Entry, EntryId, MipEntry, ResourceKey, ResourceKind, SoftOwner, SoftUsage, StreamedMips,
+    UnreferencedEntry,
+};
 
-type KindEntries<K> = HashMap<ResourceKey<K>, Arc<Entry<K>>>;
+type KindEntries<K> = HashMap<ResourceKey<<K as ResourceKind>::Options>, Arc<Entry<K>>>;
+type MipKindEntries<K> = HashMap<ResourceKey<<K as StreamedMips>::Options>, Arc<MipEntry<K>>>;
 
 // Every registered entry, by kind and file for loads and by id for the bookkeeping, and the unreferenced ones kept
 // for later, least recently released first.
@@ -12,6 +16,7 @@ type KindEntries<K> = HashMap<ResourceKey<K>, Arc<Entry<K>>>;
 pub(crate) struct Registry {
     kinds: HashMap<TypeId, Box<dyn Any + Send>>,
     pub entries: HashMap<EntryId, Arc<dyn AnyEntry>>,
+    pub mip_entries: HashMap<EntryId, Arc<dyn AnyMipEntry>>,
     pub unreferenced: VecDeque<UnreferencedEntry>,
     next_entry: u64,
     next_release: u64,
@@ -26,6 +31,14 @@ impl Registry {
             .expect("a kind's entries are stored under its type id")
     }
 
+    pub fn mip_kind<K: StreamedMips>(&mut self) -> &mut MipKindEntries<K> {
+        self.kinds
+            .entry(TypeId::of::<MipEntry<K>>())
+            .or_insert_with(|| Box::new(MipKindEntries::<K>::new()))
+            .downcast_mut()
+            .expect("a kind's mip entries are stored under their entry's type id")
+    }
+
     pub fn next_id(&mut self) -> EntryId {
         self.next_entry += 1;
         EntryId { value: self.next_entry }
@@ -34,6 +47,13 @@ impl Registry {
     pub fn insert<K: ResourceKind>(&mut self, entry: Arc<Entry<K>>) {
         self.entries.insert(entry.id(), Arc::clone(&entry) as Arc<dyn AnyEntry>);
         self.kind::<K>().insert(entry.key(), entry);
+    }
+
+    pub fn insert_mips<K: StreamedMips>(&mut self, entry: Arc<MipEntry<K>>) {
+        self.entries.insert(entry.id(), Arc::clone(&entry) as Arc<dyn AnyEntry>);
+        self.mip_entries
+            .insert(entry.id(), Arc::clone(&entry) as Arc<dyn AnyMipEntry>);
+        self.mip_kind::<K>().insert(entry.key(), entry);
     }
 
     pub fn keep_unreferenced(&mut self, entry: &dyn AnyEntry, now: u64) {
@@ -55,7 +75,6 @@ impl Registry {
                 owner: SoftOwner::Entry(entry.id()),
                 memory: entry.memory(),
                 last_use: unreferenced.released_in,
-                score: 0.0,
             })
         })
     }

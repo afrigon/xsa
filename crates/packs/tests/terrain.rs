@@ -23,7 +23,7 @@ fn test_pack(name: &str, body_terrain: Option<&str>, terrain: &str, height_map: 
     fs::write(data.join("terrains/rock.kdl"), terrain).unwrap();
 
     if height_map {
-        fs::write(data.join("terrains/rock.terrain"), []).unwrap();
+        fs::write(data.join("terrains/rock.ktx2"), []).unwrap();
     }
 
     directory
@@ -42,7 +42,7 @@ fn load(
     definition
 }
 
-const TERRAIN: &str = "height-map \"rock\"\n";
+const TERRAIN: &str = "height-map \"rock\"\nminimum -120\nmaximum 340\n";
 
 #[test]
 fn a_body_without_terrain_is_smooth() {
@@ -52,8 +52,10 @@ fn a_body_without_terrain_is_smooth() {
 #[test]
 fn a_terrain_finds_its_height_map() {
     let terrain = load("complete", Some("rock"), TERRAIN, true).unwrap().unwrap();
+    let height_map = terrain.height_map.unwrap();
 
-    assert!(terrain.height_map.unwrap().ends_with("data/terrains/rock.terrain"));
+    assert!(height_map.path.ends_with("data/terrains/rock.ktx2"));
+    assert_eq!((height_map.minimum, height_map.maximum), (-120.0, 340.0));
 }
 
 #[test]
@@ -73,4 +75,16 @@ fn a_terrain_needs_its_height_map() {
     let without_height_map = "";
 
     assert!(load("no-height-map", Some("rock"), without_height_map, true).is_err());
+}
+
+#[test]
+fn a_height_map_needs_its_range() {
+    assert!(load("no-range", Some("rock"), "height-map \"rock\"\n", true).is_err());
+}
+
+#[test]
+fn a_height_range_is_ordered() {
+    let inverted = "height-map \"rock\"\nminimum 340\nmaximum -120\n";
+
+    assert!(load("inverted", Some("rock"), inverted, true).is_err());
 }

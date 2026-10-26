@@ -1,5 +1,6 @@
 import light.lambert;
 import light.star;
+import terrain.layers;
 import terrain.output;
 import terrain.texture;
 
@@ -8,13 +9,12 @@ TerrainVaryings vertexMain(VertexInput input) {
     return terrainVaryings(terrainVertex(input, NoRelief()));
 }
 
+// Mirrors `LambertData` in the renderer. Its albedo and normals are the terrain's color and normal layers.
 struct LambertData {
     float3 baseColor;
-    uint colorTexture;
-    uint normalTexture;
     uint emissiveTexture;
     float emissiveLuminance;
-    uint padding;
+    uint padding[3];
 };
 
 [shader("fragment")]
@@ -22,11 +22,13 @@ FragmentOutput fragmentMain(TerrainVaryings vertex, uint primitive: SV_Primitive
     DrawVaryings input = vertex.draw;
     LambertData material = currentMaterial<LambertData>();
     float3 modelNormal = normalize(input.modelNormal);
-    TextureCoordinates coordinates = equirectangularCoordinates(modelNormal);
-    float3 normal = mappedNormal(material.normalTexture, modelNormal, coordinates);
+    LayerCoordinates layers = layerCoordinates(modelNormal);
+    LayerRead color = readLayer(layers, colorLayer);
+    float3 normal = layerNormal(readLayer(layers, normalLayer), layers, modelNormal);
     float3 worldNormal = normalize(mul(currentObject().worldFromModel, float4(normal, 0.0)).xyz);
     float3 geometricNormal = normalize(input.normal);
-    float3 albedo = mappedColor(material.colorTexture, material.baseColor, coordinates);
+    float3 albedo = color.resident ? color.value.rgb : material.baseColor;
+    TextureCoordinates coordinates = equirectangularCoordinates(modelNormal);
     float3 luminance = starlightLuminance(albedo);
 
     for (uint index = 0; index < constants.frame.starCount; index++) {

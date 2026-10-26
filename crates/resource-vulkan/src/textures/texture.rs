@@ -1,3 +1,4 @@
+use std::ops::Range;
 use std::path::Path;
 
 use memory_vulkan::{BindlessSlot, Image};
@@ -17,6 +18,17 @@ impl Texture {
     /// Creates `image`'s texture and queues its upload, for kinds that read the file themselves.
     pub fn upload(context: &LoadContext, image: TextureImage) -> anyhow::Result<PendingTexture> {
         TextureUpload::new(image).texture(context)
+    }
+
+    /// Creates an image of a cube map's `levels`, its faces as the six layers of an array in the texture array binding,
+    /// and queues the upload of the levels `image` holds, the first of `levels`. For `StreamedMips` kinds that read
+    /// texels by face rather than sample by direction.
+    pub fn upload_faces(
+        context: &LoadContext,
+        image: TextureImage,
+        levels: Range<u32>,
+    ) -> anyhow::Result<PendingTexture> {
+        TextureUpload::new(image).faces(context, levels)
     }
 
     pub(crate) fn new(image: Image, slot: BindlessSlot) -> Texture {
