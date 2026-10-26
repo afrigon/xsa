@@ -1,3 +1,4 @@
+use glam::DVec2;
 use resource_loader::utils::CubeFace;
 use xsa_core::terrain::{CubeTexel, HeightMapLevel, TexelSource};
 
@@ -12,16 +13,16 @@ const SPLINE_REACH_TEXELS: u32 = 3;
 // The lowest and highest height under every part of a height map level's faces: a min-max mip pyramid (maximum
 // mipmaps, Tevs et al. 2008) whose cells, from `LEAF_TEXELS` wide up to a whole face, hold the range of the level's
 // texels they cover. Every coarser level of the map averages these texels, so the pyramid bounds whatever any level
-// shows at or above its own.
+// shows at or above its own. A tile narrower than a leaf that reads only this level is bounded from the level itself,
+// by the B-spline's slope.
 pub struct HeightBounds {
-    level: u32,
-    extent: u32,
+    heights: HeightMapLevel,
     // From the leaves to one cell per face; each level face by face, its cells row by row.
     levels: Vec<Vec<TexelRange>>,
 }
 
 impl HeightBounds {
-    pub fn new(heights: &HeightMapLevel) -> HeightBounds {
+    pub fn new(heights: HeightMapLevel) -> HeightBounds {
         let extent = heights.extent();
         let leaf = LEAF_TEXELS.min(extent);
         let leaves_per_side = extent / leaf;
@@ -54,11 +55,7 @@ impl HeightBounds {
             levels.push(HeightBounds::coarser(finer));
         }
 
-        HeightBounds {
-            level: heights.level(),
-            extent,
-            levels,
-        }
+        HeightBounds { heights, levels }
     }
 
     // The bound of every height a tile of `face` at `depth`, column `x` and row `y` can show while its vertices sample
@@ -67,20 +64,20 @@ impl HeightBounds {
     // most one cell into the adjacent faces. A reach wider than a face covers more than the face and its neighbours:
     // the whole body bounds it.
     pub fn range(&self, face: CubeFace, depth: u32, x: u32, y: u32, coarsest_level: u32) -> TexelRange {
-        let reach = f64::from(SPLINE_REACH_TEXELS << coarsest_level.saturating_sub(self.level));
-        let tile_size = f64::from(self.extent) / f64::from(depth).exp2();
+        let reach = f64::from(SPLINE_REACH_TEXELS << coarsest_level.saturating_sub(self.heights.level()));
+        let tile_size = f64::from(self.heights.extent()) / f64::from(depth).exp2();
 
-        if reach > f64::from(self.extent) {
+        if reach > f64::from(self.heights.extent()) {
             return self.overall();
         }
-        let leaf = LEAF_TEXELS.min(self.extent);
+        let leaf = LEAF_TEXELS.min(self.heights.extent());
         let mut pyramid_level = 0;
 
         while pyramid_level + 1 < self.levels.len() && f64::from(leaf << pyramid_level) < tile_size.max(reach) {
             pyramid_level += 1;
         }
 
-        let cells_per_side = (self.extent / leaf) >> pyramid_level;
+        let cells_per_side = (self.heights.extent() / leaf) >> pyramid_level;
         let cell_size = f64::from(leaf << pyramid_level);
         let first = |start: f64| ((start - reach) / cell_size).floor() as i32;
         let last = |start: f64| ((start + tile_size + reach) / cell_size).ceil() as i32 - 1;
@@ -100,7 +97,50 @@ impl HeightBounds {
             }
         }
 
+        if tile_size <= f64::from(LEAF_TEXELS) && coarsest_level <= self.heights.level() {
+            return range.intersection(self.spline_range(face, left, top, tile_size));
+        }
+
         range
+    }
+
+    // The B-spline over a square of this level's texels, from `left` and `top` (texel edges) and `size` wide: its value
+    // at the centre, give or take how far its slope can carry it to an edge. Its slope along each axis is a spline
+    // over the differences of neighbouring texels, so the largest difference bounds it.
+    fn spline_range(&self, face: CubeFace, left: f64, top: f64, size: f64) -> TexelRange {
+        let half = size / 2.0;
+        let center = DVec2::new(left + half - 0.5, top + half - 0.5);
+        let first = (center - half).floor().as_ivec2() - 1;
+        let last = (center + half).floor().as_ivec2() + 2;
+        let value = |column, row| self.heights.value(CubeTexel { face, column, row });
+        let mut column_step: f64 = 0.0;
+        let mut row_step: f64 = 0.0;
+
+        for row in first.y..=last.y {
+            for column in first.x..=last.x {
+                if column < last.x {
+                    column_step = column_step.max((value(column + 1, row) - value(column, row)).abs());
+                }
+
+                if row < last.y {
+                    row_step = row_step.max((value(column, row + 1) - value(column, row)).abs());
+                }
+            }
+        }
+
+        let middle = self.heights.spline_value(face, center);
+        let reach = (column_step + row_step) * half;
+        let stored = |value: f64| (value * f64::from(u16::MAX)).clamp(0.0, f64::from(u16::MAX));
+
+        TexelRange {
+            minimum: stored(middle - reach).floor() as u16,
+            maximum: stored(middle + reach).ceil() as u16,
+        }
+    }
+
+    // The level the bounds are built from, held on the CPU.
+    pub fn heights(&self) -> &HeightMapLevel {
+        &self.heights
     }
 
     // Every height of the map.
@@ -170,7 +210,7 @@ mod tests {
             .collect();
         let level = HeightMapLevel::new(0, EXTENT, texels, -1000.0, 1000.0).unwrap();
 
-        HeightBounds::new(&level)
+        HeightBounds::new(level)
     }
 
     #[test]
@@ -209,10 +249,27 @@ mod tests {
             .map(|index| if index == 70 { RAISED } else { GROUND })
             .collect();
         let level = HeightMapLevel::new(0, 4, texels, -1000.0, 1000.0).unwrap();
-        let bounds = HeightBounds::new(&level);
+        let bounds = HeightBounds::new(level);
 
         assert_eq!(bounds.range(CubeFace::NegativeZ, 3, 1, 6, 2), bounds.overall());
         assert_eq!(bounds.range(CubeFace::NegativeZ, 0, 0, 0, 0).maximum, GROUND);
+    }
+
+    // On a ramp rising one step per texel, a tile a sixteenth of a texel wide is bounded within about a sixteenth of a
+    // step, where the pyramid alone would give it a whole leaf's rise.
+    #[test]
+    fn a_tile_narrower_than_a_texel_is_bounded_by_the_slope() {
+        const STEP: u16 = 512;
+        let texels = CubeFace::ALL
+            .iter()
+            .flat_map(|_| (0..EXTENT * EXTENT).map(|index| (index % EXTENT) as u16 * STEP))
+            .collect();
+        let level = HeightMapLevel::new(0, EXTENT, texels, -1000.0, 1000.0).unwrap();
+        let bounds = HeightBounds::new(level);
+        let range = bounds.range(CubeFace::PositiveZ, 10, 300, 512, 0);
+
+        assert!(range.maximum - range.minimum <= STEP / 16 + 2, "{range:?}");
+        assert!(range.minimum > 0, "{range:?}");
     }
 
     #[test]
