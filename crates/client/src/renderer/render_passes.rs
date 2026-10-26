@@ -1,5 +1,6 @@
 use ash::vk;
 use render_graph_vulkan::{GraphBuilder, RenderGraph};
+use xui::DrawList;
 
 use super::ShaderBinaries;
 use super::frame_context::FrameContext;
@@ -53,6 +54,10 @@ impl RenderPasses {
     // Builds what the next frame draws with under `config`, before its recording starts.
     pub fn ensure_pipelines(&mut self, gpu: &GpuContext, config: &Config) -> anyhow::Result<()> {
         self.forward.ensure_pipelines(gpu, &config.render)
+    }
+
+    pub fn set_user_interface(&mut self, draw_list: DrawList) {
+        self.user_interface.set_draw_list(draw_list);
     }
 
     pub fn add_to<'passes, 'frame>(
