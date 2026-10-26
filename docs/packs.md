@@ -39,7 +39,7 @@ data/<pack>/
       surfaces/                             close-up ground materials, shared by every body
       biomes/                               how each biome's ground looks up close
       shaders/                              SPIR-V shaders (base only, see below)
-      textures/  models/  sounds/  fonts/   shared assets, organized freely
+      textures/  meshes/  sounds/  fonts/   shared assets, organized freely
       theme/                                design system: colors, roles, typefaces, text styles
       lang/                                 localization files (reserved)
 ```

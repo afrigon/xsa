@@ -13,6 +13,7 @@ pub struct WorldArguments {
         default = "base",
         default = "base-surfaces",
         default = "system-solar",
+        default = "debug",
         help = "Packs to load, in stack order (later packs override earlier ones)"
     )]
     pub stack: Vec<String>,
