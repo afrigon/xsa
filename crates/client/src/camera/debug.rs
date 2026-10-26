@@ -81,17 +81,14 @@ impl DebugControls {
         self.attachment = Attachment::of(nearest, world);
     }
 
-    // Lifts the camera to the eyes of someone standing on the ground below it, wherever it went lower.
-    fn stay_above_ground(&mut self, world: &ClientWorld) {
+    // How far from its body's centre the eyes of someone standing on the ground toward `direction` are.
+    fn standing_distance(&self, direction: DVec3, world: &ClientWorld) -> f64 {
         let body = self.attachment.body;
         let state = world.body_state(body);
-        let offset = self.position - state.position;
-        let direction = state.orientation.inverse() * offset.normalize_or(DVec3::Z);
-        let standing = world.eye_position(body, direction, 0.0);
 
-        if offset.length() < standing.distance(state.position) {
-            self.position = standing;
-        }
+        world
+            .eye_position(body, state.orientation.inverse() * direction, 0.0)
+            .distance(state.position)
     }
 
     fn take_pending_view(&mut self) {
@@ -130,23 +127,25 @@ impl Controls for DebugControls {
             + right * input.axis(Key::D, Key::A)
             + up * input.axis(Key::Space, Key::ShiftLeft);
         let step = direction.normalize_or_zero() * f64::from(context.debug_camera.speed) * context.delta_seconds;
-        let vertical = up * step.dot(up);
-        let horizontal = step - vertical;
-        let offset = self.position - self.attachment.position;
-        let radius = offset.length();
+        let climb = step.dot(up);
+        let horizontal = step - up * climb;
+        let radius = (self.position - self.attachment.position).length();
 
-        // At the body's centre there is no great circle to follow.
+        // At the body's centre there is no great circle to follow, and nothing lower to descend to.
         if radius == 0.0 {
-            self.position += step;
+            self.position += horizontal + up * climb.max(0.0);
         } else {
             // A straight step along the tangent plane climbs by d²/2r each frame; travelling the great circle keeps
-            // the altitude whatever the step's length.
+            // the altitude whatever the step's length. Climbing changes only the distance from the centre, so a
+            // descent longer than the radius cannot tunnel through the body.
             let travel = DQuat::from_axis_angle(up.cross(horizontal).normalize_or_zero(), horizontal.length() / radius);
-            self.position = self.attachment.position + travel * (offset + vertical);
-        }
-
-        if context.camera.collision {
-            self.stay_above_ground(context.world);
+            let direction = travel * up;
+            let lowest = if context.camera.collision {
+                self.standing_distance(direction, context.world)
+            } else {
+                0.0
+            };
+            self.position = self.attachment.position + direction * (radius + climb).max(lowest);
         }
 
         CameraPose {
