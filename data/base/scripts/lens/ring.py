@@ -1,5 +1,5 @@
-# The ring halo, an artistic element shaped after Sol's Ghost1 but round to suit a spherical lens, stored as luminance
-# per unit illuminance (1/sr) and fading to exactly zero inside the texture.
+# The ring halo, an artistic element round to suit a spherical lens, stored as luminance per unit illuminance (1/sr)
+# and fading to exactly zero inside the texture.
 import numpy as np
 from blur import gaussian_blur
 import quality

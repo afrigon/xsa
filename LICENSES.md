@@ -10,20 +10,10 @@ credited in `data/system-solar/LICENSE`, which the scripts write.
   Laplace planes from the [JPL planetary satellite mean
   elements](https://ssd.jpl.nasa.gov/sats/elem/); physical properties come
   from Horizons; rotation from the IAU WGCCRE report (Archinal et al. 2018,
-  Celestial Mechanics and Dynamical Astronomy 130:22); a few values neither
-  provides come from Sol's configs
+  Celestial Mechanics and Dynamical Astronomy 130:22)
 - **Credit:** NASA/JPL-Caltech Solar System Dynamics Group
 - **License:** US government work, public domain; values are facts and
   carry no license
-
-## Sol 0.9.5
-
-- **Source:** [RSS-Reborn](https://github.com/RSS-Reborn), the `Sol-*`
-  repositories' releases
-- **License:** configs under CC BY-NC-SA (no version named); everything else
-  is not licensed for redistribution and never ships with this repository or
-  its packs. The `system-solar` pack's material base colors, for bodies its
-  scripts do not generate, are averages of Sol's color maps
 
 ## AdvancedPQSTools (Hapke shader code)
 

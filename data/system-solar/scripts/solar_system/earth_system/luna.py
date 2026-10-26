@@ -47,8 +47,8 @@ CAMERA_WAVELENGTHS = [321, 360, 415, 566, 604, 643, 689]
 PARAMETERS = ["w", "b", "c", "Bc0", "hc", "Bs0", "hs", "theta", "phi"]
 # The band LROC's photometry uses for brightness; the surface's Hapke maps hold its parameters.
 HAPKE_WAVELENGTH = 566
-# The look: the measured regolith is warm (red/blue 1.58 in sRGB); Sol's artists render it close to neutral (about
-# 1.08), which people recognize as the Moon. This saturation brings the map's mean ratio to Sol's.
+# The look: the measured regolith is warm (red/blue 1.58 in sRGB), but people recognize the Moon close to neutral;
+# this saturation brings the map's mean ratio to about 1.08.
 SATURATION = 0.18
 # Beyond 70° of latitude only the laser altimeter's albedo exists; it takes over across the last 10° of the mosaic.
 POLAR_OVERLAP = (60.0, 70.0)
@@ -127,16 +127,8 @@ class Luna(Recipe):
     credits = [
         Credit(
             "Moon surface (system-solar/resources/textures/bodies/luna/, system-solar/data/terrains/luna.ktx2)",
-            "Color: the Lunar Reconnaissance Orbiter Camera (LROC) Wide Angle Camera Hapke-normalized mosaic "
-            "(LRO-L-LROC-5-RDR-V1.0, WAC_HAPKE; Sato et al. 2017, Icarus 296) and Hapke parameter maps "
-            "(WAC_HAPKEPARAMMAP; Sato et al. 2014, Journal of Geophysical Research: Planets 119), NASA/GSFC/Arizona "
-            "State University; polar latitudes from the Lunar Orbiter Laser Altimeter (LOLA) 1064 nm albedo maps "
-            "(LRO-L-LOLA-4-GDR-V1.0; Lemelin et al. 2016, Icarus 273). Elevation: LOLA gridded data, through the "
-            "CGI Moon Kit of NASA's Scientific Visualization Studio (https://svs.gsfc.nasa.gov/4720); beyond 60° of "
-            "latitude, LOLA's polar stereographic elevation models (LRO-L-LOLA-4-GDR-V1.0, 240 m and 120 m per "
-            "pixel), NASA/GSFC. Public domain "
-            "NASA data; the color is the diffusive reflectance solved from the mosaic with the Hapke parameters, the "
-            "normal map is derived from the elevation.",
+            "NASA Lunar Reconnaissance Orbiter LROC and LOLA data, NASA/GSFC/Arizona State University; elevation "
+            "through NASA's Scientific Visualization Studio CGI Moon Kit. Public domain.",
         )
     ]
 
