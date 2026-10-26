@@ -12,6 +12,8 @@ const METERS_PER_KILOMETER: f64 = 1000.0;
 const KILOMETER_THRESHOLD_METERS: f64 = 10_000.0;
 const MISSING: &str = "–";
 const ANGLE_PRECISION: f64 = 1000.0;
+const METER_PRECISION: f64 = 10.0;
+const KILOMETER_PRECISION: f64 = 100.0;
 const FULL_TURN_DEGREES: f64 = 360.0;
 const BYTES_PER_MEBIBYTE: f64 = 1024.0 * 1024.0;
 const MILLISECONDS_PER_SECOND: f64 = 1000.0;
@@ -91,17 +93,19 @@ impl DebugOverlayView {
         let Some(position) = &self.position else {
             return format!("target: {MISSING}");
         };
-        let above_ground = position.above_ground.map_or_else(|| MISSING.to_string(), distance);
+        let surface = position.surface.as_ref();
+        let missing_or = |value: Option<String>| value.unwrap_or_else(|| MISSING.to_string());
+        let latitude = missing_or(surface.map(|surface| angle(surface.latitude)));
+        let longitude = missing_or(surface.map(|surface| angle(surface.longitude)));
+        let above_ground = missing_or(surface.and_then(|surface| surface.above_ground).map(distance));
+        let yaw = missing_or(surface.map(|surface| heading(surface.attitude.yaw)));
+        let pitch = missing_or(surface.map(|surface| angle(surface.attitude.pitch)));
+        let roll = missing_or(surface.map(|surface| angle(surface.attitude.roll)));
         format!(
-            "target: {}\nlat: {} · lon: {}\naltitude: {above_ground} ground · {} sea\n\
-             rotation: yaw {} · pitch {} · roll {}",
+            "target: {}\nlat: {latitude} · lon: {longitude}\naltitude: {above_ground} ground · {} sea\n\
+             rotation: yaw {yaw} · pitch {pitch} · roll {roll}",
             position.body,
-            angle(position.latitude),
-            angle(position.longitude),
             distance(position.above_sea),
-            heading(position.attitude.yaw),
-            angle(position.attitude.pitch),
-            angle(position.attitude.roll)
         )
     }
 
@@ -150,11 +154,16 @@ fn heading(yaw: f64) -> String {
     format!("{:.3}", rounded.rem_euclid(FULL_TURN_DEGREES) + 0.0)
 }
 
+// A tenth of a meter or a hundredth of a kilometer, rounded first like `angle` so it never prints -0.0.
 fn distance(meters: f64) -> String {
     if meters.abs() < KILOMETER_THRESHOLD_METERS {
-        format!("{meters:.1} m")
+        format!("{:.1} m", (meters * METER_PRECISION).round() / METER_PRECISION + 0.0)
     } else {
-        format!("{:.2} km", meters / METERS_PER_KILOMETER)
+        let kilometers = meters / METERS_PER_KILOMETER;
+        format!(
+            "{:.2} km",
+            (kilometers * KILOMETER_PRECISION).round() / KILOMETER_PRECISION + 0.0
+        )
     }
 }
 
