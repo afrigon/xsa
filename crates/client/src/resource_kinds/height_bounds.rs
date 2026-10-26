@@ -63,10 +63,16 @@ impl HeightBounds {
 
     // The bound of every height a tile of `face` at `depth`, column `x` and row `y` can show while its vertices sample
     // levels no coarser than `coarsest_level` of the map. It reads the cells over the tile widened by the B-spline's
-    // reach at that level, from the pyramid level whose cells are at least that wide, so a few cells cover it.
+    // reach at that level, from the pyramid level whose cells are at least that wide, so the widened area reaches at
+    // most one cell into the adjacent faces. A reach wider than a face covers more than the face and its neighbours:
+    // the whole body bounds it.
     pub fn range(&self, face: CubeFace, depth: u32, x: u32, y: u32, coarsest_level: u32) -> TexelRange {
         let reach = f64::from(SPLINE_REACH_TEXELS << coarsest_level.saturating_sub(self.level));
         let tile_size = f64::from(self.extent) / f64::from(depth).exp2();
+
+        if reach > f64::from(self.extent) {
+            return self.overall();
+        }
         let leaf = LEAF_TEXELS.min(self.extent);
         let mut pyramid_level = 0;
 
@@ -194,6 +200,19 @@ mod tests {
 
         assert_eq!(neighbour, GROUND);
         assert_eq!(coarse, RAISED);
+    }
+
+    // A reach wider than a face covers more than the face and its neighbours.
+    #[test]
+    fn a_reach_wider_than_a_face_is_bounded_by_the_whole_body() {
+        let texels = (0..CubeFace::ALL.len() * 16)
+            .map(|index| if index == 70 { RAISED } else { GROUND })
+            .collect();
+        let level = HeightMapLevel::new(0, 4, texels, -1000.0, 1000.0).unwrap();
+        let bounds = HeightBounds::new(&level);
+
+        assert_eq!(bounds.range(CubeFace::NegativeZ, 3, 1, 6, 2), bounds.overall());
+        assert_eq!(bounds.range(CubeFace::NegativeZ, 0, 0, 0, 0).maximum, GROUND);
     }
 
     #[test]
