@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 
 from operations.band_color import BandColor
@@ -5,24 +7,39 @@ from operations.build_context import BuildContext
 from operations.color_grade import ColorGrade
 from operations.coverage_fill import CoverageFill
 from operations.credit import Credit
-from operations.cube_map import CubeMap
+from operations.cube_accumulator import CubeAccumulator
+from operations.cube_map import CUBE_FACE_COUNT, CubeMap
 from operations.cube_projection import CubeProjection
+from operations.equirectangular_source import EquirectangularSource
 from operations.hapke_material import HapkeMaterial
 from operations.hapke_model import Geometry, HapkeModel
+from operations.polar_stereographic_source import PolarStereographicSource
 from operations.raster import Raster, SourceLayout
 from operations.recipe import Recipe
 from operations.source import Source
 from operations.texture_writer import TextureWriter
+
+logger = logging.getLogger(__name__)
 
 # The reference sphere of every LRO data product.
 RADIUS = 1737400.0
 METERS_PER_KILOMETER = 1000.0
 # Untiered: the server and every client read the same terrain.
 TERRAIN_FACE_SIZE = 4096
+# The mosaic's 76 pixels per degree resolve texels of this size.
+COLOR_FACE_SIZE = 4096
+# The Hapke parameter maps are 1° per pixel: about one pixel per texel.
+HAPKE_FACE_SIZE = 128
+# Heights split each source pixel so texels catch even shares of ground: uneven shares show as ridges in the normals.
+# Colour takes each mosaic pixel whole, which costs a fraction of a level on average.
+TERRAIN_CELLS_PER_TEXEL = 2
+COLOR_CELLS_PER_TEXEL = 1
+HAPKE_CELLS_PER_TEXEL = 2
 CGI_MOON_KIT = SourceLayout(left_edge_longitude=-180.0, north_up=True)
 MOSAIC = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_HAPKE"
 PARAMETER_MAPS = "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/WAC_HAPKEPARAMMAP"
 ALBEDO = "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/float_img"
+POLAR_ELEVATION = "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img"
 # The mosaic's photometric normalization: incidence = phase = 60°, emission = 0°.
 STANDARD_GEOMETRY = Geometry(incidence=np.radians(60), emission=0.0, phase=np.radians(60))
 # The parameter map holds 9 parameters for each of the camera's 7 bands, bands by increasing wavelength.
@@ -100,15 +117,24 @@ class Luna(Recipe):
         "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64.tif",
         "af55ea2ed9173d1744b98ac4205501bd0bb0dcfc6ac49a11473a411dc64afd90",
     )
+    # Coarsest first: each covers the texels it fully covers, so every texel ends from the finest product covering it.
+    polar_elevation = [
+        (Source(f"{POLAR_ELEVATION}/ldem_60n_240m.img", "6307de84ed2af969e7b7ad089fb4d87b403afb56d1c4ec3f4fdc3dc3434f4d4f"), Source(f"{POLAR_ELEVATION}/ldem_60n_240m.lbl", "002af6231644625fa5aa6c1fcfdaf2879a1f4eff154e37d0c7aa0606d53091ad")),
+        (Source(f"{POLAR_ELEVATION}/ldem_60s_240m.img", "0f2766bd111bcf9ff05fc93515b79af49696d687a09a801622bae392e384df5a"), Source(f"{POLAR_ELEVATION}/ldem_60s_240m.lbl", "dde15a7f2a64ff8d744913c31d606ef572a992c74a44a72356ff91ca9cf4bfcb")),
+        (Source(f"{POLAR_ELEVATION}/ldem_75n_120m.img", "75c4f50576e763761dbcc73638d1eb65a3c3c73a54127fc8b5e1672829cf7fb1"), Source(f"{POLAR_ELEVATION}/ldem_75n_120m.lbl", "58ff3ddda471f707bc7536f394554e39fa631d93643c5f230a39acf4ef1d0e20")),
+        (Source(f"{POLAR_ELEVATION}/ldem_75s_120m.img", "ae3afc3c75c33d43666ca06c83ca08f0b12ef03b7d36d2d791d972730794391b"), Source(f"{POLAR_ELEVATION}/ldem_75s_120m.lbl", "5c59b16ec8a610792b1776fa082e409c8cc9f6743757710d14876ef366acd99a")),
+    ]
     credits = [
         Credit(
-            "Moon textures (system-solar/resources/textures/bodies/luna/)",
+            "Moon surface (system-solar/resources/textures/bodies/luna/, system-solar/data/terrains/luna.ktx2)",
             "Color: the Lunar Reconnaissance Orbiter Camera (LROC) Wide Angle Camera Hapke-normalized mosaic "
             "(LRO-L-LROC-5-RDR-V1.0, WAC_HAPKE; Sato et al. 2017, Icarus 296) and Hapke parameter maps "
             "(WAC_HAPKEPARAMMAP; Sato et al. 2014, Journal of Geophysical Research: Planets 119), NASA/GSFC/Arizona "
             "State University; polar latitudes from the Lunar Orbiter Laser Altimeter (LOLA) 1064 nm albedo maps "
             "(LRO-L-LOLA-4-GDR-V1.0; Lemelin et al. 2016, Icarus 273). Elevation: LOLA gridded data, through the "
-            "CGI Moon Kit of NASA's Scientific Visualization Studio (https://svs.gsfc.nasa.gov/4720). Public domain "
+            "CGI Moon Kit of NASA's Scientific Visualization Studio (https://svs.gsfc.nasa.gov/4720); beyond 60° of "
+            "latitude, LOLA's polar stereographic elevation models (LRO-L-LOLA-4-GDR-V1.0, 240 m and 120 m per "
+            "pixel), NASA/GSFC. Public domain "
             "NASA data; the color is the diffusive reflectance solved from the mosaic with the Hapke parameters, the "
             "normal map is derived from the elevation.",
         )
@@ -116,36 +142,64 @@ class Luna(Recipe):
 
     def build(self, context: BuildContext) -> None:
         color = self._color(context)
-        TextureWriter.color().write(context.texture_path("bodies/luna/color"), [color])
+        TextureWriter.color().write(context.texture_path("bodies/luna/color"), color.faces)
 
-        elevation_path = self.elevation.fetch(context.cache)
-        width = context.output_width(Raster.native_width(elevation_path))
-        heights = Raster.read(elevation_path, width, CGI_MOON_KIT, scale=METERS_PER_KILOMETER)
-        TextureWriter.normal().write(context.texture_path("bodies/luna/normal"), [heights.normals(RADIUS)])
-        context.terrains.write(
-            "luna",
-            CubeMap.from_equirectangular(
-                elevation_path, TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, CGI_MOON_KIT, METERS_PER_KILOMETER
-            ),
-        )
+        heights = self._heights(context)
+        context.terrains.write("luna", heights)
+        TextureWriter.normal().write(context.texture_path("bodies/luna/normal"), heights.normals(RADIUS).faces)
 
         hapke = self._hapke(context)
         context.materials.write_textured("luna", color.area_mean(), "bodies/luna/color", "bodies/luna/normal", hapke)
 
-    # Hapke 2012's parameters of one band, as they are, in the medium and opposition textures.
+    # Meters relative to the radius, each texel from the finest elevation model covering it.
+    def _heights(self, context: BuildContext) -> CubeMap:
+        terrain = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1, TERRAIN_CELLS_PER_TEXEL)
+        elevation = self.elevation.fetch(context.cache)
+        terrain.add(EquirectangularSource.global_map(elevation, CGI_MOON_KIT, METERS_PER_KILOMETER))
+        heights = terrain.cube_map()
+
+        for image, label in self.polar_elevation:
+            image.fetch(context.cache)
+            source = PolarStereographicSource(label.fetch(context.cache))
+            polar = CubeAccumulator(TERRAIN_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1, TERRAIN_CELLS_PER_TEXEL)
+            polar.add(source)
+            covered = polar.covered(source)
+            polar_heights = polar.cube_map()
+
+            for face in range(CUBE_FACE_COUNT):
+                heights.faces[face].pixels[covered[face]] = polar_heights.faces[face].pixels[covered[face]]
+
+        return heights
+
+    # Hapke 2012's parameters of one band, as they are: those varying over the ground in the scattering and surge
+    # maps, averaged into the cubes from the parameter maps' own pixels; θ̄ and K, constant over the Moon, as values.
     def _hapke(self, context: BuildContext) -> HapkeMaterial:
         parameters = self._parameters(self.parameter_map.fetch(context.cache), HAPKE_WAVELENGTH).extended_toward_poles()
-        maps = parameters.resampled(context.output_width(parameters.width))
-        medium = self._channels(maps, ["b", "c", "theta"])
-        porosity = Luna._porosity(maps.pixels[..., PARAMETERS.index("phi")])
-        TextureWriter.values().write(
-            context.texture_path("bodies/luna/hapke-medium"),
-            [Raster(np.concatenate([medium.pixels, porosity[..., None]], axis=-1))],
-        )
-        TextureWriter.values().write(
-            context.texture_path("bodies/luna/hapke-opposition"), [self._channels(maps, ["Bs0", "hs", "Bc0", "hc"])]
-        )
-        return HapkeMaterial("bodies/luna/hapke-medium", "bodies/luna/hapke-opposition")
+        layers = {
+            "bodies/luna/scattering": self._channels(parameters, ["b", "c"]),
+            "bodies/luna/surge": self._channels(parameters, ["Bs0", "hs", "Bc0", "hc"]),
+        }
+
+        for layer, raster in layers.items():
+            cube = CubeAccumulator(
+                HAPKE_FACE_SIZE, CubeProjection.EQUAL_ANGLE, raster.pixels.shape[-1], HAPKE_CELLS_PER_TEXEL
+            )
+            cube.add(EquirectangularSource.from_raster(raster))
+            TextureWriter.values(raster.pixels.shape[-1]).write(context.texture_path(layer), cube.cube_map().faces)
+
+        porosity = float(Luna._porosity(np.array(Luna._constant(parameters, "phi"))))
+        return HapkeMaterial(*layers, macroscopic_roughness=Luna._constant(parameters, "theta"), porosity=porosity)
+
+    # A parameter the material holds as one value: the map must hold it constant.
+    @staticmethod
+    def _constant(parameters: Raster, name: str) -> float:
+        values = parameters.pixels[..., PARAMETERS.index(name)]
+        minimum, maximum = float(np.nanmin(values)), float(np.nanmax(values))
+
+        if minimum != maximum:
+            raise ValueError(f"{name} varies over the map, from {minimum} to {maximum}")
+
+        return minimum
 
     # The porosity coefficient K from the filling factor φ (Hapke 2012, eq. 7.45b); K tends to 1 as φ tends to 0.
     @staticmethod
@@ -157,25 +211,34 @@ class Luna(Recipe):
 
         return np.where(term > 0, porosity, 1.0).astype(np.float32)
 
-    # Each pixel's diffusive reflectance, per band, from the single-scattering albedo that reproduces the mosaic's
-    # measurement with the Hapke parameters of its region; then the bands as sRGB.
-    def _color(self, context: BuildContext) -> Raster:
+    # Each mosaic pixel's diffusive reflectance, per band, from the single-scattering albedo that reproduces its
+    # measurement with the Hapke parameters at that pixel, averaged into the cube; then the bands as sRGB.
+    def _color(self, context: BuildContext) -> CubeMap:
         parameter_path = self.parameter_map.fetch(context.cache)
         reflectances = []
-        width = None
 
         for wavelength, sources in self.mosaic.items():
-            tiles = [source.fetch(context.cache) for source in sources]
-            width = width or context.output_width(4 * Raster.native_width(tiles[0]))
-            radiance_factor = Raster.read_tiles(tiles, width).pixels[..., 0]
-            parameters = self._parameters(parameter_path, wavelength).extended_toward_poles().interpolated(width)
-            model = self._model(parameters.pixels)
-            albedo = model.single_scattering_albedo(radiance_factor, STANDARD_GEOMETRY)
-            reflectances.append(HapkeModel.diffusive_reflectance(albedo))
+            parameters = self._parameters(parameter_path, wavelength).extended_toward_poles()
+            cube = CubeAccumulator(COLOR_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1, COLOR_CELLS_PER_TEXEL)
 
-        color = Raster(BandColor(list(self.mosaic)).linear_srgb(np.stack(reflectances, axis=-1)).astype(np.float32))
-        filled = CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context, width))
-        return ColorGrade(SATURATION).apply(filled)
+            for tile in sources:
+                source = EquirectangularSource.georeferenced(tile.fetch(context.cache))
+                subdivisions = cube.subdivisions(source)
+
+                for band in source.bands():
+                    model = self._model(parameters.interpolated_at(band.latitudes, band.longitudes), parameters.pixels)
+                    albedo = model.single_scattering_albedo(band.values[..., 0], STANDARD_GEOMETRY)
+                    reflectance = HapkeModel.diffusive_reflectance(albedo)
+                    cube.add_band(source, band.with_values(reflectance[..., None]), subdivisions)
+
+                logger.info("%d nm: %s", wavelength, tile.file_name)
+
+            reflectances.append(np.stack([face.pixels[..., 0] for face in cube.cube_map().faces]))
+
+        bands = BandColor(list(self.mosaic)).linear_srgb(np.stack(reflectances, axis=-1)).astype(np.float32)
+        color = CubeMap([Raster(face) for face in bands], CubeProjection.EQUAL_ANGLE)
+        filled = CoverageFill(*POLAR_OVERLAP).fill(color, self._polar_albedo(context))
+        return CubeMap([ColorGrade(SATURATION).apply(face) for face in filled.faces], CubeProjection.EQUAL_ANGLE)
 
     @staticmethod
     def _channels(parameters: Raster, names: list[str]) -> Raster:
@@ -185,27 +248,28 @@ class Luna(Recipe):
         first = CAMERA_WAVELENGTHS.index(wavelength) * len(PARAMETERS) + 1
         return Raster.read_tiles([path], 360, bands=list(range(first, first + len(PARAMETERS))))
 
-    # Sato et al. hold Bc0, hc and θ constant over the Moon; their filling factor φ = 0 makes the porosity K exactly 1.
+    # Sato et al. hold Bc0, hc and θ constant over the Moon, taken here from the whole parameter map; their filling
+    # factor φ = 0 makes the porosity K exactly 1.
     @staticmethod
-    def _model(parameters: np.ndarray) -> HapkeModel:
+    def _model(parameters: np.ndarray, whole_map: np.ndarray) -> HapkeModel:
         value = {name: parameters[..., index] for index, name in enumerate(PARAMETERS)}
+        constant = {name: whole_map[..., index] for index, name in enumerate(PARAMETERS)}
         return HapkeModel(
             lobe_width=value["b"],
             lobe_balance=value["c"],
             shadow_hiding_amplitude=value["Bs0"],
             shadow_hiding_width=value["hs"],
-            backscatter_amplitude=float(np.nanmean(value["Bc0"])),
-            backscatter_width=float(np.nanmean(value["hc"])),
+            backscatter_amplitude=float(np.nanmean(constant["Bc0"])),
+            backscatter_width=float(np.nanmean(constant["hc"])),
             porosity=1.0,
-            roughness=float(np.radians(np.nanmean(value["theta"]))),
+            roughness=float(np.radians(np.nanmean(constant["theta"]))),
         )
 
-    def _polar_albedo(self, context: BuildContext, width: int) -> Raster:
-        hemispheres = []
+    def _polar_albedo(self, context: BuildContext) -> CubeMap:
+        cube = CubeAccumulator(COLOR_FACE_SIZE, CubeProjection.EQUAL_ANGLE, 1, COLOR_CELLS_PER_TEXEL)
 
         for image, label in self.polar_albedo:
             image.fetch(context.cache)
-            hemispheres.append(Raster.read_reprojected(label.fetch(context.cache), width).pixels)
+            cube.add(PolarStereographicSource(label.fetch(context.cache)))
 
-        north, south = hemispheres
-        return Raster(np.where(np.isnan(north), south, north))
+        return cube.cube_map()

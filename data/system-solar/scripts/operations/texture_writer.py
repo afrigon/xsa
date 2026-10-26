@@ -10,6 +10,8 @@ from operations.raster import Raster
 from operations.texture_format import TextureFormat
 
 UNORM8_MAX = 255
+UNORM16_MAX = 65535
+VALUE_FORMATS = {2: TextureFormat.RG16_SFLOAT, 4: TextureFormat.RGBA16_SFLOAT}
 
 
 class TextureWriter:
@@ -29,15 +31,18 @@ class TextureWriter:
     def sky() -> "TextureWriter":
         return TextureWriter(TextureFormat.RGBA8_SRGB, TextureWriter._srgb)
 
-    # Physical values stored as they are, up to four per texel.
+    # Physical values stored as they are, `channels` per texel.
     @staticmethod
-    def values() -> "TextureWriter":
-        return TextureWriter(TextureFormat.RGBA16_SFLOAT, TextureWriter._four_channels)
+    def values(channels: int) -> "TextureWriter":
+        return TextureWriter(VALUE_FORMATS[channels], lambda values: values)
 
-    # Heights in meters, stored as they are.
+    # Heights in meters, stored over the range from `minimum` to `maximum`.
     @staticmethod
-    def height() -> "TextureWriter":
-        return TextureWriter(TextureFormat.R32_SFLOAT, lambda meters: meters.astype(np.float32))
+    def height(minimum: float, maximum: float) -> "TextureWriter":
+        return TextureWriter(
+            TextureFormat.R16_UNORM,
+            lambda meters: np.round((meters - minimum) / (maximum - minimum) * UNORM16_MAX).astype(np.uint16),
+        )
 
     # One face for a 2D texture, six for a cube map.
     def write(self, path: Path, faces: list[Raster]) -> None:
@@ -53,11 +58,6 @@ class TextureWriter:
     @staticmethod
     def _signed_pair(values: np.ndarray) -> np.ndarray:
         return TextureWriter._rgba(values * 0.5 + 0.5)
-
-    @staticmethod
-    def _four_channels(values: np.ndarray) -> np.ndarray:
-        height, width, channels = values.shape
-        return np.concatenate([values, np.zeros((height, width, 4 - channels), values.dtype)], axis=-1)
 
     @staticmethod
     def _rgba(unit: np.ndarray) -> np.ndarray:

@@ -8,7 +8,6 @@ from operations.terrain_writer import TerrainWriter
 @dataclass(frozen=True)
 class BuildContext:
     pack: Path
-    width: int
 
     @property
     def cache(self) -> Path:
@@ -28,8 +27,3 @@ class BuildContext:
 
     def texture_path(self, texture: str) -> Path:
         return self.resources / "textures" / f"{texture}.ktx2"
-
-    # The tier's width, or the source's when it is narrower: a map is never upscaled.
-    def output_width(self, native_width: int) -> int:
-        width = min(self.width, native_width)
-        return 1 << (width.bit_length() - 1)

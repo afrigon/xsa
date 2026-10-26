@@ -3,32 +3,29 @@ import numpy as np
 
 from operations.texture_format import TextureFormat
 
+# The type each uncompressed format stores its texels as.
+TEXEL_TYPES = {
+    TextureFormat.RGBA8_SRGB: np.uint8,
+    TextureFormat.RG16_SFLOAT: np.float16,
+    TextureFormat.RGBA16_SFLOAT: np.float16,
+    TextureFormat.R16_UNORM: np.uint16,
+}
+
 
 class Compressor:
     def __init__(self, texture_format: TextureFormat):
         self.format = texture_format
 
-    # pixels: height × width × channels: bytes, 16-bit integers, or floats for a float format.
+    # pixels: height × width × channels, already in the format's range: bytes for a block-compressed format.
     def compress(self, pixels: np.ndarray) -> bytes:
-        if self.format == TextureFormat.RGBA8_SRGB:
-            return np.ascontiguousarray(pixels).tobytes()
-
-        if self.format == TextureFormat.RGBA16_SFLOAT:
-            return np.ascontiguousarray(pixels, np.float16).tobytes()
-
-        if self.format == TextureFormat.R16_UNORM:
-            return np.ascontiguousarray(pixels, np.uint16).tobytes()
-
-        if self.format == TextureFormat.R32_SFLOAT:
-            return np.ascontiguousarray(pixels, np.float32).tobytes()
+        if self.format in TEXEL_TYPES:
+            return np.ascontiguousarray(pixels, TEXEL_TYPES[self.format]).tobytes()
 
         padded = self._padded(pixels)
         height, width = padded.shape[:2]
         data = padded.tobytes()
 
         match self.format:
-            case TextureFormat.BC4_UNORM:
-                return etcpak.compress_bc4(data, width, height)
             case TextureFormat.BC5_UNORM:
                 return etcpak.compress_bc5(data, width, height)
             case TextureFormat.BC7_SRGB:
