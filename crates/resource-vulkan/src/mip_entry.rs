@@ -5,9 +5,9 @@ use ash::vk;
 use memory_vulkan::{BindlessTable, Image};
 
 use crate::{
-    AnyEntry, AnyMipEntry, EntryId, EntryStatus, Events, Job, JobOwner, LoadContext, LoadEnvironment, LoadPriority,
-    LoadRequest, MemoryUsage, MipDemand, PendingResource, Registry, ResourceKey, ResourceState, SoftOwner, SoftUsage,
-    StreamedMips, Unavailable, WorkerPool,
+    AnyEntry, AnyMipEntry, EntryId, EntryStatus, Events, Job, LoadContext, LoadEnvironment, LoadPriority, LoadRequest,
+    MemoryUsage, MipDemand, PendingResource, Registry, ResourceKey, ResourceState, SoftOwner, SoftUsage, StreamedMips,
+    Unavailable, WorkerPool,
 };
 
 // Each level of a 2D image holds a quarter of the texels of the one above it.
@@ -138,7 +138,7 @@ impl<K: StreamedMips> MipEntry<K> {
         pool.push(
             self.status.priority(),
             Job {
-                owner: JobOwner::Entry(self.status.id()),
+                entry: self.status.id(),
                 run: Box::new(move || entry.reload(&environment, &uploading, first_level, current.as_deref())),
             },
         );
@@ -491,7 +491,6 @@ impl<K: StreamedMips> AnyMipEntry for MipEntry<K> {
                 ram: (memory.ram as f64 * retained) as u64,
             },
             last_use: since.update,
-            score: 0.0,
         })
     }
 

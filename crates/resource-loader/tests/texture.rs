@@ -213,7 +213,7 @@ fn a_ktx2_level_range_beyond_the_chain_is_refused() {
         levels: vec![vec![0; 8], vec![0; 2]],
     };
 
-    assert!(Ktx2Loader::read(std::io::Cursor::new(file.bytes()), 3..2).is_err());
+    assert!(Ktx2Loader::read(std::io::Cursor::new(file.bytes()), 3..4).is_err());
 }
 
 #[test]

@@ -1,10 +1,8 @@
 mod job;
-mod job_owner;
 mod job_queue;
 mod pool_state;
 
 pub(crate) use job::Job;
-pub(crate) use job_owner::JobOwner;
 pub(crate) use job_queue::JobQueue;
 pub(crate) use pool_state::PoolState;
 

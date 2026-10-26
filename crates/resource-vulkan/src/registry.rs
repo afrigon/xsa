@@ -75,7 +75,6 @@ impl Registry {
                 owner: SoftOwner::Entry(entry.id()),
                 memory: entry.memory(),
                 last_use: unreferenced.released_in,
-                score: 0.0,
             })
         })
     }
