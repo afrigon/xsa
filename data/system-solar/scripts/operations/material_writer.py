@@ -29,7 +29,8 @@ class MaterialWriter:
         text += f'color "{color}"\nnormal "{normal}"\n'
 
         if hapke is not None:
-            text += f'scatter "{hapke.scatter}"\nsurge "{hapke.surge}"\n'
+            text += f'scattering "{hapke.scattering}"\nsurge "{hapke.surge}"\n'
+            text += f"macroscopic-roughness {hapke.macroscopic_roughness:.4f}\nporosity {hapke.porosity:.4f}\n"
 
         path.write_text(text)
         return path

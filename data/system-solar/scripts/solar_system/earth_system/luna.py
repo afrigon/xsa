@@ -171,14 +171,12 @@ class Luna(Recipe):
 
         return heights
 
-    # Hapke 2012's parameters of one band, as they are, in the medium and opposition maps: computed on the parameter
-    # maps' own pixels, then averaged into the cubes.
+    # Hapke 2012's parameters of one band, as they are: those varying over the ground in the scattering and surge
+    # maps, averaged into the cubes from the parameter maps' own pixels; θ̄ and K, constant over the Moon, as values.
     def _hapke(self, context: BuildContext) -> HapkeMaterial:
         parameters = self._parameters(self.parameter_map.fetch(context.cache), HAPKE_WAVELENGTH).extended_toward_poles()
-        medium = self._channels(parameters, ["b", "c", "theta"])
-        porosity = Luna._porosity(parameters.pixels[..., PARAMETERS.index("phi")])
         layers = {
-            "bodies/luna/scatter": Raster(np.concatenate([medium.pixels, porosity[..., None]], axis=-1)),
+            "bodies/luna/scattering": self._channels(parameters, ["b", "c"]),
             "bodies/luna/surge": self._channels(parameters, ["Bs0", "hs", "Bc0", "hc"]),
         }
 
@@ -187,9 +185,21 @@ class Luna(Recipe):
                 HAPKE_FACE_SIZE, CubeProjection.EQUAL_ANGLE, raster.pixels.shape[-1], HAPKE_CELLS_PER_TEXEL
             )
             cube.add(EquirectangularSource.from_raster(raster))
-            TextureWriter.values().write(context.texture_path(layer), cube.cube_map().faces)
+            TextureWriter.values(raster.pixels.shape[-1]).write(context.texture_path(layer), cube.cube_map().faces)
 
-        return HapkeMaterial(*layers)
+        porosity = float(Luna._porosity(np.array(Luna._constant(parameters, "phi"))))
+        return HapkeMaterial(*layers, macroscopic_roughness=Luna._constant(parameters, "theta"), porosity=porosity)
+
+    # A parameter the material holds as one value: the map must hold it constant.
+    @staticmethod
+    def _constant(parameters: Raster, name: str) -> float:
+        values = parameters.pixels[..., PARAMETERS.index(name)]
+        minimum, maximum = float(np.nanmin(values)), float(np.nanmax(values))
+
+        if minimum != maximum:
+            raise ValueError(f"{name} varies over the map, from {minimum} to {maximum}")
+
+        return minimum
 
     # The porosity coefficient K from the filling factor φ (Hapke 2012, eq. 7.45b); K tends to 1 as φ tends to 0.
     @staticmethod

@@ -50,9 +50,8 @@ def _rgba8_samples(transfer: int) -> tuple[Sample, ...]:
     return tuple(Sample(index * 8, 8, channel, UNSIGNED_BYTE_MAX) for index, channel in enumerate(channels))
 
 
-def _rgba16_float_samples() -> tuple[Sample, ...]:
+def _float16_samples(channels: tuple[int, ...]) -> tuple[Sample, ...]:
     qualifiers = QUALIFIER_FLOAT | QUALIFIER_SIGNED
-    channels = (0, 1, 2, CHANNEL_ALPHA)
     return tuple(
         Sample(index * HALF_BITS, HALF_BITS, channel | qualifiers, FLOAT_SAMPLE_UPPER, FLOAT_SAMPLE_LOWER)
         for index, channel in enumerate(channels)
@@ -61,7 +60,10 @@ def _rgba16_float_samples() -> tuple[Sample, ...]:
 
 class TextureFormat(Enum):
     RGBA8_SRGB = FormatDescription(43, MODEL_RGBSDA, TRANSFER_SRGB, 1, 4, _rgba8_samples(TRANSFER_SRGB))
-    RGBA16_SFLOAT = FormatDescription(97, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 8, _rgba16_float_samples())
+    RG16_SFLOAT = FormatDescription(83, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 4, _float16_samples((0, 1)))
+    RGBA16_SFLOAT = FormatDescription(
+        97, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 8, _float16_samples((0, 1, 2, CHANNEL_ALPHA))
+    )
     R16_UNORM = FormatDescription(70, MODEL_RGBSDA, TRANSFER_LINEAR, 1, 2, (Sample(0, 16, 0, UNSIGNED_SHORT_MAX),))
     BC5_UNORM = FormatDescription(
         141, MODEL_BC5, TRANSFER_LINEAR, 4, 16, (Sample(0, 64, 0, BLOCK_SAMPLE_MAX), Sample(64, 64, 1, BLOCK_SAMPLE_MAX))

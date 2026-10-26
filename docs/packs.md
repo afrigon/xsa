@@ -278,7 +278,8 @@ in `resources/textures/`, referenced by the body's material. Each layer has:
 | Heights | `R16_UNORM`, over the terrain's `minimum` to `maximum` |
 | Colour | `BC7_SRGB` |
 | Normals | `BC5_UNORM`, tangent space in each face's frame (see Materials) |
-| Hapke maps | `R16G16B16A16_SFLOAT` |
+| Scattering | `R16G16_SFLOAT` |
+| Surge | `R16G16B16A16_SFLOAT` |
 
 The game loads each layer as it is stored.
 
@@ -331,12 +332,14 @@ Light is physical: surfaces reflect the star's illuminance (lux) as luminance
 - **`shader "base:terrain/hapke"`** for a body's terrain, shaded with Hapke's model
   of particulate surfaces (Hapke 2012, eq. 12.55), with **`base-color`**,
   **`color`**, **`normal`**, **`emissive`** and **`emissive-luminance`**
-  as for `base:terrain/lambert`, and two terrain layers holding Hapke's other
-  standard parameters, as published, each a texture id: **`scatter`** (the
-  particulate medium: phase-function lobe width b, lobe balance c, macroscopic
-  roughness θ̄ in degrees, porosity coefficient K) and **`surge`** (the
-  opposition effects: shadow-hiding amplitude B_S0 and width h_S,
-  coherent-backscatter amplitude B_C0 and width h_C), channels in that order.
+  as for `base:terrain/lambert`, and Hapke's other standard parameters, as
+  published. Those varying over the ground are two terrain layers, each a
+  texture id: **`scattering`** (the phase function: lobe width b and lobe
+  balance c) and **`surge`** (the opposition effects: shadow-hiding amplitude
+  B_S0 and width h_S, coherent-backscatter amplitude B_C0 and width h_C),
+  channels in that order. Those holding over the whole body are values:
+  **`macroscopic-roughness`** (θ̄, °) and **`porosity`** (the porosity
+  coefficient K, 1 when grains fill a vanishing share of the volume).
   The color layer's linear values are the diffusive reflectance r0, from which
   the shader derives the single-scattering albedo w. Without both Hapke layers
   the surface is shaded with Lambert.

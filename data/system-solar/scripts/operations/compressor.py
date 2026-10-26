@@ -6,6 +6,7 @@ from operations.texture_format import TextureFormat
 # The type each uncompressed format stores its texels as.
 TEXEL_TYPES = {
     TextureFormat.RGBA8_SRGB: np.uint8,
+    TextureFormat.RG16_SFLOAT: np.float16,
     TextureFormat.RGBA16_SFLOAT: np.float16,
     TextureFormat.R16_UNORM: np.uint16,
 }
