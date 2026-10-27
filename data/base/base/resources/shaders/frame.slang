@@ -11,6 +11,8 @@ struct FrameData {
     float4x4 viewProjection;
     float4x4 worldFromClip;
     float4x4 previousViewProjection;
+    // Without the antialiasing jitter: culling keeps the same frustum from frame to frame.
+    float4x4 unjitteredViewProjection;
     StarData *stars;
     uint starCount;
     float starfieldExposure;
@@ -25,6 +27,8 @@ struct FrameData {
     float pixelAngle;
     // Multiplies the terrain's heights as they are drawn.
     float terrainHeightScale;
-    uint padding[2];
+    // 1 for meshes to dissolve as they fade, 0 for them to pop where their fades reach half.
+    uint fadeEnabled;
+    uint padding;
     float4 whiteBalance[3];
 };

@@ -6,6 +6,7 @@ mod camera_switch;
 mod controls;
 mod controls_context;
 mod debug;
+mod field_of_view;
 mod orbit;
 mod transition;
 
@@ -17,6 +18,7 @@ pub use camera_switch::CameraSwitch;
 pub use controls::Controls;
 pub use controls_context::ControlsContext;
 pub use debug::DebugControls;
+pub use field_of_view::FieldOfView;
 pub use orbit::OrbitControls;
 pub use transition::CameraTransition;
 

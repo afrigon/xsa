@@ -2,8 +2,12 @@ use ash::vk;
 use memory_vulkan::{Buffer, DeviceObject, MemoryContext, MemoryLocation, QueueSharing, TimelineValue};
 
 use super::frame_capacities::FrameCapacities;
-use super::gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TerrainData, TileData};
+use super::gpu_data::{
+    FrameData, MeshDrawData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TerrainData, TerrainDrawData,
+    TileData,
+};
 use super::gpu_timer::GpuTimer;
+use super::scatter::ScatterBuffers;
 use super::star_visibility::HISTOGRAM_BINS;
 use crate::vulkan::Device;
 
@@ -18,7 +22,10 @@ pub(super) struct Frame {
     pub stars: Buffer,
     pub projected_lights: Buffer,
     pub surface_anchors: Buffer,
+    pub terrain_draws: Buffer,
+    pub mesh_draws: Buffer,
     pub histogram: Buffer,
+    pub scatter: ScatterBuffers,
     pub timer: Option<GpuTimer>,
     // The graphics timeline value of the last frame submitted from this slot; once it is reached, the slot may be
     // recorded again and its read-backs hold that frame's results.
@@ -34,6 +41,8 @@ impl Frame {
         let stars = Frame::create_star_buffer(memory, capacities.stars)?;
         let projected_lights = Frame::create_projected_light_buffer(memory, capacities.lights)?;
         let surface_anchors = Frame::create_surface_anchor_buffer(memory, capacities.surface_anchors)?;
+        let terrain_draws = Frame::create_terrain_draw_buffer(memory, capacities.terrain_draws)?;
+        let mesh_draws = Frame::create_mesh_draw_buffer(memory, capacities.mesh_draws)?;
 
         let histogram = Buffer::new(
             memory,
@@ -46,6 +55,7 @@ impl Frame {
             &QueueSharing::Exclusive,
         )?;
 
+        let scatter = ScatterBuffers::new(memory)?;
         let timer = GpuTimer::new(memory, device)?;
         let queue_family = device.queue_family();
         let device = device.handle();
@@ -71,7 +81,10 @@ impl Frame {
             stars,
             projected_lights,
             surface_anchors,
+            terrain_draws,
+            mesh_draws,
             histogram,
+            scatter,
             timer,
             submitted: None,
         })
@@ -103,6 +116,14 @@ impl Frame {
 
     pub fn create_surface_anchor_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
         Frame::create_shader_buffer(memory, "surface anchors", capacity * size_of::<SurfaceAnchorData>())
+    }
+
+    pub fn create_terrain_draw_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(memory, "terrain draws", capacity * size_of::<TerrainDrawData>())
+    }
+
+    pub fn create_mesh_draw_buffer(memory: &MemoryContext, capacity: usize) -> anyhow::Result<Buffer> {
+        Frame::create_shader_buffer(memory, "mesh draws", capacity * size_of::<MeshDrawData>())
     }
 
     fn create_shader_buffer(memory: &MemoryContext, name: &str, size: usize) -> anyhow::Result<Buffer> {

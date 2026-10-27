@@ -1,7 +1,8 @@
 use usage::Subcommands;
 
 use super::{
-    InputCursorCommand, InputDownCommand, InputPressCommand, InputResetCommand, InputScrollCommand, InputUpCommand,
+    InputBindCommand, InputCursorCommand, InputDownCommand, InputPressCommand, InputResetCommand, InputScrollCommand,
+    InputUpCommand,
 };
 use crate::command::{Routable, Route};
 
@@ -15,6 +16,8 @@ pub enum InputAction {
     Press(InputPressCommand),
     /// Release every held button
     Reset(InputResetCommand),
+    /// Set a bind's key and the commands it runs as the key goes down and up
+    Bind(InputBindCommand),
     /// Move the cursor
     Cursor(InputCursorCommand),
     /// Scroll the mouse wheel or touchpad
@@ -28,6 +31,7 @@ impl Routable for InputAction {
             InputAction::Up(command) => command.route(),
             InputAction::Press(command) => command.route(),
             InputAction::Reset(command) => command.route(),
+            InputAction::Bind(command) => command.route(),
             InputAction::Cursor(command) => command.route(),
             InputAction::Scroll(command) => command.route(),
         }

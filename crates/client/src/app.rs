@@ -1,4 +1,4 @@
-mod bind_actions;
+mod bind_commands;
 mod body_step;
 mod camera_actions;
 mod camera_controller;
@@ -15,11 +15,13 @@ mod frame_clock;
 mod frame_pace;
 mod frame_timing;
 mod glide_motion;
+mod held_bind;
 mod immediate_command_handler;
 mod input_events;
 mod input_glide;
 mod pointer_input;
 mod running_task;
+mod scatter_loader;
 mod snapshot;
 mod task_status;
 mod update_schedule;
@@ -77,6 +79,7 @@ use command_progress::CommandProgress;
 use forwarded_command::ForwardedCommand;
 use frame_clock::FrameClock;
 use frame_timing::FrameTiming;
+use held_bind::HeldBind;
 use running_task::RunningTask;
 use task_status::TaskStatus;
 use update_schedule::UpdateSchedule;
@@ -121,6 +124,7 @@ pub struct App {
     commands: GameCommands,
     overlays: HashSet<Overlay>,
     action_replies: Vec<oneshot::Receiver<Output>>,
+    held_binds: Vec<HeldBind>,
     build: BuildIdentity,
 }
 
@@ -173,6 +177,7 @@ impl App {
             commands,
             overlays: HashSet::new(),
             action_replies: Vec::new(),
+            held_binds: Vec::new(),
             build,
         };
         app.set_view_controller(ViewControllerId::MainMenu);
@@ -367,9 +372,7 @@ impl App {
     }
 
     fn poll_input(&mut self) {
-        for action in self.config.input.bind.triggered(&self.input) {
-            self.run_bind_action(action);
-        }
+        self.run_binds();
 
         if !self.is_game_active() || !self.config.input.enabled {
             if self.mouse_captured {

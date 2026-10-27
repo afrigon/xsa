@@ -1,7 +1,6 @@
 mod detail_ranges;
 mod height_range;
 mod horizon_culler;
-mod quad_sphere_tile;
 mod selected_tile;
 mod tile_height_bounds;
 mod tile_selection;
@@ -9,12 +8,12 @@ mod tile_selection;
 pub(in crate::renderer) use detail_ranges::{COARSEST_DETAIL, DetailRanges};
 pub(in crate::renderer) use height_range::HeightRange;
 pub(in crate::renderer) use horizon_culler::HorizonCuller;
-pub(in crate::renderer) use quad_sphere_tile::QuadSphereTile;
 pub(in crate::renderer) use selected_tile::SelectedTile;
 pub(in crate::renderer) use tile_height_bounds::TileHeightBounds;
 use tile_selection::TileSelection;
 
 use glam::{DQuat, DVec3};
+use xsa_core::terrain::QuadSphereTile;
 
 use super::culler::Culler;
 

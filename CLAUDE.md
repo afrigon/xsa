@@ -89,7 +89,7 @@ server's time warps and the client's camera transitions move through it.
 | --- | --- |
 | `animation` | Values that move over time: easing curves (`Easing`, `CubicBezier`), eased progress over a duration (`EasedProgress`) and speed-limited motion (`LimitedMotion`) |
 | `units` | Plain value types shared by every crate: simulation time, time rate |
-| `core` | The pure simulation: orbits, coordinate frames, bodies and their state, the heights of a height map level read across its cube faces (`HeightMapLevel`, `CubeTexel`) |
+| `core` | The pure simulation: orbits, coordinate frames, bodies and their state, the heights of a height map level read across its cube faces (`HeightMapLevel`, `CubeTexel`), quad sphere tiles (`QuadSphereTile`) and where scatters place their props (`ScatterPlacement`), alike on the client and the server |
 | `packs` | Pack loading (see `docs/packs.md`): reads KDL content into `core` types and plain definitions |
 | `proto` | Client ↔ server protocol (see Protocol): requests, replies, events, frames, the world state and users, connections and the QUIC transport, the client's session |
 | `commands` | Text commands: the command tree, routing, REPL, IPC, completion; the transcripts of IPC and startup scripts and the `logging` settings every process has |
@@ -102,10 +102,10 @@ server's time warps and the client's camera transitions move through it.
 | `input` | Input as plain data: keys and mouse buttons (`Key`, `MouseButton`), chords of them (`InputChord`) that binds and the `input` commands share, and input events (`InputEvent`) tagged with their source (`InputSource`); its `winit` feature converts window events |
 | `xui` | SwiftUI-style UI framework, renderer-agnostic: views, a retained node tree, layout, environment, text shaping, glyph atlas; outputs draw lists |
 | `xui-vulkan` | Vulkan backend for `xui`: records a draw list into a host's command buffer, creating its objects through the host's `MemoryContext` |
-| `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains, and any range of a KTX2 file's levels without the others |
+| `resource-loader` | Resource file decoding, a feature per kind: `texture` reads KTX2, DDS and PNG into GPU-ready images with their mip chains, and any range of a KTX2 file's levels without the others; `mesh` reads binary glTF into vertices (position, QTangent, half-float UV), `u32` indices, a submesh per node and a bounding sphere, in Blender's frame |
 | `memory-vulkan` | GPU memory and object lifetime: `MemoryContext` (device, allocator, deletion queue, video memory budget), `DeviceObject`, `Buffer`, `Image` (in shared or dedicated memory), timelines and present fences, the `TransferQueue` every copy between CPU and GPU goes through (whole resources, or regions of an image frames keep sampling), and the `BindlessTable` whose owned slots return once no frame reads them. Its `test-device` feature adds `TestDevice`, a headless device for GPU tests that collects validation messages |
 | `video-vulkan` | H.265 encoding on the GPU's hardware encoder through Vulkan Video: `ColorConversion` turns rendered frames into the encoder's NV12 input on the host's command buffer, `VideoEncoder` encodes them on the encode queue, `Mp4Writer` wraps the bitstream in an MP4 file |
-| `resource-vulkan` | `Resources`: background, reference-counted loading of the files content refers to, on a worker pool of its own; typed `ResourceHandle`s, groups with byte progress, priorities, and a memory budget that evicts unreferenced cached resources least recently used first. Ships the texture and cube map kinds. A `StreamedMips` kind (cube maps, the client's height maps) keeps resident only the mip levels its `MipHandle`s demand (`MipDemand`): a reload reads the levels it lacks on a worker, and the levels it shares with the current value are copied on the GPU in the frame's command buffer (`Resources::record_mip_copies`); levels no longer wanted stay for the demand's retention, or until the budget needs them |
+| `resource-vulkan` | `Resources`: background, reference-counted loading of the files content refers to, on a worker pool of its own; typed `ResourceHandle`s, groups with byte progress, priorities, and a memory budget that evicts unreferenced cached resources least recently used first. Ships the texture, cube map and mesh kinds. A `StreamedMips` kind (cube maps, the client's height maps) keeps resident only the mip levels its `MipHandle`s demand (`MipDemand`): a reload reads the levels it lacks on a worker, and the levels it shares with the current value are copied on the GPU in the frame's command buffer (`Resources::record_mip_copies`); levels no longer wanted stay for the demand's retention, or until the budget needs them |
 | `render-graph-vulkan` | Frame graph for Vulkan: passes declare the resources each step uses; it culls passes, places every barrier, layout transition and attachment load and store op, and allocates transient and history images and transient buffers |
 
 ## Architecture
@@ -279,10 +279,11 @@ Names in code, data and documents use these words in these meanings only:
   `crates/xui-vulkan/shaders/`, is compiled by the same task and is embedded
   in the crate.
 - Files are grouped by feature (`docs/rendering.md`): `terrain/` (the terrain
-  family's vertex stage, layers, programs and views), `light/` (light models
-  every program shares), `debug/` (the generic debug views) and `post/`
+  family's vertex stage, layers, programs and views), `mesh/` (the mesh
+  family's), `scatter/` (the scatter pass), `light/` (light models every
+  program shares), `debug/` (the generic debug views) and `post/`
   (post-processing); `frame.slang`, `draw.slang` and `fragment.slang` at the
-  root are read by every program. Imports name the full path from the shader
+  root are read by every program, and the mesh programs sit beside them. Imports name the full path from the shader
   root (`import light.hapke`). Slang looks for an import next to the importing
   file first, so a module path must not also exist under the importer's folder.
 - A program is a file with `[shader(...)]` entry points, `vertexMain` and
@@ -439,9 +440,10 @@ Always bring the game to a stable state first:
 - A section implements `ConfigSection`: one `visit` pairs each key with its field, which reads, writes, lists and
   edits it, so adding a key touches only its section. The root (`crates/client/src/config.rs`,
   `DedicatedConfig`) places each section in the tree; the game's defaults all live in `config/default_config.rs`.
-- Binds are `input.bind.<category>.<action>` keys holding a key chord (`f4`,
-  `shift+tab`, `` ` ``). Each action runs a typed action directly (the same
-  command structs the text commands parse into), never command text.
+- Binds are `input.bind.<category>.<name>` groups: a `key` chord (`f4`, `shift+tab`, `` ` ``), the command it runs
+  as the key goes `down`, and optionally the one it runs as the key is released, `up`. A bind's commands are checked
+  when they are set or loaded, and run through the router like any other; `input bind <name> <key> --down … --up …`
+  sets the three at once.
 
 ## Controls
 
@@ -453,7 +455,8 @@ through it. Each way of moving the camera is a `Controls`
 (`OrbitControls`, `DebugControls`) attached to an `Anchor`; switching replaces
 the controls, through a `CameraTransition` unless animations are off. The
 camera gets input only while the game view controller is on top; menus release the
-mouse. Debug toggles are commands (`config toggle video.stars`,
+mouse. The camera's horizontal field of view is `camera.fov` (degrees), magnified by
+`camera.zoom`; it eases to a change. Debug toggles are commands (`config toggle video.stars`,
 `config set render.shader.override normals`, …), not binds. The default binds:
 
 | Key | Bind | Action |
@@ -464,6 +467,7 @@ mouse. Debug toggles are commands (`config toggle video.stars`,
 | . | `time.faster` | Step up from a pause through slow motion to real time, then double the time rate (`time faster`) |
 | , | `time.slower` | Halve the time rate down to real time, then step through slow motion (0.5×, 0.25×, 0.1×) and pause (`time slower`) |
 | / | `time.real-time` | Run time at real speed (`time resume`) |
+| C (held) | `camera.zoom` | Magnify the view 4× while held (`config set camera.zoom 4`, `config unset camera.zoom`) |
 
 ## Gotchas
 

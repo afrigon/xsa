@@ -11,13 +11,12 @@ use super::body_step::BodyStep;
 use super::client_world::ClientWorld;
 use crate::camera::{
     Anchor, AnyControls, Attitude, Camera, CameraPose, CameraSwitch, CameraTransition, Controls, ControlsContext,
-    DebugControls, OrbitControls,
+    DebugControls, FieldOfView, OrbitControls,
 };
 use crate::config::{CameraConfig, DebugCameraConfig};
 use crate::input::Input;
 use crate::ui::CameraReading;
 
-const HORIZONTAL_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
 const METERS_PER_KILOMETER: f64 = 1_000.0;
 const FULL_TURN_DEGREES: f64 = 360.0;
 // Replies give angles to a thousandth of a degree.
@@ -33,6 +32,7 @@ pub(super) struct CameraController {
     // The last switch of controls, until the app takes it to release the mouse and, after a cut, the frame history.
     switched: Option<CameraSwitch>,
     debug_camera: DebugCameraConfig,
+    field_of_view: FieldOfView,
     animation_duration_scale: f64,
 }
 
@@ -47,12 +47,15 @@ pub(super) struct TeleportTarget {
 
 impl CameraController {
     pub fn new(window_size: PhysicalSize<u32>, config: &CameraConfig) -> CameraController {
+        let field_of_view = FieldOfView::new(config.half_angle_tangent());
+
         CameraController {
             camera: Camera::new(
-                HORIZONTAL_FIELD_OF_VIEW_DEGREES.to_radians(),
+                field_of_view.horizontal_angle(),
                 CameraController::aspect_ratio_of(window_size),
                 config.collision,
             ),
+            field_of_view,
             controls: None,
             transition: None,
             controls_pose: CameraPose {
@@ -110,9 +113,12 @@ impl CameraController {
         self.switched.take()
     }
 
+    // The field of view eases toward the configured one.
     pub fn set_camera_config(&mut self, config: &CameraConfig) {
         self.camera.collision = config.collision;
         self.debug_camera = config.debug.clone();
+        self.field_of_view
+            .aim(config.half_angle_tangent(), self.animation_duration_scale);
     }
 
     pub fn wants_mouse_capture(&self, input: &Input) -> Option<bool> {
@@ -121,6 +127,8 @@ impl CameraController {
 
     // Returns the debug camera's speed that scrolling asked for, if it did.
     pub fn update(&mut self, world: &ClientWorld, input: &Input, delta_seconds: f64) -> Option<f64> {
+        self.field_of_view.advance(delta_seconds);
+        self.camera.horizontal_fov = self.field_of_view.horizontal_angle();
         let controls = self.controls.as_mut()?;
         let context = ControlsContext {
             world,

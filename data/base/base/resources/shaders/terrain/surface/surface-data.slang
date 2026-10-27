@@ -1,4 +1,5 @@
 import draw;
+import terrain.tile;
 __exported import noise;
 
 // Must match the renderer: `SURFACE_CLASSES`, `PROJECTION_AXES`, `SURFACE_LEVELS`, `SURFACE_LEVEL_GROWTH` and
@@ -50,5 +51,5 @@ struct SurfaceAnchors {
 };
 
 SurfaceAnchors *surfaceAnchors() {
-    return (SurfaceAnchors *)constants.surfaceAnchors;
+    return (SurfaceAnchors *)terrainDraw().surfaceAnchors;
 }

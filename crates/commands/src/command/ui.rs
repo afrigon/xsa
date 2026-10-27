@@ -1,5 +1,6 @@
 mod hide;
 mod interface_action;
+mod interface_element;
 mod overlay;
 mod pop;
 mod push;
@@ -10,6 +11,7 @@ mod view_controller_id;
 
 pub use hide::InterfaceHideCommand;
 pub use interface_action::InterfaceAction;
+pub use interface_element::InterfaceElement;
 pub use overlay::Overlay;
 pub use pop::InterfacePopCommand;
 pub use push::InterfacePushCommand;

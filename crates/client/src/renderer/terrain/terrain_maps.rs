@@ -4,12 +4,10 @@ use std::time::Duration;
 
 use glam::DVec3;
 use resource_loader::texture::ColorSpace;
-use resource_vulkan::{
-    CubeMap, LoadRequest, MemoryUsage, MipDemand, MipHandle, ResourceGroup, Resources, StreamedMips,
-};
+use resource_vulkan::{CubeMap, LoadRequest, MipDemand, MipHandle, ResourceGroup, Resources, StreamedMips};
 use xsa_packs::HeightMapDefinition;
 
-use super::{MapStatistics, TerrainLayer, TerrainMapStatistics, TexelFootprint};
+use super::{TerrainLayer, TexelFootprint};
 use crate::renderer::quad_sphere::DetailRanges;
 use crate::resource_kinds::{HeightMap, HeightMapOptions};
 
@@ -114,31 +112,5 @@ impl TerrainMaps {
     // The width of a cube map's faces at its level 0.
     pub(in crate::renderer) fn extent<K: StreamedMips>(map: &K) -> u32 {
         map.image().extent().width << map.first_level()
-    }
-
-    pub(in crate::renderer) fn statistics(&self) -> TerrainMapStatistics {
-        let mut statistics = TerrainMapStatistics::default();
-
-        if let Some(handle) = &self.heights {
-            statistics.heights = TerrainMaps::map_statistics(handle);
-        }
-
-        for layer in TerrainLayer::ALL {
-            if let Some(handle) = &self.layers[layer.index()] {
-                statistics.layers[layer.index()] = TerrainMaps::map_statistics(handle);
-            }
-        }
-
-        statistics
-    }
-
-    fn map_statistics<K: StreamedMips>(handle: &MipHandle<K>) -> MapStatistics {
-        let memory = handle.get().map_or(MemoryUsage::default(), |map| map.memory());
-
-        MapStatistics {
-            video_bytes: memory.video,
-            ram_bytes: memory.ram,
-            loading: usize::from(!handle.is_settled()),
-        }
     }
 }

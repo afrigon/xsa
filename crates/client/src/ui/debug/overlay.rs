@@ -3,7 +3,7 @@ use xui::{Context, EdgeInsets, Text, View};
 
 use super::{CameraReading, ClockReading, PositionReading};
 use crate::BuildIdentity;
-use crate::renderer::{FrameStatistics, TerrainLayer};
+use crate::renderer::FrameStatistics;
 use crate::ui::ThemedView;
 
 const PADDING: f32 = 8.0;
@@ -15,7 +15,6 @@ const ANGLE_PRECISION: f64 = 1000.0;
 const METER_PRECISION: f64 = 10.0;
 const KILOMETER_PRECISION: f64 = 100.0;
 const FULL_TURN_DEGREES: f64 = 360.0;
-const BYTES_PER_MEBIBYTE: f64 = 1024.0 * 1024.0;
 const MILLISECONDS_PER_SECOND: f64 = 1000.0;
 
 pub struct DebugOverlayView {
@@ -40,37 +39,30 @@ impl DebugOverlayView {
         let gpu_milliseconds = self
             .gpu_milliseconds
             .map_or_else(|| MISSING.to_string(), |milliseconds| format!("{milliseconds:.2}"));
-        let depth = self
-            .statistics
-            .deepest_depth
-            .map_or_else(String::new, |depth| format!(" · depth {depth}"));
 
         format!(
-            "FPS: {frames_per_second} · {frame_milliseconds} ms · GPU {gpu_milliseconds} ms\n\
-             build: {}\n\
-             {} faces · {} tiles{depth}",
-            self.build, self.statistics.triangles, self.statistics.tiles
+            "FPS: {frames_per_second} · {frame_milliseconds} ms · GPU {gpu_milliseconds} ms\nbuild: {}",
+            self.build
         )
     }
 
-    // Each kind of terrain map over every terrain: the memory its resident levels hold, and how many maps still load
-    // toward the levels the camera needs.
-    fn terrain_maps(&self) -> String {
-        let maps = &self.statistics.terrain_maps;
-        let kinds = std::iter::once(("heights", &maps.heights))
-            .chain(TerrainLayer::ALL.map(|layer| (layer.name(), &maps.layers[layer.index()])));
+    fn terrain(&self) -> String {
+        let terrain = &self.statistics.terrain;
+        let depth = terrain
+            .deepest_depth
+            .map_or_else(String::new, |depth| format!(" · depth {depth}"));
 
-        kinds
-            .map(|(name, map)| {
-                format!(
-                    "{name}: {:.1} MiB video · {:.1} MiB RAM · {} loading",
-                    map.video_bytes as f64 / BYTES_PER_MEBIBYTE,
-                    map.ram_bytes as f64 / BYTES_PER_MEBIBYTE,
-                    map.loading
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        format!("terrain: {} faces · {} tiles{depth}", terrain.triangles, terrain.tiles)
+    }
+
+    // Instances drawn out of those within range.
+    fn scatter(&self) -> String {
+        let scatter = &self.statistics.scatter;
+
+        format!(
+            "scatter: {} faces · {}/{} instances · {} meshes",
+            scatter.triangles, scatter.drawn_instances, scatter.instances_in_range, scatter.meshes
+        )
     }
 
     fn camera(&self) -> String {
@@ -170,12 +162,13 @@ fn distance(meters: f64) -> String {
 impl View for DebugOverlayView {
     fn body(&self, _context: &Context) -> impl View {
         Text::new(format!(
-            "{}\n\n{}\n\n{}\n\n{}\n\n{}",
+            "{}\n\n{}\n\n{}\n\n{}\n\n{}\n{}",
             self.performance(),
-            self.terrain_maps(),
-            self.camera(),
             self.position(),
-            self.clock()
+            self.camera(),
+            self.clock(),
+            self.terrain(),
+            self.scatter()
         ))
         .text_style("telemetry")
         .padding(EdgeInsets::all(PADDING))

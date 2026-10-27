@@ -27,6 +27,13 @@ impl Seed {
         }
     }
 
+    // For places numbered rather than named, such as the cells of a grid.
+    pub fn derive_index(self, index: u64) -> Seed {
+        Seed {
+            value: Seed::split_mix(self.value ^ Seed::split_mix(index)),
+        }
+    }
+
     // Spread evenly over [0, 1), from the seed's top 53 bits: as many as an f64 holds exactly.
     pub fn fraction(self) -> f64 {
         (self.value >> FRACTION_SHIFT) as f64 / FRACTION_SCALE
@@ -61,6 +68,13 @@ mod tests {
         let body = Seed::from_id("luna");
         assert_ne!(body.derive("flat"), body.derive("slope"));
         assert_ne!(body.derive("flat"), body);
+    }
+
+    #[test]
+    fn indices_derive_distinct_seeds() {
+        let body = Seed::from_id("luna");
+        assert_ne!(body.derive_index(0), body.derive_index(1));
+        assert_ne!(body.derive_index(0), body);
     }
 
     #[test]

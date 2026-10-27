@@ -1,5 +1,7 @@
 use xsa_config::{ConfigSection, ConfigStore};
 
+#[cfg(feature = "client")]
+use super::InputBindCommand;
 use super::{
     ConfigGetCommand, ConfigLoadCommand, ConfigSaveCommand, ConfigSetCommand, ConfigToggleCommand, ConfigUnsetCommand,
 };
@@ -11,6 +13,8 @@ pub enum LocalCommand {
     ConfigUnset(ConfigUnsetCommand),
     ConfigSave(ConfigSaveCommand),
     ConfigLoad(ConfigLoadCommand),
+    #[cfg(feature = "client")]
+    InputBind(InputBindCommand),
 }
 
 impl LocalCommand {
@@ -22,6 +26,8 @@ impl LocalCommand {
             LocalCommand::ConfigUnset(command) => command.run(store),
             LocalCommand::ConfigSave(command) => command.run(store),
             LocalCommand::ConfigLoad(command) => command.run(store),
+            #[cfg(feature = "client")]
+            LocalCommand::InputBind(command) => command.run(store),
         }
     }
 }

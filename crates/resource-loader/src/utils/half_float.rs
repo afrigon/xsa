@@ -19,6 +19,7 @@ const SINGLE_SPECIAL_EXPONENT: i32 = 0xff;
 const DROPPED_MANTISSA_BITS: u32 = SINGLE_MANTISSA_BITS - HALF_MANTISSA_BITS;
 
 /// An IEEE 754 binary16 float, as its bits.
+#[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct HalfFloat {
     pub bits: u16,

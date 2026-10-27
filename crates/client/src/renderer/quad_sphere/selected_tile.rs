@@ -1,4 +1,4 @@
-use super::QuadSphereTile;
+use xsa_core::terrain::QuadSphereTile;
 
 // A tile chosen for drawing. Its detail level is its depth, or below zero for a root drawn with a coarser grid. Its
 // nearest point is this far from the camera, in meters.

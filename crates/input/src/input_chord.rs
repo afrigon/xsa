@@ -65,6 +65,11 @@ impl InputChord {
         self.held.len() + 1
     }
 
+    // Whether `button` is the chord's last key, whose release ends the chord.
+    pub fn is_triggered_by(&self, button: InputButton) -> bool {
+        self.trigger.matches(button)
+    }
+
     pub fn matches(&self, press: &ButtonPress) -> bool {
         self.trigger.matches(press.button)
             && self

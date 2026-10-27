@@ -849,6 +849,31 @@ mod tests {
         assert_eq!(host.destination_access, vk::AccessFlags2::HOST_READ);
     }
 
+    // Draw arguments are written in compute, then read by the draws that follow.
+    #[test]
+    fn indirect_arguments_wait_on_their_writer_at_the_indirect_stage() {
+        let mut frame = FrameDeclaration::default();
+        let swapchain = import_swapchain(&mut frame);
+        let mut cull = PassDeclaration::new(&mut frame, &[], "cull");
+        let arguments = cull.create_buffer(visibility(VISIBILITY_SIZE));
+        cull.buffer(arguments, BufferUsage::StorageWrite(Stage::Compute));
+        let mut draw = PassDeclaration::new(&mut frame, &[], "draw");
+        draw.buffer(arguments, BufferUsage::IndirectRead);
+        draw.color_attachment(swapchain, Attachment::DontCare);
+        let compiled = compile(&frame).unwrap();
+
+        let read = compiled.passes[1].steps[0].buffer_barriers[0];
+        assert_eq!(
+            read.source,
+            BufferBarrierSource::Known(BufferState {
+                stages: vk::PipelineStageFlags2::COMPUTE_SHADER,
+                access: vk::AccessFlags2::SHADER_STORAGE_WRITE,
+            })
+        );
+        assert_eq!(read.destination_stages, vk::PipelineStageFlags2::DRAW_INDIRECT);
+        assert_eq!(read.destination_access, vk::AccessFlags2::INDIRECT_COMMAND_READ);
+    }
+
     // Visibility is written per star in compute, then read by the lens pass drawing into the swapchain.
     #[test]
     fn a_graph_buffer_waits_on_the_previous_frame_then_on_its_writer() {

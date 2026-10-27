@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
+use resource_loader::mesh::GlbLoader;
 use resource_loader::texture::TEXTURE_EXTENSIONS;
 
 use crate::{Document, Id, Manifest, PackData, ParseContext};
@@ -14,6 +15,7 @@ const RESOURCES_DIRECTORY: &str = "resources";
 const TEXTURES: &str = "textures";
 const FONTS: &str = "fonts";
 const FONT_EXTENSION: &str = "ttf";
+const MESHES: &str = "meshes";
 
 pub struct PackStack {
     manifests: Vec<Manifest>,
@@ -90,6 +92,10 @@ impl PackStack {
 
     pub fn font(&self, id: &Id) -> anyhow::Result<&Path> {
         self.resource(FONTS, id, FONT_EXTENSION)
+    }
+
+    pub fn mesh(&self, id: &Id) -> anyhow::Result<&Path> {
+        self.resource(MESHES, id, GlbLoader::EXTENSION)
     }
 
     pub fn data_ids(&self, kind: &str) -> Vec<Id> {

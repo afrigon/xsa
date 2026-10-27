@@ -1,3 +1,4 @@
+import light.bounce;
 import light.lambert;
 import light.star;
 import terrain.layers;
@@ -9,8 +10,8 @@ TerrainVaryings vertexMain(VertexInput input) {
     return terrainVaryings(terrainVertex(input, NoRelief()));
 }
 
-// Mirrors `LambertData` in the renderer. Its albedo and normals are the terrain's color and normal layers.
-struct LambertData {
+// Mirrors `TerrainLambertData` in the renderer. Its albedo and normals are the terrain's color and normal layers.
+struct TerrainLambertData {
     float3 baseColor;
     uint emissiveTexture;
     float emissiveLuminance;
@@ -20,7 +21,7 @@ struct LambertData {
 [shader("fragment")]
 FragmentOutput fragmentMain(TerrainVaryings vertex, uint primitive: SV_PrimitiveID) {
     DrawVaryings input = vertex.draw;
-    LambertData material = currentMaterial<LambertData>();
+    TerrainLambertData material = currentMaterial<TerrainLambertData>();
     float3 modelNormal = normalize(input.modelNormal);
     LayerCoordinates layers = layerCoordinates(modelNormal);
     LayerRead color = readLayer(layers, colorLayer);
@@ -35,6 +36,8 @@ FragmentOutput fragmentMain(TerrainVaryings vertex, uint primitive: SV_Primitive
         StarData star = constants.frame.stars[index];
         float cosine = mappedCosine(star, input.worldPosition, geometricNormal, worldNormal);
         luminance += lambertLuminance(albedo, starIlluminance(star, input.worldPosition), cosine);
+        float3 bounce = groundBounceIlluminance(star, input.worldPosition, worldNormal, geometricNormal, albedo);
+        luminance += lambertLuminance(albedo, bounce, 1.0);
     }
 
     luminance += mappedEmission(material.emissiveTexture, material.emissiveLuminance, coordinates);

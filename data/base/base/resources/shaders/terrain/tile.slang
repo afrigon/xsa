@@ -5,6 +5,31 @@ struct VertexInput {
     uint instance : SV_InstanceID;
 };
 
+struct ObjectData {
+    float4x4 worldFromModel;
+    float4x4 previousWorldFromModel;
+};
+
+// A terrain draw's record, mirroring `TerrainDrawData` in the renderer: the body's object, its tiles from
+// `firstTile`, its maps, and where the camera stands in its surfaces (null for a terrain without surfaces).
+struct TerrainDrawData {
+    ObjectData *objects;
+    void *tiles;
+    void *terrain;
+    void *surfaceAnchors;
+    uint objectIndex;
+    uint firstTile;
+};
+
+TerrainDrawData *terrainDraw() {
+    return (TerrainDrawData *)constants.draw;
+}
+
+ObjectData currentObject() {
+    TerrainDrawData *draw = terrainDraw();
+    return draw.objects[draw.objectIndex];
+}
+
 // Everything a tile's vertex stage computes; each terrain program passes on the part its fragment stage reads.
 struct TileVertex {
     DrawVaryings draw;
@@ -127,11 +152,11 @@ struct NoRelief : TileRelief {
 }
 
 TileData tileData(uint tile) {
-    return ((TileData *)constants.tiles)[tile];
+    return ((TileData *)terrainDraw().tiles)[tile];
 }
 
 TerrainData *terrainData() {
-    return (TerrainData *)constants.terrain;
+    return (TerrainData *)terrainDraw().terrain;
 }
 
 // Exact in f32 down to the deepest tiles, so tiles sharing a grid point find it alike.
@@ -150,29 +175,38 @@ float2 offsetTangent(float2 angle) {
     return select(abs(angle) < seriesTangentLimit, series, tan(angle));
 }
 
-// From the tile's center to a grid point on the cube. A face coordinate s lies at tan(π/4 s) on the cube; the tangent
-// of the center's coordinate plus the offset is built from both tangents, so the small offset keeps its precision.
-float3 cubeOffset(TileData tile, int2 cell) {
+// From the tile's center to a point `offset` from it in the face's coordinates, on the cube. A face coordinate s lies
+// at tan(π/4 s) on the cube; the tangent of the center's coordinate plus the offset is built from both tangents, so the
+// small offset keeps its precision.
+float3 cubeOffsetAt(TileData tile, float2 offset) {
     float2 centerTangent = float2(dot(tile.cubeCenter, tile.columnAxis), dot(tile.cubeCenter, tile.rowAxis));
-    float2 tangent = offsetTangent(pi / 4.0 * faceOffset(tile, cell));
+    float2 tangent = offsetTangent(pi / 4.0 * offset);
     float2 along = tangent * (1.0 + centerTangent * centerTangent) / (1.0 - centerTangent * tangent);
     return along.x * tile.columnAxis + along.y * tile.rowAxis;
+}
+
+float3 cubeOffset(TileData tile, int2 cell) {
+    return cubeOffsetAt(tile, faceOffset(tile, cell));
 }
 
 float3 cubePoint(TileData tile, int2 cell) {
     return tile.cubeCenter + cubeOffset(tile, cell);
 }
 
-// From the tile's center to the point of the unit sphere above a grid point. Built from small differences only, so
-// its rounding error scales with the tile rather than the sphere.
-float3 sphereOffset(TileData tile, int2 cell) {
-    float3 alongFace = cubeOffset(tile, cell);
+// From the tile's center to the point of the unit sphere above a point `offset` from it in the face's coordinates.
+// Built from small differences only, so its rounding error scales with the tile rather than the sphere.
+float3 sphereOffsetAt(TileData tile, float2 offset) {
+    float3 alongFace = cubeOffsetAt(tile, offset);
     float centerLengthSquared = dot(tile.cubeCenter, tile.cubeCenter);
     float growth = 2.0 * dot(tile.cubeCenter, alongFace) + dot(alongFace, alongFace);
     float centerLength = sqrt(centerLengthSquared);
     float pointLength = sqrt(centerLengthSquared + growth);
     return alongFace / pointLength -
            tile.cubeCenter * (growth / (centerLength * pointLength * (centerLength + pointLength)));
+}
+
+float3 sphereOffset(TileData tile, int2 cell) {
+    return sphereOffsetAt(tile, faceOffset(tile, cell));
 }
 
 // From the tile's center to the terrain above a grid point, its height blended toward the parent level by `morph`.
@@ -208,7 +242,7 @@ float3 morphedOffset<H : TileHeight>(H heights, TileData tile, int2 cell, float 
 
 TileVertex transformTile<H : TileHeight, R : TileRelief>(H heights, R relief, VertexInput input) {
     ObjectData object = currentObject();
-    uint tileIndex = constants.firstTile + input.instance;
+    uint tileIndex = terrainDraw().firstTile + input.instance;
     TileData tile = tileData(tileIndex);
     int2 cell = int2(input.cell);
     float morph = vertexMorph(heights, tile, object, cell);

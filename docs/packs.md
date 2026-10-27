@@ -30,16 +30,17 @@ data/<pack>/
       systems/                              how bodies relate: hierarchy and orbits
       simulations/                          which systems make up a playable simulation
       terrains/                             each body's heights
-      biomes/                               each body's kinds of ground
+      biomes/                               each body's kinds of ground and the scatters they place
+      scatters/                             props placed on the ground: rocks, trees, bushes
       parts/                                rocket parts (reserved)
     resources/                              presentation — read by the client
       objects/                              mirrors data/ one-to-one
-        bodies/  systems/  simulations/  parts/
+        bodies/  systems/  simulations/  parts/  models/
       materials/                            shader and its parameters
       surfaces/                             close-up ground materials, shared by every body
       biomes/                               how each biome's ground looks up close
       shaders/                              SPIR-V shaders (base only, see below)
-      textures/  models/  sounds/  fonts/   shared assets, organized freely
+      textures/  meshes/  sounds/  fonts/   shared assets, organized freely
       theme/                                design system: colors, roles, typefaces, text styles
       lang/                                 localization files (reserved)
 ```
@@ -288,10 +289,74 @@ while after it moves away.
 
 ### Biomes — `<namespace>/data/biomes/`
 
-A kind of ground (`luna/regolith-plains`), named by its body's terrain. Its
-data file carries no keys of its own: it is where the server's side of a biome
-(scatters, terrain detail) belongs. How its ground looks up close is the
-resource of the same id in `resources/biomes/` (below).
+A kind of ground (`luna/regolith-plains`), named by its body's terrain, and the
+scatters it places. How its ground looks up close is the resource of the same
+id in `resources/biomes/` (below).
+
+```kdl
+scatter "debug:rocks" {
+    density 0.6
+}
+scatter "debug:pebbles" {
+    tint 0.55 0.52 0.5
+}
+```
+
+- **`scatter`:** a scatter in `data/scatters/`, repeated for each one the biome
+  places, in any number. A biome may place the same scatter twice: each use is
+  seeded by its place in the list.
+  - **`density`** (optional, 1 by default): the share of the scatter's full
+    density this biome places, above 0 up to 1.
+  - **`tint`** (optional, 1 1 1 by default): a linear multiplier on the base
+    colour of the scatter's models, red green blue.
+
+### Scatters — `<namespace>/data/scatters/`
+
+Props placed on the ground, reusable by any biome. Each scatter places one
+model per `spacing` squared at full density, and draws them within `range` of
+the camera, fading them out over the last tenth of it.
+
+```kdl
+spacing 40
+range 3000
+model "tree" {
+    physics "static"
+    orientation "up"
+    scale 0.7 1.5
+    weight 1 noise=400 contrast=4
+}
+model "cube" {
+    physics "dynamic"
+    orientation "ground"
+    scale 0.3 1.2
+    weight 1 noise=400
+}
+```
+
+- **`spacing`** (m): the mean distance between props at full density.
+- **`range`** (m): how far from the camera they are drawn.
+- **`model`:** a model in `resources/objects/models/`, repeated for each one
+  the scatter picks from, with:
+  - **`physics`:** how a placed model takes part in the simulation: `none`
+    (seen, never touched), `static` (collides, never moves) or `dynamic`
+    (collides and moves when struck).
+  - **`orientation`:** `ground` stands it along the ground's normal, as a rock
+    lies; `up` stands it away from the body's center, as a tree grows.
+  - **`scale`:** the smallest and largest uniform scale, drawn evenly between.
+  - **`sink`** (optional, 0 0 by default): the smallest and largest share of
+    the model's height buried in the ground, from 0 to 1, drawn evenly between.
+  - **`tilt`** (optional, 0 0 by default): the smallest and largest lean from
+    upright, in degrees up to 90, toward a random direction.
+  - **`weight`:** how often it is picked against the scatter's other models.
+    With **`noise`** (m), it varies over the ground in patches about that size:
+    each model's own noise scales its weight between 0 and its value.
+    **`contrast`** (at least 1, 1 by default) sharpens their edges, leaving bare
+    ground where every model's weight reaches 0.
+
+Placement is a function of the body and the ground alone, the same for every
+client and the server: each body's quad sphere is split into cells no wider
+than the spacing, and each cell holds one prop at most, at a random place in
+it, with a chance that keeps the density.
 
 ## Resources
 
@@ -314,6 +379,18 @@ skybox texture="skyboxes/deep-star-maps" frame="equatorial" luminance=0.05
 - **`luminance`** (cd/m²): the sky's luminance for a texture value of 1.
 - **`frame`:** `equatorial` for celestial-coordinate star maps, `ecliptic` for
   maps already aligned with the world frame.
+
+A model's object file (`objects/models/<model>.kdl`) names its mesh (`meshes/`) and the material each of the mesh's
+nodes draws with, by the node's name in the mesh file:
+
+```kdl
+mesh "tree"
+material "bark" node="trunk"
+material "foliage" node="leaves"
+```
+
+Each mesh node has one `material` line, and takes one material, a mesh program's (`base:hapke`). A model whose
+mesh nodes and materials do not match one for one is logged as an error and not drawn.
 
 ### Materials — `<namespace>/resources/materials/`
 
@@ -353,6 +430,16 @@ plane; z is reconstructed.
 - **`shader "base:terrain/emissive"`** with optional **`color`** (a tint, white by
   default) and **`luminance`** (cd/m²). A star takes its luminance and color
   from its data and needs neither.
+- **`shader "base:hapke"`** for a model's mesh, shaded with Hapke's model, every
+  parameter constant over it: **`base-color`** (the diffusive reflectance r0,
+  linear red green blue, from which the shader derives w), **`lobe-width`** (b),
+  **`lobe-balance`** (c), **`macroscopic-roughness`** (θ̄, °), **`porosity`**
+  (K), **`shadow-hiding amplitude= width=`** (B_S0, h_S) and **`backscatter
+  amplitude= width=`** (B_C0, h_C), all required. A scatter's tint multiplies
+  the base colour.
+
+A body's material takes a terrain program (`base:terrain/…`), a model's
+material a mesh program; either refuses the other's.
 
 ### Lenses — `<namespace>/resources/lenses/`
 
@@ -449,6 +536,18 @@ replaces an earlier pack's whatever the formats, and a pack holding the same
 texture in several formats uses the first of KTX2, DDS and PNG, with a
 warning. Folders are organized by subject for people; a texture's purpose is
 declared by whatever references it.
+
+### Meshes — `<namespace>/resources/meshes/`
+
+Binary glTF 2.0 files (`.glb`) that models name. A mesh holds geometry only: its model's object file gives its
+materials.
+
+- Each node with a mesh draws one triangle list with normals, tangents and one set of texture coordinates, under a
+  name no other node in the file has. Skins and morph targets are refused.
+- The model frame is Blender's: +Z up, the front facing −Y, in meters. A model rests on the ground at its origin.
+- Exported from Blender as glTF Binary, with Include → Custom Properties off, Transform → +Y Up on, Data → Mesh →
+  Apply Modifiers, UVs, Normals and Tangents on and Vertex Colors off, Data → Material → Materials set to No export,
+  and Compression off.
 
 ### Surfaces — `<namespace>/resources/surfaces/`
 
@@ -603,8 +702,8 @@ features "tnum" "zero"
 - **Definitions:** KDL v2.
 - **Textures:** DDS, never re-encoded at load, so no quality is lost.
 - **Fonts:** TrueType (`.ttf`).
-- **3D models:** glTF 2.0 where a source offers it; other formats as needed by
-  the models available.
+- **Meshes:** binary glTF 2.0 (`.glb`); a source in another format is converted
+  by the pack's scripts.
 
 ## Not part of the first version
 

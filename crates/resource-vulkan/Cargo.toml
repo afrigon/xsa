@@ -7,7 +7,7 @@ edition.workspace = true
 anyhow.workspace = true
 ash.workspace = true
 memory-vulkan.workspace = true
-resource-loader = { workspace = true, features = ["texture"] }
+resource-loader = { workspace = true, features = ["mesh", "texture"] }
 tracing.workspace = true
 
 [dev-dependencies]

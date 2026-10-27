@@ -1,0 +1,10 @@
+spacing 2
+range 150
+model "cube" {
+    physics "none"
+    orientation "ground"
+    scale 0.03 0.1
+    sink 0 0.3
+    tilt 0 30
+    weight 1
+}

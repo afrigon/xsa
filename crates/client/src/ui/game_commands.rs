@@ -1,10 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use xsa_commands::command::{
-    Command, ExitCommand, TimeAction, TimeCommand, TimeFasterCommand, TimeOverrideCommand, TimeResumeCommand,
-    TimeSlowerCommand,
-};
+use xsa_commands::command::{Command, ExitCommand, TimeAction, TimeCommand, TimeOverrideCommand};
 use xsa_commands::value::TimeOverride;
 use xsa_units::TimeRate;
 
@@ -22,18 +19,6 @@ impl GameCommands {
 
     pub fn clear_time_override(&self) {
         self.set_time_override(None);
-    }
-
-    pub fn resume_time(&self) {
-        self.time(TimeAction::Resume(TimeResumeCommand {}));
-    }
-
-    pub fn faster_time(&self) {
-        self.time(TimeAction::Faster(TimeFasterCommand {}));
-    }
-
-    pub fn slower_time(&self) {
-        self.time(TimeAction::Slower(TimeSlowerCommand {}));
     }
 
     pub fn exit(&self) {

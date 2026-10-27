@@ -14,6 +14,8 @@ mod frame_role;
 mod frame_statistics;
 mod frame_target;
 mod frustum;
+mod geometry_family;
+mod geometry_variant;
 mod gpu_context;
 mod gpu_data;
 mod gpu_timer;
@@ -31,6 +33,8 @@ mod pending_capture;
 mod quad_sphere;
 mod queued_capture;
 mod render_passes;
+mod scatter;
+mod scatter_statistics;
 mod scene;
 mod shader_binaries;
 mod shading_range;
@@ -42,6 +46,8 @@ mod temporal_history;
 mod terrain;
 mod terrain_debug_view;
 mod terrain_draw;
+mod terrain_statistics;
+mod terrain_variant;
 mod tile_shape;
 mod tonemapper;
 mod video_output;
@@ -54,16 +60,25 @@ pub use captured_image::CapturedImage;
 pub use debug_view::DebugView;
 pub use frame_statistics::FrameStatistics;
 pub use frame_target::FrameTarget;
+pub use geometry_family::GeometryFamily;
 pub use lens_lights::LensLights;
-pub use material::{EmissiveMaterial, HapkeMaterial, LambertMaterial, Material, Shader, SkyboxMaterial};
+pub use material::{
+    HapkeMaterial, Material, Shader, SkyboxMaterial, TerrainEmissiveMaterial, TerrainHapkeMaterial,
+    TerrainLambertMaterial,
+};
 pub use pending_capture::PendingCapture;
 pub use resource_loader::texture::ColorSpace;
-pub use scene::{LightSource, MaterialHandle, ObjectHandle, Scene, SceneObject, Star, Terrain, TerrainHandle};
+pub use scatter_statistics::ScatterStatistics;
+pub use scene::{
+    BodyScatter, LightSource, MaterialHandle, Model, ModelHandle, NodeMaterial, ObjectHandle, Scene, SceneObject, Star,
+    Terrain, TerrainHandle,
+};
 pub use shader_binaries::ShaderBinaries;
 pub use surface::{BiomeSurfaces, SurfaceClass, SurfaceTextures};
 pub use surface_debug_view::SurfaceDebugView;
-pub use terrain::{TerrainLayer, TerrainMapStatistics, TerrainMaps};
+pub use terrain::{TerrainLayer, TerrainMaps};
 pub use terrain_debug_view::TerrainDebugView;
+pub use terrain_statistics::TerrainStatistics;
 pub use tonemapper::Tonemapper;
 
 use std::cell::Cell;
@@ -94,12 +109,15 @@ use command_recorder::CommandRecorder;
 use culler::Culler;
 use frame::Frame;
 use frame_capacities::FrameCapacities;
-use frame_context::FrameContext;
+use frame_context::{FrameContext, NO_ADDRESS};
 use frame_inputs::FrameInputs;
 use frame_output::FrameOutput;
 use frame_role::FrameRole;
 use gpu_context::GpuContext;
-use gpu_data::{FrameData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TerrainData, TileData};
+use gpu_data::{
+    FrameData, MeshDrawData, ObjectData, ProjectedLightData, StarData, SurfaceAnchorData, TerrainData, TerrainDrawData,
+    TileData,
+};
 use graph_textures::GraphTextures;
 use lens::Lens;
 use light_occlusion::LightOcclusion;
@@ -107,10 +125,11 @@ use light_projection::LightProjection;
 use material::{MaterialBuffer, NO_TEXTURE};
 use noise_volume::NoiseVolume;
 use object_pose::ObjectPose;
-use passes::TaaPass;
+use passes::{ScatterInputs, TaaPass};
 use quad_sphere::{DetailRanges, QuadSphere, SelectedTile, TileHeightBounds};
 use queued_capture::QueuedCapture;
 use render_passes::RenderPasses;
+use scatter::{MESH_INSTANCE_BYTES, ScatterStreams, ScatterView};
 use shading_range::ShadingRange;
 use star_visibility::{HISTOGRAM_BINS, StarVisibility};
 use temporal_history::TemporalHistory;
@@ -131,6 +150,8 @@ const INITIAL_STAR_CAPACITY: usize = 4;
 const INITIAL_SURFACE_ANCHOR_CAPACITY: usize = 4;
 const INITIAL_TERRAIN_CAPACITY: usize = 4;
 const INITIAL_LIGHT_CAPACITY: usize = 4;
+const INITIAL_TERRAIN_DRAW_CAPACITY: usize = 16;
+const INITIAL_MESH_DRAW_CAPACITY: usize = 16;
 const INITIAL_CAPACITIES: FrameCapacities = FrameCapacities {
     objects: INITIAL_OBJECT_CAPACITY,
     tiles: INITIAL_TILE_CAPACITY,
@@ -138,6 +159,8 @@ const INITIAL_CAPACITIES: FrameCapacities = FrameCapacities {
     stars: INITIAL_STAR_CAPACITY,
     lights: INITIAL_LIGHT_CAPACITY,
     surface_anchors: INITIAL_SURFACE_ANCHOR_CAPACITY,
+    terrain_draws: INITIAL_TERRAIN_DRAW_CAPACITY,
+    mesh_draws: INITIAL_MESH_DRAW_CAPACITY,
 };
 // Far longer than any frame the compositor asks for. Some drivers never return an image while the window is hidden
 // (NVIDIA on Wayland); the frame is skipped rather than the event loop stalled.
@@ -175,6 +198,7 @@ pub struct Renderer {
     capture: Option<Buffer>,
     video: Option<VideoOutput>,
     statistics: FrameStatistics,
+    scatter_statistics: ScatterStatistics,
     gpu_milliseconds: Option<f32>,
     lens_lights: LensLights,
     histogram: Vec<u32>,
@@ -185,6 +209,11 @@ pub struct Renderer {
     focal_length_pixels: f32,
     selected_tiles: Vec<SelectedTile>,
     terrain_draws: Vec<TerrainDraw>,
+    // By terrain draw.
+    terrain_draw_data: Vec<TerrainDrawData>,
+    scatters: ScatterStreams,
+    // By scatter mesh draw.
+    mesh_draw_data: Vec<MeshDrawData>,
     tile_data: Vec<TileData>,
     // By terrain index.
     terrain_data: Vec<TerrainData>,
@@ -240,6 +269,7 @@ impl Renderer {
             capture: None,
             video: None,
             statistics: FrameStatistics::default(),
+            scatter_statistics: ScatterStatistics::default(),
             gpu_milliseconds: None,
             lens_lights: LensLights::default(),
             histogram: vec![0; HISTOGRAM_BINS],
@@ -250,6 +280,9 @@ impl Renderer {
             focal_length_pixels: 0.0,
             selected_tiles: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             terrain_draws: Vec::new(),
+            terrain_draw_data: Vec::new(),
+            scatters: ScatterStreams::new()?,
+            mesh_draw_data: Vec::new(),
             tile_data: Vec::with_capacity(INITIAL_TILE_CAPACITY),
             terrain_data: Vec::with_capacity(INITIAL_TERRAIN_CAPACITY),
             surface_anchor_data: Vec::with_capacity(INITIAL_SURFACE_ANCHOR_CAPACITY),
@@ -490,6 +523,7 @@ impl Renderer {
         self.update_white_balance(camera.position, now);
         self.update_star_visibility(now)?;
         self.update_gpu_time()?;
+        self.update_scatter_statistics()?;
         self.write_frame_data(camera)?;
         let captured = self.captures_display_frames() && role == FrameRole::Display;
         let recording = self.record_frame(output, captured, camera.clear_color)?;
@@ -595,6 +629,17 @@ impl Renderer {
         Ok(())
     }
 
+    fn update_scatter_statistics(&mut self) -> anyhow::Result<()> {
+        let frame = &self.frames[self.frame_index];
+
+        if frame.submitted.is_some() {
+            let counts = frame.scatter.read_counts()?;
+            self.scatter_statistics = ScatterStatistics::from_counts(&counts, &frame.scatter.recorded_lists);
+        }
+
+        Ok(())
+    }
+
     fn update_gpu_time(&mut self) -> anyhow::Result<()> {
         let frame = &self.frames[self.frame_index];
 
@@ -666,6 +711,7 @@ impl Renderer {
             view_projection,
             world_from_clip: view_projection.inverse(),
             previous_view_projection: self.temporal.previous_view_projection(),
+            unjittered_view_projection,
             stars,
             star_count: self.scene.stars().len() as u32,
             starfield_exposure: self.star_visibility.starfield_exposure(),
@@ -681,7 +727,8 @@ impl Renderer {
             vertex_spacing_angle: self.config.terrain.lod.vertex_spacing_pixels / self.focal_length_pixels,
             pixel_angle: self.focal_length_pixels.recip(),
             terrain_height_scale: self.config.terrain.height.drawn_scale(),
-            padding: [0; 2],
+            fade_enabled: u32::from(self.config.video.fade.enabled),
+            padding: 0,
             white_balance: self.white_balance.rows(self.config.video.white_balance.enabled),
         };
 
@@ -763,6 +810,24 @@ impl Renderer {
         self.ensure_terrain_capacity()?;
         self.write_surface_anchors(camera);
         self.ensure_surface_anchor_capacity()?;
+        self.write_terrain_draws();
+        self.ensure_terrain_draw_capacity()?;
+        self.scatters.update(
+            &self.gpu,
+            &ScatterView {
+                scene: &self.scene,
+                materials: &self.materials,
+                temporal: &self.temporal,
+                camera: camera.position,
+                height_scale: f64::from(self.config.terrain.height.drawn_scale()),
+                enabled: self.config.terrain.scatter.enabled,
+            },
+        )?;
+        self.frames[self.frame_index]
+            .scatter
+            .write(&self.gpu.memory, self.scatters.frame())?;
+        self.write_mesh_draws();
+        self.ensure_mesh_draw_capacity()?;
 
         let frame = &mut self.frames[self.frame_index];
         frame.frame_data.write(&[frame_data])?;
@@ -771,6 +836,8 @@ impl Renderer {
         frame.terrains.write(&self.terrain_data)?;
         frame.stars.write(&self.star_data)?;
         frame.surface_anchors.write(&self.surface_anchor_data)?;
+        frame.terrain_draws.write(&self.terrain_draw_data)?;
+        frame.mesh_draws.write(&self.mesh_draw_data)?;
         Ok(frame.projected_lights.write(&self.projected_light_data)?)
     }
 
@@ -985,6 +1052,50 @@ impl Renderer {
         }
     }
 
+    // Each terrain draw's record, addressing this frame's buffers: written once they are all large enough.
+    fn write_terrain_draws(&mut self) {
+        self.terrain_draw_data.clear();
+        let frame = &self.frames[self.frame_index];
+
+        for draw in &self.terrain_draws {
+            let terrain = self.scene.terrain(draw.terrain);
+            let surface_anchors = self.surface_anchor_slots[draw.terrain.index].map_or(NO_ADDRESS, |slot| {
+                frame.surface_anchors.device_address() + (slot * size_of::<SurfaceAnchorData>()) as vk::DeviceAddress
+            });
+            self.terrain_draw_data.push(TerrainDrawData {
+                objects: frame.objects.device_address(),
+                tiles: frame.tiles.device_address(),
+                terrain: frame.terrains.device_address()
+                    + (draw.terrain.index * size_of::<TerrainData>()) as vk::DeviceAddress,
+                surface_anchors,
+                object_index: terrain.object.index as u32,
+                first_tile: draw.first_tile,
+            });
+        }
+    }
+
+    // Each scatter submesh draw's record: its node's place in its model and its model's instance list.
+    fn write_mesh_draws(&mut self) {
+        self.mesh_draw_data.clear();
+        let scatter = self.scatters.frame();
+        let instances = self.frames[self.frame_index].scatter.instances.device_address();
+
+        for (draw, data) in scatter.mesh_draws.iter().zip(&scatter.draws) {
+            let mesh = self
+                .scene
+                .model(draw.model)
+                .mesh
+                .get()
+                .expect("drawn models have their mesh");
+            let list = &scatter.lists[data.list as usize];
+            self.mesh_draw_data.push(MeshDrawData {
+                model_from_node: mesh.submeshes()[draw.submesh].transform,
+                instances: instances + u64::from(list.first_instance) * MESH_INSTANCE_BYTES,
+                padding: [0; 2],
+            });
+        }
+    }
+
     // A captured frame renders into an image of its own the video reads, then shows in the window through a copy.
     fn record_frame(&mut self, output: FrameOutput, captured: bool, clear_color: Vec3) -> anyhow::Result<Recording> {
         let GpuContext {
@@ -1063,6 +1174,23 @@ impl Renderer {
                 })
             }),
             video,
+            scatter: (!self.scatters.frame().pages.is_empty()).then(|| {
+                let mut import = |name, buffer: &Buffer, final_state| {
+                    graph.import_buffer(ImportedBuffer {
+                        name,
+                        buffer: buffer.handle(),
+                        initial: READ_BACK_AFTER_WAIT,
+                        final_state,
+                    })
+                };
+
+                ScatterInputs {
+                    counts: import("scatter counts", &frame.scatter.counts, READ_BACK_AFTER_WAIT),
+                    arguments: import("scatter draw arguments", &frame.scatter.arguments, READ_BACK_AFTER_WAIT),
+                    instances: import("mesh instances", &frame.scatter.instances, READ_BACK_AFTER_WAIT),
+                    readback: import("scatter counts readback", &frame.scatter.readback, HOST_READABLE),
+                }
+            }),
             projected_light_count: self.projected_light_data.len() as u32,
             lens_loaded: self.lens.as_ref().and_then(Lens::flare).is_some(),
             clear_color,
@@ -1083,10 +1211,10 @@ impl Renderer {
             lens: self.lens.as_ref().and_then(Lens::flare),
             focal_length_pixels: self.focal_length_pixels,
             terrain_draws: &self.terrain_draws,
-            surface_anchor_slots: &self.surface_anchor_slots,
+            scatter: self.scatters.frame(),
             descriptor_set: bindless.set(),
             video: video.and(self.video.as_ref()),
-            triangles: Cell::new(0),
+            terrain_triangles: Cell::new(0),
         };
         compiled.execute(device.handle(), frame.command_buffer, &context)?;
 
@@ -1094,17 +1222,13 @@ impl Renderer {
             timer.end(device, frame.command_buffer);
         }
 
-        let mut terrain_maps = TerrainMapStatistics::default();
-
-        for maps in self.scene.terrains().iter().filter_map(|terrain| terrain.maps.as_ref()) {
-            terrain_maps.add(&maps.statistics());
-        }
-
         self.statistics = FrameStatistics {
-            terrain_maps,
-            triangles: context.triangles.get(),
-            tiles: self.selected_tiles.len(),
-            deepest_depth: self.selected_tiles.iter().map(|selected| selected.tile.depth).max(),
+            terrain: TerrainStatistics {
+                triangles: context.terrain_triangles.get(),
+                tiles: self.selected_tiles.len(),
+                deepest_depth: self.selected_tiles.iter().map(|selected| selected.tile.depth).max(),
+            },
+            scatter: self.scatter_statistics,
             gpu_milliseconds: self.gpu_milliseconds,
         };
 
@@ -1213,6 +1337,38 @@ impl Renderer {
         for frame in &mut self.frames {
             frame.surface_anchors =
                 Frame::create_surface_anchor_buffer(&self.gpu.memory, self.capacities.surface_anchors)?;
+        }
+
+        Ok(())
+    }
+
+    fn ensure_terrain_draw_capacity(&mut self) -> anyhow::Result<()> {
+        let draw_count = self.terrain_draw_data.len();
+
+        if draw_count <= self.capacities.terrain_draws {
+            return Ok(());
+        }
+
+        self.capacities.terrain_draws = draw_count.next_power_of_two();
+
+        for frame in &mut self.frames {
+            frame.terrain_draws = Frame::create_terrain_draw_buffer(&self.gpu.memory, self.capacities.terrain_draws)?;
+        }
+
+        Ok(())
+    }
+
+    fn ensure_mesh_draw_capacity(&mut self) -> anyhow::Result<()> {
+        let draw_count = self.mesh_draw_data.len();
+
+        if draw_count <= self.capacities.mesh_draws {
+            return Ok(());
+        }
+
+        self.capacities.mesh_draws = draw_count.next_power_of_two();
+
+        for frame in &mut self.frames {
+            frame.mesh_draws = Frame::create_mesh_draw_buffer(&self.gpu.memory, self.capacities.mesh_draws)?;
         }
 
         Ok(())
