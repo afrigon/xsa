@@ -43,16 +43,19 @@ pub struct Camera {
     pub aspect_ratio: f32,
     // Linear; shows wherever nothing is drawn.
     pub clear_color: Vec3,
+    // Whether the controls keep the camera out of the ground.
+    pub collision: bool,
 }
 
 impl Camera {
-    pub fn new(horizontal_fov: f32, aspect_ratio: f32) -> Self {
+    pub fn new(horizontal_fov: f32, aspect_ratio: f32, collision: bool) -> Self {
         Self {
             position: DVec3::ZERO,
             orientation: DQuat::IDENTITY,
             horizontal_fov,
             aspect_ratio,
             clear_color: CLEAR_COLOR,
+            collision,
         }
     }
 

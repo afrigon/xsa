@@ -450,7 +450,8 @@ Always bring the game to a stable state first:
 The game starts in the main menu. In game, right-drag orbits the target and
 scroll zooms; the debug camera (entered with `camera tp`) flies with WASD,
 Space/Shift and mouse look (click to capture), and scroll sets its speed
-(`debug.camera.speed`). Each way of moving the camera is a `Controls`
+(`camera.debug.speed`); with `camera.collision` on it stands on the ground instead of passing
+through it. Each way of moving the camera is a `Controls`
 (`OrbitControls`, `DebugControls`) attached to an `Anchor`; switching replaces
 the controls, through a `CameraTransition` unless animations are off. The
 camera gets input only while the game view controller is on top; menus release the

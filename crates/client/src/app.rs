@@ -197,11 +197,7 @@ impl App {
         self.resources = Some(renderer.resources().clone());
         self.renderer = Some(renderer);
         self.theme = Some(Rc::new(Theme::load(&base, self.interface.fonts_mut())?));
-        self.cameras = Some(CameraController::new(
-            window.inner_size(),
-            &self.config.debug.camera,
-            &self.config.camera,
-        ));
+        self.cameras = Some(CameraController::new(window.inner_size(), &self.config.camera));
         window.request_redraw();
         self.apply_config();
 
@@ -294,7 +290,7 @@ impl App {
 
         if let Some(meters_per_second) = scrolled_speed {
             let speed = meters_per_second as f32;
-            let result = self.config_store.update(|config| config.debug.camera.speed = speed);
+            let result = self.config_store.update(|config| config.camera.debug.speed = speed);
             self.reconfigure();
 
             if let Err(err) = result {
@@ -412,7 +408,6 @@ impl App {
 
         if let Some(cameras) = &mut self.cameras {
             cameras.set_animation_duration_scale(f64::from(self.config.animation.camera_duration_scale()));
-            cameras.set_debug_camera_config(&self.config.debug.camera);
             cameras.set_camera_config(&self.config.camera);
         }
 

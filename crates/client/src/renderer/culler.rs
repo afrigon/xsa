@@ -43,7 +43,7 @@ mod tests {
     fn culler() -> Culler {
         let aspect_ratio = EXTENT.width as f32 / EXTENT.height as f32;
 
-        Culler::new(&Camera::new(FRAC_PI_2, aspect_ratio), EXTENT)
+        Culler::new(&Camera::new(FRAC_PI_2, aspect_ratio, false), EXTENT)
     }
 
     #[test]

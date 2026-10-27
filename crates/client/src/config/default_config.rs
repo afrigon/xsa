@@ -21,6 +21,7 @@ const RUNNING_ANIMATIONS: AnimationGroupConfig = AnimationGroupConfig {
     duration_scale: 1.0,
 };
 const INPUT_ENABLED: bool = true;
+const CAMERA_COLLISION: bool = true;
 const DEBUG_CAMERA_SPEED: f32 = 2_000_000.0;
 const CAMERA_FIELD_OF_VIEW_DEGREES: f32 = 100.0;
 const CAMERA_ZOOM: f32 = 1.0;
@@ -88,6 +89,10 @@ impl Default for Config {
             camera: CameraConfig {
                 fov: CAMERA_FIELD_OF_VIEW_DEGREES,
                 zoom: CAMERA_ZOOM,
+                collision: CAMERA_COLLISION,
+                debug: DebugCameraConfig {
+                    speed: DEBUG_CAMERA_SPEED,
+                },
             },
             video: VideoConfig {
                 tonemapper: Some(Tonemapper::Agx),
@@ -135,12 +140,7 @@ impl Default for Config {
                 terrain_shader_override: None,
                 surface_shader_override: None,
             },
-            debug: DebugConfig {
-                wireframe: false,
-                camera: DebugCameraConfig {
-                    speed: DEBUG_CAMERA_SPEED,
-                },
-            },
+            debug: DebugConfig { wireframe: false },
             logging: LoggingConfig::default(),
         }
     }

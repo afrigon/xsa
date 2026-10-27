@@ -1,5 +1,7 @@
 use xsa_config::{ConfigSection, ConfigVisitor, NumberRange};
 
+use super::DebugCameraConfig;
+
 // Below a straight angle: a perspective projection cannot reach its sides.
 const FIELD_OF_VIEW_DEGREES: NumberRange = NumberRange::between(1.0, 179.0);
 const ZOOM: NumberRange = NumberRange::at_least(1.0);
@@ -10,6 +12,9 @@ pub struct CameraConfig {
     pub fov: f32,
     // How many times the view magnifies: the focal length grows by it, so the field of view narrows.
     pub zoom: f32,
+    // Whether the main camera stays out of the ground.
+    pub collision: bool,
+    pub debug: DebugCameraConfig,
 }
 
 impl CameraConfig {
@@ -23,5 +28,7 @@ impl ConfigSection for CameraConfig {
     fn visit<V: ConfigVisitor>(&mut self, visitor: &mut V) {
         visitor.number("fov", &mut self.fov, FIELD_OF_VIEW_DEGREES);
         visitor.number("zoom", &mut self.zoom, ZOOM);
+        visitor.value("collision", &mut self.collision);
+        visitor.section("debug", &mut self.debug);
     }
 }

@@ -145,6 +145,8 @@ mod tests {
             "service.resources.workers.max-count",
             "service.resources.read-delay",
             "render.shader.terrain.override",
+            "camera.collision",
+            "camera.debug.speed",
             "debug.wireframe",
             "logging.filter",
             "logging.shell.ipc.input.enabled",

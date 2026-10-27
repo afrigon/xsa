@@ -12,7 +12,7 @@ use crate::input::Input;
 const MOUSE_SENSITIVITY: f64 = 0.0015;
 const SPEED_FACTOR_PER_SCROLL_STEP: f64 = 2.0;
 
-// Flies freely with WASD, Space and Shift and mouse look, riding the nearest body's motion and spin.
+// Flies freely with WASD, Space and Shift and mouse look, riding the motion and spin of the body `camera tp` set.
 pub struct DebugControls {
     position: DVec3,
     // Turns the camera's local axes into the local horizontal frame, whose +Z is up. Each update tilts it by the
@@ -70,15 +70,29 @@ impl DebugControls {
     }
 
     // Carries the camera along with its body's motion and spin since the previous frame, so it hovers over the same
-    // ground whatever the simulation's speed, then rides whichever body is nearest from there. Carrying comes first:
-    // after a jump in time, the position the body left behind says nothing about which body is near.
-    fn ride_nearest_body(&mut self, world: &ClientWorld) {
+    // ground whatever the simulation's speed.
+    fn ride_body(&mut self, world: &ClientWorld) {
         let state = world.body_state(self.attachment.body);
         let rotation = state.orientation * self.attachment.orientation.inverse();
         self.position = state.position + rotation * (self.position - self.attachment.position);
         self.frame = (rotation * self.frame).normalize();
-        let nearest = world.nearest_body(self.position).unwrap_or(self.attachment.body);
-        self.attachment = Attachment::of(nearest, world);
+        self.attachment = Attachment::of(self.attachment.body, world);
+    }
+
+    // How close to its body's centre the camera may come toward `direction`: the eyes of someone standing on the
+    // ground there with collision, the centre itself without.
+    fn lowest_distance(&self, direction: DVec3, context: &ControlsContext) -> f64 {
+        if !context.camera.collision {
+            return 0.0;
+        }
+
+        let body = self.attachment.body;
+        let state = context.world.body_state(body);
+
+        context
+            .world
+            .eye_position(body, state.orientation.inverse() * direction, 0.0)
+            .distance(state.position)
     }
 
     fn take_pending_view(&mut self) {
@@ -101,7 +115,7 @@ impl DebugControls {
 impl Controls for DebugControls {
     fn update(&mut self, context: &ControlsContext) -> CameraPose {
         let input = context.input;
-        self.ride_nearest_body(context.world);
+        self.ride_body(context.world);
         let up = (self.position - self.attachment.position).normalize_or(DVec3::Z);
         self.frame = (DQuat::from_rotation_arc(self.frame * DVec3::Z, up) * self.frame).normalize();
         self.take_pending_view();
@@ -117,19 +131,21 @@ impl Controls for DebugControls {
             + right * input.axis(Key::D, Key::A)
             + up * input.axis(Key::Space, Key::ShiftLeft);
         let step = direction.normalize_or_zero() * f64::from(context.debug_camera.speed) * context.delta_seconds;
-        let vertical = up * step.dot(up);
-        let horizontal = step - vertical;
-        let offset = self.position - self.attachment.position;
-        let radius = offset.length();
+        let climb = step.dot(up);
+        let horizontal = step - up * climb;
+        let radius = (self.position - self.attachment.position).length();
 
-        // At the body's centre there is no great circle to follow.
+        // At the body's centre there is no great circle to follow, and nothing lower to descend to.
         if radius == 0.0 {
-            self.position += step;
+            self.position += horizontal + up * climb.max(self.lowest_distance(up, context));
         } else {
             // A straight step along the tangent plane climbs by d²/2r each frame; travelling the great circle keeps
-            // the altitude whatever the step's length.
+            // the altitude whatever the step's length. Climbing changes only the distance from the centre, so a
+            // descent longer than the radius cannot tunnel through the body.
             let travel = DQuat::from_axis_angle(up.cross(horizontal).normalize_or_zero(), horizontal.length() / radius);
-            self.position = self.attachment.position + travel * (offset + vertical);
+            let direction = travel * up;
+            self.position =
+                self.attachment.position + direction * (radius + climb).max(self.lowest_distance(direction, context));
         }
 
         CameraPose {

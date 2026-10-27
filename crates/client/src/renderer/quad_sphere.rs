@@ -166,7 +166,7 @@ mod tests {
     }
 
     fn camera() -> Camera {
-        Camera::new(FRAC_PI_2, EXTENT.width as f32 / EXTENT.height as f32)
+        Camera::new(FRAC_PI_2, EXTENT.width as f32 / EXTENT.height as f32, false)
     }
 
     fn detail_ranges() -> DetailRanges {
